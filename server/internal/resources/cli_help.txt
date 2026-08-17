@@ -1,0 +1,14 @@
+%s
+	使用方法:
+	  %s/search/ 搜索文件，访问此地址查看检索帮助信息
+	  %s/list/   浏览目录
+	  %s/install.sh 下载命令行封装脚本
+
+	搜索支持:
+	  - 使用逗号分隔多个关键词（AND 逻辑）
+	  - 使用 .xxx 指定要搜索的扩展名
+	  示例: /cli/search/report,.pdf 搜索文件名包含 report 且扩展名为 pdf 的文件
+
+	快捷脚本:
+	  安装: source <(curl -s %s/install.sh)
+	  下载: curl -o fuzhan.sh %s/install.sh && chmod +x fuzhan.sh

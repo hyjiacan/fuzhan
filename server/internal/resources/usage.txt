@@ -1,0 +1,26 @@
+xxh3sum - Calculate xxh3 hash of files, detect and group duplicates
+
+Calculate xxh3 hash values for one or more files/directories.
+Use -d to find and group files with identical content (redundant files).
+
+Usage:
+  xxh3sum [options] <file_or_dir...>
+
+Options:
+  -b 64|128    Hash output bit length: 64 or 128 bits (default: 64)
+  -d           Group and display files with identical hashes as [Duplicate]
+  -h           Show this help message
+  -o <file>    Write hash output to <file> while also printing to console
+
+Examples:
+  xxh3sum file.txt                    Calculate hash of a single file
+  xxh3sum file1.txt file2.txt         Calculate hash of multiple files
+  xxh3sum ./mydir                     Calculate hash of all files in a directory
+  xxh3sum file1.txt ./mydir           Mix files and directories
+  xxh3sum -d ./mydir                  Calculate and group redundant files
+  xxh3sum -o result.txt ./mydir       Output hashes to file
+
+Notes:
+  - Directories are not recursive, only files in the top level are processed
+  - With -d, files with identical content will be grouped as [Duplicate]
+  - Exit code 1 if duplicate files are found (with -d), 0 otherwise

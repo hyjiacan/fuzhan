@@ -1,0 +1,13 @@
+[Unit]
+Description=LightShare File Sharing Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{.BinaryPath}}{{if .ConfigPath}} -c {{.ConfigPath}}{{end}}
+Restart=on-failure
+RestartSec=5{{if .User}}
+User={{.User}}{{end}}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+错误：搜索关键字不能为空
+
+	使用方法:
+		%s/search/<关键字>      搜索文件
+	示例:
+		%s/search/document      搜索文件名包含'document'的文件
+		%s/search/document.exe  搜索文件名包含 document，扩展名为 exe 的文件
+		%s/search/.pdf          搜索所有扩展名为 pdf 的文件
+		%s/search/document,.pdf 搜索文件名包含 document 且扩展名为 pdf 的文件

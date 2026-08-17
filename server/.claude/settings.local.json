@@ -1,0 +1,10 @@
+{
+  "enabledPlugins": {
+    "gopls@claude-code-lsps": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)"
+    ]
+  }
+}

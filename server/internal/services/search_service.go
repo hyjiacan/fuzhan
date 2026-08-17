@@ -1,0 +1,232 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"gorm.io/gorm"
+
+	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
+	"fuzhan/internal/utils"
+)
+
+// SearchService 搜索服务（基于数据库索引表）
+type SearchService struct {
+	db *gorm.DB
+}
+
+// NewSearchService 创建搜索服务实例
+func NewSearchService(db *gorm.DB) *SearchService {
+	return &SearchService{db: db}
+}
+
+// SearchFiles 同步搜索文件，一次性返回所有结果（不再使用 SSE 流式）。
+// 支持使用空格分隔多个关键词（AND 逻辑），最后一个关键词可使用 .xxx 指定扩展名。
+func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.DirectoryConfig, timeout time.Duration) ([]appconfig.FileInfo, error) {
+	if query == "" {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// 获取 rootNames
+	rootNameSet := make(map[string]string, len(rootDirs))
+	for _, dir := range rootDirs {
+		name := dir.Path
+		if idx := strings.LastIndexAny(name, "/\\"); idx >= 0 {
+			name = name[idx+1:]
+		}
+		rootNameSet[name] = dir.Path
+	}
+
+	// 多关键词 AND 搜索，空格分隔
+	keywords := strings.Fields(query)
+	if len(keywords) == 0 {
+		return nil, nil
+	}
+
+	// 提取扩展名过滤条件（最后一个关键词以 . 开头或包含 .）
+	var extFilter string
+	lastIdx := len(keywords) - 1
+	lastKw := keywords[lastIdx]
+	if strings.HasPrefix(lastKw, ".") {
+		// 纯扩展名过滤，如 ".pdf"
+		extFilter = strings.ToLower(lastKw[1:])
+		keywords = keywords[:lastIdx]
+	} else if strings.Contains(lastKw, ".") {
+		// 关键词包含扩展名，如 "file.txt"
+		parts := strings.SplitN(lastKw, ".", 2)
+		keywords[lastIdx] = parts[0]
+		extFilter = strings.ToLower(parts[1])
+	}
+
+	utils.Info("开始数据库索引搜索",
+		utils.String("query", query),
+		utils.Int("keywords", len(keywords)),
+		utils.Int("roots", len(rootNameSet)),
+		utils.String("extFilter", extFilter))
+
+	startTime := time.Now()
+	const maxResults = 1000
+	var results []appconfig.FileInfo
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for rootName := range rootNameSet {
+		wg.Add(1)
+		go func(rn string) {
+			defer wg.Done()
+
+			tx := s.db.WithContext(ctx).
+				Model(&models.FileRecordPublic{}).
+				Where("root_name = ? AND status = 'active'", rn)
+
+			for _, kw := range keywords {
+				tx = tx.Where("file_name LIKE ?", "%"+kw+"%")
+			}
+
+			// 添加扩展名过滤条件
+			if extFilter != "" {
+				tx = tx.Where("file_name LIKE ?", "%."+extFilter)
+			}
+
+			const batchSize = 500
+			offset := 0
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				mu.Lock()
+				if len(results) >= maxResults {
+					mu.Unlock()
+					return
+				}
+				mu.Unlock()
+
+				var batch []models.FileRecordPublic
+				if err := tx.Offset(offset).Limit(batchSize).Find(&batch).Error; err != nil {
+					utils.Warn("数据库搜索查询失败",
+						utils.String("root", rn),
+						utils.Err(err))
+					return
+				}
+
+				if len(batch) == 0 {
+					break
+				}
+
+				for _, record := range batch {
+					fileType := "file"
+					if record.IsDir {
+						fileType = "directory"
+					}
+
+					fileInfo := appconfig.FileInfo{
+						Name:         record.FileName,
+						Type:         fileType,
+						Path:         record.FullPath,
+						ModifiedTime: record.ModTime.Format("2006-01-02T15:04:05"),
+						Size:         record.FileSize,
+						RootName:     rn,
+					}
+
+					mu.Lock()
+					if len(results) < maxResults {
+						results = append(results, fileInfo)
+					}
+					mu.Unlock()
+				}
+
+				mu.Lock()
+				if len(results) >= maxResults {
+					mu.Unlock()
+					return
+				}
+				mu.Unlock()
+
+				offset += batchSize
+			}
+		}(rootName)
+	}
+
+	wg.Wait()
+
+	if results == nil {
+		results = make([]appconfig.FileInfo, 0)
+	}
+
+	utils.Info("数据库索引搜索完成",
+		utils.String("query", query),
+		utils.Int("results", len(results)),
+		utils.String("duration", time.Since(startTime).String()))
+
+	return results, nil
+}
+
+// Close 关闭搜索服务（释放资源）
+func (s *SearchService) Close() error {
+	return nil
+}
+
+// GetFileHashByPath 根据文件路径查询 xxh3 哈希值
+func (s *SearchService) GetFileHashByPath(fullPath string) (string, error) {
+	var record models.FileRecordPublic
+	err := s.db.Model(&models.FileRecordPublic{}).
+		Where("full_path = ? AND status = 'active'", fullPath).
+		Select("xxh3_hash").
+		First(&record).Error
+	if err != nil {
+		return "", err
+	}
+	return record.Xxh3Hash, nil
+}
+
+// LoadHashMap 加载指定根目录下所有文件的 xxh3 哈希映射（fullPath -> hash）
+func (s *SearchService) LoadHashMap(rootName string) (map[string]string, error) {
+	var records []struct {
+		FullPath string
+		Xxh3Hash string
+	}
+	err := s.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND status = 'active' AND xxh3_hash != ''", rootName).
+		Select("full_path, xxh3_hash").
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	hashMap := make(map[string]string, len(records))
+	for _, r := range records {
+		hashMap[filepath.ToSlash(r.FullPath)] = r.Xxh3Hash
+	}
+	return hashMap, nil
+}
+
+// FindFilePathByHash 根据 xxh3 哈希值查找文件路径
+func (s *SearchService) FindFilePathByHash(hash string) (string, string, error) {
+	var record models.FileRecordPublic
+	err := s.db.Model(&models.FileRecordPublic{}).
+		Where("xxh3_hash = ? AND status = 'active' AND is_dir = ?", hash, false).
+		Select("full_path, root_name").
+		First(&record).Error
+	if err != nil {
+		return "", "", err
+	}
+	return record.FullPath, record.RootName, nil
+}
+
+// Validate 验证搜索服务配置
+func (s *SearchService) Validate() error {
+	if s.db == nil {
+		return fmt.Errorf("search service: database is nil")
+	}
+	return nil
+}

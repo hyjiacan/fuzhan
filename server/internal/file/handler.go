@@ -1,0 +1,219 @@
+package file
+
+import (
+    "net/http"
+    "strings"
+
+    "github.com/gin-gonic/gin"
+    "gorm.io/gorm"
+    "fuzhan/internal/appconfig"
+    "fuzhan/internal/middleware"
+    "fuzhan/internal/models"
+    "fuzhan/internal/services"
+    "fuzhan/internal/utils"
+)
+
+// FileHandlers 文件相关处理器
+type FileHandlers struct {
+    BaseHandler *BaseHandler
+    FileService *services.FileService
+    DB          *gorm.DB
+}
+
+// NewFileHandlers 创建文件处理器实例
+func NewFileHandlers(baseHandler *BaseHandler, fileService *services.FileService, db *gorm.DB) *FileHandlers {
+    return &FileHandlers{
+        BaseHandler: baseHandler,
+        FileService: fileService,
+        DB:          db,
+    }
+}
+
+// FileRecordInfo DB 查询返回的文件信息结构
+// Path 字段是带前导 / 的完整路径 (rootName + 相对路径)，与 FullPath 一致
+// 保留此字段名以兼容旧版前端，但实际内容是完整路径
+type FileRecordInfo struct {
+    Name         string `json:"name"`
+    Type         string `json:"type"`
+    Path         string `json:"path"`
+    FullPath     string `json:"fullPath"`
+    ModifiedTime string `json:"modifiedTime"`
+    Size         int64  `json:"size"`
+    Notes        string `json:"notes"`
+    Xxh3Hash     string `json:"xxh3Hash,omitempty"`
+    HashStatus   string `json:"hashStatus,omitempty"`
+    RecordID     uint   `json:"recordId,omitempty"`
+    IsDir        bool   `json:"isDir"`
+    RootName     string `json:"rootName"`
+}
+
+// ListDirectories 列出目录内容（基于数据库查询）
+func (fh *FileHandlers) ListDirectories(c *gin.Context) {
+    var req models.ListDirectoriesRequest
+    if err := c.ShouldBindQuery(&req); err != nil {
+        utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
+        return
+    }
+
+    path := strings.ReplaceAll(req.Path, "\\", "/")
+    path = strings.Trim(path, "/")
+
+    // 根目录：返回所有激活的根目录列表
+    if path == "" {
+        rootNames := fh.getRootNameList()
+        var result []FileRecordInfo
+        for _, rn := range rootNames {
+            result = append(result, FileRecordInfo{
+                Name:     rn,
+                Type:     "directory",
+                Path:     rn,
+                FullPath: rn,
+                RootName: rn,
+                IsDir:    true,
+            })
+        }
+        utils.HandleSuccess(c, http.StatusOK, "", result)
+        return
+    }
+
+    // 解析路径：第一部分为 root name
+    parts := strings.SplitN(path, "/", 2)
+    rootName := parts[0]
+    if _, exists := appconfig.RootNames[rootName]; !exists {
+        utils.HandleBadRequest(c, "指定的目录不存在: "+rootName, nil)
+        return
+    }
+
+    if len(parts) == 1 {
+        // 列出根目录下的直接子项
+        files, err := fh.listDirectChildren(rootName, "")
+        if err != nil {
+            utils.HandleError(c, http.StatusInternalServerError, 500, "数据库查询失败", err.Error())
+            return
+        }
+        utils.HandleSuccess(c, http.StatusOK, "", files)
+        return
+    }
+
+    // 列出子目录下的直接子项
+    prefix := parts[1]
+    files, err := fh.listDirectChildren(rootName, prefix)
+    if err != nil {
+        utils.HandleError(c, http.StatusInternalServerError, 500, "数据库查询失败", err.Error())
+        return
+    }
+    if len(files) == 0 {
+        // 检查该路径自身是否有记录（目录索引记录）
+        var count int64
+        fh.DB.Model(&models.FileRecordPublic{}).
+            Where("root_name = ? AND file_path = ? AND status = ?",
+                rootName, prefix, models.FileStatusActive).
+            Count(&count)
+        if count == 0 {
+            utils.HandleBadRequest(c, "指定的目录不存在: "+rootName+"/"+prefix, nil)
+            return
+        }
+        // 有索引记录但无子项，返回空列表
+    }
+    utils.HandleSuccess(c, http.StatusOK, "", files)
+}
+
+// getRootNameList 获取配置的根目录名称列表
+func (fh *FileHandlers) getRootNameList() []string {
+	var names []string
+	for name := range appconfig.RootNames {
+		names = append(names, name)
+	}
+	return names
+}
+
+// listDirectChildren 列出指定目录下的直接子项（文件和子目录）
+// prefix 为空时列出根级直接子项
+func (fh *FileHandlers) listDirectChildren(rootName, prefix string) ([]FileRecordInfo, error) {
+    query := fh.DB.Model(&models.FileRecordPublic{}).
+        Where("root_name = ? AND status = ?", rootName, models.FileStatusActive)
+
+    if prefix == "" {
+        // 根级：文件路径不包含额外 "/"（只有前导 /）
+        // 示例：/file.txt 匹配，/dir/file.txt 不匹配
+        query = query.Where("file_path NOT LIKE ?", "/%/%")
+    } else {
+        // 子目录：路径以 /prefix/ 开头，但不包含更深层级
+        // 示例：prefix=subdir，/subdir/file.txt 匹配，/subdir/nested/file.txt 不匹配
+        cleanPrefix := strings.TrimRight(prefix, "/")
+        query = query.Where(
+            "file_path LIKE ? AND file_path NOT LIKE ?",
+            "/"+cleanPrefix+"/%", "/"+cleanPrefix+"/%/%",
+        )
+    }
+
+    var records []models.FileRecordPublic
+    if err := query.Order("is_dir DESC, file_name ASC").Find(&records).Error; err != nil {
+        return nil, err
+    }
+
+    result := make([]FileRecordInfo, 0, len(records))
+    for _, r := range records {
+        fileType := "file"
+        if r.IsDir {
+            fileType = "directory"
+        }
+        modifiedTime := ""
+        if !r.ModTime.IsZero() {
+            modifiedTime = r.ModTime.Format("2006-01-02T15:04:05")
+        }
+        result = append(result, FileRecordInfo{
+            Name:         r.FileName,
+            Type:         fileType,
+            Path:         r.FullPath,
+            FullPath:     r.FullPath,
+            ModifiedTime: modifiedTime,
+            Size:         r.FileSize,
+            Notes:        r.Notes,
+            Xxh3Hash:     r.Xxh3Hash,
+            HashStatus:   r.HashStatus,
+            RecordID:     r.ID,
+            IsDir:        r.IsDir,
+            RootName:     r.RootName,
+        })
+    }
+    return result, nil
+}
+
+// MoveFileHandler 移动文件处理器
+func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
+    var req models.MoveFileRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
+        return
+    }
+
+    // 执行移动
+    if err := fh.FileService.MoveFile(req.OldPath, req.NewPath); err != nil {
+        middleware.LogOperation(c, "file.move", req.OldPath+" -> "+req.NewPath, err)
+        utils.HandleBadRequest(c, err.Error(), nil)
+        return
+    }
+
+    middleware.LogOperation(c, "file.move", req.OldPath+" -> "+req.NewPath, nil)
+    utils.HandleSuccess(c, http.StatusOK, "移动成功", nil)
+}
+
+// DeleteFileHandler 删除文件处理器
+func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
+    var req models.DeleteFileRequest
+    if err := c.ShouldBindQuery(&req); err != nil {
+        utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
+        return
+    }
+
+    // 执行删除
+    if err := fh.FileService.DeleteFile(req.Path); err != nil {
+        middleware.LogOperation(c, "file.delete", req.Path, err)
+        utils.HandleBadRequest(c, err.Error(), nil)
+        return
+    }
+
+    middleware.LogOperation(c, "file.delete", req.Path, nil)
+    utils.HandleSuccess(c, http.StatusOK, "删除成功", nil)
+}

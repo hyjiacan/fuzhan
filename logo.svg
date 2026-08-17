@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 云朵底座 -->
+  <path d="M120 350c0-32 36-54 72-54 12-20 36-32 64-32s52 12 64 32c36 0 72 22 72 54s-60 32-136 32-136 0-136-32z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 45°斜俯视小屋：屋顶侧面 -->
+  <path d="M144 150 L214 130 L260 180 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- 45°斜俯视小屋：屋顶正面 -->
+  <path d="M214 130 L340 120 L380 175 L254 185 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- 小屋侧面墙面 -->
+  <path d="M160 155 L250 180 L250 300 L160 275 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- 小屋正面墙面 -->
+  <path d="M250 185 L360 177 L360 290 L250 300 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- 窗户 -->
+  <path d="M190 220 L220 228 L220 260 L190 252 z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- 门 -->
+  <path d="M290 240 L320 235 L320 290 L290 295 z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+</svg>

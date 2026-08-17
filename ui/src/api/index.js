@@ -1,0 +1,759 @@
+import axios from 'axios'
+import { createErrorFromResponse, createNetworkError } from '../utils/error.js'
+
+const API_BASE = '/api/v1'
+
+// 创建 axios 实例
+const request = axios.create({
+  baseURL: API_BASE,
+  timeout: 30000
+})
+
+// 导出 request 实例供需要动态 URL 的组件使用（如 UploadManager）
+export { request }
+
+// 错误处理回调（可在应用初始化时设置）
+let globalErrorHandler = null
+
+export function setGlobalErrorHandler(handler) {
+  globalErrorHandler = handler
+}
+
+// 获取或生成 AnonymousID
+function getAnonymousId() {
+  let id = localStorage.getItem('anonymous_id')
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+    })
+    localStorage.setItem('anonymous_id', id)
+  }
+  return id
+}
+
+// 请求拦截器：添加认证信息和匿名标识
+request.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    // 所有请求都携带 AnonymousID
+    config.headers['X-Anonymous-ID'] = getAnonymousId()
+    return config
+  },
+  error => Promise.reject(error)
+)
+
+// 响应拦截器：处理错误
+request.interceptors.response.use(
+  response => {
+    // 检查响应头中是否有刷新后的 token
+    const refreshedToken = response.headers['x-refreshed-token']
+    if (refreshedToken) {
+      localStorage.setItem('token', refreshedToken)
+    }
+    return response.data
+  },
+  error => {
+    // 区分网络错误和业务错误
+    let appError
+    if (error.response) {
+      // 服务器返回了错误响应
+      if (error.response.status === 401) {
+        // Token 过期或无效，清除认证信息
+        localStorage.removeItem('token')
+        localStorage.removeItem('uuid')
+        localStorage.removeItem('username')
+        localStorage.removeItem('userRole')
+      } else if (error.response.status === 403) {
+        // 无权限，跳转到文件页面
+        window.location.hash = '#/files'
+      }
+      appError = createErrorFromResponse(error.response)
+    } else {
+      // 网络错误（无响应）
+      appError = createNetworkError(error)
+    }
+
+    // 调用全局错误处理器
+    if (globalErrorHandler) {
+      globalErrorHandler(appError, error)
+    }
+
+    return Promise.reject(appError)
+  }
+)
+
+// ========== 认证 API ==========
+export const AuthApi = {
+  getToken() {
+    return localStorage.getItem('token')
+  },
+
+  isLoggedIn() {
+    return !!this.getToken()
+  },
+
+  setAuth(token, uuid, username) {
+    localStorage.setItem('token', token)
+    localStorage.setItem('uuid', uuid)
+    localStorage.setItem('username', username)
+  },
+
+  clearAuth() {
+    localStorage.removeItem('token')
+    localStorage.removeItem('uuid')
+    localStorage.removeItem('username')
+    localStorage.removeItem('userRole')
+  },
+
+  getUserInfo() {
+    return request.get('/auth/user')
+  },
+
+  register(username, password) {
+    return request.post('/auth/register', { username, password })
+  },
+
+  login(username, password) {
+    return request.post('/auth/login', { username, password })
+  },
+
+  changePassword(oldPassword, newPassword) {
+    return request.put('/auth/password', { oldPassword, newPassword })
+  }
+}
+
+// ========== 配置 API ==========
+export const ConfigApi = {
+  get() {
+    return request.get('/config')
+  },
+
+  save(config) {
+    return request.post('/config', config)
+  }
+}
+
+// ========== 文件 API ==========
+export const FileApi = {
+  list(path = '') {
+    return request.get('/files/list', { params: { path } })
+  },
+
+  recent(page = 1, pageSize = 20, action = 'upload') {
+    return request.get('/files/recent', { params: { page, pageSize, action } })
+  },
+
+  recentCarousel() {
+    return request.get('/files/recent/carousel')
+  },
+
+  getInfo(path) {
+    return request.get('/get_file_info', { params: { path } })
+  },
+
+  rename(oldPath, newName) {
+    return request.post('/files/rename', { oldPath, newName })
+  },
+
+  move(oldPath, newPath) {
+    return request.post('/files/move', { oldPath, newPath })
+  },
+
+  preview(path) {
+    const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
+    return request.get(`/files/preview/${encodedPath}`)
+  },
+
+  previewChunk(path, chunkIndex) {
+    const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
+    return request.get(`/files/preview-chunk/${encodedPath}`, { params: { chunk: chunkIndex } })
+  }
+}
+
+// ========== 上传 API ==========
+export const UploadApi = {
+  getUrlInfo(url) {
+    return request.post('/uploads/url_info', { url })
+  },
+
+  uploadFromUrl(url, filename, dir = '', storageType = '') {
+    const data = { url, filename, dir }
+    if (storageType) {
+      data.storageType = storageType
+    }
+    return request.post('/uploads/url', data)
+  },
+
+  uploadFromUrlLocal(url, filename, dir, rootName) {
+    return request.post('/uploads/url', { url, filename, dir, rootName })
+  },
+
+  // 分片上传
+  session: {
+    create(data) {
+      return request.post('/uploads/session', data)
+    },
+    get(id) {
+      return request.get(`/uploads/session/${id}`)
+    },
+    resume(id) {
+      return request.post(`/uploads/session/${id}/resume`)
+    },
+    cancel(id) {
+      return request.delete(`/uploads/session/${id}`)
+    }
+  },
+
+  chunk: {
+    upload(formData) {
+      return request.post('/uploads/chunk', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    }
+  },
+
+  finalize(uploadId) {
+    return request.post('/uploads/finalize', { uploadId })
+  },
+
+  // URL 下载任务进度查询
+  getURLTask(taskId) {
+    return request.get(`/uploads/url-task/${taskId}`)
+  }
+}
+
+// ========== 文件索引 API ==========
+export const IndexApi = {
+  // 查询索引记录
+  listRecords(params = {}) {
+    return request.get('/admin/index/records', { params })
+  },
+
+  // 获取索引统计
+  getStats() {
+    return request.get('/admin/index/stats')
+  },
+
+  // 触发全量扫描
+  triggerScan() {
+    return request.post('/admin/index/scan')
+  },
+
+  // 触发全量扫描（所有 scope）
+  triggerFullScan() {
+    return request.post('/admin/index/scan/trigger')
+  },
+
+  // 获取扫描进度
+  getScanProgress() {
+    return request.get('/admin/index/scan/progress')
+  },
+
+  // 获取扫描状态（公开接口，供 Footer 使用）
+  getScanStatus() {
+    return request.get('/files/scan/status')
+  },
+
+  // 触发一致性校验
+  triggerCheck() {
+    return request.post('/admin/index/check')
+  },
+
+  // 更新备注
+  updateNotes(id, notes) {
+    return request.put(`/admin/index/records/${id}/notes`, { notes })
+  },
+  // 搜索文件记录（用于 autocomplete）
+  searchRecords(query) {
+    return request.get('/files/search-records', { params: { q: query } })
+  },
+
+  // 删除索引记录
+  deleteRecord(id) {
+    return request.delete(`/admin/index/records/${id}`)
+  },
+
+  // 查询重复文件
+  listDuplicates(params = {}) {
+    return request.get('/admin/index/duplicates', { params })
+  },
+
+  // 保留指定文件，自动删除同哈希的其他重复文件
+  keepDuplicate(id) {
+    return request.post(`/admin/index/duplicates/${id}/keep`)
+  }
+}
+
+// ========== 文件依赖 API ==========
+export const DependencyApi = {
+  create(fileRecordId, dependsOnId, relation, description) {
+    return request.post('/admin/index/dependencies', {
+      fileRecordId, dependsOnId, relation, description
+    })
+  },
+  delete(id) {
+    return request.delete(`/admin/index/dependencies/${id}`)
+  },
+  getByRecord(recordId) {
+    return request.get(`/admin/index/records/${recordId}/dependencies`)
+  },
+  getTree(recordId) {
+    return request.get(`/files/depends/${recordId}`)
+  },
+  // 公开创建（无需 admin）
+  createPublic(fileRecordId, dependsOnId, relation, description) {
+    return request.post('/files/dependencies', {
+      fileRecordId, dependsOnId, relation, description
+    })
+  },
+  // 公开删除（无需 admin）
+  deletePublic(id) {
+    return request.delete(`/files/dependencies/${id}`)
+  }
+}
+
+// ========== 搜索 API ==========
+export const SearchApi = {
+  search(query) {
+    return request.get(`/search/${encodeURIComponent(query)}`)
+  }
+}
+
+// ========== 文件记录备注 API ==========
+export const FileRecordApi = {
+  // 公开获取备注
+  getNotes(recordId) {
+    return request.get(`/files/records/${recordId}/notes`)
+  },
+  // 公开更新备注
+  updateNotes(recordId, notes) {
+    return request.put(`/files/records/${recordId}/notes`, { notes })
+  },
+  // 搜索文件记录（用于 autocomplete）
+  searchFiles(query) {
+    return request.get('/files/search-records', { params: { q: query } })
+  },
+  // 根据路径查找文件记录
+  findRecord(fileName, rootName, filePath) {
+    return request.get('/files/record', { params: { fileName, rootName, filePath } })
+  }
+}
+
+// ========== 管理员 API ==========
+export const AdminApi = {
+  getUsers() {
+    return request.get('/admin/users')
+  },
+
+  resetPassword(uuid, newPassword) {
+    return request.put(`/admin/users/${uuid}/reset-password`, { newPassword })
+  },
+
+  setUserDisabled(uuid, disabled) {
+    return request.put(`/admin/users/${uuid}/disabled`, { disabled })
+  },
+
+  deleteUser(uuid) {
+    return request.delete(`/admin/users/${uuid}`)
+  },
+
+  getSessions() {
+    return request.get('/admin/sessions')
+  },
+
+  cleanupSessions(sessionIds) {
+    return request.post('/admin/sessions/cleanup', { sessionIds })
+  },
+
+  // 文件管理
+  listFiles(path = '') {
+    return request.get('/admin/files/list', { params: { path } })
+  },
+
+  move(oldPath, newPath) {
+    return request.post('/admin/files/move', { oldPath, newPath })
+  },
+
+  delete(path) {
+    return request.delete('/admin/files', { params: { path } })
+  },
+
+  // URL 下载任务管理
+  getURLTasks(page = 1, pageSize = 20, status = '') {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return request.get('/admin/url-tasks', { params })
+  },
+
+  retryURLTask(id) {
+    return request.post(`/admin/url-tasks/${id}/retry`)
+  },
+
+  deleteURLTask(id) {
+    return request.delete(`/admin/url-tasks/${id}`)
+  },
+
+  // 搜索
+  search(query) {
+    return request.get(`/admin/search/${encodeURIComponent(query)}`)
+  }
+}
+
+// ========== 私有存储 API ==========
+export const PrivateApi = {
+  list(dir = '') {
+    return request.get('/private/files', { params: { path: dir || undefined } })
+  },
+
+  upload(file, { expireDate } = {}) {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (expireDate) {
+      formData.append('expireDate', expireDate)
+    }
+    return request.post('/private/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  delete(code) {
+    return request.delete(`/private/files/${code}`)
+  },
+
+  getQuota() {
+    return request.get('/private/quota')
+  },
+
+  // 分片上传
+  session: {
+    create(data) {
+      return request.post('/private/uploads/session', data)
+    },
+    get(id) {
+      return request.get(`/private/uploads/session/${id}`)
+    },
+    resume(id) {
+      return request.post(`/private/uploads/session/${id}/resume`)
+    },
+    cancel(id) {
+      return request.delete(`/private/uploads/session/${id}`)
+    }
+  },
+
+  chunk: {
+    upload(formData) {
+      return request.post('/private/uploads/chunk', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    }
+  },
+
+  finalize(uploadId) {
+    return request.post('/private/uploads/finalize', { uploadId })
+  }
+}
+
+// ========== 临时文件 API (基于IP，无需认证) ==========
+export const TempApi = {
+  list(dir = '') {
+    return request.get('/temp/list', { params: { path: dir || undefined } })
+  },
+
+  getQuota() {
+    return request.get('/temp/quota')
+  },
+
+  getClientIP() {
+    return request.get('/temp/client-ip')
+  },
+
+  upload(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post('/temp/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  getInfo(code) {
+    return request.get(`/temp/${code}`)
+  },
+
+  download(code) {
+    return `${API_BASE}/temp/${code}/download`
+  },
+
+  delete(code) {
+    return request.delete(`/temp/${code}`)
+  },
+
+  // 分片上传
+  session: {
+    create(data) {
+      return request.post('/temp/upload/session', data)
+    },
+    get(id) {
+      return request.get(`/temp/upload/session/${id}`)
+    },
+    resume(id) {
+      return request.post(`/temp/upload/session/${id}/resume`)
+    },
+    cancel(id) {
+      return request.delete(`/temp/upload/session/${id}`)
+    }
+  },
+
+  chunk: {
+    upload(formData) {
+      return request.post('/temp/upload/chunk', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    }
+  },
+
+  finalize(uploadId) {
+    return request.post('/temp/upload/finalize', { uploadId })
+  }
+}
+
+// ========== 设置 API ==========
+export const SetupApi = {
+  getStatus() {
+    return request.get('/setup/status')
+  },
+
+  save(config) {
+    return request.post('/setup/save', config)
+  },
+
+  validateDir(path) {
+    return request.post('/setup/validate-dir', { path })
+  },
+
+  getNetworkInterfaces() {
+    return request.get('/setup/network/interfaces')
+  },
+
+  getDefaultConfig() {
+    return request.get('/setup/default-config')
+  }
+}
+
+// ========== 系统 API ==========
+export const SystemApi = {
+  getOptions() {
+    return request.get('/options')
+  },
+
+  health() {
+    return request.get('/health')
+  },
+
+  // Open API 统计
+  getOpenAPIStats() {
+    return request.get('/admin/open-api/stats')
+  },
+
+  // 上传 TLS 证书
+  uploadCert(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post('/admin/upload-cert', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  // 上传 TLS 密钥
+  uploadKey(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post('/admin/upload-key', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  }
+}
+
+// ========== 监测 API ==========
+export const MonitorApi = {
+  getStorage() {
+    return request.get('/monitor/storage')
+  },
+
+  getAccess() {
+    return request.get('/monitor/access')
+  },
+
+  getKeywords(limit) {
+    return request.get('/monitor/keywords', { params: { limit } })
+  },
+
+  getRecentKeywords() {
+    return request.get('/monitor/recent')
+  },
+
+  getRankings(limit) {
+    return request.get('/monitor/rankings', { params: { limit } })
+  },
+
+  getHotDownloads(page = 1, pageSize = 20) {
+    return request.get('/monitor/hot-downloads', { params: { page, pageSize } })
+  }
+}
+
+// ========== 数据库迁移 API ==========
+export const DatabaseApi = {
+  // 测试数据库连接
+  testConnection(data) {
+    return request.post('/admin/database/test-connection', data)
+  },
+
+  // 检查迁移可行性
+  migrationCheck(data) {
+    return request.post('/admin/database/migration-check', data)
+  },
+
+  // 获取迁移状态
+  getStatus() {
+    return request.get('/admin/database/status')
+  },
+
+  // 取消迁移
+  cancel() {
+    return request.post('/admin/database/cancel')
+  },
+
+  // 获取备份列表
+  getBackups() {
+    return request.get('/admin/database/backups')
+  },
+
+  // 创建备份
+  createBackup(description) {
+    return request.post('/admin/database/backups', { description })
+  },
+
+  // 恢复备份
+  restoreBackup(backupId) {
+    return request.post('/admin/database/backups/restore', { backupId })
+  },
+
+  // 删除备份
+  deleteBackup(id) {
+    return request.delete(`/admin/database/backups/${id}`)
+  },
+
+  // 继续迁移
+  resumeMigration(migrationId) {
+    return request.post('/admin/database/resume', { migrationId })
+  },
+
+  // 重新迁移
+  restartMigration(migrationId) {
+    return request.post('/admin/database/restart', { migrationId })
+  },
+
+  // 回滚迁移
+  rollbackMigration(migrationId) {
+    return request.post('/admin/database/rollback', { migrationId })
+  },
+
+  // 开始迁移 (返回 SSE)
+  startMigration(config) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/v1/admin/database/migrate', true)
+      xhr.setRequestHeader('Content-Type', 'application/json')
+
+      // 添加认证
+      const token = localStorage.getItem('token')
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+
+      const events = []
+      xhr.onprogress = (e) => {
+        if (e.lengthComputable) {
+          // SSE 数据
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(events)
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText)
+            reject(new Error(err.message || '迁移失败'))
+          } catch {
+            reject(new Error(`迁移失败: ${xhr.status}`))
+          }
+        }
+      }
+
+      xhr.onerror = () => {
+        reject(new Error('网络错误'))
+      }
+
+      xhr.send(JSON.stringify(config))
+      return xhr
+    })
+  }
+}
+
+// ========== 通知 API ==========
+export const NotificationApi = {
+  getNotifications() {
+    return request.get('/notifications')
+  },
+
+  markRead(ids) {
+    return request.post('/notifications/read', { ids })
+  },
+
+  merge() {
+    return request.post('/notifications/merge')
+  }
+}
+
+// ========== API Key 管理 API ==========
+export const ApiKeyApi = {
+  list(page = 1, pageSize = 20) {
+    return request.get('/admin/api-keys', { params: { page, pageSize } })
+  },
+
+  get(id) {
+    return request.get(`/admin/api-keys/${id}`)
+  },
+
+  create(data) {
+    return request.post('/admin/api-keys', data)
+  },
+
+  updateStatus(id, status) {
+    return request.put(`/admin/api-keys/${id}/status`, { status })
+  },
+
+  delete(id) {
+    return request.delete(`/admin/api-keys/${id}`)
+  }
+}
+
+export default {
+  AuthApi,
+  ConfigApi,
+  FileApi,
+  UploadApi,
+  AdminApi,
+  PrivateApi,
+  TempApi,
+  SetupApi,
+  SystemApi,
+  MonitorApi,
+  DatabaseApi,
+  NotificationApi,
+  ApiKeyApi
+}

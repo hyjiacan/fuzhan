@@ -1,0 +1,181 @@
+# ============================================
+# 浮栈 (Fuzhan) 配置文件
+# ============================================
+# 所有大小/空间配置支持以下单位格式：
+#   B  - 字节 (如 1024B)
+#   K/KB - 千字节 (如 100K, 1KB)
+#   M/MB - 兆字节 (如 10M, 100MB)
+#   G/GB - 吉字节 (如 1G, 2GB)
+#   T/TB - 太字节 (如 1T, 2TB)
+# 不带单位默认为字节
+
+# ----------------------------------------
+# 应用配置
+# ----------------------------------------
+app:
+  name: 轻共享
+  initialized: true
+
+# ----------------------------------------
+# 账户配置（用户管理和认证相关）
+# ----------------------------------------
+# 各协议（WebDAV、FTP、Web）共用此配置。
+# 匿名用户无需登录即可访问公开目录，
+# 认证用户可访问公开目录和私有存储。
+account:
+  # 匿名用户配置
+  # FTP/WebDAV 等协议使用此用户名作为公用账户，
+  # 需在系统中创建对应用户，供匿名访问认证使用
+  anonymous:
+    username: "public"           # 匿名/公开目录用户名，默认 "public"
+  # 保留用户名列表，注册时不可使用（管理员 CLI 创建不受限）
+  reserved_usernames:
+    - admin
+    - root
+
+# ----------------------------------------
+# 服务器配置
+# ----------------------------------------
+server:
+  host: 0.0.0.0       # 监听地址，0.0.0.0 表示所有网卡
+  # TLS 证书配置（FTPS/HTTPS 共用）
+  # tls:
+  #   cert_file: ""   # TLS 证书文件路径
+  #   key_file: ""    # TLS 密钥文件路径
+  # HTTP 配置
+  http:
+    enabled: true
+    port: 8888         # HTTP 监听端口
+  # HTTPS 配置（启用需配置 server.tls）
+  https:
+    enabled: false
+    port: 8443         # HTTPS 监听端口
+  # FTP 配置（支持匿名和用户认证）
+  ftp:
+    enabled: false
+    port: 21           # FTP 端口
+  # FTPS 配置（启用需配置 server.tls）
+  ftps:
+    enabled: false
+    port: 990          # FTPS 端口
+  # WebDAV 配置（统一端点 /api/v1/webdav）
+  # 支持可选 BasicAuth 认证：
+  #   - 未认证：只访问 public/ 目录（共享根目录）
+  #   - 已认证：访问 public/ + private/ 目录
+  webdav:
+    enabled: false
+    port: 0            # 0 表示与 HTTP/HTTPS 同端口
+
+# ----------------------------------------
+# 数据库配置 (可选，默认使用 SQLite)
+# ----------------------------------------
+# 使用说明：
+# 1. SQLite（默认）: driver 留空，dsn 设置为数据库文件路径
+# 2. MySQL: driver 设为 "mysql"，dsn 设置为 MySQL 连接字符串
+# 3. PostgreSQL: driver 设为 "postgres"，dsn 设置为 PostgreSQL 连接字符串
+database:
+  driver: ""     # 数据库驱动: mysql, postgres (为空则使用 SQLite)
+  dsn: ""        # 数据库连接字符串
+
+# =============================================
+# MySQL 配置示例 (取消注释即可使用)
+# =============================================
+# database:
+#   driver: mysql
+#   dsn: "user:password@tcp(localhost:3306)/fuzhan?charset=utf8mb4&parseTime=True&loc=Local"
+#
+# 注意事项:
+#   - 需要 MySQL 5.7+ 版本
+#   - 首次使用需要手动创建数据库: CREATE DATABASE fuzhan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+#   - 确保用户有 DDL 权限，程序会自动创建表结构
+
+# =============================================
+# PostgreSQL 配置示例 (取消注释即可使用)
+# =============================================
+# database:
+#   driver: postgres
+#   dsn: "host=localhost user=postgres password=your_password dbname=fuzhan port=5432 sslmode=disable"
+#
+# 注意事项:
+#   - 需要 PostgreSQL 10+ 版本
+#   - 首次使用需要手动创建数据库: CREATE DATABASE fuzhan;
+#   - 确保用户有 CONNECT 和 CREATE 权限
+
+# ----------------------------------------
+# 存储配置
+# ----------------------------------------
+storage:
+  # 公开共享目录 (所有用户可访问)
+  public:
+    root_dirs:                     # 支持配置多个共享目录，每个目录可单独设置配额
+      - path: D:/Downloads              # 共享目录路径
+        quota: 0                    # 目录配额 (0 表示无限制)，支持 10G, 100M 等格式
+      # - path: /path/to/another
+      #   quota: 1T                  # 示例：1TB 配额
+  # 私有文件存储 (需登录，按用户配额)
+  # 用户上传的私人文件，需要登录账号，配额按用户计算
+  private:
+    enabled: false                # 是否启用私有文件存储
+    path: ./private_files         # 私有文件存储目录
+    # 配额配置 (支持 0B, 100M, 1G, 10G 等格式，0 表示无限制)
+    quota:
+      global: 100G                # 全局总配额 (所有用户共用)
+      per_user: 10G               # 单个用户配额
+    default_expire_days: 365      # 默认过期天数 (0 表示永不过期)
+  # 临时文件存储 (无需登录，按 IP 配额)
+  # 临时分享的文件，无需登录，但有过期时间，配额按 IP 计算
+  # 分片大小使用 upload.chunk_size 配置
+  temp:
+    enabled: true                 # 是否启用临时文件存储
+    path: ./temp_files            # 临时文件存储目录
+    quota:
+      global: 10G                 # 全局总配额 (所有 IP 共用)
+      per_ip: 500M                # 单个 IP 配额 (支持 100M, 1G 等格式)
+    default_expire_days: 7        # 默认过期天数
+    delete_on_download: true      # 下载后是否自动删除
+  # 允许的文件扩展名 (为空表示允许所有)
+  # 控制界面显示的文件类型，以及上传时能选择的文件类型（后台有文件类型校验）
+  allowed_extensions: []
+
+# ----------------------------------------
+# 上传配置
+# ----------------------------------------
+upload:
+  chunk_size: 10M               # 全局分片大小 (支持 1M, 5M, 10M 等格式)
+  max_file_size: 16G            # 单文件大小限制 (0 表示无限制，支持 1G, 10G 等格式)
+  # URL 上传配置（从远程 URL 下载文件到服务器）及 SSRF 安全防护
+  url_upload:
+    enabled: false              # 是否启用 URL 上传功能
+    allowed_ip_ranges: []       # 允许的 IP 网段 (CIDR 格式)，为空时只允许公网 IP（SSRF 防护）
+    insecure_skip_verify: false # 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false 即验证证书）
+
+# ----------------------------------------
+# 文件预览配置
+# ----------------------------------------
+# 支持预览的文件类型：优先匹配 MIME 类型，MIME 无法覆盖的使用扩展名
+# MIME 和扩展名都支持通配符，如 text/* 表示所有文本类型，.bak 表示所有 .bak 文件
+preview:
+  # 支持预览的 MIME 类型 (逗号分隔，优先匹配)
+  # 示例: text/*,image/*,application/pdf,application/json
+  allow_mimes: text/*,image/*,application/pdf,application/json,application/xml,application/javascript
+  # 支持预览的文件扩展名 (逗号分隔，作为 MIME 的补充)
+  # 示例: txt,md,log,json,xml,csv,html,css,js,ts,vue,yml,yaml
+  allow_exts: txt,md,log,json,xml,csv,html,css,js,ts,vue,yml,yaml,properties,conf,config,sh,bat,ps1,py,java,go,rs,c,cpp,h,hpp,sql,ini,toml
+  # 文本文件最大内联显示大小 (超过此大小需下载查看)
+  max_inline_size: 1M           # 支持 1M, 2M 等格式
+  # 文本文件分块读取大小
+  text_chunk_size: 100K         # 支持 50K, 100K 等格式
+
+# ----------------------------------------
+# 日志配置
+# ----------------------------------------
+log:
+  level: info                   # 日志级别: debug, info, warn, error
+  directory: ./logs  # 日志目录
+  max_size: 100                 # 单个日志文件最大大小 (MB)
+  max_backups: 30               # 保留的旧日志文件数量
+  max_age: 30                   # 旧日志文件保留天数
+  compress: true                # 是否压缩旧日志
+  split_by_level: true          # 是否按级别分离日志 (app.log/error.log/access.log)
+  access_log: true              # 是否记录访问日志
+  enable_console: true          # 是否输出到控制台

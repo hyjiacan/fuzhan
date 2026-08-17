@@ -1,0 +1,1413 @@
+<template>
+  <div class="settings-view">
+    <div class="header-section">
+      <h2>系统设置</h2>
+      <p class="description">管理系统配置和参数调整</p>
+    </div>
+
+    <n-tabs type="line" animated>
+      <!-- 基础配置 -->
+      <n-tab-pane name="basic" tab="基础配置">
+        <n-card title="应用信息" style="margin-bottom: 16px;">
+          <n-form label-placement="left" label-width="120">
+            <n-form-item label="应用名称">
+              <n-input v-model:value="settings.appName" :maxlength="64" placeholder="请输入应用名称" />
+              <template #feedback>
+                <span class="field-hint">显示在页面标题和界面顶部的应用名称</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="服务器配置">
+          <n-form label-placement="left" label-width="120">
+            <n-form-item label="监听地址">
+              <n-select v-model:value="settings.server.host" :options="ipOptions" />
+              <template #feedback>
+                <span class="field-hint">服务器监听的 IP 地址。<code>0.0.0.0</code> 表示监听所有网卡（可从局域网访问），<code>127.0.0.1</code> 仅限本机访问 <n-tag size="tiny" type="success">热生效</n-tag></span>
+              </template>
+            </n-form-item>
+
+            <n-divider />
+            <n-text depth="3" style="font-weight: 600;">HTTP</n-text>
+            <n-space vertical style="width: 100%;">
+              <n-form-item label="启用 HTTP">
+                <n-switch v-model:value="settings.server.http.enabled" />
+                <template #feedback>
+                  <span class="field-hint">关闭后 HTTP 端口将不可用（仅 HTTPS）</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="HTTP 端口" v-if="settings.server.http.enabled">
+                <n-input-number v-model:value="settings.server.http.port" :min="1" :max="65535" />
+                <template #feedback>
+                  <span class="field-hint">HTTP 服务监听端口，常用：8080（开发）、80（生产） <n-tag size="tiny" type="success">热生效</n-tag></span>
+                </template>
+              </n-form-item>
+            </n-space>
+
+            <n-divider />
+            <n-text depth="3" style="font-weight: 600;">HTTPS</n-text>
+            <n-space vertical style="width: 100%;">
+              <n-form-item label="启用 HTTPS">
+                <n-switch v-model:value="settings.server.https.enabled" />
+                <template #feedback>
+                  <span class="field-hint">启用后可通过 HTTPS 加密访问，需要配置 TLS 证书</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="HTTPS 端口" v-if="settings.server.https.enabled">
+                <n-input-number v-model:value="settings.server.https.port" :min="1" :max="65535" />
+                <template #feedback>
+                  <span class="field-hint">HTTPS 服务监听端口，默认 8443 <n-tag size="tiny" type="success">热生效</n-tag></span>
+                </template>
+              </n-form-item>
+            </n-space>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- 数据库配置 -->
+      <n-tab-pane name="database" tab="数据库">
+        <n-card>
+          <n-alert type="info" :show-icon="false" class="migration-hint">
+            <template #header>
+              <span class="migration-title">数据迁移说明</span>
+            </template>
+            <ul class="migration-list">
+              <li>修改数据库类型（如 SQLite → MySQL）或目标地址时会触发数据迁移</li>
+              <li>迁移过程中原数据库保持不变，可随时回滚</li>
+              <li>迁移完成后配置即时生效</li>
+              <li><strong>风险提示</strong>：迁移存在一定风险，建议提前备份重要数据</li>
+            </ul>
+          </n-alert>
+
+          <n-divider />
+
+          <n-form ref="formRef" :model="settings" :rules="rules" label-placement="left" label-width="120">
+            <n-form-item label="数据库类型">
+              <n-radio-group v-model:value="settings.database.driver">
+                <n-radio value="sqlite">SQLite</n-radio>
+                <n-radio value="mysql">MySQL</n-radio>
+                <n-radio value="postgres">PostgreSQL</n-radio>
+              </n-radio-group>
+              <template #feedback>
+                <span class="field-hint">
+                  <strong>SQLite</strong>：轻量级，文件存储，适合小型部署，无需额外安装<br>
+                  <strong>MySQL</strong>：适合大规模应用，需要 MySQL 5.7+<br>
+                  <strong>PostgreSQL</strong>：功能丰富，适合企业级应用，需要 PostgreSQL 10+
+                </span>
+              </template>
+            </n-form-item>
+
+            <!-- SQLite 配置 -->
+            <n-form-item v-if="settings.database.driver === 'sqlite'" label="数据库文件" path="database.dsn" :rule="rules['database.dsn']">
+              <n-input v-model:value="settings.database.dsn" :maxlength="1024" placeholder="fuzhan.db" />
+              <template #feedback>
+                <span class="field-hint">SQLite 数据库文件路径，如 <code>./fuzhan.db</code> 或 <code>D:\data\fuzhan.db</code></span>
+              </template>
+            </n-form-item>
+
+            <!-- MySQL 配置 -->
+            <template v-if="settings.database.driver === 'mysql'">
+              <n-form-item label="主机地址" path="database.mysqlHost" :rule="rules['database.mysqlHost']">
+                <n-input v-model:value="settings.database.mysqlHost" :maxlength="255" placeholder="localhost" />
+                <template #feedback>
+                  <span class="field-hint">MySQL 服务器地址，通常为 <code>localhost</code> 或服务器 IP</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="端口" path="database.mysqlPort" :rule="rules['database.mysqlPort']">
+                <n-input-number v-model:value="settings.database.mysqlPort" :min="1" :max="65535" />
+                <template #feedback>
+                  <span class="field-hint">MySQL 服务端口，默认 <code>3306</code></span>
+                </template>
+              </n-form-item>
+              <n-form-item label="用户名" path="database.mysqlUser" :rule="rules['database.mysqlUser']">
+                <n-input v-model:value="settings.database.mysqlUser" :maxlength="64" placeholder="root" />
+                <template #feedback>
+                  <span class="field-hint">MySQL 数据库用户名</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="密码">
+                <n-input v-model:value="settings.database.mysqlPassword" :maxlength="128" type="password" placeholder="输入密码" show-password-on="click" />
+                <template #feedback>
+                  <span class="field-hint">MySQL 数据库密码（可选，留空表示无密码）</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="数据库名" path="database.mysqlDatabase" :rule="rules['database.mysqlDatabase']">
+                <n-input v-model:value="settings.database.mysqlDatabase" :maxlength="64" placeholder="fuzhan" />
+                <template #feedback>
+                  <span class="field-hint">要连接的 MySQL 数据库名称，需提前创建</span>
+                </template>
+              </n-form-item>
+
+              <!-- 测试连接按钮 -->
+              <n-form-item>
+                <n-button
+                  :loading="testingDb"
+                  :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'error' : 'default'"
+                  @click="testDbConnection"
+                >
+                  {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
+                </n-button>
+                <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
+                  {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
+                </span>
+              </n-form-item>
+            </template>
+
+            <!-- PostgreSQL 配置 -->
+            <template v-if="settings.database.driver === 'postgres'">
+              <n-form-item label="主机地址" path="database.postgresHost" :rule="rules['database.postgresHost']">
+                <n-input v-model:value="settings.database.postgresHost" :maxlength="255" placeholder="localhost" />
+                <template #feedback>
+                  <span class="field-hint">PostgreSQL 服务器地址，通常为 <code>localhost</code> 或服务器 IP</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="端口" path="database.postgresPort" :rule="rules['database.postgresPort']">
+                <n-input-number v-model:value="settings.database.postgresPort" :min="1" :max="65535" />
+                <template #feedback>
+                  <span class="field-hint">PostgreSQL 服务端口，默认 <code>5432</code></span>
+                </template>
+              </n-form-item>
+              <n-form-item label="用户名" path="database.postgresUser" :rule="rules['database.postgresUser']">
+                <n-input v-model:value="settings.database.postgresUser" :maxlength="64" placeholder="postgres" />
+                <template #feedback>
+                  <span class="field-hint">PostgreSQL 数据库用户名</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="密码">
+                <n-input v-model:value="settings.database.postgresPassword" :maxlength="128" type="password" placeholder="输入密码" show-password-on="click" />
+                <template #feedback>
+                  <span class="field-hint">PostgreSQL 数据库密码</span>
+                </template>
+              </n-form-item>
+              <n-form-item label="数据库名" path="database.postgresDatabase" :rule="rules['database.postgresDatabase']">
+                <n-input v-model:value="settings.database.postgresDatabase" :maxlength="64" placeholder="fuzhan" />
+                <template #feedback>
+                  <span class="field-hint">要连接的 PostgreSQL 数据库名称，需提前创建</span>
+                </template>
+              </n-form-item>
+
+              <!-- 测试连接按钮 -->
+              <n-form-item>
+                <n-button
+                  :loading="testingDb"
+                  :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'error' : 'default'"
+                  @click="testDbConnection"
+                >
+                  {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
+                </n-button>
+                <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
+                  {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
+                </span>
+              </n-form-item>
+            </template>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- 存储配置 -->
+      <n-tab-pane name="storage" tab="存储">
+        <n-card title="共享目录配置">
+          <div v-for="(dir, index) in settings.rootDirs" :key="index" style="margin-bottom: 16px; padding: 16px; background: #f8f9fa; border-radius: 8px;">
+            <n-form label-placement="left" label-width="120">
+              <n-form-item label="目录路径" path="dir.path">
+                <n-input v-model:value="dir.path" :maxlength="1024" placeholder="目录路径" />
+                <template #feedback><span class="field-hint">共享目录的绝对路径或相对路径，如 <code>D:\files</code> 或 <code>./share</code></span></template>
+              </n-form-item>
+              <n-form-item label="显示名称" path="dir.name">
+                <n-input v-model:value="dir.name" :maxlength="255" placeholder="显示名称" />
+                <template #feedback><span class="field-hint">在界面上显示的目录名称</span></template>
+              </n-form-item>
+            </n-form>
+            <n-button type="error" size="small" @click="removeDir(index)">删除</n-button>
+          </div>
+          <n-button dashed block @click="addDir">添加共享目录</n-button>
+        </n-card>
+
+        <n-card title="私有文件配置" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用私有文件">
+              <n-switch v-model:value="settings.privateFiles.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后用户需登录才能上传文件，文件与用户绑定，适合个人文件管理</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="存储路径">
+              <n-input v-model:value="settings.privateFiles.path" :maxlength="1024" placeholder="私有文件存储路径" />
+              <template #feedback>
+                <span class="field-hint">私有文件的存储目录，建议使用独立磁盘分区</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="全局配额">
+              <n-space>
+                <n-input v-model:value="privateQuotaGlobalDisplay" :maxlength="32" placeholder="如 500m, 10g, 1t" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.privateQuotaGlobal) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">所有私有文件的总存储上限，支持 <code>500m</code>、<code>10g</code>、<code>1t</code> 等格式</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="用户配额">
+              <n-space>
+                <n-input v-model:value="privateQuotaUserDisplay" :maxlength="32" placeholder="如 100m, 5g" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.privateQuotaUser) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">每个用户的私有文件存储上限，可防止单个用户占用过多空间</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="临时文件配置" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用临时文件">
+              <n-switch v-model:value="settings.tempFiles.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后无需登录即可上传文件，通过访问码分享，适合临时文件传输</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="存储路径">
+              <n-input v-model:value="settings.tempFiles.path" :maxlength="1024" placeholder="临时文件存储路径" />
+              <template #feedback>
+                <span class="field-hint">临时文件的存储目录，会定期自动清理过期文件</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="全局配额">
+              <n-space>
+                <n-input v-model:value="tempQuotaGlobalDisplay" :maxlength="32" placeholder="如 10g, 100g" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaGlobal) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">所有临时文件的总存储上限，超出后最早的文件会被自动清理</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="IP配额">
+              <n-space>
+                <n-input v-model:value="tempQuotaPerIPDisplay" :maxlength="32" placeholder="如 500m, 2g" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaPerIP) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">每个 IP 地址的临时文件存储上限，超出后该 IP 无法继续上传</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="默认过期天数">
+              <n-input-number v-model:value="settings.tempFiles.defaultExpireDays" :min="1" :max="365" />
+              <template #feedback>
+                <span class="field-hint">临时文件默认的有效天数，到期后自动清理，可设置 1-365 天</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="下载后删除">
+              <n-switch v-model:value="settings.tempFiles.deleteOnDownload" />
+              <template #feedback>
+                <span class="field-hint">开启后文件被下载一次即自动删除，适合一次性分享场景</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <!-- 文件索引配置 -->
+        <n-card title="文件索引配置" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="定时扫描间隔">
+              <n-input v-model:value="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
+              <template #feedback>
+                <span class="field-hint">Cron 表达式，默认 <code>0 1 * * *</code>（每天凌晨 1:00）。格式：分 时 日 月 周</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- 上传配置 -->
+      <n-tab-pane name="upload" tab="上传">
+        <n-card title="上传配置">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="分片大小">
+              <n-space>
+                <n-input v-model:value="chunkSizeDisplay" :maxlength="32" placeholder="如 10m, 1g" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.upload.chunkSize) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">文件分块上传的块大小，较大的分片可减少请求次数，但占用内存更多。建议 <code>5m</code>-<code>10m</code></span>
+              </template>
+            </n-form-item>
+            <n-form-item label="最大文件大小">
+              <n-space>
+                <n-input v-model:value="maxFileSizeDisplay" :maxlength="32" placeholder="如 2g, 10g, 无限制" style="width: 200px;" />
+                <span style="color: #999;">
+                  {{ settings.upload.maxFileSize === 0 ? '无限制' : formatSize(settings.upload.maxFileSize) }}
+                </span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">允许上传的单文件最大体积，填写 <code>0</code> 或 <code>无限制</code> 表示不限制</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+        <n-card title="URL 上传配置" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用 URL 上传">
+              <n-switch v-model:value="settings.upload.urlUpload.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后用户可通过远程 URL 下载文件到服务器</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="跳过证书验证">
+              <n-switch v-model:value="settings.upload.urlUpload.insecureSkipVerify" />
+              <template #feedback>
+                <span class="field-hint">跳过 HTTPS/FTPS 的 TLS 证书验证（仅对自签名证书的场景需要）</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- 高级配置 -->
+      <n-tab-pane name="advanced" tab="高级">
+        <n-card title="文件访问控制">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="允许的扩展名">
+              <n-dynamic-tags v-model:value="settings.allowedExtensions" />
+              <template #feedback>
+                <span class="field-hint">留空表示允许所有扩展名；设置后只允许上传指定类型的文件，如 <code>txt</code>、<code>pdf</code>、<code>jpg</code></span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="预览配置" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="MIME类型">
+              <n-input
+                v-model:value="settings.preview.allowMimes"
+                :maxlength="1024"
+                type="textarea"
+                placeholder="text/*,image/*,application/pdf,application/json"
+                :rows="2"
+              />
+              <template #feedback>
+                <span class="field-hint">允许在浏览器内预览的 MIME 类型，逗号分隔，支持通配符如 <code>text/*</code>、<code>image/*</code></span>
+              </template>
+            </n-form-item>
+            <n-form-item label="文件扩展名">
+              <n-input
+                v-model:value="settings.preview.allowExts"
+                :maxlength="1024"
+                type="textarea"
+                placeholder="txt,md,log,json,html,css,js"
+                :rows="2"
+              />
+              <template #feedback>
+                <span class="field-hint">允许预览的文件扩展名，逗号分隔，如 <code>txt,md,log,json,html,css,js</code></span>
+              </template>
+            </n-form-item>
+            <n-form-item label="最大内联大小">
+              <n-space>
+                <n-input v-model:value="maxInlineSizeDisplay" :maxlength="32" placeholder="如 1m, 2m" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.preview.maxInlineSize) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">浏览器直接预览的文件大小上限，超过此大小会提示下载，建议 <code>1m</code>-<code>5m</code></span>
+              </template>
+            </n-form-item>
+            <n-form-item label="文本分块大小">
+              <n-space>
+                <n-input v-model:value="textChunkSizeDisplay" placeholder="如 100k, 200k" style="width: 200px;" />
+                <span style="color: #999;">{{ formatSize(settings.preview.textChunkSize) }}</span>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">预览大文本文件时分块读取的大小，影响预览加载速度和内存占用，建议 <code>100k</code>-<code>200k</code></span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- FTP / FTPS 配置 -->
+      <n-tab-pane name="ftp" tab="FTP">
+        <n-card title="FTP 服务">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用 FTP">
+              <n-switch v-model:value="settings.server.ftp.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后可通过 FTP 协议访问共享文件</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="FTP 端口" v-if="settings.server.ftp.enabled">
+              <n-input-number v-model:value="settings.server.ftp.port" :min="1" :max="65535" />
+              <template #feedback>
+                <span class="field-hint">FTP 端口，默认 21（监听地址复用服务器配置）</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="FTPS 服务" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用 FTPS">
+              <n-switch v-model:value="settings.server.ftps.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后可通过 FTPS（FTP over TLS）安全访问</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="FTPS 端口" v-if="settings.server.ftps.enabled">
+              <n-input-number v-model:value="settings.server.ftps.port" :min="1" :max="65535" />
+              <template #feedback>
+                <span class="field-hint">FTPS 端口，默认 990</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="TLS 证书配置（共享）" style="margin-top: 16px;">
+          <n-alert type="info" :show-icon="false" style="margin-bottom: 16px;">
+            <span class="field-hint">TLS 证书由 HTTPS 和 FTPS 共享使用，配置一次即可。</span>
+          </n-alert>
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="证书文件">
+              <n-space>
+                <n-input v-model:value="settings.server.tls.certFile" placeholder="未配置" readonly style="width: 300px;" />
+                <n-upload
+                  :max="1"
+                  accept=".pem,.crt"
+                  :custom-request="handleCertUpload"
+                >
+                  <n-button size="small">上传</n-button>
+                </n-upload>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">上传 .pem 或 .crt 格式的证书文件</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="密钥文件">
+              <n-space>
+                <n-input v-model:value="settings.server.tls.keyFile" placeholder="未配置" readonly style="width: 300px;" />
+                <n-upload
+                  :max="1"
+                  accept=".key"
+                  :custom-request="handleKeyUpload"
+                >
+                  <n-button size="small">上传</n-button>
+                </n-upload>
+              </n-space>
+              <template #feedback>
+                <span class="field-hint">上传 .key 格式的密钥文件</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- WebDAV 配置 -->
+      <n-tab-pane name="webdav" tab="WebDAV">
+        <n-card title="WebDAV 服务">
+          <n-form label-placement="left" label-width="140">
+            <n-alert type="info" :show-icon="false" style="margin-bottom: 16px;">
+              <span class="field-hint">WebDAV 通过 HTTP/HTTPS 端口提供访问，无需额外端口配置。</span>
+            </n-alert>
+            <n-form-item label="启用 WebDAV">
+              <n-switch v-model:value="settings.server.webdav.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后可通过 WebDAV 客户端浏览文件</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="公开用户名" v-if="settings.server.webdav.enabled">
+              <n-input v-model:value="settings.account.anonymous.username" placeholder="public" />
+              <template #feedback>
+                <span class="field-hint">WebDAV/FTP 公开目录的默认用户名，该用户名将被自动保留，不可被注册</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+
+      <!-- Open API 配置 -->
+      <n-tab-pane name="openapi" tab="Open API">
+        <n-card title="Open API 服务">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="启用 Open API">
+              <n-switch v-model:value="settings.openApi.enabled" />
+              <template #feedback>
+                <span class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </n-card>
+
+        <n-card title="调用统计" style="margin-top: 16px;">
+          <n-grid :cols="3" :x-gap="16" :y-gap="16" style="margin-bottom: 16px;">
+            <n-gi>
+              <n-statistic label="今日调用次数" :value="openApiStats.todayCalls || 0" />
+            </n-gi>
+            <n-gi>
+              <n-statistic label="本周调用次数" :value="openApiStats.weekCalls || 0" />
+            </n-gi>
+            <n-gi>
+              <n-statistic label="总调用次数" :value="openApiStats.totalCalls || 0" />
+            </n-gi>
+          </n-grid>
+          <n-button size="small" @click="loadOpenAPIStats" :loading="loadingOpenAPIStats">刷新统计</n-button>
+        </n-card>
+
+        <n-card title="访问控制" style="margin-top: 16px;">
+          <n-form label-placement="left" label-width="140">
+            <n-form-item label="IP 访问模式">
+              <n-radio-group v-model:value="settings.openApi.ipAccessMode">
+                <n-radio value="allow">白名单模式</n-radio>
+                <n-radio value="deny">黑名单模式</n-radio>
+                <n-radio value="none">不限制</n-radio>
+              </n-radio-group>
+              <template #feedback>
+                <span class="field-hint">控制哪些 IP 可以访问 Open API</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="IP 白名单" v-if="settings.openApi.ipAccessMode === 'allow'">
+              <n-input
+                v-model:value="settings.openApi.ipWhitelist"
+                type="textarea"
+                placeholder="每行一个 IP 或 CIDR，如 192.168.1.0/24"
+                :rows="3"
+              />
+            </n-form-item>
+            <n-form-item label="IP 黑名单" v-if="settings.openApi.ipAccessMode === 'deny'">
+              <n-input
+                v-model:value="settings.openApi.ipBlacklist"
+                type="textarea"
+                placeholder="每行一个 IP 或 CIDR"
+                :rows="3"
+              />
+            </n-form-item>
+            <n-form-item label="启用频率限制">
+              <n-switch v-model:value="settings.openApi.rateLimitEnabled" />
+              <template #feedback>
+                <span class="field-hint">限制 API 调用频率，防止滥用</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="请求频率" v-if="settings.openApi.rateLimitEnabled">
+              <n-space>
+                <n-input-number v-model:value="settings.openApi.requestsPerMinute" :min="1" :max="10000" />
+                <span>次/分钟</span>
+              </n-space>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-tab-pane>
+    </n-tabs>
+
+    <div class="actions-bar">
+      <n-space justify="end">
+        <n-button @click="loadSettings">重置</n-button>
+        <n-button type="primary" :loading="saving" @click="saveSettings">保存配置</n-button>
+      </n-space>
+    </div>
+
+    <!-- 数据库迁移向导 -->
+    <MigrationWizard
+      v-model:show="showMigrationWizard"
+      :initial-type="settings.database.driver"
+      :initial-config="settings.database"
+      @migrated="handleMigrated"
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted, computed } from 'vue'
+import { NumberUtils } from '@/utils'
+import { formatErrorMessage } from '@/utils/error'
+import {
+  NCard, NForm, NFormItem, NInput, NInputNumber, NButton, NSpace,
+  NTabs, NTabPane, NSwitch, NRadioGroup, NRadio, NDynamicTags,
+  NUpload, NTag, NText, NAlert, NDivider, useMessage, useDialog, NSpin,
+  NStatistic, NGrid, NGi
+} from 'naive-ui'
+import { ConfigApi, DatabaseApi, SetupApi, SystemApi } from '@/api'
+import store from '@/store'
+import MigrationWizard from '@/components/settings/migration/MigrationWizard.vue'
+
+const message = useMessage()
+const dialog = useDialog()
+const saving = ref(false)
+const showMigrationWizard = ref(false)
+const formRef = ref(null)
+
+// 保存原始配置用于检测变更
+const originalConfig = ref(null)
+const originalServerConfig = ref(null)
+
+// 测试连接状态
+const testingDb = ref(false)
+const dbTestResult = ref(null)
+
+// Open API 统计
+const openApiStats = ref({ todayCalls: 0, weekCalls: 0, totalCalls: 0 })
+const loadingOpenAPIStats = ref(false)
+
+// 校验规则
+const rules = {
+  appName: {
+    required: true,
+    message: '请输入应用名称',
+    trigger: ['blur', 'input']
+  },
+  'server.host': {
+    required: true,
+    message: '请选择监听地址',
+    trigger: ['blur', 'change']
+  },
+  'server.http.port': {
+    required: true,
+    type: 'number',
+    message: '请输入有效端口 (1-65535)',
+    trigger: ['blur', 'change']
+  },
+  'database.dsn': {
+    required: true,
+    message: '请输入数据库文件路径',
+    trigger: ['blur', 'input']
+  },
+  'database.mysqlHost': {
+    required: true,
+    message: '请输入 MySQL 主机地址',
+    trigger: ['blur', 'input']
+  },
+  'database.mysqlPort': {
+    required: true,
+    type: 'number',
+    message: '请输入有效端口 (1-65535)',
+    trigger: ['blur', 'change']
+  },
+  'database.mysqlUser': {
+    required: true,
+    message: '请输入 MySQL 用户名',
+    trigger: ['blur', 'input']
+  },
+  'database.mysqlDatabase': {
+    required: true,
+    message: '请输入 MySQL 数据库名',
+    trigger: ['blur', 'input']
+  },
+  'database.postgresHost': {
+    required: true,
+    message: '请输入 PostgreSQL 主机地址',
+    trigger: ['blur', 'input']
+  },
+  'database.postgresPort': {
+    required: true,
+    type: 'number',
+    message: '请输入有效端口 (1-65535)',
+    trigger: ['blur', 'change']
+  },
+  'database.postgresUser': {
+    required: true,
+    message: '请输入 PostgreSQL 用户名',
+    trigger: ['blur', 'input']
+  },
+  'database.postgresDatabase': {
+    required: true,
+    message: '请输入 PostgreSQL 数据库名',
+    trigger: ['blur', 'input']
+  }
+}
+
+// 单位输入的双向绑定
+const privateQuotaGlobalDisplay = computed({
+  get: () => formatToUnit(settings.privateQuotaGlobal),
+  set: (val) => { settings.privateQuotaGlobal = NumberUtils.parseFileSize(val) }
+})
+const privateQuotaUserDisplay = computed({
+  get: () => formatToUnit(settings.privateQuotaUser),
+  set: (val) => { settings.privateQuotaUser = NumberUtils.parseFileSize(val) }
+})
+const tempQuotaGlobalDisplay = computed({
+  get: () => formatToUnit(settings.tempFilesQuotaGlobal),
+  set: (val) => { settings.tempFilesQuotaGlobal = NumberUtils.parseFileSize(val) }
+})
+const tempQuotaPerIPDisplay = computed({
+  get: () => formatToUnit(settings.tempFilesQuotaPerIP),
+  set: (val) => { settings.tempFilesQuotaPerIP = NumberUtils.parseFileSize(val) }
+})
+const chunkSizeDisplay = computed({
+  get: () => formatToUnit(settings.upload.chunkSize),
+  set: (val) => { settings.upload.chunkSize = NumberUtils.parseFileSize(val) }
+})
+const maxFileSizeDisplay = computed({
+  get: () => settings.upload.maxFileSize === 0 ? '无限制' : formatToUnit(settings.upload.maxFileSize),
+  set: (val) => {
+    if (val === '无限制' || val === '0') {
+      settings.upload.maxFileSize = 0
+    } else {
+      settings.upload.maxFileSize = NumberUtils.parseFileSize(val)
+    }
+  }
+})
+const maxInlineSizeDisplay = computed({
+  get: () => formatToUnit(settings.preview.maxInlineSize),
+  set: (val) => { settings.preview.maxInlineSize = NumberUtils.parseFileSize(val) }
+})
+const textChunkSizeDisplay = computed({
+  get: () => formatToUnit(settings.preview.textChunkSize),
+  set: (val) => { settings.preview.textChunkSize = NumberUtils.parseFileSize(val) }
+})
+
+// 格式化字节为人类可读单位
+const formatToUnit = (bytes) => {
+  if (!bytes || bytes === 0) return '0'
+  if (bytes >= 1024 * 1024 * 1024 * 1024) {
+    return (bytes / (1024 * 1024 * 1024 * 1024)).toFixed(1) + 't'
+  }
+  if (bytes >= 1024 * 1024 * 1024) {
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'g'
+  }
+  if (bytes >= 1024 * 1024) {
+    return (bytes / (1024 * 1024)).toFixed(1) + 'm'
+  }
+  if (bytes >= 1024) {
+    return (bytes / 1024).toFixed(1) + 'k'
+  }
+  return bytes.toString()
+}
+
+const ipOptions = ref([])
+
+// 加载网络接口列表
+const loadNetworkInterfaces = async () => {
+  try {
+    const res = await SetupApi.getNetworkInterfaces()
+    if (res.success && res.data) {
+      ipOptions.value = res.data.map(item => ({
+        label: `${item.name} (${item.ip})`,
+        value: item.ip
+      }))
+    }
+  } catch (e) {
+    console.error('获取网络接口失败:', e)
+  }
+}
+
+// 加载 Open API 统计
+const loadOpenAPIStats = async () => {
+  loadingOpenAPIStats.value = true
+  try {
+    const res = await SystemApi.getOpenAPIStats()
+    if (res.success && res.data) {
+      openApiStats.value = res.data
+    }
+  } catch (e) {
+    console.error('获取 Open API 统计失败:', e)
+  } finally {
+    loadingOpenAPIStats.value = false
+  }
+}
+
+// 证书上传处理
+const handleCertUpload = async ({ file }) => {
+  try {
+    const res = await SystemApi.uploadCert(file.file)
+    if (res.success && res.data?.path) {
+      settings.server.tls.certFile = res.data.path
+      message.success('证书上传成功')
+    } else {
+      message.error(res.message || '证书上传失败')
+    }
+  } catch (e) {
+    message.error('证书上传失败')
+  }
+  return false
+}
+
+// 密钥上传处理
+const handleKeyUpload = async ({ file }) => {
+  try {
+    const res = await SystemApi.uploadKey(file.file)
+    if (res.success && res.data?.path) {
+      settings.server.tls.keyFile = res.data.path
+      message.success('密钥上传成功')
+    } else {
+      message.error(res.message || '密钥上传失败')
+    }
+  } catch (e) {
+    message.error('密钥上传失败')
+  }
+  return false
+}
+
+const settings = reactive({
+  appName: '',
+  account: {
+    anonymous: { username: 'public' },
+    reservedUsernames: []
+  },
+  server: {
+    host: '0.0.0.0',
+    http: { enabled: true, port: 8080 },
+    https: { enabled: false, port: 8443 },
+    ftp: { enabled: false, port: 21 },
+    ftps: { enabled: false, port: 990 },
+    webdav: { enabled: false },
+    tls: { certFile: '', keyFile: '' }
+  },
+  database: {
+    driver: 'sqlite',
+    dsn: '',
+    // MySQL 配置
+    mysqlHost: 'localhost',
+    mysqlPort: 3306,
+    mysqlUser: 'root',
+    mysqlPassword: '',
+    mysqlDatabase: 'fuzhan',
+    // PostgreSQL 配置
+    postgresHost: 'localhost',
+    postgresPort: 5432,
+    postgresUser: 'postgres',
+    postgresPassword: '',
+    postgresDatabase: 'fuzhan',
+  },
+  rootDirs: [],
+  allowedExtensions: [],
+  privateFiles: {
+    enabled: false,
+    path: ''
+  },
+  privateQuotaGlobal: 0,
+  privateQuotaUser: 0,
+  upload: {
+    chunkSize: 10485760,
+    maxFileSize: 17179869184
+  },
+  tempFiles: {
+    enabled: true,
+    path: '',
+    defaultExpireDays: 7,
+    deleteOnDownload: true
+  },
+  tempFilesQuotaGlobal: 0,
+  tempFilesQuotaPerIP: 0,
+  preview: {
+    allowMimes: '',
+    allowExts: '',
+    maxInlineSize: 1048576,
+    textChunkSize: 102400
+  },
+  openApi: {
+    enabled: false,
+    ipAccessMode: 'none',
+    ipWhitelist: '',
+    ipBlacklist: '',
+    rateLimitEnabled: true,
+    requestsPerMinute: 60
+  },
+  scanCronExpression: '0 1 * * *',
+})
+
+const formatSize = (bytes) => NumberUtils.formatFileSize(bytes)
+
+// 测试数据库连接
+const testDbConnection = async () => {
+  testingDb.value = true
+  dbTestResult.value = null
+
+  let dsn = settings.database.dsn
+  if (settings.database.driver === 'mysql') {
+    dsn = buildMysqlDsn()
+  } else if (settings.database.driver === 'postgres') {
+    dsn = buildPostgresDsn()
+  }
+
+  try {
+    const result = await DatabaseApi.testConnection({
+      driver: settings.database.driver,
+      dsn
+    })
+    if (result.data?.connected) {
+      dbTestResult.value = { success: true, info: result.data }
+      message.success('连接成功')
+    } else {
+      dbTestResult.value = {
+        success: false,
+        error: result.data?.errorInfo?.message || '连接失败'
+      }
+      message.error(result.data?.errorInfo?.message || '连接失败')
+    }
+  } catch (err) {
+    dbTestResult.value = { success: false, error: formatErrorMessage(err, '连接失败') }
+    message.error(formatErrorMessage(err, '连接测试失败'))
+  } finally {
+    testingDb.value = false
+  }
+}
+
+const addDir = () => {
+  settings.rootDirs.push({ path: '', name: '' })
+}
+
+const removeDir = (index) => {
+  settings.rootDirs.splice(index, 1)
+}
+
+// 解析 MySQL DSN
+const parseMysqlDsn = (dsn) => {
+  // 格式: user:password@tcp(host:port)/database?params
+  const match = dsn.match(/([^:@]+):([^@]*)@tcp\(([^:]+):(\d+)\)\/([^?]+)/)
+  if (match) {
+    settings.database.mysqlUser = match[1]
+    settings.database.mysqlPassword = match[2]
+    settings.database.mysqlHost = match[3]
+    settings.database.mysqlPort = parseInt(match[4])
+    settings.database.mysqlDatabase = match[5]
+  }
+}
+
+// 解析 PostgreSQL DSN
+const parsePostgresDsn = (dsn) => {
+  // 格式: host=host port=port user=user password=password dbname=database
+  const getParam = (str, key) => {
+    const match = str.match(new RegExp(`${key}=(\\S+)`))
+    return match ? match[1] : ''
+  }
+  settings.database.postgresHost = getParam(dsn, 'host') || 'localhost'
+  settings.database.postgresPort = parseInt(getParam(dsn, 'port')) || 5432
+  settings.database.postgresUser = getParam(dsn, 'user') || 'postgres'
+  settings.database.postgresPassword = getParam(dsn, 'password')
+  settings.database.postgresDatabase = getParam(dsn, 'dbname') || 'fuzhan'
+}
+
+// 构建 MySQL DSN
+const buildMysqlDsn = () => {
+  const { mysqlHost, mysqlPort, mysqlUser, mysqlPassword, mysqlDatabase } = settings.database
+  const passwordPart = mysqlPassword ? `${mysqlPassword}@` : '@'
+  return `${mysqlUser}:${passwordPart}tcp(${mysqlHost}:${mysqlPort})/${mysqlDatabase}`
+}
+
+// 构建 PostgreSQL DSN
+const buildPostgresDsn = () => {
+  const { postgresHost, postgresPort, postgresUser, postgresPassword, postgresDatabase } = settings.database
+  const parts = [
+    `host=${postgresHost}`,
+    `port=${postgresPort}`,
+    `user=${postgresUser}`,
+    `dbname=${postgresDatabase}`
+  ]
+  if (postgresPassword) {
+    parts.push(`password=${postgresPassword}`)
+  }
+  return parts.join(' ')
+}
+
+const loadSettings = async () => {
+  try {
+    const data = await ConfigApi.get()
+    if (data.success && data.data) {
+      const cfg = data.data
+      settings.appName = cfg.app?.name || ''
+      settings.server.host = cfg.server?.host || '0.0.0.0'
+      settings.server.http = {
+        enabled: cfg.server?.http?.enabled ?? true,
+        port: cfg.server?.http?.port || 8080
+      }
+      settings.server.https = {
+        enabled: cfg.server?.https?.enabled ?? false,
+        port: cfg.server?.https?.port || 8443
+      }
+      settings.server.ftp = {
+        enabled: cfg.server?.ftp?.enabled ?? false,
+        port: cfg.server?.ftp?.port || 21
+      }
+      settings.server.ftps = {
+        enabled: cfg.server?.ftps?.enabled ?? false,
+        port: cfg.server?.ftps?.port || 990
+      }
+      settings.account = {
+        anonymous: { username: cfg.account?.anonymous?.username || 'public' },
+        reservedUsernames: cfg.account?.reservedUsernames || []
+      }
+      settings.server.webdav = {
+        enabled: cfg.server?.webdav?.enabled ?? false
+      }
+      settings.database.driver = cfg.database?.driver || 'sqlite'
+      settings.database.dsn = cfg.database?.dsn || ''
+
+      // 解析 MySQL DSN
+      if (settings.database.driver === 'mysql' && cfg.database?.dsn) {
+        parseMysqlDsn(cfg.database.dsn)
+      }
+      // 解析 PostgreSQL DSN
+      if (settings.database.driver === 'postgres' && cfg.database?.dsn) {
+        parsePostgresDsn(cfg.database.dsn)
+      }
+      settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name })) || []
+      settings.allowedExtensions = cfg.allowedExtensions || []
+
+      // 私有文件配置
+      settings.privateFiles.enabled = cfg.privateFiles?.enabled ?? false
+      settings.privateFiles.path = cfg.privateFiles?.path || ''
+      settings.privateQuotaGlobal = cfg.privateFiles?.quotaGlobal || 0
+      settings.privateQuotaUser = cfg.privateFiles?.quotaPerUser || 0
+
+      // 临时文件配置
+      settings.tempFiles.enabled = cfg.tempFiles?.enabled ?? true
+      settings.tempFiles.path = cfg.tempFiles?.path || ''
+      settings.tempFiles.defaultExpireDays = cfg.tempFiles?.defaultExpireDays || 7
+      settings.tempFiles.deleteOnDownload = cfg.tempFiles?.deleteOnDownload ?? true
+      settings.tempFilesQuotaGlobal = cfg.tempFiles?.quotaGlobal || 0
+      settings.tempFilesQuotaPerIP = cfg.tempFiles?.quotaPerIP || 0
+
+      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, insecureSkipVerify: false } }
+
+      // 预览配置
+      settings.preview = {
+        allowMimes: cfg.preview?.allowMimes || '',
+        allowExts: cfg.preview?.allowExts || '',
+        maxInlineSize: NumberUtils.parseFileSize(cfg.preview?.maxInlineSize || '1M'),
+        textChunkSize: NumberUtils.parseFileSize(cfg.preview?.textChunkSize || '100K')
+      }
+
+      // Open API 配置
+      settings.openApi = {
+        enabled: cfg.openApi?.enabled ?? false,
+        ipAccessMode: cfg.openApi?.ipAccessMode || 'none',
+        ipWhitelist: (cfg.openApi?.ipWhitelist || []).join('\n'),
+        ipBlacklist: (cfg.openApi?.ipBlacklist || []).join('\n'),
+        rateLimitEnabled: cfg.openApi?.rateLimitEnabled ?? true,
+        requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
+      }
+
+      // 文件索引配置
+      settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
+
+      // 保存原始数据库配置用于变更检测
+      originalConfig.value = { ...settings.database }
+      originalServerConfig.value = {
+        host: settings.server.host,
+        httpPort: settings.server.http.port
+      }
+    }
+  } catch (e) {
+    console.error('加载设置失败', e)
+    message.error('加载设置失败')
+  }
+}
+
+// 检测数据库配置是否有变更
+const detectDatabaseChange = () => {
+  if (!originalConfig.value) return false
+  const orig = originalConfig.value
+  const curr = settings.database
+
+  // 检测 driver 变更
+  if (orig.driver !== curr.driver) return true
+
+  // 检测 SQLite DSN 变更
+  if (curr.driver === 'sqlite' && orig.dsn !== curr.dsn) return true
+
+  // 检测 MySQL 配置变更
+  if (curr.driver === 'mysql') {
+    if (orig.mysqlHost !== curr.mysqlHost) return true
+    if (orig.mysqlPort !== curr.mysqlPort) return true
+    if (orig.mysqlUser !== curr.mysqlUser) return true
+    if (orig.mysqlPassword !== curr.mysqlPassword) return true
+    if (orig.mysqlDatabase !== curr.mysqlDatabase) return true
+  }
+
+  // 检测 PostgreSQL 配置变更
+  if (curr.driver === 'postgres') {
+    if (orig.postgresHost !== curr.postgresHost) return true
+    if (orig.postgresPort !== curr.postgresPort) return true
+    if (orig.postgresUser !== curr.postgresUser) return true
+    if (orig.postgresPassword !== curr.postgresPassword) return true
+    if (orig.postgresDatabase !== curr.postgresDatabase) return true
+  }
+
+  return false
+}
+
+// 等待服务就绪后导航
+const pollServerHealth = (url, maxRetries, interval, onReady) => {
+  let retries = 0
+  const check = () => {
+    retries++
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
+    fetch(url + '/api/v1/health', { mode: 'no-cors', signal: controller.signal })
+      .then(() => { clearTimeout(timeoutId); onReady() })
+      .catch(() => {
+        clearTimeout(timeoutId)
+        if (retries < maxRetries) {
+          setTimeout(check, interval)
+        } else {
+          onReady()
+        }
+      })
+  }
+  check()
+}
+
+// 执行保存配置
+const doSaveSettings = async () => {
+  saving.value = true
+  try {
+    // 根据数据库类型构建 DSN
+    let finalDsn = settings.database.dsn
+    if (settings.database.driver === 'mysql') {
+      finalDsn = buildMysqlDsn()
+    } else if (settings.database.driver === 'postgres') {
+      finalDsn = buildPostgresDsn()
+    }
+
+    const configData = {
+      app: { name: settings.appName },
+      account: {
+        anonymous: { username: settings.account.anonymous.username },
+        reservedUsernames: settings.account.reservedUsernames
+      },
+      server: {
+        host: settings.server.host,
+        http: { enabled: settings.server.http.enabled, port: settings.server.http.port },
+        https: { enabled: settings.server.https.enabled, port: settings.server.https.port },
+        ftp: { enabled: settings.server.ftp.enabled, port: settings.server.ftp.port },
+        ftps: { enabled: settings.server.ftps.enabled, port: settings.server.ftps.port },
+        webdav: { enabled: settings.server.webdav.enabled }
+      },
+      database: {
+        driver: settings.database.driver,
+        dsn: finalDsn
+      },
+      rootDirs: settings.rootDirs,
+      allowedExtensions: settings.allowedExtensions,
+      privateFiles: {
+        ...settings.privateFiles,
+        quotaGlobal: settings.privateQuotaGlobal,
+        quotaPerUser: settings.privateQuotaUser
+      },
+      tempFiles: {
+        ...settings.tempFiles,
+        quotaGlobal: settings.tempFilesQuotaGlobal,
+        quotaPerIP: settings.tempFilesQuotaPerIP
+      },
+      upload: settings.upload,
+      preview: {
+        allowMimes: settings.preview.allowMimes,
+        allowExts: settings.preview.allowExts,
+        maxInlineSize: formatToUnit(settings.preview.maxInlineSize),
+        textChunkSize: formatToUnit(settings.preview.textChunkSize)
+      },
+      openApi: {
+        enabled: settings.openApi.enabled,
+        ipAccessMode: settings.openApi.ipAccessMode,
+        ipWhitelist: settings.openApi.ipWhitelist.split('\n').filter(ip => ip.trim()),
+        ipBlacklist: settings.openApi.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        rateLimitEnabled: settings.openApi.rateLimitEnabled,
+        requestsPerMinute: settings.openApi.requestsPerMinute
+      },
+      index: {
+        scanCronExpression: settings.scanCronExpression,
+      }
+    }
+
+    const data = await ConfigApi.save(configData)
+    if (data.success) {
+      message.success(data.message || '配置已保存并生效')
+      // 重新拉取配置更新前端状态
+      try {
+        const optionsRes = await SystemApi.getOptions()
+        if (optionsRes.data) {
+          store.setConfig({
+            appName: optionsRes.data.app?.name || '',
+            privateStorageEnabled: optionsRes.data.privateStorage?.enabled ?? false,
+            tempFilesEnabled: optionsRes.data.tempFiles?.enabled ?? true,
+            ftpEnabled: optionsRes.data.ftp?.enabled ?? false,
+            ftpPort: optionsRes.data.ftp?.port ?? 2121,
+            webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
+            openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
+            anonymousUsername: optionsRes.data.account?.anonymous?.username || 'public'
+          })
+        }
+      } catch (e) {
+        console.error('刷新配置失败', e)
+      }
+      // 检查服务器地址是否变更
+      const hostChanged = originalServerConfig.value !== null &&
+        settings.server.host !== originalServerConfig.value.host
+      const portChanged = originalServerConfig.value !== null &&
+        settings.server.http.port !== originalServerConfig.value.httpPort
+      if (hostChanged || portChanged) {
+        const displayHost = settings.server.host === '0.0.0.0' ? window.location.hostname : settings.server.host
+        const newUrl = 'http://' + displayHost + ':' + settings.server.http.port
+        dialog.warning({
+          title: '服务器地址已变更',
+          content: '服务已切换到新地址：' + newUrl,
+          positiveText: '前往新地址',
+          negativeText: '留在当前页面',
+          onPositiveClick: () => {
+            pollServerHealth(newUrl, 20, 500, () => {
+              window.location.href = newUrl
+            })
+          }
+        })
+      }
+    } else {
+      message.error(data.message || '保存失败')
+    }
+  } catch (e) {
+    console.error('保存设置失败', e)
+    message.error('保存设置失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+// 保存配置入口（检测数据库变更）
+const saveSettings = () => {
+  // 检测是否有数据库配置变更
+  if (detectDatabaseChange()) {
+    dialog.warning({
+      title: '数据库配置已变更',
+      content: '检测到数据库配置已修改，是否需要迁移数据到新数据库？\n\n• 迁移数据：将原数据库迁移到新配置（推荐）\n• 仅保存配置：直接保存配置，不迁移数据（需要手动迁移）\n• 取消：不保存任何更改',
+      positiveText: '迁移数据',
+      negativeText: '仅保存配置',
+      onPositiveClick: () => {
+        // 打开迁移向导
+        showMigrationWizard.value = true
+      },
+      onNegativeClick: () => {
+        // 仅保存配置
+        doSaveSettings()
+      }
+    })
+  } else {
+    // 无数据库变更，直接保存
+    doSaveSettings()
+  }
+}
+
+onMounted(() => {
+  loadSettings()
+  loadNetworkInterfaces()
+  loadOpenAPIStats()
+})
+
+// 迁移完成回调
+const handleMigrated = () => {
+  showMigrationWizard.value = false
+  // 迁移成功后保存配置
+  message.info('正在保存配置...')
+  doSaveSettings().then(() => {
+    message.success('数据库迁移完成，配置已保存并生效')
+  })
+}
+</script>
+
+<style lang="less" scoped>
+@import '@/styles/variables.less';
+
+.settings-view {
+  padding: @container-padding;
+  animation: slideUp 0.4s ease-out;
+
+  .header-section {
+    margin-bottom: 24px;
+
+    h2 {
+      margin: 0 0 8px 0;
+      font-size: @font-size-xxl;
+      font-weight: 600;
+    }
+
+    .description {
+      margin: 0;
+      color: @text-color-secondary;
+      font-size: @font-size-base;
+    }
+  }
+
+  .n-card {
+    transition: transform @transition-smooth, box-shadow @transition-smooth;
+
+    &:hover {
+      box-shadow: @shadow-md;
+    }
+  }
+
+  .n-button {
+    transition: transform @transition-smooth, box-shadow @transition-smooth;
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: @button-hover-shadow;
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+  }
+
+  .actions-bar {
+    margin-top: 24px;
+    padding: 16px;
+    background: @bg-color-secondary;
+    border-radius: @border-radius-lg;
+    position: sticky;
+    bottom: 16px;
+    box-shadow: @shadow-md;
+  }
+
+  .migration-hint {
+    margin-bottom: 0;
+
+    .migration-title {
+      font-weight: 600;
+      color: var(--primary-color);
+    }
+
+    .migration-list {
+      margin: 8px 0 0 0;
+      padding-left: 20px;
+      color: var(--text-color-secondary);
+
+      li {
+        margin-bottom: 4px;
+        line-height: 1.6;
+      }
+    }
+  }
+
+  .test-result {
+    margin-left: 12px;
+    font-size: 14px;
+
+    &.success {
+      color: #52c41a;
+    }
+
+    &.error {
+      color: #ff4d4f;
+    }
+  }
+}
+
+@media @tablet {
+  .settings-view {
+    padding: 12px;
+  }
+}
+
+@media @mobile {
+  .settings-view {
+    padding: 8px;
+  }
+
+  .actions-bar {
+    padding: 12px !important;
+    position: static !important;
+
+    .n-space {
+      justify-content: stretch;
+
+      .n-button {
+        flex: 1;
+      }
+    }
+  }
+}
+</style>

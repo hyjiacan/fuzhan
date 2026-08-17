@@ -1,0 +1,369 @@
+# UI 组件清单
+
+> 本文档由项目扫描自动生成 | 更新时间: 2026-07-02
+
+---
+
+## 目录
+
+- [组件](#组件)
+- [页面](#页面)
+- [API 客户端](#api-客户端)
+- [状态管理](#状态管理)
+- [路由配置](#路由配置)
+- [Naive UI 组件使用统计](#naive-ui-组件使用统计)
+- [组件关系图](#组件关系图)
+
+---
+
+## 组件
+
+### 通用组件
+
+#### AppHeader 应用头部导航
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| - | - | - |
+
+**功能**: 应用顶部导航栏，含Logo、菜单、登录/注册弹框
+
+**子组件**:
+- LoginModal (NModal) - 登录弹框
+- RegisterModal (NModal) - 注册弹框
+- NotificationBell - 通知铃铛（未读计数）
+
+---
+
+#### AppFooter 应用底部栏
+
+**功能**: 应用底部栏，显示系统消息和链接
+
+---
+
+#### NotificationBell 通知铃铛
+
+**功能**: 显示未读通知数量，点击弹出通知列表
+
+---
+
+### 文件相关组件
+
+#### FileItem 文件项组件
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `fileInfo` | Object | 文件信息对象 |
+| `showActions` | Boolean | 是否显示操作按钮 |
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `preview` | fileInfo | 预览文件 |
+| `download` | fileInfo | 下载文件 |
+
+**功能**: 文件/目录列表项，显示文件名、大小、时间，提供预览/下载按钮
+
+---
+
+#### FilePreview 文件预览组件
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `file` | Object | 文件信息 |
+
+**功能**: 支持文本（分段加载）、图片、PDF预览
+
+---
+
+#### RecentUploadsFull 最近上传完整列表
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `uploads` | Array | 上传记录数组 |
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `go-to` | path | 跳转到文件位置 |
+| `download` | record | 下载文件 |
+
+**功能**: 最近上传记录的完整表格展示，含定位和下载功能
+
+---
+
+### 上传组件
+
+#### UploadManager 上传管理组件
+
+| 属性 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uploadApi` | Object | 是 | 上传API地址配置 |
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `upload-success` | response | 上传成功 |
+| `upload-error` | error | 上传失败 |
+| `upload-start` | file | 开始上传 |
+| `upload-change` | progress | 上传进度变化 |
+| `close` | - | 关闭上传面板 |
+
+**功能**: 文件上传管理，支持本地/URL上传、拖放、分片上传、队列管理、断点续传
+
+---
+
+### Toast 组件
+
+#### Toast 通知提示组件
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `message` | String | - | 消息文本 |
+| `type` | String | info | 消息类型 (info/success/warning/error) |
+| `duration` | Number | 3000 | 显示时长(ms) |
+| `suggestion` | String | - | 建议文本 |
+| `retryable` | Boolean | false | 是否可重试 |
+| `showRetry` | Boolean | false | 显示重试按钮 |
+
+| 事件 | 参数 | 说明 |
+|------|------|------|
+| `close` | - | 关闭通知 |
+| `retry` | - | 点击重试 |
+
+**功能**: Toast通知提示，支持4种类型、建议文本、重试按钮
+
+---
+
+#### ToastContainer Toast容器
+
+**功能**: Toast容器包装组件，集成 useToast composable
+
+---
+
+### 其他组件目录
+
+| 目录 | 说明 |
+|------|------|
+| `settings/` | 系统设置相关组件 |
+| `setup/` | 初始化向导相关组件 |
+| `migration/` | 数据库迁移控制组件 |
+
+---
+
+## 页面
+
+| 页面 | 路由 | 主要组件 | 功能描述 |
+|------|------|----------|----------|
+| HomeView | `/files`, `/files/:path*` | NButton, NDataTable, NBreadcrumb, NModal, NInput, NSpin | 首页文件浏览，含搜索、上传、面包屑导航、文件预览 |
+| SetupView | `/setup` | NSteps, NForm, NInput, NInputNumber, NRadioGroup | 首次运行配置向导，4步完成基本配置 |
+| TempView | `/temp` | NDataTable, NTag, NModal, NInput | 临时文件管理，基于IP的访问码分享系统 |
+| PrivateStorageView | `/private` | NDataTable, NTag, NModal, NProgress | 私有存储管理，需登录，上传/删除/分享文件 |
+| RecentView | `/recent` | NDataTable, NButton, NTag, NEmpty | 最近上传文件列表展示 |
+| HotView | `/hot` | NDataTable, NTag, NEmpty | 热门下载文件排行 |
+| UserView | `/user` | NCard, NDescriptions, NProgress, NForm | 个人中心，用户信息、配额展示、修改密码 |
+| SettingsView | `/settings` | NTabs, NForm, NInput, NSwitch, NDynamicTags | 系统设置，多标签页配置 |
+| AdminDashboardView | `/admin/dashboard` | NGrid, NGi, NCard, NProgress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
+| AdminFilesView | `/admin/files`, `/admin/files/:path*` | NBreadcrumb, NDataTable, NTreeSelect | 管理员文件管理，支持搜索、重命名、移动、删除 |
+| AdminUsersView | `/admin/users` | NDataTable, NModal, NTag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
+| AdminZombieView | `/admin/zombie` | NGrid, NDataTable, NAlert, NList | 僵尸文件管理，清理过期上传会话和残留文件 |
+| AdminURLTaskView | `/admin/url-tasks` | NDataTable, NTag, NButton | URL下载任务管理，查看/删除下载任务 |
+
+---
+
+## API 客户端
+
+位置: `ui/src/api/index.js`
+
+### API 模块
+
+| 模块 | 导出 | 说明 |
+|------|------|------|
+| AuthApi | 认证相关 | login, register, getUserInfo, changePassword |
+| ConfigApi | 配置相关 | get, save, reload |
+| FileApi | 文件操作 | list, recent, rename, move, preview, previewChunk, delete |
+| UploadApi | 上传相关 | session, chunk, finalize, urlUpload, urlFileInfo |
+| AdminApi | 管理功能 | users, sessions, files, urlTasks, tls |
+| PrivateApi | 私有存储 | files, quota, session, chunk |
+| TempApi | 临时文件 | list, upload, download, session, extend |
+| SetupApi | 初始化 | status, save, validateDir, networkInterfaces, defaultConfig |
+| SystemApi | 系统 | getOptions, health, ready |
+| MonitorApi | 监控 | storage, access, keywords, rankings, hotDownloads |
+| DatabaseApi | 数据库迁移 | status, test, migrate, cancel, resume, restart, rollback |
+| NotificationApi | 通知 | getNotifications, markAsRead, mergeAnonymous |
+
+### Axios 配置
+
+- 基础URL: `/api/v1`
+- 超时: 30秒
+- 请求拦截器: 添加 Authorization header
+- 响应拦截器: 处理 401/403，自动刷新 token
+
+---
+
+## 状态管理
+
+位置: `ui/src/store/index.js`
+
+### 状态结构
+
+```javascript
+{
+  user: {
+    authenticated: boolean,
+    name: string,
+    avatar: string,
+    token: string
+  },
+  config: {
+    appName: string,
+    version: string,
+    privateStorageEnabled: boolean,
+    tempFilesEnabled: boolean,
+    ftpEnabled: boolean,
+    ftpPort: number
+  },
+  currentPath: string,
+  fileList: Array,
+  loading: boolean,
+  breadcrumb: Array,
+  message: {
+    text: string,
+    type: string
+  },
+  searchState: {
+    isSearching: boolean,
+    isCompleted: boolean,
+    query: string,
+    searchTime: number
+  },
+  notifications: Array,
+  activeUrlTasks: boolean
+}
+```
+
+### 核心方法
+
+| 方法 | 说明 |
+|------|------|
+| `setUser(user)` | 设置用户信息 |
+| `setAuthenticated(bool)` | 设置认证状态 |
+| `setConfig(config)` | 设置系统配置 |
+| `setFileList(files)` | 设置文件列表（自动排序） |
+| `setCurrentPath(path)` | 设置当前路径 |
+| `loadFileList(path)` | 加载文件列表（含面包屑构建） |
+| `searchFiles(query)` | 搜索文件（SSE，含超时控制） |
+| `adminSearchFiles(query)` | 管理员搜索文件（SSE，不记历史） |
+| `validateAuth()` | 验证本地登录状态（含JWT exp检查） |
+| `setNotifications(notifications)` | 设置通知列表 |
+| `setActiveUrlTasks(bool)` | 设置活跃URL任务状态（控制通知轮询） |
+| `clearSearchResources()` | 清理搜索SSE连接和定时器 |
+
+---
+
+## 路由配置
+
+位置: `ui/src/router/index.js`
+
+### 路由表
+
+| 路径 | 页面 | meta | 说明 |
+|------|------|------|------|
+| `/files` | HomeView | navName: '文件' | 文件浏览 |
+| `/files/:pathMatch(.*)*` | HomeView | - | 子路径 |
+| `/setup` | SetupView | - | 初始化 |
+| `/private` | PrivateStorageView | requiresAuth, hideFromNavIfAdmin | 私有存储 |
+| `/temp` | TempView | navName: '临时' | 临时文件 |
+| `/recent` | RecentView | navName: '最近' | 最近上传 |
+| `/hot` | HotView | navName: '热门' | 热门下载 |
+| `/user` | UserView | requiresAuth, hideFromNavIfAdmin | 个人中心 |
+| `/admin/users` | AdminUsersView | requiresAuth, requiresAdmin, navName | 用户管理 |
+| `/admin/dashboard` | AdminDashboardView | requiresAuth, requiresAdmin, navName | 仪表盘 |
+| `/settings` | SettingsView | requiresAuth, requiresAdmin, navName | 设置 |
+| `/admin/files` | AdminFilesView | requiresAuth, requiresAdmin, navName | 文件管理 |
+| `/admin/files/:pathMatch(.*)*` | AdminFilesView | requiresAuth, requiresAdmin | 子路径 |
+| `/admin/zombie` | AdminZombieView | requiresAuth, requiresAdmin, navName | 僵尸文件 |
+| `/admin/url-tasks` | AdminURLTaskView | requiresAuth, requiresAdmin, navName | URL下载任务 |
+| `/:pathMatch(.*)*` | - | - | 默认重定向到 /files |
+
+### 路由模式
+
+使用 `createWebHashHistory()` - Hash 路由模式
+
+### 路由守卫
+
+- 未初始化时重定向到 `/setup`
+- `requiresAuth` 页面：检查 token 有效期，无效则弹出登录框
+- `requiresAdmin` 页面：检查 userRole === 'admin'
+- 私有存储未启用时禁止访问 `/private` 和 `/user`
+- 登录弹框触发事件：`showLoginDialogEvent`
+
+---
+
+## Naive UI 组件使用统计
+
+| 组件类型 | 使用页面数 | 使用页面 |
+|---------|-----------|----------|
+| NButton | 13 (全部) | 所有页面 |
+| NDataTable | 9 | HomeView, TempView, PrivateStorageView, RecentView, HotView, AdminDashboardView, AdminFilesView, AdminUsersView, AdminURLTaskView |
+| NModal | 7 | HomeView, TempView, PrivateStorageView, UserView, AdminUsersView |
+| NCard | 6 | UserView, SettingsView, AdminDashboardView, AdminZombieView |
+| NForm/NFormItem | 6 | SetupView, UserView, SettingsView |
+| NInput | 6 | HomeView, TempView, SetupView, SettingsView, AdminUsersView |
+| NSpace | 6 | SetupView, UserView, SettingsView |
+| NIcon | 5 | AdminDashboardView, AdminUsersView |
+| NTag | 6 | TempView, PrivateStorageView, RecentView, HotView, AdminUsersView, AdminURLTaskView |
+| NEmpty | 5 | HomeView, RecentView, HotView, AdminDashboardView |
+| NAlert | 3 | SetupView, AdminZombieView |
+| NGrid/NGi | 3 | AdminDashboardView, AdminZombieView |
+| NProgress | 3 | PrivateStorageView, UserView, AdminDashboardView |
+| NBreadcrumb | 2 | HomeView, AdminFilesView |
+| NTabs/NTabPane | 1 | SettingsView |
+| NSwitch | 1 | SettingsView |
+| NTreeSelect | 1 | AdminFilesView |
+| NDynamicTags | 1 | SettingsView |
+| NDescriptions | 1 | UserView |
+| NBadge | 1 | AdminUsersView |
+| NList/NListItem | 1 | AdminZombieView |
+| NInputNumber | 1 | SetupView |
+| NRadioGroup | 1 | SetupView |
+| NSpin | 1 | HomeView |
+| NInputGroup | 1 | UserView |
+| NSteps | 1 | SetupView |
+| NScrollbar | 1 | PrivateStorageView |
+
+---
+
+## 组件关系图
+
+```
+App.vue
+├── AppHeader
+│   ├── LoginModal (NModal)
+│   ├── RegisterModal (NModal)
+│   └── NotificationBell
+├── router-view
+│   ├── HomeView
+│   │   ├── UploadManager (子组件)
+│   │   ├── FilePreview (弹框)
+│   │   └── ToastContainer
+│   ├── TempView
+│   │   ├── UploadManager
+│   │   └── FilePreview
+│   ├── PrivateStorageView
+│   │   └── UploadManager
+│   ├── RecentView
+│   │   └── RecentUploadsFull
+│   ├── HotView
+│   ├── SetupView
+│   ├── UserView
+│   ├── SettingsView
+│   ├── AdminDashboardView
+│   ├── AdminFilesView
+│   ├── AdminUsersView
+│   ├── AdminZombieView
+│   └── AdminURLTaskView
+└── AppFooter
+    └── ToastContainer
+        └── Toast
+
+ToastContainer
+└── Toast (多个)
+```

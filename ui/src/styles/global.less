@@ -1,0 +1,207 @@
+// ============================================
+// 全局样式
+// ============================================
+@import './variables.less';
+@import './components.less';
+
+// ============================================
+// 重置样式
+// ============================================
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  font-family: @font-family;
+  font-size: @font-size-base;
+  color: @text-color;
+  background-color: @bg-color;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+// ============================================
+// 链接样式
+// ============================================
+a {
+  color: @primary-color;
+  text-decoration: none;
+  transition: color @transition-fast;
+
+  &:hover {
+    color: @primary-color-hover;
+  }
+
+  &:active {
+    color: @primary-color-pressed;
+  }
+}
+
+// ============================================
+// 滚动条样式
+// ============================================
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: @bg-color-secondary;
+  border-radius: @border-radius-sm;
+}
+
+::-webkit-scrollbar-thumb {
+  background: @border-color;
+  border-radius: @border-radius-sm;
+
+  &:hover {
+    background: @text-color-placeholder;
+  }
+}
+
+// ============================================
+// 选中文本样式
+// ============================================
+::selection {
+  background-color: fade(@primary-color, 30%);
+  color: @text-color;
+}
+
+// ============================================
+// 微交互
+// ============================================
+.interactive-card {
+  transition: transform @transition-smooth, box-shadow @transition-smooth;
+  cursor: pointer;
+
+  &:hover {
+    transform: @hover-lift;
+    box-shadow: @card-hover-shadow;
+  }
+
+  &:active {
+    transform: @active-scale;
+  }
+}
+
+.interactive-btn {
+  transition: transform @transition-smooth, box-shadow @transition-smooth, background-color @transition-fast;
+
+  &:hover {
+    transform: @hover-lift;
+    box-shadow: @button-hover-shadow;
+  }
+
+  &:active {
+    transform: @active-scale;
+  }
+}
+
+.table-row-hover {
+  transition: background-color @transition-fast, transform @transition-fast;
+
+  &:hover {
+    background-color: @bg-color-secondary;
+    transform: translateX(4px);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+// ============================================
+// Naive UI 组件覆盖
+// ============================================
+.n-form-item {
+  margin-top: 10px;
+}
+
+// ============================================
+// 工具类
+// ============================================
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.text-primary { color: @primary-color; }
+.text-success { color: @success-color; }
+.text-warning { color: @warning-color; }
+.text-error { color: @error-color; }
+.text-muted { color: @text-color-secondary; }
+
+.bg-primary { background-color: @primary-color; }
+.bg-secondary { background-color: @bg-color-secondary; }
+.bg-dark { background-color: @bg-color-dark; }
+
+.mt-sm { margin-top: @spacing-sm; }
+.mt-md { margin-top: @spacing-md; }
+.mt-lg { margin-top: @spacing-lg; }
+.mb-sm { margin-bottom: @spacing-sm; }
+.mb-md { margin-bottom: @spacing-md; }
+.mb-lg { margin-bottom: @spacing-lg; }
+
+.p-sm { padding: @spacing-sm; }
+.p-md { padding: @spacing-md; }
+.p-lg { padding: @spacing-lg; }
+
+// ============================================
+// 动画
+// ============================================
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity @transition-normal;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform @transition-normal;
+}
+
+.slide-enter-from {
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+}
