@@ -12,6 +12,7 @@ const (
     URLDownloadStatusDownloading URLDownloadStatus = "downloading" // 下载中
     URLDownloadStatusCompleted   URLDownloadStatus = "completed"   // 下载完成
     URLDownloadStatusFailed      URLDownloadStatus = "failed"      // 下载失败
+    URLDownloadStatusCancelled   URLDownloadStatus = "cancelled"   // 已取消
 )
 
 // URLDownloadStorageType 存储类型

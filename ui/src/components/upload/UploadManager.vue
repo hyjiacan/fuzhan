@@ -28,6 +28,8 @@
         <n-radio-group v-model:value="form.uploadMethod">
           <n-radio value="local">上传本地文件</n-radio>
           <n-radio value="url">从 URL 上传</n-radio>
+          <n-radio value="clipboard">从剪贴板粘贴</n-radio>
+          <n-radio value="text">新建文本</n-radio>
         </n-radio-group>
       </n-form-item>
 
@@ -277,48 +279,153 @@
       </n-form-item>
     </n-form>
 
-    <!-- URL 上传进度 -->
-    <div v-if="form.uploadMethod === 'url' && urlUploadState.status" class="url-upload-progress" style="margin-top: 16px;">
-      <div class="queue-item">
-        <div class="queue-item-info">
-          <span class="queue-item-name" :title="urlUploadState.fileName">{{ urlUploadState.fileName }}</span>
-          <div class="queue-item-meta">
-            <span class="queue-item-size">{{ formatFileSize(urlUploadState.fileSize) }}</span>
-            <div class="queue-item-progress">
-              <span v-if="urlUploadState.status === 'failed'" class="queue-item-error">{{ urlUploadState.error }}</span>
-              <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
-            </div>
-          </div>
-          <n-progress
-            v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
-            type="line"
-            :percentage="urlUploadState.progress"
-            :show-indicator="false"
-            :height="4"
-            :border-radius="2"
-          />
-        </div>
-        <div class="queue-item-actions">
-          <n-tag :type="getUrlUploadStatusTag" size="small">{{ getUrlUploadStatusText }}</n-tag>
-        </div>
-      </div>
-    </div>
+	    <!-- 剪贴板粘贴预览 -->
+	    <template v-if="form.uploadMethod === 'clipboard'">
+		      <div style="margin-top: 16px;">
+		        <!-- 未读取 -->
+		        <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
+		          仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
+		        </div>
 
-    <div v-if="uploadMessage" style="margin-top: 16px;">
-      <n-alert :type="uploadMessageType" :title="uploadMessage" />
-    </div>
+		        <!-- 已读取，未选择类型：展示可选类型 -->
+		        <div v-else-if="!clipboardTypeConfirmed">
+		          <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: #666;">
+		            检测到剪贴板包含多种格式，请选择要读取的数据类型:
+		          </div>
+		          <n-radio-group v-model:value="clipboardSelectedType">
+		            <n-space vertical>
+		              <n-radio v-for="opt in clipboardOptions" :key="opt.value" :value="opt.value">
+		                {{ opt.label }}
+		              </n-radio>
+		            </n-space>
+		          </n-radio-group>
+		        </div>
 
-    <n-space justify="end" style="margin-top: 16px;">
-      <n-button
-        type="primary"
-        @click="handleFooterClick"
-        :disabled="!canStartUpload"
-        :loading="uploading"
-      >
-        开始上传
-      </n-button>
-      <n-button @click="emit('close')">关闭</n-button>
-    </n-space>
+		        <!-- 已选择类型：展示预览 -->
+		        <template v-else>
+		          <n-input v-model:value="clipboardFilename" placeholder="保存的文件名" clearable style="margin-bottom: 4px;" />
+		          <!-- 图片预览 -->
+		          <div v-if="clipboardPreview.type === 'image'" class="clipboard-preview">
+		            <img :src="clipboardPreview.data" class="clipboard-preview-img" />
+		          </div>
+		          <!-- 文本预览 -->
+		          <div v-else-if="clipboardPreview.type === 'text'" style="width: 100%;">
+		            <n-input
+		              type="textarea"
+		              :value="clipboardPreview.text"
+		              :rows="8"
+		              readonly
+		              :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
+		            />
+		          </div>
+		          <!-- 其它文件预览 -->
+		          <div v-else-if="clipboardPreview.type === 'other'" class="clipboard-preview-file">
+		            <n-icon size="40" :depth="3"><DocumentIcon /></n-icon>
+		            <div class="clipboard-preview-filename">{{ clipboardFilename }}</div>
+		            <div class="clipboard-preview-info">大小: {{ formatFileSize(clipboardPreview.size) }}</div>
+		          </div>
+		        </template>
+		      </div>
+		    </template>
+
+	    <!-- 新建文本 -->
+	    <template v-if="form.uploadMethod === 'text'">
+	      <div style="margin-top: 16px;">
+	        <n-input v-model:value="textFilename" placeholder="文件名，如 readme.md" clearable style="margin-bottom: 12px;" />
+	        <n-input
+	          v-model:value="textContent"
+	          type="textarea"
+	          :rows="15"
+	          placeholder="在此输入文件内容..."
+	          :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
+	        />
+	      </div>
+	    </template>
+
+	    <!-- URL 上传进度 -->
+	    <div v-if="form.uploadMethod === 'url' && urlUploadState.status" class="url-upload-progress" style="margin-top: 16px;">
+	      <div class="queue-item">
+	        <div class="queue-item-info">
+	          <span class="queue-item-name" :title="urlUploadState.fileName">{{ urlUploadState.fileName }}</span>
+	          <div class="queue-item-meta">
+	            <span class="queue-item-size">{{ formatFileSize(urlUploadState.fileSize) }}</span>
+	            <div class="queue-item-progress">
+	              <span v-if="urlUploadState.status === 'failed'" class="queue-item-error">{{ urlUploadState.error }}</span>
+	              <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
+	            </div>
+	          </div>
+	          <n-progress
+	            v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
+	            type="line"
+	            :percentage="urlUploadState.progress"
+	            :show-indicator="false"
+	            :height="4"
+	            :border-radius="2"
+	          />
+	        </div>
+	        <div class="queue-item-actions">
+	          <n-tag :type="getUrlUploadStatusTag" size="small">{{ getUrlUploadStatusText }}</n-tag>
+	        </div>
+	      </div>
+	    </div>
+
+	    <div v-if="uploadMessage" style="margin-top: 16px;">
+	      <n-alert :type="uploadMessageType" :title="uploadMessage" />
+	    </div>
+
+	    <n-space justify="space-between" style="margin-top: 16px;">
+		      <!-- 左侧：剪贴板操作按钮 -->
+		      <div>
+		        <template v-if="form.uploadMethod === 'clipboard'">
+		          <div v-if="!clipboardRead">
+		            <n-button @click="readClipboard" :loading="clipboardReading" type="primary" secondary size="small">
+		              读取剪贴板
+		            </n-button>
+		          </div>
+		          <n-space v-else>
+		            <n-tag type="success" size="small">已读取</n-tag>
+		            <n-button size="tiny" @click="clearClipboard">重新读取</n-button>
+		            <n-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
+		              确认选择
+		            </n-button>
+		          </n-space>
+		        </template>
+		      </div>
+
+		      <!-- 右侧：操作按钮 -->
+		      <n-space>
+		        <template v-if="form.uploadMethod === 'clipboard'">
+		          <n-button
+		            type="primary"
+		            @click="uploadClipboard"
+		            :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
+		            :loading="uploading"
+		          >
+		            开始上传
+		          </n-button>
+		        </template>
+		        <template v-else-if="form.uploadMethod === 'text'">
+		          <n-button
+		            type="primary"
+		            @click="saveTextFile"
+		            :disabled="!textFilename.trim()"
+		          >
+		            保存并上传
+		          </n-button>
+		        </template>
+		        <template v-else>
+		          <n-button
+		            type="primary"
+		            @click="handleFooterClick"
+		            :disabled="!canStartUpload"
+		            :loading="uploading"
+		          >
+		            开始上传
+		          </n-button>
+		        </template>
+		        <n-button @click="emit('close')">关闭</n-button>
+		      </n-space>
+		    </n-space>
   </div>
 </template>
 
@@ -357,6 +464,9 @@ const DeleteIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
 ])
+const DocumentIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 40, height: 40 }, [
+  h('path', { d: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z' })
+])
 
 // State
 const uploadQueue = ref([])
@@ -392,6 +502,26 @@ const urlUploadState = ref({
   taskId: null
 })
 let urlPollTimer = null
+
+// 剪贴板预览状态
+const clipboardPreview = ref({
+  type: '',     // 'image', 'text', 'other'
+  data: '',     // data URL for image, or text content
+  text: '',
+  filename: '',
+  size: 0,
+  file: null    // 实际 File 对象，用于上传
+})
+const clipboardRead = ref(false)
+const clipboardReading = ref(false)
+const clipboardFilename = ref('')
+const clipboardOptions = ref([])          // 可选的类型列表 [{ value, label, rawType, blob, text, filename }]
+const clipboardSelectedType = ref('')     // 用户选择的类型 value
+const clipboardTypeConfirmed = ref(false) // 是否已确认选择类型
+
+// 新建文本状态
+const textFilename = ref('newfile.txt')
+const textContent = ref('')
 
 const getUrlUploadStatusTag = computed(() => {
   switch (urlUploadState.value.status) {
@@ -704,6 +834,9 @@ const needsRootSelection = computed(() => {
 const canStartUpload = computed(() => {
   if (form.uploadMethod === 'url') {
     return canUrlUpload.value
+  }
+  if (form.uploadMethod === 'clipboard' || form.uploadMethod === 'text') {
+    return false
   }
   return uploadQueue.value.some(item => item.status === 'pending')
 })
@@ -1389,6 +1522,194 @@ const submitUrlNotesAndDeps = () => {
   }, 2000)
 }
 
+// 新建文本文件保存 → 构建 File 对象 → 走本地上传流程
+const saveTextFile = async () => {
+  if (!textFilename.value.trim()) {
+    message.warning('请输入文件名')
+    return
+  }
+  const filename = textFilename.value.trim()
+  const blob = new Blob([textContent.value], { type: 'text/plain;charset=utf-8' })
+  const file = new File([blob], filename, { type: 'text/plain;charset=utf-8' })
+  addFileToQueue({
+    name: filename,
+    size: file.size,
+    file: file,
+  })
+  message.success(`已添加文本文件: ${filename}`)
+  // 清空编辑器
+  textFilename.value = 'newfile.txt'
+  textContent.value = ''
+  // 切换到 local 模式并开始上传
+  form.uploadMethod = 'local'
+  uploadMessage.value = ''
+  startUpload()
+}
+
+// 读取剪贴板（发现所有可用类型）
+const readClipboard = async () => {
+  clipboardReading.value = true
+  uploadMessage.value = '正在读取剪贴板...'
+  uploadMessageType.value = 'info'
+  try {
+    const items = await navigator.clipboard.read()
+    const options = []
+    for (const item of items) {
+      for (const type of item.types) {
+        if (type.startsWith('image/')) {
+          const blob = await item.getType(type)
+          const ext = type.split('/')[1]
+          const dataUrl = await blobToDataURL(blob)
+          const filename = `clipboard-${Date.now()}.${ext}`
+          options.push({
+            value: `image-${type}`,
+            label: `图片 (${ext.toUpperCase()})`,
+            rawType: type,
+            blob,
+            text: '',
+            dataUrl,
+            previewType: 'image',
+            filename,
+            file: new File([blob], filename, { type })
+          })
+        } else if (type === 'text/plain') {
+          const blob = await item.getType(type)
+          const text = await blob.text()
+          if (text.trim()) {
+            const filename = `clipboard-${Date.now()}.txt`
+            options.push({
+              value: 'text-plain',
+              label: `纯文本 (TXT)`,
+              rawType: type,
+              blob,
+              text,
+              dataUrl: '',
+              previewType: 'text',
+              filename,
+              file: new File([text], filename, { type: 'text/plain' })
+            })
+          }
+        } else if (type === 'text/html') {
+          const blob = await item.getType(type)
+          const html = await blob.text()
+          const plainText = html.replace(/<[^>]*>/g, '').trim()
+          if (plainText) {
+            const filename = `clipboard-${Date.now()}.txt`
+            options.push({
+              value: 'text-html',
+              label: `格式化文本 (HTML)`,
+              rawType: type,
+              blob,
+              text: plainText,
+              dataUrl: '',
+              previewType: 'text',
+              filename,
+              file: new File([plainText], filename, { type: 'text/plain' })
+            })
+          }
+        } else if (type.startsWith('text/') || type.startsWith('application/')) {
+          const blob = await item.getType(type)
+          const filename = `clipboard-${Date.now()}`
+          options.push({
+            value: `other-${type}`,
+            label: `其它 (${type.split('/').pop()})`,
+            rawType: type,
+            blob,
+            text: '',
+            dataUrl: '',
+            previewType: 'other',
+            filename,
+            file: new File([blob], filename, { type })
+          })
+        }
+      }
+    }
+    if (options.length === 0) {
+      message.warning('剪贴板中没有可读取的内容')
+      uploadMessage.value = ''
+      clipboardReading.value = false
+      return
+    }
+    clipboardOptions.value = options
+    // 如果只有一种类型，直接选中
+    if (options.length === 1) {
+      clipboardSelectedType.value = options[0].value
+      applyClipboardSelection()
+    } else {
+      clipboardSelectedType.value = options[0].value
+      clipboardRead.value = true
+      clipboardTypeConfirmed.value = false
+      uploadMessage.value = ''
+      message.info(`检测到 ${options.length} 种格式，请选择要读取的类型`)
+    }
+  } catch (e) {
+    message.warning('无法读取剪贴板，请尝试 Ctrl+V 粘贴')
+    uploadMessage.value = ''
+  } finally {
+    clipboardReading.value = false
+  }
+}
+
+// 应用用户选择的剪贴板类型
+const applyClipboardSelection = () => {
+  const opt = clipboardOptions.value.find(o => o.value === clipboardSelectedType.value)
+  if (!opt) return
+  clipboardPreview.value = {
+    type: opt.previewType,
+    data: opt.dataUrl,
+    text: opt.text,
+    filename: opt.filename,
+    size: opt.blob.size,
+    file: opt.file
+  }
+  clipboardFilename.value = opt.filename
+  clipboardRead.value = true
+  clipboardTypeConfirmed.value = true
+  uploadMessage.value = ''
+  message.success('已选择剪贴板数据类型，确认后点击"开始上传"')
+}
+
+// Blob 转 Data URL
+const blobToDataURL = (blob) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.readAsDataURL(blob)
+  })
+}
+
+// 清除剪贴板预览
+const clearClipboard = () => {
+  clipboardPreview.value = { type: '', data: '', text: '', filename: '', size: 0, file: null }
+  clipboardRead.value = false
+  clipboardFilename.value = ''
+  clipboardOptions.value = []
+  clipboardSelectedType.value = ''
+  clipboardTypeConfirmed.value = false
+  uploadMessage.value = ''
+}
+
+// 上传剪贴板内容
+const uploadClipboard = async () => {
+  if (!clipboardRead.value || !clipboardPreview.value.file) {
+    message.warning('请先读取剪贴板')
+    return
+  }
+  const file = clipboardPreview.value.file
+  // 使用用户自定义的文件名
+  const finalName = clipboardFilename.value.trim() || file.name
+  addFileToQueue({
+    name: finalName,
+    size: file.size,
+    file: new File([file], finalName, { type: file.type })
+  })
+  message.success(`已添加文件: ${finalName}`)
+  // 切换到 local 模式并开始上传
+  form.uploadMethod = 'local'
+  uploadMessage.value = ''
+  startUpload()
+}
+
 const urlInputTimer = ref(null)
 
 const handleUrlInput = () => {
@@ -1767,6 +2088,42 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   .fade-enter-from,
   .fade-leave-to {
     opacity: 0;
+  }
+
+  .clipboard-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .clipboard-preview-img {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 4px;
+      object-fit: contain;
+      border: 1px solid #eee;
+    }
+  }
+
+  .clipboard-preview-file {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 20px;
+    border: 1px dashed #d9d9d9;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .clipboard-preview-filename {
+    font-weight: 500;
+    font-size: 14px;
+    color: #333;
+  }
+
+  .clipboard-preview-info {
+    color: #999;
+    font-size: 12px;
   }
 }
 </style>

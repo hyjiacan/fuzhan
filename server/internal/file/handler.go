@@ -214,6 +214,43 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
         return
     }
 
+    // 删除成功后硬删除索引记录
+    if rootName, relPath := splitPath(req.Path); rootName != "" {
+        var records []models.FileRecordPublic
+        if err := fh.DB.Where("root_name = ? AND file_path = ? AND status = ?",
+            rootName, relPath, models.FileStatusActive).Find(&records).Error; err != nil {
+            utils.Warn("查找索引记录失败",
+                utils.String("root", rootName),
+                utils.String("path", relPath),
+                utils.Err(err))
+        } else {
+            for _, rec := range records {
+                if err := fh.BaseHandler.IndexSvc.DeleteRecord(rec.ID); err != nil {
+                    utils.Warn("硬删除索引记录失败",
+                        utils.Int("id", int(rec.ID)),
+                        utils.String("root", rootName),
+                        utils.String("path", relPath),
+                        utils.Err(err))
+                }
+            }
+        }
+    }
+
     middleware.LogOperation(c, "file.delete", req.Path, nil)
     utils.HandleSuccess(c, http.StatusOK, "删除成功", nil)
+}
+
+// splitPath 将完整路径拆分为 rootName 和相对路径
+// 输入: "/rootName/subdir/file.txt" → 返回: "rootName", "/subdir/file.txt"
+func splitPath(fullPath string) (rootName, relPath string) {
+    p := strings.Trim(fullPath, "/")
+    parts := strings.SplitN(p, "/", 2)
+    if len(parts) == 0 || parts[0] == "" {
+        return "", ""
+    }
+    rootName = parts[0]
+    if len(parts) > 1 {
+        relPath = "/" + parts[1]
+    }
+    return
 }

@@ -1,10 +1,8 @@
 package file
 
 import (
-
-
-    "github.com/gin-gonic/gin"
-    "fuzhan/internal/services"
+	"github.com/gin-gonic/gin"
+	"fuzhan/internal/services"
 )
 
 // DownloadHandlers 下载相关处理器
@@ -24,12 +22,7 @@ func (dh *DownloadHandlers) DownloadFile(c *gin.Context) {
 	dh.DownloadService.DownloadFile(c.Writer, c.Request)
 }
 
-// DownloadByHash 根据 xxh3 哈希下载文件
-func (dh *DownloadHandlers) DownloadByHash(c *gin.Context) {
-	dh.DownloadService.DownloadByHash(c.Writer, c.Request)
-}
-
 // AdminDownloadFile 管理页面下载文件（不记录历史）
 func (dh *DownloadHandlers) AdminDownloadFile(c *gin.Context) {
-    dh.DownloadService.AdminDownloadFile(c.Writer, c.Request)
+	dh.DownloadService.AdminDownloadFile(c.Writer, c.Request)
 }

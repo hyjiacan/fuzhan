@@ -17,6 +17,7 @@ import (
     "fuzhan/internal/constants"
     "fuzhan/internal/middleware"
     "fuzhan/pkg/response"
+    "fuzhan/internal/repositories"
     "fuzhan/internal/services"
     "fuzhan/internal/services/migration"
     "fuzhan/internal/utils"
@@ -756,7 +757,44 @@ func (h *Handler) DeleteBackup(c *gin.Context) {
 
     middleware.LogOperation(c, "admin.backup.delete", backupID, nil)
     response.HandleSuccess(c, http.StatusOK, "备份已删除", nil)
-    }
+	}
+
+// ClearRecordsHandler 清空指定类型的操作记录
+func (h *Handler) ClearRecordsHandler(c *gin.Context) {
+	var req struct {
+		Action string `json:"action" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
+		response.HandleBadRequest(c, "请提供要清空的记录类型 (search/upload/download)", nil)
+		return
+	}
+
+	validActions := map[string]string{
+		"search":  "search",
+		"upload":  "upload",
+		"download": "download",
+	}
+	if _, ok := validActions[req.Action]; !ok {
+		middleware.LogOperation(c, "admin.records.clear", req.Action, fmt.Errorf("invalid action"))
+		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download", nil)
+		return
+	}
+
+	repo := repositories.NewRecordRepository(h.db)
+	count, err := repo.DeleteByAction(req.Action)
+	if err != nil {
+		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
+		response.HandleInternalServerError(c, "清空记录失败: "+err.Error())
+		return
+	}
+
+	middleware.LogOperation(c, "admin.records.clear", req.Action, nil)
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{
+		"action": req.Action,
+		"count":  count,
+	})
+}
 
 // createSourceMigrator 创建源数据库迁移器
 func createSourceMigrator(dsn, driver string) (migration.DatabaseMigrator, error) {

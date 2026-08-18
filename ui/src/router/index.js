@@ -25,6 +25,7 @@ const AdminFilesView = () => import(/* webpackChunkName: "views-admin-files" */ 
 const AdminUsersView = () => import('../views/AdminUsersView.vue')
 const AdminApiKeyView = () => import(/* webpackChunkName: "views-admin-api-key" */ '../views/AdminApiKeyView.vue')
 const AdminUploadsView = () => import(/* webpackChunkName: "views-admin-uploads" */ '../views/AdminUploadsView.vue')
+const AdminDuplicatesView = () => import(/* webpackChunkName: "views-admin-duplicates" */ '../views/AdminDuplicatesView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
 // 登录/注册弹框触发事件
@@ -126,6 +127,16 @@ const router = createRouter({
           path: 'uploads',
           name: 'admin-uploads',
           component: AdminUploadsView
+        },
+        {
+          path: 'duplicates',
+          name: 'admin-duplicates',
+          component: AdminDuplicatesView
+        },
+        {
+          path: 'records',
+          name: 'admin-records',
+          component: () => import('@/views/AdminRecordsView.vue')
         },
         {
           path: 'users',

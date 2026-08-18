@@ -24,6 +24,11 @@
       <span v-if="chunked" style="margin-left: 12px;">加载分段 {{ currentChunk + 1 }}...</span>
     </div>
 
+    <!-- Markdown 文件预览（渲染结果） -->
+    <div v-else-if="isMarkdown && textContent" class="markdown-preview" :style="markdownContainerStyle">
+      <div v-html="renderedMarkdown"></div>
+    </div>
+
     <!-- 文本文件预览 -->
     <div v-else-if="fileType === 'text'" :style="textContainerStyle">
       <n-input
@@ -70,6 +75,7 @@ import { ref, computed, watch, h } from 'vue'
 import { NInput, NIcon, NButton, NButtonGroup, NSpin } from 'naive-ui'
 import { FileApi } from '@/api'
 import { PathUtils } from '@/utils'
+import { marked } from 'marked'
 
 const props = defineProps({
   file: { type: Object, default: () => ({}) },
@@ -113,12 +119,30 @@ const textContainerStyle = computed(() => {
   return { flex: 1, overflow: 'hidden' }
 })
 
+const markdownContainerStyle = computed(() => {
+  if (props.maximized) {
+    return { flex: 1, overflow: 'auto' }
+  }
+  return { maxHeight: '70vh', overflow: 'auto' }
+})
+
 const inputStyleComputed = computed(() => {
   const base = { fontFamily: 'Courier New, monospace' }
   if (props.maximized) {
     return { ...base, flex: 1 }
   }
   return { ...base, height: '100%' }
+})
+
+// Markdown 渲染
+const isMarkdown = computed(() => {
+  const ext = props.file?.name?.toLowerCase() || ''
+  return ext.endsWith('.md') || ext.endsWith('.markdown')
+})
+
+const renderedMarkdown = computed(() => {
+  if (!textContent.value) return ''
+  return marked.parse(textContent.value)
 })
 
 // 判断文件类型（MIME 类型判断）

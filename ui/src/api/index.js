@@ -223,7 +223,28 @@ export const UploadApi = {
   // URL 下载任务进度查询
   getURLTask(taskId) {
     return request.get(`/uploads/url-task/${taskId}`)
-  }
+  },
+
+  // 上传管理
+  listSessions(type, page = 1, pageSize = 50) {
+    return request.get('/uploads/sessions', { params: { type, page, pageSize } })
+  },
+
+  listURLTasks(type, page = 1, pageSize = 50) {
+    return request.get('/uploads/url-tasks', { params: { type, page, pageSize } })
+  },
+
+  cancelURLTask(taskId) {
+    return request.post(`/uploads/url-tasks/${taskId}/cancel`)
+  },
+
+  retryURLTask(taskId) {
+    return request.post(`/uploads/url-tasks/${taskId}/retry`)
+  },
+
+  deleteURLTask(taskId) {
+    return request.delete(`/uploads/url-tasks/${taskId}`)
+  },
 }
 
 // ========== 文件索引 API ==========
@@ -400,6 +421,11 @@ export const AdminApi = {
   // 搜索
   search(query) {
     return request.get(`/admin/search/${encodeURIComponent(query)}`)
+  },
+
+  // 清空操作记录
+  clearRecords(action) {
+    return request.post('/admin/records/clear', { action })
   }
 }
 
@@ -454,6 +480,10 @@ export const PrivateApi = {
 
   finalize(uploadId) {
     return request.post('/private/uploads/finalize', { uploadId })
+  },
+
+  download(code) {
+    return `${API_BASE}/private/files/${code}/download`
   }
 }
 

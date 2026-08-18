@@ -88,6 +88,16 @@ const searchKeyword = (keyword) => {
   router.push({ path: '/files', query: { q: keyword } })
 }
 
+// 判断是否为目录
+const isDir = (row) => row.type === 'dir' || row.type === 'directory'
+
+// 获取文件类型图标类名
+const getFileIconClass = (row) => {
+  if (isDir(row)) return 'icon-filetype-folder'
+  const ext = row.fileName?.split('.').pop()?.toLowerCase() || ''
+  return `icon-filetype-${ext}`
+}
+
 // 表格列
 const columns = [
   {
@@ -95,13 +105,12 @@ const columns = [
     key: 'fileName',
     ellipsis: { tooltip: true },
     render(row) {
-      const fullPath = row.path || ''
+      const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
       const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
       const pathSegments = segments.slice(0, -1)
-      const fileHref = `/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`
-      const ext = fileName.split('.').pop()?.toLowerCase() || ''
-      const iconClass = `icon-filetype icon-filetype-${ext}`
+      const iconClass = `icon-filetype ${getFileIconClass(row)}`
+      const dirPath = row.fullPath || row.path || ''
 
       return h('div', {
         class: 'file-name-cell',
@@ -125,10 +134,18 @@ const columns = [
               '/'
             ]
           }).flat(),
-          h('a', {
-            href: fileHref,
-            class: 'file-link'
-          }, fileName)
+          isDir(row)
+            ? h('a', {
+                class: 'file-link',
+                onClick: (e) => {
+                  e.preventDefault()
+                  navigateToDir(dirPath)
+                }
+              }, fileName)
+            : h('a', {
+                href: `/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`,
+                class: 'file-link'
+              }, fileName)
         ])
       ])
     }

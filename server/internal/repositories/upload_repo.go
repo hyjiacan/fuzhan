@@ -53,6 +53,38 @@ func (r *SessionRepository) Delete(id uint) error {
     return r.db.Delete(&models.UploadSession{}, id).Error
 }
 
+// ListByUser 根据用户ID查询上传会话（非临时/非私有，即公共上传）
+func (r *SessionRepository) ListByUser(userID string, page, pageSize int) ([]models.UploadSession, int64, error) {
+    var sessions []models.UploadSession
+    query := r.db.Model(&models.UploadSession{}).
+        Where("target_type = ? OR target_type = ?", models.TargetTypeRegular, "").
+        Where("user_id = ?", userID)
+
+    var total int64
+    if err := query.Count(&total).Error; err != nil {
+        return nil, 0, err
+    }
+
+    err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
+    return sessions, total, err
+}
+
+// ListByUserAndType 根据用户ID和存储类型查询上传会话
+func (r *SessionRepository) ListByUserAndType(userID string, targetType models.TargetType, page, pageSize int) ([]models.UploadSession, int64, error) {
+    var sessions []models.UploadSession
+    query := r.db.Model(&models.UploadSession{}).
+        Where("target_type = ?", targetType).
+        Where("user_id = ?", userID)
+
+    var total int64
+    if err := query.Count(&total).Error; err != nil {
+        return nil, 0, err
+    }
+
+    err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
+    return sessions, total, err
+}
+
 // ChunkRepository 分片仓库
 type ChunkRepository struct {
     db *gorm.DB
@@ -196,7 +228,15 @@ func (r *RecordRepository) GetRecent(limit int) ([]models.OperationRecord, error
 
 // GetRecentSearches 获取最近的搜索记录
 func (r *RecordRepository) GetRecentSearches(limit int) ([]models.OperationRecord, error) {
-    var records []models.OperationRecord
-    err := r.db.Where("`action` = ? AND search_query IS NOT NULL AND search_query != ''", "search").Order("created_at DESC").Limit(limit).Find(&records).Error
-    return records, err
+	var records []models.OperationRecord
+	err := r.db.Where("`action` = ? AND search_query IS NOT NULL AND search_query != ''", "search").Order("created_at DESC").Limit(limit).Find(&records).Error
+	return records, err
+}
+
+// DeleteByAction 删除指定操作类型的所有记录
+// action 有效值: "search", "upload", "download"
+// 返回删除的记录数
+func (r *RecordRepository) DeleteByAction(action string) (int64, error) {
+	result := r.db.Where("`action` = ?", action).Delete(&models.OperationRecord{})
+	return result.RowsAffected, result.Error
 }

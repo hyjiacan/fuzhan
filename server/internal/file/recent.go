@@ -3,6 +3,7 @@ package file
 import (
     "net/http"
     "strconv"
+    "strings"
 
     "github.com/gin-gonic/gin"
     "fuzhan/internal/repositories"
@@ -68,11 +69,11 @@ func (h *RecentHandler) GetRecent(c *gin.Context) {
     }
 
     // 统一回填 fullPath（向后兼容历史记录，根目录名拼接）
-    for i := range records {
-        if records[i].FullPath == "" && records[i].RootName != "" {
-            records[i].FullPath = records[i].RootName + records[i].FilePath
-        }
-    }
+	for i := range records {
+		if records[i].FullPath == "" && records[i].RootName != "" {
+			records[i].FullPath = "/" + records[i].RootName + "/" + strings.TrimPrefix(records[i].FilePath, "/")
+		}
+	}
 
     utils.HandleSuccess(c, http.StatusOK, "", gin.H{
         "records": records,

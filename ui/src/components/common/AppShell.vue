@@ -5,12 +5,14 @@
       <router-view />
     </div>
     <app-footer />
+    <UploadManagerBar />
   </div>
 </template>
 
 <script setup>
 import AppHeader from '@/components/common/AppHeader.vue'
 import AppFooter from '@/components/common/AppFooter.vue'
+import UploadManagerBar from '@/components/upload/UploadManagerBar.vue'
 </script>
 
 <style lang="less">

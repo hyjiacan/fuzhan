@@ -303,7 +303,7 @@ func main() {
     // rateLimiter := middleware.NewRateLimiter(60, 1*time.Minute)
 
     // 创建处理器
-    baseHandler := file.NewBaseHandler(&cfg)
+    baseHandler := file.NewBaseHandler(&cfg, indexService, recordRepo)
     fileHandlers := file.NewFileHandlers(baseHandler, fileService, db)
     downloadHandlers := file.NewDownloadHandlers(downloadService)
     searchHandlers := file.NewSearchHandlers(searchService, recordRepo)
@@ -601,6 +601,9 @@ func main() {
                 admin.GET("/sessions", adminHandler.SessionsHandler)
                 admin.POST("/sessions/cleanup", adminHandler.CleanupSessionsHandler)
 
+                // 操作记录清空路由
+                admin.POST("/records/clear", adminHandler.ClearRecordsHandler)
+
                 // TLS 证书上传路由
                 admin.POST("/upload-cert", adminHandler.UploadCertHandler)
                 admin.POST("/upload-key", adminHandler.UploadKeyHandler)
@@ -725,6 +728,11 @@ func main() {
                 uploads.POST("/url_info", func(c *gin.Context) {
                     file.GetFileInfoFromURL(c.Writer, c.Request)
                 })
+                uploads.GET("/sessions", authMiddleware.AuthOptional(), uploadSessionHandler.ListUploadSessions)
+                uploads.GET("/url-tasks", authMiddleware.AuthOptional(), uploadSessionHandler.ListURLTasks)
+                uploads.POST("/url-tasks/:taskId/cancel", authMiddleware.AuthOptional(), uploadSessionHandler.CancelURLTask)
+                uploads.POST("/url-tasks/:taskId/retry", authMiddleware.AuthOptional(), uploadSessionHandler.RetryURLTask)
+                uploads.DELETE("/url-tasks/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.DeleteURLTask)
             }
 
             // 无需认证的文件路由
@@ -734,8 +742,6 @@ func main() {
             // 下载路由（无需认证）
             api.GET("/download/*path", downloadHandlers.DownloadFile)
             api.HEAD("/download/*path", downloadHandlers.DownloadFile)
-            api.GET("/download/by-hash/:hash", downloadHandlers.DownloadByHash)
-            api.HEAD("/download/by-hash/:hash", downloadHandlers.DownloadByHash)
 
             // 最近上传路由（无需认证）
             files := api.Group("/files")
@@ -1117,22 +1123,13 @@ func main() {
             // 检查扫描是否正在进行中
             progress := indexService.GetScanProgressByScope(s.scope)
             if progress.Status == index.ScanStatusRunning {
+                utils.Info(s.name + "索引扫描正在进行中, 跳过")
                 continue
             }
 
-            // 检查索引表是否为空（直接查数据库，不依赖内存状态）
-            empty, err := indexService.IsScopeEmpty(s.scope)
-            if err != nil {
-                utils.Warn("检查索引表是否为空失败",
-                    utils.String("scope", string(s.scope)),
-                    utils.Err(err))
-                continue
-            }
-            if empty {
-                utils.Info(s.name + "索引表为空, 启动初始扫描")
-                if err := indexService.StartScanByScope(s.scope); err != nil {
-                    utils.Error(s.name+"初始扫描启动失败", utils.Err(err))
-                }
+            utils.Info(s.name + "索引表, 启动初始扫描")
+            if err := indexService.StartScanByScope(s.scope); err != nil {
+                utils.Error(s.name+"初始扫描启动失败", utils.Err(err))
             }
         }
     }

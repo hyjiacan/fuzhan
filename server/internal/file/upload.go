@@ -724,6 +724,259 @@ func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
     })
 }
 
+// CancelURLTask 取消 URL 下载任务
+func (h *UploadSessionHandler) CancelURLTask(c *gin.Context) {
+    taskID := c.Param("taskId")
+    if taskID == "" {
+        utils.HandleBadRequest(c, "无效的任务ID", nil)
+        return
+    }
+
+    task, err := h.urlTaskRepo.GetByID(taskID)
+    if err != nil {
+        utils.HandleNotFound(c, "任务不存在")
+        return
+    }
+
+    if !h.checkTaskOwnership(c, task) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作此任务", nil)
+        return
+    }
+
+    if task.Status != models.URLDownloadStatusPending && task.Status != models.URLDownloadStatusDownloading {
+        utils.HandleErrorCompat(c, http.StatusBadRequest, "只能取消进行中的任务", nil)
+        return
+    }
+
+    if err := h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusCancelled, "用户取消"); err != nil {
+        utils.HandleErrorCompat(c, http.StatusInternalServerError, "取消失败", nil)
+        return
+    }
+
+    if task.TargetPath != "" {
+        os.Remove(task.TargetPath)
+    }
+
+    middleware.LogOperation(c, "upload.url.cancel", taskID, nil)
+    utils.HandleSuccess(c, http.StatusOK, "任务已取消", nil)
+}
+
+// checkTaskOwnership 检查当前用户是否拥有该任务
+func (h *UploadSessionHandler) checkTaskOwnership(c *gin.Context, task *models.URLDownloadTask) bool {
+    if uid, exists := c.Get("userUUID"); exists {
+        if s, ok := uid.(string); ok && s != "" && task.UserID != nil && *task.UserID == s {
+            return true
+        }
+    }
+    anonID := c.GetHeader("X-Anonymous-ID")
+    if anonID != "" && task.AnonymousID != nil && *task.AnonymousID == anonID {
+        return true
+    }
+    return false
+}
+
+// ListURLTasks 列出当前用户的 URL 下载任务
+func (h *UploadSessionHandler) ListURLTasks(c *gin.Context) {
+    storageType := c.Query("type")
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+    if page < 1 {
+        page = 1
+    }
+    if pageSize < 1 || pageSize > 100 {
+        pageSize = 50
+    }
+
+    var userID, anonymousID *string
+    if uid, exists := c.Get("userUUID"); exists {
+        if s, ok := uid.(string); ok && s != "" {
+            userID = &s
+        }
+    }
+    anonID := c.GetHeader("X-Anonymous-ID")
+    if anonID != "" {
+        anonymousID = &anonID
+    }
+
+    mappedType := ""
+    switch storageType {
+    case "public":
+        mappedType = string(models.URLDownloadStorageRegular)
+    case "temp":
+        mappedType = string(models.URLDownloadStorageTemp)
+    case "private":
+        mappedType = string(models.URLDownloadStoragePrivate)
+    }
+
+    tasks, total, err := h.urlTaskRepo.ListByUser(userID, anonymousID, mappedType, page, pageSize)
+    if err != nil {
+        utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询失败", nil)
+        return
+    }
+
+    result := make([]gin.H, 0, len(tasks))
+    for _, t := range tasks {
+        result = append(result, gin.H{
+            "id":              t.ID,
+            "fileName":        t.FileName,
+            "fileSize":        t.FileSize,
+            "downloadedBytes": t.DownloadedBytes,
+            "status":          t.Status,
+            "errorMessage":    t.ErrorMessage,
+            "createdAt":       t.CreatedAt,
+            "completedAt":     t.CompletedAt,
+            "storageType":     t.StorageType,
+        })
+    }
+
+    utils.HandleSuccess(c, http.StatusOK, "", gin.H{
+        "tasks": result,
+        "total": total,
+    })
+}
+
+// RetryURLTask 重试失败或已取消的 URL 下载任务
+func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
+    taskID := c.Param("taskId")
+    if taskID == "" {
+        utils.HandleBadRequest(c, "无效的任务ID", nil)
+        return
+    }
+
+    task, err := h.urlTaskRepo.GetByID(taskID)
+    if err != nil {
+        utils.HandleNotFound(c, "任务不存在")
+        return
+    }
+
+    if !h.checkTaskOwnership(c, task) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作此任务", nil)
+        return
+    }
+
+    if task.Status != models.URLDownloadStatusFailed && task.Status != models.URLDownloadStatusCancelled {
+        utils.HandleErrorCompat(c, http.StatusBadRequest, "只能重试失败或已取消的任务", nil)
+        return
+    }
+
+    if err := h.urlTaskRepo.ResetToPending(taskID); err != nil {
+        utils.HandleErrorCompat(c, http.StatusInternalServerError, "重试失败", nil)
+        return
+    }
+
+    go h.downloadFromURL(taskID, task.URL, task.FileSize, task.FileName, "", task.TargetPath, task.TargetPath, "", "", "")
+
+    middleware.LogOperation(c, "upload.url.retry", taskID, nil)
+    utils.HandleSuccess(c, http.StatusOK, "任务已重试", nil)
+}
+
+// DeleteURLTask 删除 URL 下载任务
+func (h *UploadSessionHandler) DeleteURLTask(c *gin.Context) {
+    taskID := c.Param("taskId")
+    if taskID == "" {
+        utils.HandleBadRequest(c, "无效的任务ID", nil)
+        return
+    }
+
+    task, err := h.urlTaskRepo.GetByID(taskID)
+    if err != nil {
+        utils.HandleNotFound(c, "任务不存在")
+        return
+    }
+
+    if !h.checkTaskOwnership(c, task) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作此任务", nil)
+        return
+    }
+
+    if err := h.urlTaskRepo.Delete(taskID); err != nil {
+        utils.HandleErrorCompat(c, http.StatusInternalServerError, "删除失败", nil)
+        return
+    }
+
+    middleware.LogOperation(c, "upload.url.delete", taskID, nil)
+    utils.HandleSuccess(c, http.StatusOK, "任务已删除", nil)
+}
+
+// ListUploadSessions 列出当前用户的上传会话
+func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
+    sessionType := c.Query("type")
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+    if page < 1 {
+        page = 1
+    }
+    if pageSize < 1 || pageSize > 100 {
+        pageSize = 50
+    }
+
+    clientIP := utils.GetClientIP(c)
+
+    switch sessionType {
+    case "public":
+        sessions, total, err := h.service.ListByUser(clientIP, models.TargetTypeRegular, page, pageSize)
+        if err != nil {
+            utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询失败", nil)
+            return
+        }
+        result := make([]gin.H, 0, len(sessions))
+        for _, s := range sessions {
+            result = append(result, gin.H{
+                "id":        s.ID,
+                "fileName":  s.FileName,
+                "fileSize":  s.FileSize,
+                "status":    s.Status,
+                "createdAt": s.CreatedAt,
+                "expiredAt": s.ExpiredAt,
+            })
+        }
+        utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
+
+    case "temp":
+        sessions, total, err := h.service.ListTempByUser(clientIP, page, pageSize)
+        if err != nil {
+            utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询失败", nil)
+            return
+        }
+        result := make([]gin.H, 0, len(sessions))
+        for _, s := range sessions {
+            result = append(result, gin.H{
+                "id":        s["id"],
+                "fileName":  s["fileName"],
+                "fileSize":  s["fileSize"],
+                "status":    s["status"],
+                "createdAt": s["createdAt"],
+                "expiredAt": s["expiredAt"],
+            })
+        }
+        utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
+
+    case "private":
+        sessions, total, err := h.service.ListByUser(clientIP, models.TargetTypePrivate, page, pageSize)
+        if err != nil {
+            utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询失败", nil)
+            return
+        }
+        result := make([]gin.H, 0, len(sessions))
+        for _, s := range sessions {
+            result = append(result, gin.H{
+                "id":        s.ID,
+                "fileName":  s.FileName,
+                "fileSize":  s.FileSize,
+                "status":    s.Status,
+                "createdAt": s.CreatedAt,
+                "expiredAt": s.ExpiredAt,
+            })
+        }
+        utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
+
+    default:
+        utils.HandleBadRequest(c, "无效的会话类型", nil)
+    }
+}
+
 // downloadFromURL 后台下载文件并记录进度
 func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string, fileSize int64, filename string, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType) {
     h.downloadSem <- struct{}{}
@@ -1012,7 +1265,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
         FileName:   safeFilename,
         FileSize:   downloaded,
         FilePath:   relativePath,
-        FullPath:   "/" + sessionTargetRoot + relativePath,
+        FullPath:   "/" + sessionTargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
         RootName:   sessionTargetRoot,
         FileType:   pathutils.GetFileType(safeFilename),
         ClientIP:   clientIP,

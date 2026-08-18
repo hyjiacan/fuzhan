@@ -68,6 +68,16 @@ const formatFileSize = (bytes) => {
   return size.toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
 }
 
+// 判断是否为目录
+const isDir = (row) => row.type === 'dir' || row.type === 'directory'
+
+// 获取文件类型图标类名
+const getFileIconClass = (row) => {
+  if (isDir(row)) return 'icon-filetype-folder'
+  const ext = row.fileName?.split('.').pop()?.toLowerCase() || ''
+  return `icon-filetype-${ext}`
+}
+
 // 下载列表列
 const downloadColumns = [
   {
@@ -83,13 +93,12 @@ const downloadColumns = [
     key: 'fileName',
     ellipsis: { tooltip: true },
     render(row) {
-      const fullPath = row.path || ''
+      const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
       const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
       const pathSegments = segments.slice(0, -1)
-      const fileHref = `/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`
-      const ext = fileName.split('.').pop()?.toLowerCase() || ''
-      const iconClass = `icon-filetype icon-filetype-${ext}`
+      const iconClass = `icon-filetype ${getFileIconClass(row)}`
+      const dirPath = row.fullPath || row.path || ''
 
       return h('div', {
         class: 'file-name-cell',
@@ -113,10 +122,18 @@ const downloadColumns = [
               '/'
             ]
           }).flat(),
-          h('a', {
-            href: fileHref,
-            class: 'file-link'
-          }, fileName)
+          isDir(row)
+            ? h('a', {
+                class: 'file-link',
+                onClick: (e) => {
+                  e.preventDefault()
+                  router.push('/files/' + dirPath.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/'))
+                }
+              }, fileName)
+            : h('a', {
+                href: `/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`,
+                class: 'file-link'
+              }, fileName)
         ])
       ])
     }

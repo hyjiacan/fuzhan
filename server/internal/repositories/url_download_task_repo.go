@@ -41,7 +41,7 @@ func (r *URLDownloadTaskRepository) UpdateStatus(id string, status models.URLDow
     if errorMsg != "" {
         updates["error_message"] = errorMsg
     }
-    if status == models.URLDownloadStatusCompleted || status == models.URLDownloadStatusFailed {
+    if status == models.URLDownloadStatusCompleted || status == models.URLDownloadStatusFailed || status == models.URLDownloadStatusCancelled {
         now := time.Now()
         updates["completed_at"] = &now
     }
@@ -77,14 +77,42 @@ func (r *URLDownloadTaskRepository) ListAll(page, pageSize int) ([]models.URLDow
     return r.ListByStatus("", page, pageSize)
 }
 
+// ListByUser 根据用户标识查询任务（分页）
+// userID 优先（登录用户），anonymousID 次之（匿名用户）
+// storageType 过滤：空字符串表示不过滤
+func (r *URLDownloadTaskRepository) ListByUser(userID *string, anonymousID *string, storageType string, page, pageSize int) ([]models.URLDownloadTask, int64, error) {
+    var tasks []models.URLDownloadTask
+    query := r.db.Model(&models.URLDownloadTask{})
+
+    if userID != nil && *userID != "" {
+        query = query.Where("user_id = ?", *userID)
+    } else if anonymousID != nil && *anonymousID != "" {
+        query = query.Where("anonymous_id = ? AND user_id IS NULL", *anonymousID)
+    } else {
+        return tasks, 0, nil
+    }
+
+    if storageType != "" {
+        query = query.Where("storage_type = ?", storageType)
+    }
+
+    var total int64
+    if err := query.Count(&total).Error; err != nil {
+        return nil, 0, err
+    }
+
+    err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error
+    return tasks, total, err
+}
+
 // Delete 删除任务
 func (r *URLDownloadTaskRepository) Delete(id string) error {
     return r.db.Delete(&models.URLDownloadTask{}, "id = ?", id).Error
 }
 
-// ResetToPending 将失败任务重置为等待下载
+// ResetToPending 将失败或已取消的任务重置为等待下载
 func (r *URLDownloadTaskRepository) ResetToPending(id string) error {
-    return r.db.Model(&models.URLDownloadTask{}).Where("id = ? AND `status` = ?", id, models.URLDownloadStatusFailed).
+    return r.db.Model(&models.URLDownloadTask{}).Where("id = ? AND (`status` = ? OR `status` = ?)", id, models.URLDownloadStatusFailed, models.URLDownloadStatusCancelled).
         Updates(map[string]interface{}{
             "status":          models.URLDownloadStatusPending,
             "error_message":   "",

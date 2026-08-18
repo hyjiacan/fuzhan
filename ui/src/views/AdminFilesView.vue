@@ -43,49 +43,12 @@
       </div>
       </div>
 
-      <!-- 文件浏览 + 重复文件标签页 -->
-    <n-tabs type="line" animated default-value="files" class="content-tabs" @update:value="handleTabSwitch">
-      <n-tab-pane name="files" tab="文件浏览">
-        <!-- File List -->
-        <div class="content-table">
-          <n-data-table :columns="columns" :data="displayList" :loading="loading || isSearching" :pagination="false"
-            :row-key="row => row.path" @dblclick-row="handleDblClick" virtual-scroll flex-height />
-          <n-empty v-if="!loading && !isSearching && displayList.length === 0" :description="searchQuery ? '未找到匹配的文件' : '暂无文件'" />
-        </div>
-      </n-tab-pane>
-
-      <n-tab-pane name="duplicates" tab="重复文件">
-        <div class="duplicates-section">
-          <n-space :style="{ marginBottom: '12px' }">
-            <n-button @click="loadDuplicates" :loading="dupLoading" quaternary>刷新</n-button>
-            <span style="color: #888; font-size: 13px; line-height: 32px;">
-              共 {{ dupTotal }} 组重复文件，按 xxh3 哈希分组
-            </span>
-          </n-space>
-
-          <n-collapse>
-            <n-collapse-item
-              v-for="(group, idx) in duplicateGroups"
-              :key="group.xxh3Hash"
-              :title="`#${idx + 1}  ${group.xxh3Hash.substring(0, 16)}...  (${group.fileCount} 个文件, ${formatSizeDup(group.totalSize)})`"
-            >
-              <n-data-table
-                :columns="dupColumns"
-                :data="group.files"
-                :bordered="false"
-                :single-line="true"
-                striped
-                size="small"
-              />
-            </n-collapse-item>
-          </n-collapse>
-
-          <n-space justify="center" :style="{ marginTop: '16px' }" v-if="dupTotal > dupPageSize">
-            <n-button @click="dupPage++" :loading="dupLoading">加载更多</n-button>
-          </n-space>
-        </div>
-      </n-tab-pane>
-    </n-tabs>
+      <!-- 文件浏览 -->
+    <div class="content-table">
+      <n-data-table :columns="columns" :data="displayList" :loading="loading || isSearching" :pagination="false"
+        :row-key="row => row.path" @dblclick-row="handleDblClick" virtual-scroll flex-height />
+      <n-empty v-if="!loading && !isSearching && displayList.length === 0" :description="searchQuery ? '未找到匹配的文件' : '暂无文件'" />
+    </div>
 
     <!-- 移动/重命名对话框（类似 Linux mv 命令） -->
     <n-modal v-model:show="moveModalVisible" preset="card" title="移动或重命名"
@@ -135,12 +98,12 @@
 </template>
 
 <script setup>
-import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, h, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NBreadcrumb, NBreadcrumbItem, NButton, NDataTable, NModal, NForm, NFormItem,
-  NInput, NTreeSelect, NEmpty, NIcon, NSpin, NTabs, NTabPane,
-  NCollapse, NCollapseItem, NTag, NSpace, NDivider,
+  NInput, NTreeSelect, NEmpty, NIcon, NSpin,
+  NTag, NDivider,
   useMessage, useDialog, useLoadingBar
 } from 'naive-ui'
 import { AdminApi, IndexApi } from '@/api'
@@ -240,79 +203,7 @@ function stopPollProgress() {
   }
 }
 
-// ============ 重复文件 ============
-const duplicateGroups = ref([])
-const dupLoading = ref(false)
-const dupTotal = ref(0)
-const dupPage = ref(1)
-const dupPageSize = 20
-
-const formatSizeDup = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
-
-const dupColumns = [
-  { title: '文件名', key: 'fileName', width: 200, ellipsis: { tooltip: true } },
-  { title: '路径', key: 'fullPath', ellipsis: { tooltip: true } },
-  { title: '根目录', key: 'rootName', width: 80 },
-  { title: '大小', key: 'fileSize', width: 100,
-    render: (row) => formatSizeDup(row.fileSize)
-  },
-  { title: '修改时间', key: 'modTime', width: 170 },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 80,
-    render(row) {
-      return h(NButton, {
-        size: 'small', type: 'primary', quaternary: true,
-        onClick: () => handleKeepDuplicate(row)
-      }, () => '保留')
-    }
-  }
-]
-
-async function loadDuplicates() {
-  dupLoading.value = true
-  try {
-    const res = await IndexApi.listDuplicates({
-      page: dupPage.value,
-      pageSize: dupPageSize
-    })
-    if (res.success) {
-      if (dupPage.value === 1) {
-        duplicateGroups.value = res.data.groups || []
-      } else {
-        duplicateGroups.value = [...duplicateGroups.value, ...(res.data.groups || [])]
-      }
-      dupTotal.value = res.data.total || 0
-    }
-  } catch (err) {
-    message.error(formatErrorMessage(err, '加载重复文件失败'))
-  } finally {
-    dupLoading.value = false
-  }
-}
-
-async function handleKeepDuplicate(row) {
-  dialog.warning({
-    title: '确认保留',
-    content: `确认保留 "${row.fileName}"，并删除其他 ${dupPageSize > 1 ? '' : ''}同哈希的重复文件吗？此操作将删除磁盘文件且不可恢复。`,
-    positiveText: '确认保留',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const res = await IndexApi.keepDuplicate(row.id)
-        if (res.success) {
-          message.success(`保留成功，已删除 ${res.data.deletedFiles.length} 个重复文件`)
-          loadDuplicates()
-        }
-      } catch (err) {
-        message.error(formatErrorMessage(err, '保留失败'))
-}
-    }
-  })
-}
-
-// ============
+// ============ 索引扫描 ============
 const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 
 // 获取文件类型图标类名
@@ -718,15 +609,6 @@ watch(
   { immediate: true }
 )
 
-function handleTabSwitch(name) {
-  if (name === 'duplicates') {
-    loadDuplicates()
-  }
-}
-
-onMounted(() => {
-})
-
 onUnmounted(() => {
   stopPollProgress()
 })
@@ -819,26 +701,8 @@ onUnmounted(() => {
     height: 24px;
   }
 
-  .content-tabs {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-
-    :deep(.n-tabs-nav) {
-      flex-shrink: 0;
-    }
-
-    :deep(.n-tabs-tab-pane) {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
-    }
-  }
-
   .content-table {
+    height: 100%;
     background: #fff;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
@@ -853,9 +717,7 @@ onUnmounted(() => {
     }
   }
 
-  .duplicates-section {
-    padding: 4px 0;
-  }
+  
 }
 
 .file-name-cell {

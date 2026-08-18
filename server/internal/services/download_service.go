@@ -41,6 +41,24 @@ type RecordRepository interface {
 	Create(record *models.OperationRecord) error
 }
 
+// isHashPath 判断路径是否为单段 xxh3 64位哈希（16位十六进制字符串）
+func isHashPath(path string) bool {
+	// 路径不能为空，不能包含目录分隔符
+	if path == "" || strings.Contains(path, "/") {
+		return false
+	}
+	// xxh3 64位哈希为 16 位十六进制字符串
+	if len(path) != 16 {
+		return false
+	}
+	for _, c := range path {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // DownloadService 下载服务
 type DownloadService struct {
 	recordRepo  RecordRepository
@@ -59,9 +77,8 @@ func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchServ
 func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
 
-	// 获取 hash 从路径: /api/v1/download/by-hash/<hash>
-	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/download/by-hash/")
-	hash = strings.TrimPrefix(hash, "/download/by-hash/")
+	// 获取 hash 从路径: /api/v1/download/<hash>
+	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/download/")
 	hash = strings.TrimSpace(hash)
 
 	if hash == "" {
@@ -152,6 +169,12 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	filename = strings.TrimPrefix(filename, "/api/v1/download/")
 	filename, _ = pathutils.URLDecode(filename)
 
+	// 检测是否为按哈希下载: 路径为单段且是 16 位十六进制字符串（xxh3 64位）
+	if isHashPath(filename) {
+		ds.DownloadByHash(w, r)
+		return
+	}
+
 	parts := strings.SplitN(filename, "/", 2)
 	if len(parts) < 2 {
 		utils.Warn("指定路径格式不正确，应为 '根目录名/子路径'", utils.String("path", filename))
@@ -203,7 +226,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			Action:    "download",
 			FileName:  filepath.Base(targetPath),
 			FilePath:  subPath,
-			FullPath:  "/" + rootName + subPath,
+			FullPath:  "/" + rootName + "/" + strings.TrimPrefix(subPath, "/"),
 			FileSize:  info.Size(),
 			RootName:  rootName,
 			ClientIP:  utils.GetRealIP(r),

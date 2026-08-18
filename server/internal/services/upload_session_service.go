@@ -337,8 +337,8 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
         FileName:   session.FileName,
         FileSize:   session.FileSize,
         FilePath:   relativePath,
-        // FullPath = /RootName + FilePath
-        FullPath:   "/" + session.TargetRoot + relativePath,
+        // FullPath = /RootName/FilePath（确保根目录文件也有分隔符）
+        FullPath:   "/" + session.TargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
         RootName:   session.TargetRoot,
         FileType:   pathutils.GetFileType(session.FileName),
         ClientIP:   session.UserID,
@@ -431,6 +431,61 @@ func (s *UploadSessionService) Cancel(uploadID uint) error {
     _ = s.sessionRepo.Delete(session.ID)
 
     return nil
+}
+
+// ListByUser 根据用户ID和存储类型查询上传会话
+func (s *UploadSessionService) ListByUser(userID string, targetType models.TargetType, page, pageSize int) ([]models.UploadSession, int64, error) {
+    var sessions []models.UploadSession
+    query := s.db.Model(&models.UploadSession{}).
+        Where("target_type = ?", targetType).
+        Where("user_id = ?", userID)
+
+    var total int64
+    if err := query.Count(&total).Error; err != nil {
+        return nil, 0, err
+    }
+
+    err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
+    return sessions, total, err
+}
+
+// ListTempByUser 根据用户IP查询临时上传会话
+func (s *UploadSessionService) ListTempByUser(clientIP string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+    type TempSession struct {
+        ID        uint
+        Filename  string
+        FileSize  int64
+        Status    string
+        CreatedAt time.Time
+        ExpiredAt time.Time
+    }
+
+    var sessions []TempSession
+    var total int64
+
+    tableName := "temp_upload_sessions"
+    countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE client_ip = ?", tableName)
+    if err := s.db.Raw(countQuery, clientIP).Scan(&total).Error; err != nil {
+        return nil, 0, err
+    }
+
+    dataQuery := fmt.Sprintf("SELECT id, filename, file_size, 'in_progress' as status, created_at, expired_at FROM %s WHERE client_ip = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", tableName)
+    if err := s.db.Raw(dataQuery, clientIP, pageSize, (page-1)*pageSize).Scan(&sessions).Error; err != nil {
+        return nil, 0, err
+    }
+
+    result := make([]map[string]interface{}, len(sessions))
+    for i, s := range sessions {
+        result[i] = map[string]interface{}{
+            "id":        s.ID,
+            "fileName":  s.Filename,
+            "fileSize":  s.FileSize,
+            "status":    s.Status,
+            "createdAt": s.CreatedAt,
+            "expiredAt": s.ExpiredAt,
+        }
+    }
+    return result, total, nil
 }
 
 // CleanupExpired 清理过期会话

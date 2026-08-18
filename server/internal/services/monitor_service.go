@@ -5,6 +5,7 @@ import (
     "os"
     "path/filepath"
     "sort"
+    "strings"
     "sync"
     "time"
 
@@ -162,7 +163,7 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
         }
         fullPath := d.FullPath
         if fullPath == "" {
-            fullPath = d.RootName + d.FilePath
+            fullPath = "/" + d.RootName + "/" + strings.TrimPrefix(d.FilePath, "/")
         }
         result = append(result, HotDownloadStat{
             FileName:   d.FileName,

@@ -1,22 +1,26 @@
-<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <!-- 云朵底座 -->
-  <path d="M120 350c0-32 36-54 72-54 12-20 36-32 64-32s52 12 64 32c36 0 72 22 72 54s-60 32-136 32-136 0-136-32z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-
+<svg width="320" height="320" viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg">
   <!-- 45°斜俯视小屋：屋顶侧面 -->
-  <path d="M144 150 L214 130 L260 180 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M44 50 L114 30 L160 80 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
 
   <!-- 45°斜俯视小屋：屋顶正面 -->
-  <path d="M214 130 L340 120 L380 175 L254 185 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M114 30 L234 22 L284 75 L164 84 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
 
   <!-- 小屋侧面墙面 -->
-  <path d="M160 155 L250 180 L250 300 L160 275 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M60 55 L150 80 L150 170 L60 145 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
 
   <!-- 小屋正面墙面 -->
-  <path d="M250 185 L360 177 L360 290 L250 300 z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M150 85 L260 77 L260 160 L150 170 Z" fill="none" stroke="#e6b86c" stroke-width="14" stroke-linejoin="round"/>
 
   <!-- 窗户 -->
-  <path d="M190 220 L220 228 L220 260 L190 252 z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M90 100 L120 108 L120 140 L90 132 Z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
 
   <!-- 门 -->
-  <path d="M290 240 L320 235 L320 290 L290 295 z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M190 120 L220 118 L220 165 L190 165 Z" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- 底座 -->
+  <path d="M70 150 L30 155 L150 190 L320 170 L260 160" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+
+  <path d="M70 170 L30 175 L150 210 L320 190 L260 180" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
+
+  <path d="M70 190 L30 195 L150 230 L320 210 L260 200" fill="none" stroke="#e6b86c" stroke-width="10" stroke-linejoin="round"/>
 </svg>

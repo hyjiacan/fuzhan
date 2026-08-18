@@ -40,6 +40,12 @@
 
       <!-- Desktop: Right side Login/User -->
       <div class="header-actions">
+        <n-button quaternary size="small" class="upload-manager-btn" @click="showUploadManager = true">
+          <template #icon>
+            <n-icon><UploadIcon /></n-icon>
+          </template>
+          上传管理
+        </n-button>
         <NotificationBell />
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
@@ -118,32 +124,44 @@
           @keydown.enter="handleRegister"
         />
       </n-form-item>
-    </n-form>
-    <template #footer>
-      <div class="auth-footer">
-        <n-button type="primary" block :loading="registering" @click="handleRegister">
-          注册
-        </n-button>
-        <n-button text @click="switchToLogin" class="switch-link">
-          已有账号？去登录
-        </n-button>
-      </div>
-    </template>
-  </n-modal>
+	    </n-form>
+	    <template #footer>
+	      <div class="auth-footer">
+	        <n-button type="primary" block :loading="registering" @click="handleRegister">
+	          注册
+	        </n-button>
+	        <n-button text @click="switchToLogin" class="switch-link">
+	          已有账号？去登录
+	        </n-button>
+	      </div>
+	    </template>
+	  </n-modal>
+
+  <!-- 上传管理弹框 -->
+  <UploadManagerDialog v-model:show="showUploadManager" />
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NLayoutHeader, NButton, NModal, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NLayoutHeader, NButton, NModal, NForm, NFormItem, NInput, NIcon, useMessage } from 'naive-ui'
 import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
 import NotificationBell from './NotificationBell.vue'
+import UploadManagerDialog from '@/components/upload/UploadManagerDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
+
+// Upload manager dialog
+const showUploadManager = ref(false)
+
+// Upload icon
+const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 18, height: 18 }, [
+  h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
+])
 
 // Config
 const appName = computed(() => store.state.config.appName)
@@ -407,9 +425,23 @@ export default {
   flex-shrink: 0;
 
   .app-logo {
-    width: 32px;
-    height: 32px;
-  }
+	    width: 32px;
+	    height: 32px;
+	    transition: transform 0.2s ease;
+
+	    &:hover {
+	      animation: logoFloat 0.6s ease-in-out infinite alternate;
+	    }
+	  }
+
+	  @keyframes logoFloat {
+	    from {
+	      transform: translateY(0);
+	    }
+	    to {
+	      transform: translateY(-6px);
+	    }
+	  }
 
   .app-name {
     font-size: @font-size-xl;
@@ -558,6 +590,15 @@ export default {
 
 .logout-btn {
   color: rgba(255, 255, 255, 0.7);
+
+  &:hover {
+    color: #fff;
+  }
+}
+
+.upload-manager-btn {
+  color: rgba(255, 255, 255, 0.7);
+  margin-right: 8px;
 
   &:hover {
     color: #fff;
