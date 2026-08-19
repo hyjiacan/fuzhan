@@ -62,7 +62,7 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
-import { NDataTable, NCard, NButton, NSpace, NInput, NModal, NForm, NFormItem, NTag, NIcon, useMessage, useDialog } from 'naive-ui'
+import { NDataTable, NCard, NButton, NSpace, NInput, NModal, NForm, NFormItem, NTag, NProgress, NIcon, useMessage, useDialog } from 'naive-ui'
 import { AuthApi, AdminApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
@@ -96,6 +96,15 @@ const filteredUsers = computed(() => {
   )
 })
 
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0
+  let size = bytes
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++ }
+  return `${size.toFixed(1)} ${units[i]}`
+}
+
 const columns = [
   {
     title: '用户名',
@@ -122,6 +131,29 @@ const columns = [
     key: 'createdAt',
     width: 180,
     render: (row) => TimeUtils.formatDateTime(row.createdAt)
+  },
+  {
+    title: '配额使用',
+    key: 'quota',
+    width: 200,
+    render: (row) => {
+      if (!row.quota) return h('span', { style: 'color: #999; font-size: 12px' }, '无限制')
+      const percentage = Math.min(100, Math.round((row.usedStorage || 0) / row.quota * 100))
+      const status = percentage >= 90 ? 'error' : percentage >= 70 ? 'warning' : 'success'
+      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+        h(NProgress, {
+          type: 'line',
+          status,
+          percentage,
+          indicatorPlacement: 'inside',
+          height: 18,
+          style: 'flex: 1; min-width: 100px;'
+        }),
+        h('span', { style: 'font-size: 12px; white-space: nowrap;' },
+          formatSize(row.usedStorage) + ' / ' + formatSize(row.quota)
+        )
+      ])
+    }
   },
   {
     title: '操作',

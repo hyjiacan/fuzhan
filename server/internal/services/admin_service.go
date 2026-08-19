@@ -6,6 +6,7 @@ import (
 
     "golang.org/x/crypto/bcrypt"
     "gorm.io/gorm"
+    "fuzhan/internal/appconfig"
     "fuzhan/internal/models"
     "fuzhan/internal/utils"
 )
@@ -18,12 +19,14 @@ type UserListResult struct {
 
 // UserItem 用户列表项
 type UserItem struct {
-    UUID      string    `json:"uuid"`
-    Username  string    `json:"username"`
-    Role      string    `json:"role"`
-    Disabled  bool      `json:"disabled"`
-    CreatedAt time.Time `json:"createdAt"`
-    UpdatedAt time.Time `json:"updatedAt"`
+	UUID      string    `json:"uuid"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	Disabled  bool      `json:"disabled"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	UsedStorage int64   `json:"usedStorage"`
+	Quota       int64   `json:"quota"`
 }
 
 // SessionListResult 会话列表结果
@@ -82,14 +85,26 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
     }
 
     items := make([]UserItem, len(users))
+    perUserQuota := appconfig.GlobalConfig.Storage.Private.Quota.PerUserQuota
     for i, u := range users {
+        // 查询用户已使用的私有存储空间
+        var usedStorage int64
+        if row := s.db.Model(&models.FileRecordPrivate{}).
+            Select("COALESCE(SUM(file_size), 0)").
+            Where("owner_id = ? AND status = ? AND is_dir = ?", u.UUID, models.FileStatusActive, false).
+            Row(); row != nil {
+            row.Scan(&usedStorage)
+        }
+
         items[i] = UserItem{
-            UUID:      u.UUID,
-            Username:  u.Username,
-            Role:      u.Role,
-            Disabled:  u.Disabled,
-            CreatedAt: u.CreatedAt,
-            UpdatedAt: u.UpdatedAt,
+            UUID:        u.UUID,
+            Username:    u.Username,
+            Role:        u.Role,
+            Disabled:    u.Disabled,
+            CreatedAt:   u.CreatedAt,
+            UpdatedAt:   u.UpdatedAt,
+            UsedStorage: usedStorage,
+            Quota:       perUserQuota,
         }
     }
 
