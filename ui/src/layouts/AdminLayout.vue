@@ -78,6 +78,9 @@ const DuplicateIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', view
 const TimeIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z' })
 ])
+const TaskIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
+  h('path', { d: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z' })
+])
 
 const menuOptions = [
   {
@@ -94,6 +97,11 @@ const menuOptions = [
     label: '上传管理',
     key: '/admin/uploads',
     icon: () => h(NIcon, null, () => h(UploadIcon))
+  },
+  {
+    label: '任务管理',
+    key: '/admin/tasks',
+    icon: () => h(NIcon, null, () => h(TaskIcon))
   },
   {
     label: '重复文件',

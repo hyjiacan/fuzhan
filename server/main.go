@@ -188,7 +188,7 @@ func main() {
     })
 
     // 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-    db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.MigrationStatus{}, &models.MigrationTableProgress{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{})
+    db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.MigrationStatus{}, &models.MigrationTableProgress{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{})
 
     // 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
     models.EnsureFileRecordIndexes(db)
@@ -329,6 +329,8 @@ func main() {
     adminHandler := admin.NewHandler(adminService, db, recoveryService, rollbackService)
     notificationHandler := notification.NewHandler(db)
     adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
+    taskService := services.NewTaskService(db)
+    taskHandler := admin.NewTaskHandler(taskService)
 
     // 临时文件处理器 (基于IP，无需认证)
     tempSvcConfig := services.TempServiceConfig{
@@ -617,6 +619,12 @@ func main() {
                 admin.GET("/url-tasks", adminURLDownloadHandler.ListURLTasks)
                 admin.POST("/url-tasks/:id/retry", adminURLDownloadHandler.RetryURLTask)
                 admin.DELETE("/url-tasks/:id", adminURLDownloadHandler.DeleteURLTask)
+
+                // 任务管理路由
+                admin.GET("/tasks", taskHandler.ListTasks)
+                admin.GET("/tasks/history", taskHandler.GetTaskHistory)
+                admin.GET("/tasks/:id", taskHandler.GetTask)
+                admin.POST("/tasks/:id/cancel", taskHandler.CancelTask)
 
                 // 数据库迁移路由
                 dbMigration := admin.Group("/database")

@@ -418,6 +418,25 @@ export const AdminApi = {
     return request.delete(`/admin/url-tasks/${id}`)
   },
 
+  // 任务管理
+  getTasks() {
+    return request.get('/admin/tasks')
+  },
+
+  getTaskHistory(type = '', page = 1, pageSize = 20) {
+    const params = { page, pageSize }
+    if (type) params.type = type
+    return request.get('/admin/tasks/history', { params })
+  },
+
+  getTask(id) {
+    return request.get(`/admin/tasks/${id}`)
+  },
+
+  cancelTask(id) {
+    return request.post(`/admin/tasks/${id}/cancel`)
+  },
+
   // 搜索
   search(query) {
     return request.get(`/admin/search/${encodeURIComponent(query)}`)
