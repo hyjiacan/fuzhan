@@ -517,10 +517,11 @@ const handleAccessCode = async () => {
     message.error('获取文件信息失败')
     console.error(error)
   } finally {
-    accessingCode.value = false
-  }
+	    accessingCode.value = false
+	  }
+	}
 
-// 键盘快捷键
+	// 键盘快捷键
 const handleKeydown = (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
     e.preventDefault()
