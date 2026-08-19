@@ -1398,11 +1398,7 @@ const uploadSingleFile = async (queueItem) => {
     formData.append('chunk', chunk)
     formData.append('checksum', checksum)
 
-    const data = await request.post(getApiUrl('uploadChunk'), formData, {
-      baseURL: '',
-      // 安全软件会扫描部分写入的可执行文件，需给足时间让真实错误返回，避免误报超时
-      timeout: 10 * 60 * 1000
-    })
+    const data = await request.post(getApiUrl('uploadChunk'), formData, { baseURL: '' })
     if (!data.success) {
       throw new Error(data.message || `分片 ${index} 上传失败`)
     }
@@ -1433,8 +1429,7 @@ const uploadSingleFile = async (queueItem) => {
   const finalizeUrl = getApiUrl('finalize')
   const finalizeData = await request.post(finalizeUrl, { uploadId }, {
     baseURL: '',
-    headers: { 'Content-Type': 'application/json' },
-    timeout: 10 * 60 * 1000
+    headers: { 'Content-Type': 'application/json' }
   })
 
   if (!finalizeData.success) {
