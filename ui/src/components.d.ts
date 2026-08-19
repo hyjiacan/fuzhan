@@ -17,6 +17,7 @@ declare module 'vue' {
     CompleteStep: typeof import('./components/settings/migration/CompleteStep.vue')['default']
     ConfigStep: typeof import('./components/settings/migration/ConfigStep.vue')['default']
     DependencyTreeDialog: typeof import('./components/file/DependencyTreeDialog.vue')['default']
+    DownloadNotificationTab: typeof import('./components/upload/DownloadNotificationTab.vue')['default']
     FileItem: typeof import('./components/file/FileItem.vue')['default']
     FilePreview: typeof import('./components/file/FilePreview.vue')['default']
     IndexStatusBar: typeof import('./components/common/IndexStatusBar.vue')['default']

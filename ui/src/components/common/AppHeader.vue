@@ -46,7 +46,6 @@
           </template>
           上传管理
         </n-button>
-        <NotificationBell />
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
           <n-button quaternary size="small" class="logout-btn" @click="handleLogout">退出</n-button>
@@ -148,7 +147,6 @@ import { NLayoutHeader, NButton, NModal, NForm, NFormItem, NInput, NIcon, useMes
 import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
-import NotificationBell from './NotificationBell.vue'
 import UploadManagerDialog from '@/components/upload/UploadManagerDialog.vue'
 
 const router = useRouter()
@@ -602,6 +600,7 @@ export default {
 
   &:hover {
     color: #fff;
+    background: rgba(255, 255, 255, 0.1) !important;
   }
 }
 </style>
