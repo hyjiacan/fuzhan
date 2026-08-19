@@ -192,7 +192,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
     f, openErr := os.OpenFile(uploadingPath, os.O_RDWR|os.O_CREATE, 0644)
     if openErr != nil {
         utils.Error("打开上传文件失败", utils.String("path", uploadingPath), utils.Err(openErr))
-        return fmt.Errorf("打开上传文件失败")
+        return fmt.Errorf("打开上传文件失败：%s", classifyUploadFileError(openErr))
     }
     defer f.Close()
 
@@ -610,6 +610,30 @@ func (s *UploadSessionService) buildTargetPath(session *models.UploadSession) (t
     }
 
     return
+}
+
+// classifyUploadFileError 将打开上传文件时的系统错误归类为可读提示
+func classifyUploadFileError(err error) string {
+    if err == nil {
+        return ""
+    }
+    msg := err.Error()
+    l := strings.ToLower(msg)
+    switch {
+    case strings.Contains(l, "virus") || strings.Contains(l, "potentially unwanted") ||
+        strings.Contains(l, "malware") || strings.Contains(l, "threat"):
+        return "文件被安全软件拦截（疑似病毒或潜在有害软件），请将该目录加入安全软件信任/排除列表后重试"
+    case strings.Contains(l, "being used by another process") || strings.Contains(l, "sharing violation") ||
+        strings.Contains(l, "0x80070020"):
+        return "文件正被其他进程占用，请关闭相关程序后重试"
+    case strings.Contains(l, "access is denied") || strings.Contains(l, "0x80070005") ||
+        strings.Contains(l, "permission denied"):
+        return "无权限写入该目录，请检查目录权限"
+    case strings.Contains(l, "disk full") || strings.Contains(l, "no space") || strings.Contains(l, "0x80070070"):
+        return "磁盘空间不足，请清理后重试"
+    default:
+        return msg
+    }
 }
 
 // ensureUploadingFile 创建上传文件并预分配空间

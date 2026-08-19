@@ -10,9 +10,6 @@
       <n-tab-pane name="private" tab="私有上传">
         <UploadTaskTable type="private" />
       </n-tab-pane>
-      <n-tab-pane name="notifications" tab="下载通知">
-        <DownloadNotificationTab />
-      </n-tab-pane>
     </n-tabs>
   </n-modal>
 </template>
@@ -20,7 +17,6 @@
 <script setup>
 import { ref, watch } from 'vue'
 import UploadTaskTable from './UploadTaskTable.vue'
-import DownloadNotificationTab from './DownloadNotificationTab.vue'
 
 const props = defineProps({
   show: Boolean

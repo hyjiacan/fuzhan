@@ -595,12 +595,15 @@ export default {
 }
 
 .upload-manager-btn {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.75);
   margin-right: 8px;
+  border-radius: 6px;
+  transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
 
   &:hover {
     color: #fff;
-    background: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
   }
 }
 </style>

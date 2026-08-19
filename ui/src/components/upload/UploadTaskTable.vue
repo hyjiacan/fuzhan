@@ -40,8 +40,20 @@ const statusMap = {
   'expired': { type: 'default', text: '已过期' },
 }
 
+const typeMap = {
+  session: { type: 'info', text: '本地上传' },
+  url: { type: 'warning', text: 'URL 上传' },
+}
+
 const columns = [
   { title: '文件名', key: 'fileName', width: 200, ellipsis: { tooltip: true } },
+  {
+    title: '上传类型', key: '_type', width: 100,
+    render: (row) => {
+      const label = typeMap[row._type] || { type: 'default', text: '-' }
+      return h(NTag, { type: label.type, size: 'small' }, { default: () => label.text })
+    }
+  },
   { title: '进度', key: 'progress', width: 200,
     render: (row) => {
       const total = row.fileSize || 0
