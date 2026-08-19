@@ -26,6 +26,7 @@ const AdminUsersView = () => import('../views/AdminUsersView.vue')
 const AdminApiKeyView = () => import(/* webpackChunkName: "views-admin-api-key" */ '../views/AdminApiKeyView.vue')
 const AdminUploadsView = () => import(/* webpackChunkName: "views-admin-uploads" */ '../views/AdminUploadsView.vue')
 const AdminTasksView = () => import(/* webpackChunkName: "views-admin-tasks" */ '../views/AdminTasksView.vue')
+const AdminOpenApiView = () => import(/* webpackChunkName: "views-admin-openapi" */ '../views/AdminOpenApiView.vue')
 const AdminDuplicatesView = () => import(/* webpackChunkName: "views-admin-duplicates" */ '../views/AdminDuplicatesView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
@@ -135,6 +136,11 @@ const router = createRouter({
           component: AdminTasksView
         },
         {
+          path: 'openapi',
+          name: 'admin-openapi',
+          component: AdminOpenApiView
+        },
+        {
           path: 'duplicates',
           name: 'admin-duplicates',
           component: AdminDuplicatesView
@@ -165,6 +171,7 @@ const router = createRouter({
     // 旧路由重定向
     { path: '/private', redirect: '/user/files' },
     { path: '/settings', redirect: '/admin/settings' },
+    { path: '/admin/api-keys', redirect: '/admin/openapi' },
 
     // 默认重定向
     {

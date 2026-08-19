@@ -119,8 +119,8 @@ const menuOptions = [
     icon: () => h(NIcon, null, () => h(UsersIcon))
   },
   {
-    label: 'API Key',
-    key: '/admin/api-keys',
+    label: 'OpenAPI',
+    key: '/admin/openapi',
     icon: () => h(NIcon, null, () => h(KeyIcon))
   },
   {

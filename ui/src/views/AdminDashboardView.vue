@@ -6,7 +6,7 @@
     </div>
 
     <!-- 统计卡片 -->
-        <n-grid :cols="5" :x-gap="16" :y-gap="16" class="stat-grid">
+        <n-grid :cols="6" :x-gap="16" :y-gap="16" class="stat-grid">
           <n-gi>
             <n-card class="stat-card">
               <div class="stat-content">
@@ -58,6 +58,17 @@
                 <div class="stat-info">
                   <div class="stat-value">{{ stats.activeUsers }}</div>
                   <div class="stat-label">活跃用户</div>
+                </div>
+              </div>
+            </n-card>
+          </n-gi>
+          <n-gi>
+            <n-card class="stat-card">
+              <div class="stat-content">
+                <n-icon :component="GlobeIcon" size="32" />
+                <div class="stat-info">
+                  <div class="stat-value">{{ openApiStats.todayCalls }}</div>
+                  <div class="stat-label">API 调用(今日)</div>
                 </div>
               </div>
             </n-card>
@@ -230,6 +241,13 @@ const indexStats = ref({
   duplicateGroups: 0
 })
 
+// OpenAPI 统计
+const openApiStats = ref({
+  todayCalls: 0,
+  weekCalls: 0,
+  totalCalls: 0
+})
+
 // ============ 系统信息 ============
 const systemInfoLoaded = ref(false)
 const healthStatus = ref('healthy')
@@ -292,13 +310,14 @@ const formatTime = (time) => {
 
 const loadStats = async () => {
   try {
-    const [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData] = await Promise.all([
+    const [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData, openApiData] = await Promise.all([
       AdminApi.getUsers().catch((e) => { console.error('获取用户数据失败:', e); return { success: false } }),
       MonitorApi.getStorage().catch((e) => { console.error('获取存储数据失败:', e); return { success: false } }),
       MonitorApi.getAccess().catch((e) => { console.error('获取访问数据失败:', e); return { success: false } }),
       MonitorApi.getKeywords(30).catch((e) => { console.error('获取关键词数据失败:', e); return { success: false } }),
       MonitorApi.getRankings(30).catch((e) => { console.error('获取排行数据失败:', e); return { success: false } }),
-      IndexApi.getStats().catch((e) => { console.error('获取索引统计失败:', e); return { success: false } })
+      IndexApi.getStats().catch((e) => { console.error('获取索引统计失败:', e); return { success: false } }),
+      SystemApi.getOpenAPIStats().catch((e) => { console.error('获取OpenAPI统计失败:', e); return { success: false } })
     ])
 
     const failedCount = [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData]
@@ -344,6 +363,10 @@ const loadStats = async () => {
 
     if (indexStatsData.success) {
       indexStats.value = indexStatsData.data || { totalFiles: 0, totalSize: 0, duplicateGroups: 0 }
+    }
+
+    if (openApiData.success) {
+      openApiStats.value = openApiData.data || { todayCalls: 0, weekCalls: 0, totalCalls: 0 }
     }
   } catch (e) {
     console.error('获取统计数据失败', e)
