@@ -115,12 +115,23 @@
         </n-space>
       </template>
     </n-modal>
-  </div>
-</template>
 
-<script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
-import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
+	    <!-- 删除确认弹窗 -->
+	    <n-modal v-model:show="showDeleteConfirm" preset="card" title="确认删除" style="width: 400px">
+	      <p>确定要删除文件「{{ deleteTarget?.filename }}」吗？此操作不可恢复。</p>
+	      <template #footer>
+	        <n-space justify="end">
+	          <n-button @click="showDeleteConfirm = false; deleteTarget = null">取消</n-button>
+	          <n-button type="error" :loading="deleting" @click="confirmDelete">删除</n-button>
+	        </n-space>
+	      </template>
+	    </n-modal>
+	  </div>
+	</template>
+	
+	<script setup>
+	import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
+	import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
 import { TempApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import UploadManager from '@/components/upload/UploadManager.vue'
@@ -454,6 +465,38 @@ const downloadFile = (code) => {
   window.open(TempApi.download(code), '_blank')
 }
 
+// 删除确认弹窗
+const showDeleteConfirm = ref(false)
+const deleteTarget = ref(null)
+const deleting = ref(false)
+
+const handleDelete = (file) => {
+  deleteTarget.value = file
+  showDeleteConfirm.value = true
+}
+
+const confirmDelete = async () => {
+  const file = deleteTarget.value
+  if (!file) return
+  deleting.value = true
+  try {
+    const data = await TempApi.delete(file.code)
+    if (data.success) {
+      message.success('删除成功')
+      loadFiles(currentDir.value)
+    } else {
+      message.error(data.message || '删除失败')
+    }
+  } catch (error) {
+    message.error('删除失败')
+    console.error(error)
+  } finally {
+    deleting.value = false
+    showDeleteConfirm.value = false
+    deleteTarget.value = null
+  }
+}
+
 // 访问码查询
 const handleAccessCode = async () => {
   const code = accessCodeInput.value.trim().toUpperCase()
@@ -476,30 +519,6 @@ const handleAccessCode = async () => {
   } finally {
     accessingCode.value = false
   }
-}
-
-const handleDelete = (file) => {
-  dialog.warning({
-    title: '确认删除',
-    content: `确定要删除文件「${file.filename}」吗？此操作不可恢复。`,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const data = await TempApi.delete(file.code)
-        if (data.success) {
-          message.success('删除成功')
-          loadFiles(currentDir.value)
-        } else {
-          message.error(data.message || '删除失败')
-        }
-      } catch (error) {
-        message.error('删除失败')
-        console.error(error)
-      }
-    }
-  })
-}
 
 // 键盘快捷键
 const handleKeydown = (e) => {

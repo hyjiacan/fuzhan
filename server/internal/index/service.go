@@ -257,7 +257,7 @@ func (s *Service) GetStats() (*RecordStatsResponse, error) {
     if err := s.db.Raw(`
         SELECT COUNT(*) FROM (
             SELECT xxh3_hash FROM file_records_public
-            WHERE status = ? AND xxh3_hash != ''
+            WHERE status = ? AND xxh3_hash != '' AND file_size > 0
             GROUP BY xxh3_hash HAVING COUNT(*) > 1
         ) dups
     `, string(models.FileStatusActive)).Scan(&dupGroups).Error; err != nil {
@@ -287,7 +287,7 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
     }
     countQuery := s.db.Model(&models.FileRecordPublic{}).
         Select("xxh3_hash, COUNT(*) as count, SUM(file_size) as size_sum").
-        Where("status = ? AND xxh3_hash != '' AND is_dir = ?", models.FileStatusActive, false)
+        Where("status = ? AND xxh3_hash != '' AND is_dir = ? AND file_size > 0", models.FileStatusActive, false)
 
     if query.MinSize > 0 {
         countQuery = countQuery.Where("file_size >= ?", query.MinSize)
@@ -297,11 +297,11 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
     var total int64
     if err := s.db.Raw(`
         SELECT COUNT(*) FROM (
-            SELECT xxh3_hash FROM file_records_public
-            WHERE status = ? AND xxh3_hash != '' AND is_dir = ?
-            GROUP BY xxh3_hash HAVING COUNT(*) > 1
-        ) dups
-    `, string(models.FileStatusActive), false).Scan(&total).Error; err != nil {
+        SELECT xxh3_hash FROM file_records_public
+        WHERE status = ? AND xxh3_hash != '' AND is_dir = ? AND file_size > 0
+        GROUP BY xxh3_hash HAVING COUNT(*) > 1
+    ) dups
+`, string(models.FileStatusActive), false).Scan(&total).Error; err != nil {
         return nil, 0, fmt.Errorf("查询重复分组总数失败: %w", err)
     }
 
@@ -336,7 +336,7 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
         var files []DuplicateFileItem
         if err := s.db.Model(&models.FileRecordPublic{}).
 			Select("id, file_name, file_path, full_path, root_name, file_size, mod_time").
-			Where("xxh3_hash = ? AND status = ? AND is_dir = ?",
+			Where("xxh3_hash = ? AND status = ? AND is_dir = ? AND file_size > 0",
                 hc.Xxh3Hash, models.FileStatusActive, false).
             Order("file_path ASC").
             Find(&files).Error; err != nil {
