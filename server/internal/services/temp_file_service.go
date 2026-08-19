@@ -98,7 +98,7 @@ func (s *TempFileService) GetQuotaUsage(ip string) (int64, error) {
 }
 
 // Upload 上传临时文件
-func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir string, fileSize int64) (*TempFileResult, error) {
+func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir string, fileSize int64, deleteOnDownload bool) (*TempFileResult, error) {
 	// 检查配额
 	quotaPerIP := s.config.QuotaPerIP
 	if quotaPerIP > 0 {
@@ -155,13 +155,14 @@ func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir 
 
 	// 保存记录
 	tempFile := &models.TempFile{
-		Code:      code,
-		Filename:  filename,
-		FileSize:  written,
-		FilePath:  filePath,
-		ClientIP:  ip,
-		Dir:       cleanDir,
-		ExpiredAt: expiredAt,
+		Code:             code,
+		Filename:         filename,
+		FileSize:         written,
+		FilePath:         filePath,
+		ClientIP:         ip,
+		Dir:              cleanDir,
+		DeleteOnDownload: deleteOnDownload,
+		ExpiredAt:        expiredAt,
 	}
 
 	if err := s.db.Create(tempFile).Error; err != nil {
@@ -277,10 +278,6 @@ func (s *TempFileService) DownloadFile(code string) (*models.TempFile, error) {
 		return nil, fmt.Errorf("文件已过期")
 	}
 
-	if tempFile.Downloaded {
-		return nil, fmt.Errorf("文件已被下载")
-	}
-
 	if _, err := os.Stat(tempFile.FilePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("文件不存在")
 	}
@@ -290,10 +287,12 @@ func (s *TempFileService) DownloadFile(code string) (*models.TempFile, error) {
 
 // MarkDownloaded 标记文件已下载
 func (s *TempFileService) MarkDownloaded(tempFile *models.TempFile, deleteOnDownload bool) {
-	if deleteOnDownload {
+	// 优先使用文件级别的 deleteOnDownload 设置
+	autoDelete := tempFile.DeleteOnDownload || deleteOnDownload
+	if autoDelete {
 		s.db.Model(tempFile).Updates(map[string]interface{}{
-			"downloaded":     true,
-			"download_count": tempFile.DownloadCount + 1,
+			"downloaded":      true,
+			"download_count":  tempFile.DownloadCount + 1,
 		})
 		os.Remove(tempFile.FilePath)
 	} else {

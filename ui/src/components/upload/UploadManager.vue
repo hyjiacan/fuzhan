@@ -447,6 +447,10 @@ const props = defineProps({
   defaultDir: {
     type: String,
     default: ''
+  },
+  deleteOnDownload: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -1205,7 +1209,7 @@ const uploadSingleFile = async (queueItem) => {
       ? { filename: name, fileSize: size, expireDays: form.expireDays || 7, dir: itemUploadDir || '' }
       : needsRootSelection.value
         ? { filename: name, fileSize: size, dir: itemUploadDir || '/', rootName: itemRootName || '_apps', targetType: 'local' }
-        : { filename: name, fileSize: size, dir: itemUploadDir || '' }
+        : { filename: name, fileSize: size, dir: itemUploadDir || '', deleteOnDownload: props.deleteOnDownload }
 
     const response = await request.post(createSessionUrl, createSessionBody, {
       baseURL: '',

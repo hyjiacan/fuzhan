@@ -31,18 +31,19 @@ import (
 
 // TempUploadSession 临时文件上传会话
 type TempUploadSession struct {
-    ID           uint      `gorm:"primaryKey"`
-    UploadID     string    `gorm:"uniqueIndex;size:36;not null"`
-    Code         string    `gorm:"size:8;not null"`
-    Filename     string    `gorm:"size:255;not null"`
-    FileSize     int64     `gorm:"not null"`
-    FilePath     string    `gorm:"size:512"`
-    ClientIP     string    `gorm:"size:45;index"`
-    TotalChunks  int       `gorm:"not null"`
-    UploadedSize int64     `gorm:"default:0"`
-    ExpiredAt    time.Time `gorm:"index"`
-    Dir          string    `gorm:"size:512"`
-    CreatedAt    time.Time
+	ID             uint      `gorm:"primaryKey"`
+	UploadID       string    `gorm:"uniqueIndex;size:36;not null"`
+	Code           string    `gorm:"size:8;not null"`
+	Filename       string    `gorm:"size:255;not null"`
+	FileSize       int64     `gorm:"not null"`
+	FilePath       string    `gorm:"size:512"`
+	ClientIP       string    `gorm:"size:45;index"`
+	TotalChunks    int       `gorm:"not null"`
+	UploadedSize   int64     `gorm:"default:0"`
+	ExpiredAt      time.Time `gorm:"index"`
+	Dir            string    `gorm:"size:512"`
+	DeleteOnDownload bool   `gorm:"default:false"`
+	CreatedAt      time.Time
 }
 
 // ChunkUploadRecord 分片上传记录
@@ -160,13 +161,15 @@ func (h *Handler) UploadHandler(c *gin.Context) {
     defer file.Close()
 
     ip := h.getClientIP(c)
-    uploadDir := c.PostForm("dir")
-    // 清洗上传目录：去除路径遍历和空字节
-    uploadDir = strings.TrimSpace(uploadDir)
-    uploadDir = strings.ReplaceAll(uploadDir, "..", "")
-    uploadDir = strings.ReplaceAll(uploadDir, "\x00", "")
+	uploadDir := c.PostForm("dir")
+	// 清洗上传目录：去除路径遍历和空字节
+	uploadDir = strings.TrimSpace(uploadDir)
+	uploadDir = strings.ReplaceAll(uploadDir, "..", "")
+	uploadDir = strings.ReplaceAll(uploadDir, "\x00", "")
 
-    result, err := h.tempService.Upload(file, handler.Filename, ip, uploadDir, handler.Size)
+	deleteOnDownload := c.PostForm("deleteOnDownload") == "true"
+
+	result, err := h.tempService.Upload(file, handler.Filename, ip, uploadDir, handler.Size, deleteOnDownload)
     if err != nil {
         utils.HandleInternalServerError(c, err.Error())
         return
@@ -358,10 +361,11 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
     }
 
     var req struct {
-        Filename string `json:"filename" binding:"required"`
-        FileSize int64  `json:"fileSize" binding:"required"`
-        Dir      string `json:"dir"`
-    }
+		Filename         string `json:"filename" binding:"required"`
+		FileSize         int64  `json:"fileSize" binding:"required"`
+		Dir              string `json:"dir"`
+		DeleteOnDownload bool   `json:"deleteOnDownload"`
+	}
 
     if err := c.ShouldBindJSON(&req); err != nil {
         utils.HandleBadRequest(c, "参数错误", err)
@@ -422,16 +426,17 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
     expiredAt := time.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
 
     // 创建会话记录
-    session := &TempUploadSession{
-        UploadID:    uploadID,
-        Code:        code,
-        Filename:    req.Filename,
-        FileSize:    req.FileSize,
-        ClientIP:    ip,
-        TotalChunks: totalChunks,
-        Dir:         req.Dir,
-        ExpiredAt:   expiredAt,
-    }
+	session := &TempUploadSession{
+		UploadID:         uploadID,
+		Code:             code,
+		Filename:         req.Filename,
+		FileSize:         req.FileSize,
+		ClientIP:         ip,
+		TotalChunks:      totalChunks,
+		Dir:              req.Dir,
+		DeleteOnDownload: req.DeleteOnDownload,
+		ExpiredAt:        expiredAt,
+	}
 
     if err := h.db.Create(session).Error; err != nil {
         utils.HandleInternalServerError(c, "创建上传会话失败")
@@ -794,13 +799,14 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 
     // 创建临时文件记录
     tempFile := &models.TempFile{
-        Code:      session.Code,
-        Filename:  session.Filename,
-        FileSize:  totalSize,
-        FilePath:  filePath,
-        ClientIP:  session.ClientIP,
-        Dir:       session.Dir,
-        ExpiredAt: session.ExpiredAt,
+        Code:             session.Code,
+        Filename:         session.Filename,
+        FileSize:         totalSize,
+        FilePath:         filePath,
+        ClientIP:         session.ClientIP,
+        Dir:              session.Dir,
+        DeleteOnDownload: session.DeleteOnDownload,
+        ExpiredAt:        session.ExpiredAt,
     }
 
     if err := h.db.Create(tempFile).Error; err != nil {

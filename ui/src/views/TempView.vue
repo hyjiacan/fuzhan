@@ -74,7 +74,10 @@
     <!-- 上传弹窗 -->
     <n-modal :show="showUploadDialog" preset="card" title="上传临时文件" class="upload-dialog"
       @update:show="onUploadDialogShowChange" :mask-closable="false" :closeable="false">
-      <upload-manager :upload-api="tempUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" ref="uploadManagerRef" @close="handleUploadDialogClose" />
+      <template #header-extra>
+        <n-checkbox v-model:checked="deleteOnDownload">下载后自动删除</n-checkbox>
+      </template>
+      <upload-manager :upload-api="tempUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" ref="uploadManagerRef" @close="handleUploadDialogClose" :delete-on-download="deleteOnDownload" />
     </n-modal>
 
     <!-- 预览弹窗 -->
@@ -131,7 +134,7 @@
 	
 	<script setup>
 	import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
-	import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
+	import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, NCheckbox, useMessage, useDialog } from 'naive-ui'
 import { TempApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import UploadManager from '@/components/upload/UploadManager.vue'
@@ -153,6 +156,7 @@ const FolderIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 
 // 上传相关
 const showUploadDialog = ref(false)
+const deleteOnDownload = ref(false)
 const showAccessCodeDialog = ref(false)
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
