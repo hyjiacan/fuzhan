@@ -47,7 +47,6 @@
     <!-- 文件列表 -->
     <div class="content-table">
       <n-data-table
-        v-if="tableData.length > 0 || loading"
         :columns="columns"
         :data="tableData"
         :loading="loading"
@@ -56,13 +55,6 @@
         :bordered="false"
         size="small"
       />
-      <div v-else class="empty-state">
-        <n-empty :description="searchQuery ? '未找到匹配的文件' : '暂无私有文件'">
-          <template #extra>
-            <n-button size="small" type="primary" @click="showUploadDialog = true">上传第一个文件</n-button>
-          </template>
-        </n-empty>
-      </div>
     </div>
 
     <!-- 上传弹窗 -->
@@ -90,7 +82,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, h } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
+import { NButton, NIcon, NDataTable, NTag, NProgress, NModal, NSpace, NInput, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
 import { PrivateApi, AuthApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'

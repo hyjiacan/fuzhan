@@ -168,6 +168,7 @@ import {
   NPopconfirm, NSwitch, NRadioGroup, NRadio
 } from 'naive-ui'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
+import { TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 
@@ -268,13 +269,13 @@ const columns = computed(() => [
   },
   {
     title: '创建时间', key: 'createdAt', width: 170,
-    render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleString('zh-CN') : '-'
+    render: (row) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
   },
   {
     title: '过期时间', key: 'expiresAt', width: 170,
     render: (row) => {
       if (!row.expiresAt) return '永不过期'
-      return new Date(row.expiresAt).toLocaleString('zh-CN')
+      return TimeUtils.formatDateTime(row.expiresAt)
     }
   },
   {

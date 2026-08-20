@@ -7,13 +7,12 @@
       :row-key="row => row.id"
       striped
     />
-    <n-empty v-if="uploads.length === 0" description="暂无上传记录" />
   </div>
 </template>
 
 <script setup>
 import { h } from 'vue'
-import { NDataTable, NEmpty, NButton, NIcon, NTag, useMessage } from 'naive-ui'
+import { NDataTable, NButton, NIcon, NTag, useMessage } from 'naive-ui'
 import { NumberUtils, TimeUtils } from '@/utils'
 
 const props = defineProps({

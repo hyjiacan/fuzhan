@@ -661,6 +661,20 @@ func (s *Service) runScheduledScan() {
 	scopes := []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate}
 
 	for _, scope := range scopes {
+		// 按配置跳过未启用的范围
+		switch scope {
+		case ScanScopeTemp:
+			if !appconfig.GetConfig().Storage.Temp.Enabled {
+				utils.Info("定时扫描跳过临时文件范围（临时文件功能未启用）")
+				continue
+			}
+		case ScanScopePrivate:
+			if !appconfig.GetConfig().Storage.Private.Enabled {
+				utils.Info("定时扫描跳过私有文件范围（私有存储功能未启用）")
+				continue
+			}
+		}
+
 		s.mu.Lock()
 		s.currentScope = scope
 		s.mu.Unlock()

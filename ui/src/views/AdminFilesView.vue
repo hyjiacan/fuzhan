@@ -47,7 +47,6 @@
     <div class="content-table">
       <n-data-table :columns="columns" :data="displayList" :loading="loading || isSearching" :pagination="false"
         :row-key="row => row.path" @dblclick-row="handleDblClick" virtual-scroll flex-height />
-      <n-empty v-if="!loading && !isSearching && displayList.length === 0" :description="searchQuery ? '未找到匹配的文件' : '暂无文件'" />
     </div>
 
     <!-- 移动/重命名对话框（类似 Linux mv 命令） -->
@@ -102,7 +101,7 @@ import { ref, computed, h, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NBreadcrumb, NBreadcrumbItem, NButton, NDataTable, NModal, NForm, NFormItem,
-  NInput, NTreeSelect, NEmpty, NIcon, NSpin,
+  NInput, NTreeSelect, NIcon, NSpin,
   NTag, NDivider,
   useMessage, useDialog, useLoadingBar
 } from 'naive-ui'

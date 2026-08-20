@@ -57,7 +57,6 @@
     <!-- 文件列表 -->
     <div class="content-table">
       <n-data-table
-        v-if="tableData.length > 0 || loading"
         :columns="columns"
         :data="tableData"
         :loading="loading"
@@ -66,9 +65,6 @@
         :bordered="false"
         size="small"
       />
-      <div v-else class="empty-state">
-        <n-empty :description="searchQuery ? '未找到匹配的文件' : '暂无临时文件'" />
-      </div>
     </div>
 
     <!-- 上传弹窗 -->
@@ -108,7 +104,7 @@
           <n-tag type="info">{{ accessedFile.code }}</n-tag>
         </n-descriptions-item>
         <n-descriptions-item label="过期时间">
-          {{ new Date(accessedFile.expiredAt).toLocaleString() }}
+          {{ TimeUtils.formatDateTime(accessedFile.expiredAt) }}
         </n-descriptions-item>
       </n-descriptions>
       <template #footer>
@@ -134,7 +130,7 @@
 	
 	<script setup>
 	import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
-	import { NButton, NIcon, NDataTable, NTag, NEmpty, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, NCheckbox, useMessage, useDialog } from 'naive-ui'
+	import { NButton, NIcon, NDataTable, NTag, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, NCheckbox, useMessage, useDialog } from 'naive-ui'
 import { TempApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import UploadManager from '@/components/upload/UploadManager.vue'

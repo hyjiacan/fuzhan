@@ -47,11 +47,7 @@
         :loading="store.state.loading || isSearching"
         virtual-scroll
         flex-height
-      >
-        <template #empty>
-          <n-empty :description="searchQuery ? '未找到匹配的文件' : '暂无文件'" />
-        </template>
-      </n-data-table>
+      />
     </div>
 
     <dependency-tree-dialog ref="depTreeDialogRef" />
@@ -91,7 +87,7 @@
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NButton, NDataTable, NBreadcrumb, NBreadcrumbItem, NModal, NInput, NSpin, NEmpty, useMessage, useDialog } from 'naive-ui'
+import { NButton, NDataTable, NBreadcrumb, NBreadcrumbItem, NModal, NInput, NSpin, useMessage, useDialog } from 'naive-ui'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'

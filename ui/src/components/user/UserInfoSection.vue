@@ -29,6 +29,7 @@ import {
   NCard, NDescriptions, NDescriptionsItem, NBadge, useMessage
 } from 'naive-ui'
 import { AuthApi } from '@/api'
+import { TimeUtils } from '@/utils'
 
 const message = useMessage()
 
@@ -39,10 +40,7 @@ const userInfo = ref({
   createdAt: ''
 })
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
-}
+const formatDate = (dateStr) => TimeUtils.formatDateTime(dateStr)
 
 const loadUserInfo = async () => {
   try {

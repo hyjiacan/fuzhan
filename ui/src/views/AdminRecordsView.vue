@@ -129,7 +129,7 @@ import {
   NTabs, NTabPane, NDataTable, NPagination, NButton, NIcon, useMessage
 } from 'naive-ui'
 import { FileApi, AdminApi } from '@/api'
-import { NumberUtils } from '@/utils'
+import { NumberUtils, TimeUtils } from '@/utils'
 
 const message = useMessage()
 
@@ -167,14 +167,7 @@ const DeleteIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 
 const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
 
-const formatTime = (time) => {
-  if (!time) return ''
-  const d = new Date(time)
-  return d.toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
-}
+const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
 const uploadColumns = [
   { title: '文件路径', key: 'fullPath', ellipsis: { tooltip: true }, width: 400 },

@@ -13,9 +13,8 @@
 
       <!-- 最近上传 -->
       <n-card title="最近上传" class="recent-card">
-        <n-data-table v-if="uploads.length > 0 || loading" :columns="columns" :data="uploads" :loading="loading"
+        <n-data-table :columns="columns" :data="uploads" :loading="loading"
           :pagination="false" :row-key="row => row.id" striped />
-        <n-empty v-else description="暂无上传记录" />
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
             <n-pagination size="small" :page="uploadPage" :page-size="uploadPageSize" :item-count="uploadTotal"
@@ -27,9 +26,8 @@
 
       <!-- 最近下载 -->
       <n-card title="最近下载" class="recent-card">
-        <n-data-table v-if="downloads.length > 0 || loading" :columns="columns" :data="downloads" :loading="loading"
+        <n-data-table :columns="columns" :data="downloads" :loading="loading"
           :pagination="false" :row-key="row => row.id" striped />
-        <n-empty v-else description="暂无下载记录" />
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
             <n-pagination size="small" :page="downloadPage" :page-size="downloadPageSize" :item-count="downloadTotal"

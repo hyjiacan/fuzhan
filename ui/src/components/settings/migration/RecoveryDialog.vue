@@ -50,6 +50,7 @@
 import { ref, computed } from 'vue'
 import { NModal, NTabs, NTabPane, NButton, useMessage } from 'naive-ui'
 import { databaseApi } from '@/api'
+import { TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 
 const props = defineProps({
@@ -69,7 +70,7 @@ const loading = ref(false)
 
 const formatTime = (time) => {
   if (!time) return '-'
-  return new Date(time).toLocaleString('zh-CN')
+  return TimeUtils.formatDateTime(time)
 }
 
 const handleResume = async () => {

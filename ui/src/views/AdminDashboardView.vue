@@ -195,7 +195,7 @@ import {
   NGrid, NGi, NCard, NIcon, NEmpty, NButton, NBadge, NTag,
   NSpace, NDescriptions, NDescriptionsItem, useMessage
 } from 'naive-ui'
-import { NumberUtils } from '@/utils'
+import { NumberUtils, TimeUtils } from '@/utils'
 import { AdminApi, MonitorApi, SystemApi, IndexApi } from '@/api'
 import store from '@/store'
 
@@ -300,11 +300,7 @@ const getUsagePercent = (root) => {
   return 0
 }
 
-const formatTime = (time) => {
-  if (!time) return ''
-  const d = new Date(time)
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
+const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
 // ============ 概览数据加载 ============
 

@@ -15,9 +15,6 @@
         size="small"
         :max-height="400"
       />
-      <div v-if="!loading && activeTasks.length === 0" class="empty-hint">
-        <n-empty description="当前没有正在执行的任务" />
-      </div>
     </n-card>
 
     <!-- 任务历史 -->
@@ -44,9 +41,6 @@
         size="small"
         :max-height="500"
       />
-      <div v-if="!loadingHistory && historyTasks.length === 0" class="empty-hint">
-        <n-empty description="暂无任务历史" />
-      </div>
       <template #footer>
         <n-space justify="end">
           <n-pagination
@@ -65,8 +59,9 @@
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
 import { AdminApi } from '@/api'
+import { TimeUtils } from '@/utils'
 import { useMessage } from 'naive-ui'
-import { NTag, NButton, NProgress, NSpace, NSelect, NPagination, NEmpty, NIcon, NSpin } from 'naive-ui'
+import { NTag, NButton, NProgress, NSpace, NSelect, NPagination, NIcon, NSpin } from 'naive-ui'
 
 const message = useMessage()
 const loading = ref(false)
@@ -150,7 +145,7 @@ const activeColumns = [
     title: '开始时间',
     key: 'startedAt',
     width: 180,
-    render: (row) => row.startedAt ? new Date(row.startedAt).toLocaleString() : '-'
+    render: (row) => row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-'
   },
   {
     title: '错误信息',
@@ -204,13 +199,13 @@ const historyColumns = [
     title: '开始时间',
     key: 'startedAt',
     width: 180,
-    render: (row) => row.startedAt ? new Date(row.startedAt).toLocaleString() : '-'
+    render: (row) => row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-'
   },
   {
     title: '完成时间',
     key: 'endedAt',
     width: 180,
-    render: (row) => row.endedAt ? new Date(row.endedAt).toLocaleString() : '-'
+    render: (row) => row.endedAt ? TimeUtils.formatDateTime(row.endedAt) : '-'
   },
   {
     title: '错误信息',

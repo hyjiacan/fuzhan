@@ -60,7 +60,6 @@
           </template>
 
           <n-data-table
-            v-if="zombieLoading || zombieSessions.length > 0"
             :columns="zombieColumns"
             :data="zombieSessions"
             :loading="zombieLoading"
@@ -69,7 +68,6 @@
             :checked-row-keys="zombieSelectedRowKeys"
             @update:checked-row-keys="zombieHandleSelectionChange"
           />
-          <n-empty v-else description="没有过期会话" />
         </n-card>
 
         <!-- 确认清理对话框 -->
@@ -210,7 +208,7 @@
 import { ref, reactive, h, onMounted } from 'vue'
 import {
   NGrid, NGi, NCard, NButton, NSpace, NDataTable,
-  NRadioGroup, NRadioButton, NAlert, NModal, NIcon, NEmpty, NTabs, NTabPane,
+  NRadioGroup, NRadioButton, NAlert, NModal, NIcon, NTabs, NTabPane,
   useMessage
 } from 'naive-ui'
 import { AdminApi } from '@/api'

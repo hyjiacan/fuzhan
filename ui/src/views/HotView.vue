@@ -13,23 +13,20 @@
 
       <!-- 热门下载文件 -->
       <n-card title="热门下载文件" class="hot-card">
-        <template v-if="hotDownloads.length > 0 || loading">
-          <n-data-table :columns="downloadColumns" :data="hotDownloads" :loading="loading" :pagination="false"
-            :row-key="row => row.fileName" striped />
-          <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
-            <n-pagination
-              :page="currentPage"
-              :page-size="pageSize"
-              :item-count="total"
-              :page-sizes="[10, 20, 50]"
-              show-size-picker
-              @update:page="onPageChange"
-              @update:page-size="onPageSizeChange"
-            />
-            <span class="total-info">共 {{ total }} 个文件</span>
-          </div>
-        </template>
-        <n-empty v-else description="暂无下载数据" />
+        <n-data-table :columns="downloadColumns" :data="hotDownloads" :loading="loading" :pagination="false"
+          :row-key="row => row.fileName" striped />
+        <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
+          <n-pagination
+            :page="currentPage"
+            :page-size="pageSize"
+            :item-count="total"
+            :page-sizes="[10, 20, 50]"
+            show-size-picker
+            @update:page="onPageChange"
+            @update:page-size="onPageSizeChange"
+          />
+          <span class="total-info">共 {{ total }} 个文件</span>
+        </div>
       </n-card>
     </div>
   </div>

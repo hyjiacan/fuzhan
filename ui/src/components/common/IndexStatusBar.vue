@@ -53,6 +53,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { NTooltip } from 'naive-ui'
 import { IndexApi } from '@/api'
+import { TimeUtils } from '@/utils'
 
 const props = defineProps({
   // 是否自动轮询（仅 HomeView 等需要显示状态的页面）
@@ -87,12 +88,7 @@ const fetchStatus = async () => {
   }
 }
 
-const formatTime = (t) => {
-  if (!t) return '-'
-  const d = new Date(t)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+const formatTime = (t) => TimeUtils.formatDateTime(t)
 
 onMounted(() => {
   if (props.autoPoll) {

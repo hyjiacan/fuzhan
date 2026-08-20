@@ -103,7 +103,7 @@ import {
   NForm, NFormItem, NInput, NButton, NBadge, useMessage
 } from 'naive-ui'
 import { AuthApi, PrivateApi, TempApi } from '@/api'
-import { NumberUtils } from '@/utils'
+import { NumberUtils, TimeUtils } from '@/utils'
 
 const router = useRouter()
 const message = useMessage()
@@ -178,10 +178,7 @@ const passwordRules = {
 }
 
 // Methods
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
-}
+const formatDate = (dateStr) => TimeUtils.formatDateTime(dateStr)
 
 const loadUserInfo = async () => {
   try {

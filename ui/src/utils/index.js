@@ -143,7 +143,7 @@ export const TimeUtils = {
     return date.toLocaleDateString('zh-CN')
   },
 
-  // 格式化日期时间（统一格式：YYYY-MM-DD HH:mm）
+  // 格式化日期时间（统一格式：YYYY-MM-DD HH:mm:ss）
   formatDateTime(dateStr) {
     if (!dateStr) return '-'
     const d = new Date(dateStr)
@@ -152,7 +152,8 @@ export const TimeUtils = {
     const D = String(d.getDate()).padStart(2, '0')
     const h = String(d.getHours()).padStart(2, '0')
     const m = String(d.getMinutes()).padStart(2, '0')
-    return `${Y}-${M}-${D} ${h}:${m}`
+    const s = String(d.getSeconds()).padStart(2, '0')
+    return `${Y}-${M}-${D} ${h}:${m}:${s}`
   },
 
   // 格式化日期
