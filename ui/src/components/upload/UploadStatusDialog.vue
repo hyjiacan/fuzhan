@@ -1,5 +1,5 @@
 <template>
-  <n-modal v-model:show="show" :mask-closable="false" preset="card" title="上传管理" style="width: 800px; max-height: 80vh;">
+  <n-modal v-model:show="show" :mask-closable="false" preset="card" title="上传状态" style="width: 800px; max-height: 80vh;">
     <n-tabs type="line" animated>
       <n-tab-pane name="public" tab="公共上传">
         <UploadTaskTable type="public" />

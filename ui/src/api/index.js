@@ -225,7 +225,7 @@ export const UploadApi = {
     return request.get(`/uploads/url-task/${taskId}`)
   },
 
-  // 上传管理
+  // 当前用户上传状态/会话
   listSessions(type, page = 1, pageSize = 50) {
     return request.get('/uploads/sessions', { params: { type, page, pageSize } })
   },

@@ -40,11 +40,11 @@
 
       <!-- Desktop: Right side Login/User -->
       <div class="header-actions">
-        <n-button quaternary size="small" class="upload-manager-btn" @click="showUploadManager = true">
+        <n-button quaternary size="small" class="upload-status-btn" @click="showUploadStatus = true">
           <template #icon>
             <n-icon><UploadIcon /></n-icon>
           </template>
-          上传管理
+          上传状态
         </n-button>
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
@@ -137,7 +137,7 @@
 	  </n-modal>
 
   <!-- 上传管理弹框 -->
-  <UploadManagerDialog v-model:show="showUploadManager" />
+  <UploadStatusDialog v-model:show="showUploadStatus" />
 </template>
 
 <script setup>
@@ -147,14 +147,14 @@ import { NLayoutHeader, NButton, NModal, NForm, NFormItem, NInput, NIcon, useMes
 import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
-import UploadManagerDialog from '@/components/upload/UploadManagerDialog.vue'
+import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
 
 // Upload manager dialog
-const showUploadManager = ref(false)
+const showUploadStatus = ref(false)
 
 // Upload icon
 const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 18, height: 18 }, [
@@ -594,7 +594,7 @@ export default {
   }
 }
 
-.upload-manager-btn {
+.upload-status-btn {
   color: rgba(255, 255, 255, 0.75);
   margin-right: 8px;
   border-radius: 6px;

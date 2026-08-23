@@ -64,7 +64,7 @@ declare module 'vue' {
     Toast: typeof import('./components/Toast.vue')['default']
     ToastContainer: typeof import('./components/ToastContainer.vue')['default']
     UploadManager: typeof import('./components/upload/UploadManager.vue')['default']
-    UploadManagerDialog: typeof import('./components/upload/UploadManagerDialog.vue')['default']
+    UploadStatusDialog: typeof import('./components/upload/UploadStatusDialog.vue')['default']
     UploadTaskTable: typeof import('./components/upload/UploadTaskTable.vue')['default']
     UserInfoSection: typeof import('./components/user/UserInfoSection.vue')['default']
     UserPasswordSection: typeof import('./components/user/UserPasswordSection.vue')['default']
