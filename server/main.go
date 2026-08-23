@@ -838,7 +838,8 @@ func main() {
                 }
 
                 davHandler := webdav.NewHandler("/api/v1/webdav", unifiedFS)
-                webdav.SetupUnifiedRouter(api, davHandler, authenticate, cfg.Upload.MaxFileSize)
+                // 挂到 /api/v1/webdav 子组，避免 /*path 通配符与 /api/v1 下同级静态路由冲突
+                webdav.SetupUnifiedRouter(api.Group("/webdav"), davHandler, authenticate, cfg.Upload.MaxFileSize)
                 utils.Info("WebDAV 统一端点已启用", utils.String("path", "/api/v1/webdav"))
             } else {
                 utils.Info("WebDAV 服务未启用")
