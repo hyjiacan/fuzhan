@@ -141,7 +141,7 @@ const columns = [
                 }
               }, fileName)
             : h('a', {
-                href: `/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`,
+                href: `/download/${PathUtils.encodeFilePath(fullPath)}`,
                 class: 'file-link'
               }, fileName)
         ])

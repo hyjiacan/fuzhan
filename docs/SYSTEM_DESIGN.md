@@ -263,7 +263,7 @@
 |------|------|
 | `/api/v1/auth/*` | 认证相关 |
 | `/api/v1/files/*` | 文件浏览 |
-| `/api/v1/download/*path` | 文件下载 |
+| `/download/*path` | 文件下载 |
 | `/api/v1/search/*query` | 文件搜索 |
 | `/api/v1/uploads/*` | 分片上传 |
 | `/api/v1/temp/*` | 临时文件 |

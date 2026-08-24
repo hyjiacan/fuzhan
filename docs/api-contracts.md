@@ -92,7 +92,7 @@ Content-Type: application/json
 | GET | `/api/v1/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 无 |
 | GET | `/api/v1/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 无 |
 | GET | `/api/v1/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 无 |
-| GET | `/api/v1/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 无 |
+| GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 无 |
 | GET | `/api/v1/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 无 |
 | POST | `/api/v1/files/rename` | `file.Handler.RenameFileHandler` | 重命名文件 | JWT |
 | POST | `/api/v1/files/move` | `file.Handler.MoveFileHandler` | 移动文件 | JWT |

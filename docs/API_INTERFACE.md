@@ -194,7 +194,7 @@
 
 ### 1. 下载文件
 
-- **URL**：`GET /api/v1/download/*path`
+- **URL**：`GET /download/*path`（兼容旧路径：`GET /api/v1/download/*path`）
 - **认证**：无需认证
 - **参数**：
   - `preview`（可选）：预览模式

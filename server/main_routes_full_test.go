@@ -208,6 +208,10 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
     cliAlias.GET("/list/*path", dummy)
     cliAlias.GET("/install.sh", dummy)
 
+    downloadAlias := r.Group("/download")
+    downloadAlias.GET("/*path", dummy)
+    downloadAlias.HEAD("/*path", dummy)
+
     openAPI := r.Group("/api/open/v1")
     openAPI.GET("/files/list", dummy)
     openAPI.GET("/files/search", dummy)

@@ -864,6 +864,13 @@ func main() {
             cliAlias.GET("/install.sh", cliHandlers.InstallScript)
         }
 
+        // 下载路由别名（无需认证，/download 作为 /api/v1/download 的快捷入口）
+        downloadAlias := r.Group("/download")
+        {
+            downloadAlias.GET("/*path", downloadHandlers.DownloadFile)
+            downloadAlias.HEAD("/*path", downloadHandlers.DownloadFile)
+        }
+
         // Open API 路由组（v3 Phase 3）
         // 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 调用统计 → 路由分发 → Handler
         // 见 architecture-v3.md

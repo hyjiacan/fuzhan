@@ -320,7 +320,7 @@ const columns = [
       const currentNavPath = store.state.currentPath
       const dirPath = row.path
       const downloadFullPath = row.path
-      const fileHref = `/api/v1/download/${PathUtils.encodeFilePath(downloadFullPath)}`
+      const fileHref = `/download/${PathUtils.encodeFilePath(downloadFullPath)}`
       const isPreview = canPreview(row)
       const fullPath = row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
@@ -447,7 +447,7 @@ const previewFile = (file) => {
 const downloadFile = (file) => {
   if (file?.path) {
     const fullPath = file.path
-    window.open(`/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
+    window.open(`/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
   }
 }
 

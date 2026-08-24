@@ -12,7 +12,9 @@
         <span class="temp-description">无需登录即可上传分享，文件到期自动删除</span>
       </div>
       <div class="breadcrumb-right">
+        <span>临时文件根据你的IP</span>
         <span class="ip-badge">{{ clientIP || '加载中...' }}</span>
+        <span>执行数据隔离</span>
         <span class="quota-badge">用量: {{ formatSize(used) }} / {{ quota > 0 ? formatSize(quota) : '无限制' }}</span>
       </div>
     </div>
@@ -70,10 +72,12 @@
     <!-- 上传弹窗 -->
     <n-modal :show="showUploadDialog" preset="card" title="上传临时文件" class="upload-dialog"
       @update:show="onUploadDialogShowChange" :mask-closable="false" :closeable="false">
-      <template #header-extra>
-        <n-checkbox v-model:checked="deleteOnDownload">下载后自动删除</n-checkbox>
-      </template>
       <upload-manager :upload-api="tempUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" ref="uploadManagerRef" @close="handleUploadDialogClose" :delete-on-download="deleteOnDownload" />
+      <template #footer>
+        <div class="upload-dialog-footer">
+          <n-checkbox v-model:checked="deleteOnDownload">下载后自动删除</n-checkbox>
+        </div>
+      </template>
     </n-modal>
 
     <!-- 预览弹窗 -->
@@ -127,7 +131,7 @@
 	    </n-modal>
 	  </div>
 	</template>
-	
+
 	<script setup>
 	import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 	import { NButton, NIcon, NDataTable, NTag, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, NCheckbox, useMessage, useDialog } from 'naive-ui'
@@ -710,5 +714,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.upload-dialog-footer {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
 }
 </style>

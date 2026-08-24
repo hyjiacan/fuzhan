@@ -262,7 +262,7 @@ const loadChunk = async (chunkIndex) => {
 const downloadFile = () => {
   if (props.file.path) {
     const fullPath = props.file.path
-    window.open(`/api/v1/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
+    window.open(`/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
   }
 }
 

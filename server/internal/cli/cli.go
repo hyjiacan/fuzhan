@@ -83,7 +83,7 @@ func outputItems(w http.ResponseWriter, baseUrl string, cliPrefix string, items 
 			icon = "[目录]"
 		} else {
 			// 文件使用 download 路径
-			fullUrl = fmt.Sprintf("%s/api/v1/download/%s", baseUrl, filePath)
+			fullUrl = fmt.Sprintf("%s/download/%s", baseUrl, filePath)
 			icon = "[文件]"
 		}
 		// 格式化修改时间
@@ -229,7 +229,7 @@ func CliSearch(w http.ResponseWriter, r *http.Request, hashMap map[string]string
 			}
 			filePath := strings.ReplaceAll(item.Path, "\\", "/")
 			filePath = strings.ReplaceAll(filePath, " ", "%20")
-			fullUrl := fmt.Sprintf("%s/api/v1/download/%s", baseUrl, filePath)
+			fullUrl := fmt.Sprintf("%s/download/%s", baseUrl, filePath)
 			modTime := formatModTime(item.ModifiedTime)
 			hash := item.Xxh3Hash
 			if hash == "" {

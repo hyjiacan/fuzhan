@@ -104,7 +104,7 @@ const runtimeInfo = ref('')
 
 const fetchRuntimeInfo = async () => {
 	try {
-		const res = await fetch('/api/health')
+		const res = await fetch('/api/v1/health')
 		if (res.ok) {
 			const data = await res.json()
 			runtimeInfo.value = `${data.goVersion || ''}`

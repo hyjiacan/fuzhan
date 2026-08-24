@@ -115,7 +115,7 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
             result["chunkSize"] = textChunkSize
             result["totalChunks"] = (info.Size() + textChunkSize - 1) / textChunkSize
         } else {
-            result["fileUrl"] = "/api/v1/download/" + filePath
+            result["fileUrl"] = "/download/" + filePath
         }
     }
 

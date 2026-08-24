@@ -77,8 +77,9 @@ func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchServ
 func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
 
-	// 获取 hash 从路径: /api/v1/download/<hash>
+	// 获取 hash 从路径: /api/v1/download/<hash> 或 /download/<hash>
 	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/download/")
+	hash = strings.TrimPrefix(hash, "/download/")
 	hash = strings.TrimSpace(hash)
 
 	if hash == "" {
@@ -165,8 +166,10 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 路径格式: /api/v1/download/根目录名/子路径
 	// 管理页面路径格式: /api/v1/admin/download/根目录名/子路径
+	// 别名路径格式: /download/根目录名/子路径
 	filename := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/download/")
 	filename = strings.TrimPrefix(filename, "/api/v1/download/")
+	filename = strings.TrimPrefix(filename, "/download/")
 	filename, _ = pathutils.URLDecode(filename)
 
 	// 检测是否为按哈希下载: 路径为单段且是 16 位十六进制字符串（xxh3 64位）

@@ -123,7 +123,9 @@ fuzhan_format_line() {
 
     # 从 URL 中提取路径
     local path
-    if [[ "$url" == */api/v1/download/* ]]; then
+    if [[ "$url" == */download/* ]]; then
+        path="${url#*/download/}"
+    elif [[ "$url" == */api/v1/download/* ]]; then
         path="${url#*/api/v1/download/}"
     elif [[ "$url" == */cli/list/* ]]; then
         path="${url#*/cli/list/}"
@@ -154,7 +156,9 @@ fuzhan_format_list_line() {
 
     # 从 URL 中提取路径
     local path
-    if [[ "$url" == */api/v1/download/* ]]; then
+    if [[ "$url" == */download/* ]]; then
+        path="${url#*/download/}"
+    elif [[ "$url" == */api/v1/download/* ]]; then
         path="${url#*/api/v1/download/}"
     elif [[ "$url" == */cli/list/* ]]; then
         path="${url#*/cli/list/}"
@@ -291,7 +295,7 @@ fuzhan_download() {
         fi
         local encoded
         encoded="$(printf '%%s' "$hash" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
-        curl -OJ "$fuzhan_SERVER/api/v1/download/by-hash/$encoded"
+        curl -OJ "$fuzhan_SERVER/download/$encoded"
     else
         path="${args[0]}"
         if [ -z "$path" ]; then
@@ -303,7 +307,7 @@ fuzhan_download() {
         fi
         local encoded
         encoded="$(printf '%%s' "$path" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
-        curl -O "$fuzhan_SERVER/api/v1/download/$encoded"
+        curl -O "$fuzhan_SERVER/download/$encoded"
     fi
 }
 

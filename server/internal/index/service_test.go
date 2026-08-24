@@ -503,7 +503,7 @@ func TestGetDependencyTree_SimpleTree(t *testing.T) {
     if tree.FileName != "A.txt" {
         t.Errorf("根节点文件名期望 A.txt, 实际 %s", tree.FileName)
     }
-    if tree.DownloadURL != "/api/v1/download/docs/A.txt" {
+    if tree.DownloadURL != "/download/docs/A.txt" {
         t.Errorf("根节点下载 URL 不正确: %s", tree.DownloadURL)
     }
 
@@ -524,7 +524,7 @@ func TestGetDependencyTree_SimpleTree(t *testing.T) {
     if treeB.Downstream[0].FileName != "A.txt" {
         t.Errorf("B 的下游文件名期望 A.txt, 实际 %s", treeB.Downstream[0].FileName)
     }
-    if treeB.Downstream[0].DownloadURL != "/api/v1/download/docs/A.txt" {
+    if treeB.Downstream[0].DownloadURL != "/download/docs/A.txt" {
         t.Errorf("下游节点下载 URL 不正确: %s", treeB.Downstream[0].DownloadURL)
     }
 }
