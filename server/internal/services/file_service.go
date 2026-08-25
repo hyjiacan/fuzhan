@@ -210,18 +210,20 @@ func (fs *FileService) DeleteFile(filePath string) error {
         return fmt.Errorf("无法访问文件")
     }
 
-    // 不能是目录
+    // 目录使用 RemoveAll 递归删除，文件使用 Remove
     if info.IsDir() {
-        return fmt.Errorf("不支持删除目录")
+        if err := os.RemoveAll(realPath); err != nil {
+            utils.Error("删除目录失败", utils.String("path", realPath), utils.Err(err))
+            return fmt.Errorf("删除目录失败")
+        }
+        utils.Info("目录删除成功", utils.String("path", realPath))
+    } else {
+        if err := os.Remove(realPath); err != nil {
+            utils.Error("删除文件失败", utils.String("path", realPath), utils.Err(err))
+            return fmt.Errorf("删除文件失败")
+        }
+        utils.Info("文件删除成功", utils.String("path", realPath))
     }
-
-    // 执行删除
-    if err := os.Remove(realPath); err != nil {
-        utils.Error("删除文件失败", utils.String("path", realPath), utils.Err(err))
-        return fmt.Errorf("删除文件失败")
-    }
-
-    utils.Info("文件删除成功", utils.String("path", realPath))
     return nil
 }
 

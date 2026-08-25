@@ -91,7 +91,7 @@ import { NButton, NDataTable, NBreadcrumb, NBreadcrumbItem, NModal, NInput, NSpi
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
-import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 import { isPreviewable } from '@/config/preview'
@@ -200,6 +200,12 @@ const searchState = computed(() => store.state.searchState)
 
 const isSearching = computed(() => searchState.value.isSearching)
 const searchCompleted = computed(() => searchState.value.isCompleted)
+
+// 版本标记：仅浏览模式（非搜索）下，分析当前目录，返回"最新版本"文件的 path 集合
+const latestVersionPaths = computed(() => {
+  if (isSearching.value || searchCompleted.value) return new Set()
+  return analyzeLatestVersions(fileList.value)
+})
 
 const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 
@@ -316,6 +322,7 @@ const columns = [
     ellipsis: { tooltip: true },
     render(row) {
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
+      const isLatest = latestVersionPaths.value.has(row.path)
       // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
       const currentNavPath = store.state.currentPath
       const dirPath = row.path
@@ -343,14 +350,17 @@ const columns = [
           }, highlightKeyword(fileName))
           : h('a', {
             href: fileHref,
-            class: 'file-link',
+            class: isLatest ? 'file-link latest-version' : 'file-link',
             onClick: (e) => {
               if (isPreview) {
                 e.preventDefault()
                 previewFile(row)
               }
             }
-          }, highlightKeyword(fileName))
+          }, [
+            highlightKeyword(fileName),
+            isLatest ? h('span', { class: 'latest-version-tag' }, '最新') : null
+          ])
       ]
 
       // 搜索结果模式（显示完整路径）
@@ -739,6 +749,23 @@ const showUploadDialogInternal = () => {
     .icon-filetype {
       color: #888;
     }
+  }
+
+  .file-link.latest-version {
+    font-weight: 700;
+  }
+
+  .latest-version-tag {
+    flex-shrink: 0;
+    margin-left: 4px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 500;
+    color: #fff;
+    background: #FF6600;
+    border-radius: 3px;
+    white-space: nowrap;
   }
 }
 

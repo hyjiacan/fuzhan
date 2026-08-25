@@ -26,6 +26,9 @@
           <n-input ref="searchInputRef" v-model:value="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
             class="search-input" clearable name="search-query" @keydown.enter="searchFiles" />
           <n-button size="small" @click="loadCurrentDir" :loading="loading">刷新</n-button>
+          <n-button v-if="checkedRowKeys.length > 0" size="small" type="error" @click="handleBatchDelete">
+            删除选中 ({{ checkedRowKeys.length }})
+          </n-button>
           <n-divider vertical class="action-divider" />
           <n-button size="small" type="primary" @click="handleScan" :loading="scanning">
             触发全量扫描
@@ -46,7 +49,8 @@
       <!-- 文件浏览 -->
     <div class="content-table">
       <n-data-table :columns="columns" :data="displayList" :loading="loading || isSearching" :pagination="false"
-        :row-key="row => row.path" @dblclick-row="handleDblClick" virtual-scroll flex-height />
+        :row-key="row => row.path" :checked-row-keys="checkedRowKeys" @update:checked-row-keys="handleCheck"
+        @dblclick-row="handleDblClick" virtual-scroll flex-height />
     </div>
 
     <!-- 移动/重命名对话框（类似 Linux mv 命令） -->
@@ -106,7 +110,7 @@ import {
   useMessage, useDialog, useLoadingBar
 } from 'naive-ui'
 import { AdminApi, IndexApi } from '@/api'
-import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { NumberUtils, TimeUtils, PathUtils, compareFileNames } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import FilePreview from '@/components/file/FilePreview.vue'
 import { isPreviewable } from '@/config/preview'
@@ -228,6 +232,14 @@ const encodePath = (path) => {
 
 // Table columns
 const columns = [
+  {
+    type: 'selection',
+    width: 40,
+    disabled(row) {
+      // 根目录不允许操作
+      return isAtRoot.value
+    }
+  },
   {
     title: '文件名',
     key: 'name',
@@ -437,6 +449,7 @@ const highlightKeyword = (text) => {
 
 // 搜索文件（复用 store，与 HomeView 一致）
 const searchFiles = () => {
+  checkedRowKeys.value = []
   if (!searchQuery.value.trim()) {
     store.clearSearchState()
     loadCurrentDir()
@@ -448,6 +461,7 @@ const searchFiles = () => {
 // 清除搜索（与 HomeView 一致）
 const clearSearch = () => {
   searchQuery.value = ''
+  checkedRowKeys.value = []
   store.clearSearchState()
   loadCurrentDir()
 }
@@ -455,6 +469,7 @@ const clearSearch = () => {
 // 点击路径段导航到目录
 const navigateToDir = (dirPath) => {
   searchQuery.value = ''
+  checkedRowKeys.value = []
   store.clearSearchState()
   router.push('/admin/files/' + encodePath(dirPath))
 }
@@ -479,7 +494,7 @@ const loadCurrentDir = async () => {
         const bIsDir = b.type === 'dir' || b.type === 'directory'
         if (aIsDir && !bIsDir) return -1
         if (!aIsDir && bIsDir) return 1
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        return compareFileNames(a.name, b.name)
       })
 
       // 在根目录时一并更新根目录选项（供移动/重命名使用）
@@ -567,10 +582,17 @@ const downloadFile = (file) => {
 
 // 删除
 const deleting = ref(false)
+const checkedRowKeys = ref([])
+const handleCheck = (keys) => {
+  checkedRowKeys.value = keys
+}
 const handleDelete = async (file) => {
+  const isDirectory = isDir(file)
   dialog.warning({
     title: '确认删除',
-    content: `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
+    content: isDirectory
+      ? `确定要删除目录 "${file.name}" 及其所有内容吗？此操作不可恢复。`
+      : `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -593,6 +615,47 @@ const handleDelete = async (file) => {
   })
 }
 
+// 批量删除选中的文件
+const handleBatchDelete = () => {
+  const selected = displayList.value.filter(f => checkedRowKeys.value.includes(f.path))
+  if (selected.length === 0) return
+  const dirCount = selected.filter(f => isDir(f)).length
+  const fileCount = selected.length - dirCount
+  let contentText
+  if (dirCount > 0 && fileCount > 0) {
+    contentText = `确定要删除选中的 ${fileCount} 个文件和 ${dirCount} 个目录（含目录下所有内容）吗？此操作不可恢复。`
+  } else if (dirCount > 0) {
+    contentText = `确定要删除选中的 ${dirCount} 个目录（含目录下所有内容）吗？此操作不可恢复。`
+  } else {
+    contentText = `确定要删除选中的 ${fileCount} 个文件吗？此操作不可恢复。`
+  }
+  dialog.warning({
+    title: '确认删除',
+    content: contentText,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      deleting.value = true
+      try {
+        let successCount = 0
+        for (const file of selected) {
+          const data = await AdminApi.delete(file.path)
+          if (data.success) {
+            successCount++
+          }
+        }
+        message.success(`已删除 ${successCount} 个文件`)
+        checkedRowKeys.value = []
+        loadCurrentDir()
+      } catch (e) {
+        message.error('删除失败')
+      } finally {
+        deleting.value = false
+      }
+    }
+  })
+}
+
 // 监听路由变化
 watch(
   () => route.params.pathMatch,
@@ -600,9 +663,10 @@ watch(
     // pathMatch 可能是字符串或字符串数组
     currentPath.value = Array.isArray(newPathMatch) ? newPathMatch.join('/') : (newPathMatch || '')
     updateBreadcrumb()
-    // 路由变化时清空搜索状态
+    // 路由变化时清空搜索状态和选中项
     searchQuery.value = ''
     store.clearSearchState()
+    checkedRowKeys.value = []
     loadCurrentDir()
   },
   { immediate: true }

@@ -26,6 +26,9 @@ type Service struct {
 	checker     *ConsistencyChecker
 	hashWorker  *HashWorker
 
+	// 任务记录服务（可选，用于记录扫描/哈希等任务到 task_records 表）
+	taskService TaskRecorder
+
 	// 定时扫描
 	mu            sync.Mutex
 	timerStopCh   chan struct{}
@@ -40,6 +43,22 @@ type Service struct {
 	recentlySynced   map[string]time.Time
 	recentlyMu       sync.Mutex
 	recentlyStopCh   chan struct{}
+}
+
+// TaskRecorder 任务记录接口（解耦 index 包对 services 包的依赖）
+type TaskRecorder interface {
+	CreateTask(taskType, taskName string) (*models.TaskRecord, error)
+	StartTask(id uint) error
+	UpdateTaskProgress(id uint, progress int, doneItems, totalItems int64) error
+	CompleteTask(id uint) error
+	FailTask(id uint, errMsg string) error
+}
+
+// SetTaskService 注入任务记录服务
+func (s *Service) SetTaskService(ts TaskRecorder) {
+	s.taskService = ts
+	s.scanner.taskService = ts
+	s.hashWorker.taskService = ts
 }
 
 
@@ -84,6 +103,13 @@ func (s *Service) StartScanByScope(scope ScanScope) error {
                 cancel()
                 if progress.Status == ScanStatusCompleted {
                     s.hashWorker.Trigger(context.Background())
+                    s.mu.Lock()
+                    s.lastScanEnd = time.Now()
+                    s.currentScope = ""
+                    s.mu.Unlock()
+                    utils.Info("手动扫描完成",
+                        utils.String("scope", string(scope)),
+                        utils.String("finish_time", s.lastScanEnd.Format("2006-01-02 15:04:05")))
                 }
                 return
             }

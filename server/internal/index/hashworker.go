@@ -18,12 +18,13 @@ import (
 // 扫描所有 hash_status = 'pending' 的记录，按文件大小从小到大计算 hash。
 // 单例运行：重复触发不重复启动，已在运行时新触发直接忽略。
 type HashWorker struct {
-    db        *gorm.DB
-    rootNames map[string]string
-    running   bool
-    mu        sync.Mutex
-    progress  HashProgress
-    stats     HashStats
+	db          *gorm.DB
+	rootNames   map[string]string
+	running     bool
+	mu          sync.Mutex
+	progress    HashProgress
+	stats       HashStats
+	taskService TaskRecorder // 可选，用于记录哈希任务到 task_records
 }
 
 // HashProgress 哈希计算进度
@@ -93,6 +94,15 @@ func (w *HashWorker) run(ctx context.Context) {
     }()
 
     utils.Info("哈希计算任务开始")
+
+    // 创建任务记录（供任务管理页面展示）
+    var taskID uint
+    if w.taskService != nil {
+        if task, err := w.taskService.CreateTask("hash", "哈希计算"); err == nil {
+            taskID = task.ID
+            w.taskService.StartTask(taskID)
+        }
+    }
 
     tables := []string{
         "file_records_public",
@@ -170,6 +180,15 @@ func (w *HashWorker) run(ctx context.Context) {
     w.progress.Done = totalDone
     w.progress.Failed = totalFailed
     w.mu.Unlock()
+
+    if taskID > 0 && w.taskService != nil {
+        w.taskService.UpdateTaskProgress(taskID, 100, totalDone, total)
+        if totalFailed > 0 {
+            w.taskService.FailTask(taskID, fmt.Sprintf("部分失败: %d/%d", totalFailed, total))
+        } else {
+            w.taskService.CompleteTask(taskID)
+        }
+    }
 
     utils.Info("哈希计算任务完成",
         utils.Int64("total", total),

@@ -1,6 +1,7 @@
 import { reactive, readonly } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { FileApi, AdminApi, SearchApi } from '@/api'
+import { compareFileNames } from '@/utils'
 
 // 检查是否有保存的登录状态
 const savedToken = localStorage.getItem('token')
@@ -100,13 +101,13 @@ const mutations = {
   },
 
   setFileList(files) {
-    // 排序：文件夹在前，文件在后，按名称排序
+    // 排序：文件夹在前，文件在后，按名称排序（英文在中文前）
     state.fileList = files.sort((a, b) => {
       const aIsDir = a.type === 'dir' || a.type === 'directory'
       const bIsDir = b.type === 'dir' || b.type === 'directory'
       if (aIsDir && !bIsDir) return -1
       if (!aIsDir && bIsDir) return 1
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      return compareFileNames(a.name, b.name)
     })
   },
 

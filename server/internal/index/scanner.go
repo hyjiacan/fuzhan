@@ -20,13 +20,14 @@ import (
 // 扫描逻辑: 遍历文件系统/数据库, 新增不存在的记录。
 // 支持多 scope 扫描，每个 scope 独立进度跟踪。
 type Scanner struct {
-    db            *gorm.DB
-    rootNames     map[string]string
-    tempFilePath  string
-    privatePath   string
-    progresses    map[ScanScope]*ScanProgress // 每个 scope 独立进度
-    mu            sync.Mutex
-    batchSize     int
+	db            *gorm.DB
+	rootNames     map[string]string
+	tempFilePath  string
+	privatePath   string
+	progresses    map[ScanScope]*ScanProgress // 每个 scope 独立进度
+	mu            sync.Mutex
+	batchSize     int
+	taskService   TaskRecorder // 可选，用于记录扫描任务到 task_records
 }
 
 // NewScanner 创建全量扫描器
@@ -109,6 +110,15 @@ type rootScanResult struct {
 func (s *Scanner) runScan(ctx context.Context) {
     startTime := time.Now()
     scanRecord := s.createScanRecord()
+
+    // 创建任务记录（供任务管理页面展示）
+    var taskID uint
+    if s.taskService != nil {
+        if task, err := s.taskService.CreateTask("scan", "全量扫描"); err == nil {
+            taskID = task.ID
+            s.taskService.StartTask(taskID)
+        }
+    }
 
     // 先统计文件数（可能耗时，每10秒报告进度）
     utils.Info("全量扫描开始: 正在统计文件总数...")
@@ -208,6 +218,10 @@ func (s *Scanner) runScan(ctx context.Context) {
         s.getOrCreateProgress(ScanScopePublic).SetError(firstError.Error())
         s.finalizeScanRecord(scanRecord.ID, models.ScanRecordStatusFailed,
             firstError.Error(), rootResults)
+        if taskID > 0 && s.taskService != nil {
+            s.taskService.UpdateTaskProgress(taskID, 100, p.ScannedFiles, p.TotalFiles)
+            s.taskService.FailTask(taskID, firstError.Error())
+        }
         utils.Error("全量扫描完成（有错误）",
             utils.Int64("scanned", p.ScannedFiles),
             utils.Duration("elapsed", elapsed),
@@ -216,6 +230,10 @@ func (s *Scanner) runScan(ctx context.Context) {
         s.getOrCreateProgress(ScanScopePublic).SetStatus(ScanStatusCompleted)
         s.finalizeScanRecord(scanRecord.ID, models.ScanRecordStatusCompleted,
             "", rootResults)
+        if taskID > 0 && s.taskService != nil {
+            s.taskService.UpdateTaskProgress(taskID, 100, p.ScannedFiles, p.TotalFiles)
+            s.taskService.CompleteTask(taskID)
+        }
         utils.Info("全量扫描完成",
             utils.Int64("scanned", p.ScannedFiles),
             utils.Duration("elapsed", elapsed))

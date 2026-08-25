@@ -40,6 +40,7 @@ type UploadSessionHandler struct {
 	urlTaskRepo *repositories.URLDownloadTaskRepository
 	recordRepo  *repositories.RecordRepository
 	indexSvc    *index.Service
+	taskSvc     *services.TaskService
 	chunkSize   int64
 	downloadSem chan struct{}
 }
@@ -83,13 +84,14 @@ func createSSRFProtectedHTTPClient(timeout time.Duration, urlCfg utils.URLUpload
 }
 
 // NewUploadSessionHandler 创建上传会话处理器实例
-func NewUploadSessionHandler(svc *services.UploadSessionService, db *gorm.DB, chunkSize int64, recordRepo *repositories.RecordRepository, indexSvc *index.Service) *UploadSessionHandler {
+func NewUploadSessionHandler(svc *services.UploadSessionService, db *gorm.DB, chunkSize int64, recordRepo *repositories.RecordRepository, indexSvc *index.Service, taskSvc *services.TaskService) *UploadSessionHandler {
     return &UploadSessionHandler{
         service:     svc,
         db:          db,
         urlTaskRepo: repositories.NewURLDownloadTaskRepository(db),
         recordRepo:  recordRepo,
         indexSvc:    indexSvc,
+        taskSvc:     taskSvc,
         chunkSize:   chunkSize,
         downloadSem: make(chan struct{}, maxConcurrentDownloads),
     }
@@ -982,12 +984,33 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
     h.downloadSem <- struct{}{}
     defer func() { <-h.downloadSem }()
 
+    // 创建任务记录（供任务管理页面展示）
+    var taskRecordID uint
+    if h.taskSvc != nil {
+        if task, err := h.taskSvc.CreateTask("url_download", "URL下载: "+filename); err == nil {
+            taskRecordID = task.ID
+            h.taskSvc.StartTask(task.ID)
+        }
+    }
+    completeTask := func(success bool, errMsg string) {
+        if taskRecordID > 0 && h.taskSvc != nil {
+            if success {
+                h.taskSvc.CompleteTask(taskRecordID)
+            } else {
+                h.taskSvc.FailTask(taskRecordID, errMsg)
+            }
+        }
+    }
+
     var urlTaskUpdated bool
     var outFile *os.File
+    var taskSucceeded bool
+    var taskErrMsg string
     defer func() {
         if !urlTaskUpdated {
             h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "意外退出：状态未更新")
         }
+        completeTask(taskSucceeded, taskErrMsg)
     }()
 
     defer func() {
@@ -1135,7 +1158,13 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
     }
 
     // 以下为 HTTP 和 FTP 协议统一的文件处理逻辑
+    taskErrMsg = "下载失败"
     h.finalizeURLDownload(taskID, filename, fileSize, downloaded, clientIP, uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType, &urlTaskUpdated)
+    // 检查 URL 任务的最终状态判断是否成功
+    if finalTask, e := h.urlTaskRepo.GetByID(taskID); e == nil && finalTask.Status == models.URLDownloadStatusCompleted {
+        taskSucceeded = true
+        taskErrMsg = ""
+    }
 }
 
 // finalizeURLDownload 完成下载后的统一处理（HTTP 和 FTP 共用）

@@ -24,414 +24,439 @@
         </template>
       </n-form-item>
 
-      <n-form-item label="上传方式:">
-        <n-radio-group v-model:value="form.uploadMethod">
-          <n-radio value="local">上传本地文件</n-radio>
-          <n-radio value="url">从 URL 上传</n-radio>
-          <n-radio value="clipboard">从剪贴板粘贴</n-radio>
-          <n-radio value="text">新建文本</n-radio>
-        </n-radio-group>
-      </n-form-item>
-
-      <n-form-item v-if="form.uploadMethod === 'local'" label="选择文件:">
-        <!-- Drop zone with button -->
-        <div
-          ref="dropZoneRef"
-          :class="['drop-zone', { 'drop-zone-active': isDragging }]"
-          @dragenter.prevent="handleDragEnter"
-          @dragover.prevent="handleDragOver"
-          @dragleave.prevent="handleDragLeave"
-          @drop.prevent="handleDrop"
-          @click="triggerFileInput"
-        >
-          <input
-            ref="fileInputRef"
-            type="file"
-            multiple
-            :max="100"
-            style="display: none;"
-            @change="handleFileSelect"
-          />
-          <div class="drop-zone-content">
-            <n-icon size="36"><UploadIcon /></n-icon>
-            <div style="margin-top: 8px; font-size: 14px;">
-              {{ isDragging ? '松开以上传' : '拖拽文件到此处，或点击选择' }}
-            </div>
-            <div style="font-size: 12px; color: #999; margin-top: 4px;">
-              支持多文件、拖放，大文件自动分片上传
-            </div>
-          </div>
-        </div>
-
-        <!-- Global drag overlay -->
-        <transition name="fade">
-          <div v-if="isDragging" class="drop-overlay">
-            <div class="drop-overlay-content">
-              <n-icon size="64" color="#fff"><UploadIcon /></n-icon>
-              <div style="margin-top: 16px; font-size: 18px; color: #fff;">松开以上传文件</div>
-              <div style="font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px;">
-                {{ draggedFileCount }} 个文件即将上传
-              </div>
-            </div>
-          </div>
-        </transition>
-      </n-form-item>
-
-      <!-- Upload queue - outside form-item to avoid flex layout issues -->
-      <div v-if="form.uploadMethod === 'local' && uploadQueue.length > 0" class="upload-queue">
-        <div class="queue-header">
-          <span>上传队列 ({{ uploadQueue.length }} 个)</span>
-          <span style="color: #999;">等待 {{ pendingCount }} 个</span>
-        </div>
-        <div ref="queueListRef" class="queue-list" style="max-height: 160px; overflow-y: auto;">
-          <template v-for="item in uploadQueue" :key="item.id">
-          <div
-            :ref="el => { if (el) queueItemRefs[item.id] = el }"
-            class="queue-item"
-          >
-            <div class="queue-item-info">
-              <template v-if="editingItemId === item.id">
-                <n-input
-                  ref="renameInputRef"
-                  v-model:value="renameValue"
-                  :maxlength="255"
-                  size="small"
-                  :status="renameError ? 'error' : 'default'"
-                  class="rename-input"
-                  @keyup.enter="confirmRename(item)"
-                  @keyup.escape="cancelRename"
-                  @blur="confirmRename(item)"
-                />
-                <div v-if="renameError" class="rename-error">{{ renameError }}</div>
-              </template>
-              <template v-else>
-                <span
-                  class="queue-item-name"
-                  :class="{ editable: canEditFile(item) }"
-                  :title="canEditFile(item) ? (item.name + '（点击修改文件名）') : item.name"
-                  @click="startRename(item)"
-                >{{ item.name }}</span>
-              </template>
-              <div class="queue-item-meta">
-                <span class="queue-item-size">{{ formatFileSize(item.size) }}</span>
-                <div class="queue-item-progress">
-                  <span v-if="item.error && item.status !== 'needFile'" class="queue-item-error">{{ item.error }}</span>
-                  <span v-if="item.displayText" class="queue-item-speed">{{ item.displayText }}</span>
-                  <span v-if="item.status === 'needFile'" class="queue-item-error">请重新选择文件以继续上传</span>
+      <!-- 上传方式：左侧 tabs 切换 -->
+      <n-tabs v-model:value="form.uploadMethod" placement="left" type="line" class="upload-method-tabs">
+        <n-tab-pane name="local" tab="上传本地文件">
+          <n-form-item label="选择文件:">
+            <!-- Drop zone with button -->
+            <div
+              ref="dropZoneRef"
+              :class="['drop-zone', { 'drop-zone-active': isDragging }]"
+              @dragenter.prevent="handleDragEnter"
+              @dragover.prevent="handleDragOver"
+              @dragleave.prevent="handleDragLeave"
+              @drop.prevent="handleDrop"
+              @click="triggerFileInput"
+            >
+              <input
+                ref="fileInputRef"
+                type="file"
+                multiple
+                :max="100"
+                style="display: none;"
+                @change="handleFileSelect"
+              />
+              <div class="drop-zone-content">
+                <n-icon size="36"><UploadIcon /></n-icon>
+                <div style="margin-top: 8px; font-size: 14px;">
+                  {{ isDragging ? '松开以上传' : '拖拽文件到此处，或点击选择' }}
+                </div>
+                <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                  支持多文件、拖放，大文件自动分片上传
                 </div>
               </div>
-              <n-progress
-                v-if="item.status === 'uploading' || item.status === 'failed' || item.status === 'needFile'"
-                type="line"
-                :percentage="item.progress"
-                :show-indicator="false"
-                :height="4"
-                :border-radius="2"
-              />
             </div>
-            <div class="queue-item-actions">
-              <n-tag :type="getStatusTagType(item.status)" size="small">{{ getStatusText(item.status) }}</n-tag>
-              <n-button
-                v-if="item.status === 'pending'"
-                size="tiny"
-                quaternary
-                @click="item.showNotes = !item.showNotes"
-              >
-                {{ item.showNotes ? '收起' : '备注' }}
-              </n-button>
-              <n-button
-                v-if="item.status === 'pending'"
-                size="tiny"
-                quaternary
-                @click="item.showDeps = !item.showDeps"
-              >
-                {{ item.showDeps ? '收起' : '依赖' }}
-              </n-button>
-              <n-button
-                v-if="item.status === 'needFile'"
-                type="warning"
-                size="tiny"
-                @click="selectFileForItem(item)"
-              >
-                选择文件
-              </n-button>
-              <n-button
-                v-if="item.status === 'uploading'"
-                type="info"
-                size="tiny"
-                @click="pauseUpload(item)"
-              >
-                暂停
-              </n-button>
-              <n-button
-                v-if="item.status === 'paused'"
-                type="success"
-                size="tiny"
-                @click="resumeUpload(item)"
-              >
-                继续
-              </n-button>
-              <n-button
-                v-if="item.status === 'failed'"
-                type="warning"
-                size="tiny"
-                @click="retryUpload(item)"
-              >
-                重试
-              </n-button>
-              <n-button
-                v-if="item.status === 'needFile' || item.status === 'pending' || item.status === 'failed' || item.status === 'paused' || item.status === 'uploading'"
-                type="error"
-                size="tiny"
-                circle
-                title="取消上传"
-                @click="removeFromQueue(item.id)"
-              >
-                <template #icon>
-                  <n-icon><DeleteIcon /></n-icon>
-                </template>
-              </n-button>
+
+            <!-- Global drag overlay -->
+            <transition name="fade">
+              <div v-if="isDragging" class="drop-overlay">
+                <div class="drop-overlay-content">
+                  <n-icon size="64" color="#fff"><UploadIcon /></n-icon>
+                  <div style="margin-top: 16px; font-size: 18px; color: #fff;">松开以上传文件</div>
+                  <div style="font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px;">
+                    {{ draggedFileCount }} 个文件即将上传
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </n-form-item>
+
+          <!-- Upload queue -->
+          <div v-if="uploadQueue.length > 0" class="upload-queue">
+            <div class="queue-header">
+              <span>上传队列 ({{ uploadQueue.length }} 个)</span>
+              <span style="color: #999;">等待 {{ pendingCount }} 个</span>
+            </div>
+            <div ref="queueListRef" class="queue-list" style="max-height: 160px; overflow-y: auto;">
+              <template v-for="item in uploadQueue" :key="item.id">
+                <div
+                  :ref="el => { if (el) queueItemRefs[item.id] = el }"
+                  class="queue-item"
+                >
+                  <div class="queue-item-info">
+                    <template v-if="editingItemId === item.id">
+                      <n-input
+                        ref="renameInputRef"
+                        v-model:value="renameValue"
+                        :maxlength="255"
+                        size="small"
+                        :status="renameError ? 'error' : 'default'"
+                        class="rename-input"
+                        @keyup.enter="confirmRename(item)"
+                        @keyup.escape="cancelRename"
+                        @blur="confirmRename(item)"
+                      />
+                      <div v-if="renameError" class="rename-error">{{ renameError }}</div>
+                    </template>
+                    <template v-else>
+                      <span
+                        class="queue-item-name"
+                        :class="{ editable: canEditFile(item) }"
+                        :title="canEditFile(item) ? (item.name + '（点击修改文件名）') : item.name"
+                        @click="startRename(item)"
+                      >{{ item.name }}</span>
+                    </template>
+                    <div class="queue-item-meta">
+                      <span class="queue-item-size">{{ formatFileSize(item.size) }}</span>
+                      <div class="queue-item-progress">
+                        <span v-if="item.error && item.status !== 'needFile'" class="queue-item-error">{{ item.error }}</span>
+                        <span v-if="item.displayText" class="queue-item-speed">{{ item.displayText }}</span>
+                        <span v-if="item.status === 'needFile'" class="queue-item-error">请重新选择文件以继续上传</span>
+                      </div>
+                    </div>
+                    <n-progress
+                      v-if="item.status === 'uploading' || item.status === 'failed' || item.status === 'needFile'"
+                      type="line"
+                      :percentage="item.progress"
+                      :show-indicator="false"
+                      :height="4"
+                      :border-radius="2"
+                    />
+                  </div>
+                  <div class="queue-item-actions">
+                    <n-tag :type="getStatusTagType(item.status)" size="small">{{ getStatusText(item.status) }}</n-tag>
+                    <n-button
+                      v-if="item.status === 'pending'"
+                      size="tiny"
+                      quaternary
+                      @click="item.showNotes = !item.showNotes"
+                    >
+                      {{ item.showNotes ? '收起' : '备注' }}
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'pending'"
+                      size="tiny"
+                      quaternary
+                      @click="item.showDeps = !item.showDeps"
+                    >
+                      {{ item.showDeps ? '收起' : '依赖' }}
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'needFile'"
+                      type="warning"
+                      size="tiny"
+                      @click="selectFileForItem(item)"
+                    >
+                      选择文件
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'uploading'"
+                      type="info"
+                      size="tiny"
+                      @click="pauseUpload(item)"
+                    >
+                      暂停
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'paused'"
+                      type="success"
+                      size="tiny"
+                      @click="resumeUpload(item)"
+                    >
+                      继续
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'failed'"
+                      type="warning"
+                      size="tiny"
+                      @click="retryUpload(item)"
+                    >
+                      重试
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'needFile' || item.status === 'pending' || item.status === 'failed' || item.status === 'paused' || item.status === 'uploading'"
+                      type="error"
+                      size="tiny"
+                      circle
+                      title="取消上传"
+                      @click="removeFromQueue(item.id)"
+                    >
+                      <template #icon>
+                        <n-icon><DeleteIcon /></n-icon>
+                      </template>
+                    </n-button>
+                  </div>
+                </div>
+                <!-- 备注区域 -->
+                <div v-if="item.showNotes" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
+                  <n-input
+                    v-model:value="item.notes"
+                    :maxlength="500"
+                    type="textarea"
+                    placeholder="输入文件备注..."
+                    :rows="2"
+                    size="small"
+                  />
+                </div>
+                <!-- 依赖区域 -->
+                <div v-if="item.showDeps" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
+                  <div :style="{ display: 'flex', gap: '6px', flexDirection: 'column' }">
+                    <n-auto-complete
+                      v-model:value="item.depFileName"
+                      :maxlength="255"
+                      :options="getDepAutocompleteOptions(item)"
+                      placeholder="搜索并选择依赖文件"
+                      size="small"
+                      clearable
+                      :input-props="{ style: 'width: 100%' }"
+                      @update:value="(val) => handleDepSearch(item, val)"
+                      @select="(val) => handleDepSelect(item, val)"
+                    />
+                    <n-select
+                      v-model:value="item.depRelation"
+                      :options="depRelationOptions"
+                      size="small"
+                      placeholder="依赖关系"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
-          <!-- 备注区域 -->
-          <div v-if="item.showNotes" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
+        </n-tab-pane>
+
+        <n-tab-pane name="url" tab="从 URL 上传">
+          <n-form-item label="文件的 URL:">
             <n-input
-              v-model:value="item.notes"
+              v-model:value="form.url"
+              :maxlength="2048"
+              placeholder="输入文件的 URL"
+              @input="handleUrlInput"
+            />
+          </n-form-item>
+          <n-form-item v-if="urlFileInfo.name" label="保存文件名:">
+            <n-input
+              v-model:value="form.filename"
+              :maxlength="255"
+              placeholder="输入保存的文件名"
+            />
+            <template #feedback>
+              <span style="color: #909399; font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
+            </template>
+          </n-form-item>
+          <!-- URL 备注 -->
+          <n-form-item v-if="urlFileInfo.name" label="备注:">
+            <n-input
+              v-model:value="form.urlNotes"
               :maxlength="500"
               type="textarea"
-              placeholder="输入文件备注..."
               :rows="2"
-              size="small"
+              placeholder="输入文件备注（可选）"
             />
-          </div>
-          <!-- 依赖区域 -->
-          <div v-if="item.showDeps" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
-            <div :style="{ display: 'flex', gap: '6px', flexDirection: 'column' }">
+          </n-form-item>
+          <!-- URL 依赖 -->
+          <n-form-item v-if="urlFileInfo.name" label="依赖:">
+            <n-space vertical :size="6" style="width: 100%">
               <n-auto-complete
-                v-model:value="item.depFileName"
+                v-model:value="form.urlDepFileName"
                 :maxlength="255"
-                :options="getDepAutocompleteOptions(item)"
+                :options="urlDepAutocompleteOptions"
                 placeholder="搜索并选择依赖文件"
-                size="small"
                 clearable
-                :input-props="{ style: 'width: 100%' }"
-                @update:value="(val) => handleDepSearch(item, val)"
-                @select="(val) => handleDepSelect(item, val)"
+                @update:value="handleUrlDepSearch"
+                @select="handleUrlDepSelect"
               />
               <n-select
-                v-model:value="item.depRelation"
+                v-model:value="form.urlDepRelation"
                 :options="depRelationOptions"
-                size="small"
                 placeholder="依赖关系"
               />
+            </n-space>
+          </n-form-item>
+          <!-- URL 上传进度 -->
+          <div v-if="urlUploadState.status" class="url-upload-progress">
+            <div class="queue-item">
+              <div class="queue-item-info">
+                <span class="queue-item-name" :title="urlUploadState.fileName">{{ urlUploadState.fileName }}</span>
+                <div class="queue-item-meta">
+                  <span class="queue-item-size">{{ formatFileSize(urlUploadState.fileSize) }}</span>
+                  <div class="queue-item-progress">
+                    <span v-if="urlUploadState.status === 'failed'" class="queue-item-error">{{ urlUploadState.error }}</span>
+                    <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
+                  </div>
+                </div>
+                <n-progress
+                  v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
+                  type="line"
+                  :percentage="urlUploadState.progress"
+                  :show-indicator="false"
+                  :height="4"
+                  :border-radius="2"
+                />
+              </div>
+              <div class="queue-item-actions">
+                <n-tag :type="getUrlUploadStatusTag" size="small">{{ getUrlUploadStatusText }}</n-tag>
+              </div>
             </div>
           </div>
-          </template>
-        </div>
-      </div>
+        </n-tab-pane>
 
-      <n-form-item v-if="form.uploadMethod === 'url'" label="文件的 URL:">
-        <n-input
-          v-model:value="form.url"
-          :maxlength="2048"
-          placeholder="输入文件的 URL"
-          @input="handleUrlInput"
-        />
-      </n-form-item>
-      <n-form-item v-if="form.uploadMethod === 'url' && urlFileInfo.name" label="保存文件名:">
-        <n-input
-          v-model:value="form.filename"
-          :maxlength="255"
-          placeholder="输入保存的文件名"
-        />
-        <template #feedback>
-          <span style="color: #909399; font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
-        </template>
-      </n-form-item>
-      <!-- URL 备注 -->
-      <n-form-item v-if="form.uploadMethod === 'url' && urlFileInfo.name" label="备&nbsp;&nbsp;&nbsp;&nbsp;注:">
-        <n-input
-          v-model:value="form.urlNotes"
-          :maxlength="500"
-          type="textarea"
-          :rows="2"
-          placeholder="输入文件备注（可选）"
-        />
-      </n-form-item>
-      <!-- URL 依赖 -->
-      <n-form-item v-if="form.uploadMethod === 'url' && urlFileInfo.name" label="依&nbsp;&nbsp;&nbsp;&nbsp;赖:">
-        <n-space vertical :size="6" style="width: 100%">
-          <n-auto-complete
-            v-model:value="form.urlDepFileName"
-            :maxlength="255"
-            :options="urlDepAutocompleteOptions"
-            placeholder="搜索并选择依赖文件"
-            clearable
-            @update:value="handleUrlDepSearch"
-            @select="handleUrlDepSelect"
+        <n-tab-pane name="clipboard" tab="从剪贴板粘贴">
+          <!-- 未读取 -->
+          <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
+            仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
+          </div>
+
+          <!-- 已读取，未选择类型：展示可选类型 -->
+          <div v-else-if="!clipboardTypeConfirmed">
+            <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: #666;">
+              检测到剪贴板包含多种格式，请选择要读取的数据类型:
+            </div>
+            <n-radio-group v-model:value="clipboardSelectedType">
+              <n-space vertical>
+                <n-radio v-for="opt in clipboardOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </n-radio>
+              </n-space>
+            </n-radio-group>
+          </div>
+
+          <!-- 已选择类型：展示预览 -->
+          <template v-else>
+            <n-input v-model:value="clipboardFilename" placeholder="保存的文件名" clearable style="margin-bottom: 4px;" />
+            <!-- 图片预览 -->
+            <div v-if="clipboardPreview.type === 'image'" class="clipboard-preview">
+              <img :src="clipboardPreview.data" class="clipboard-preview-img" />
+            </div>
+            <!-- 文本预览 -->
+            <div v-else-if="clipboardPreview.type === 'text'" style="width: 100%;">
+              <n-input
+                type="textarea"
+                :value="clipboardPreview.text"
+                :rows="8"
+                readonly
+                :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
+              />
+            </div>
+            <!-- 其它文件预览 -->
+            <div v-else-if="clipboardPreview.type === 'other'" class="clipboard-preview-file">
+              <n-icon size="40" :depth="3"><DocumentIcon /></n-icon>
+              <div class="clipboard-preview-filename">{{ clipboardFilename }}</div>
+              <div class="clipboard-preview-info">大小: {{ formatFileSize(clipboardPreview.size) }}</div>
+            </div>
+            <!-- 剪贴板备注/依赖 -->
+            <n-form-item label="备注:" style="margin-top: 12px;">
+              <n-input v-model:value="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+            </n-form-item>
+            <n-form-item label="依赖:">
+              <n-space vertical :size="6" style="width: 100%">
+                <n-auto-complete
+                  v-model:value="extraDepFileName"
+                  :maxlength="255"
+                  :options="extraDepAutocompleteOptions"
+                  placeholder="搜索并选择依赖文件"
+                  clearable
+                  @update:value="handleExtraDepSearch"
+                  @select="handleExtraDepSelect"
+                />
+                <n-select v-model:value="extraDepRelation" :options="depRelationOptions" placeholder="依赖关系" />
+              </n-space>
+            </n-form-item>
+          </template>
+        </n-tab-pane>
+
+        <n-tab-pane name="text" tab="新建文本">
+          <n-input v-model:value="textFilename" placeholder="文件名，如 readme.md" clearable style="margin-bottom: 12px;" />
+          <n-input
+            v-model:value="textContent"
+            type="textarea"
+            :rows="15"
+            placeholder="在此输入文件内容..."
+            :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
           />
-          <n-select
-            v-model:value="form.urlDepRelation"
-            :options="depRelationOptions"
-            placeholder="依赖关系"
-          />
-        </n-space>
-      </n-form-item>
+          <!-- 文本备注/依赖 -->
+          <n-form-item label="备注:" style="margin-top: 12px;">
+            <n-input v-model:value="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+          </n-form-item>
+          <n-form-item label="依赖:">
+            <n-space vertical :size="6" style="width: 100%">
+              <n-auto-complete
+                v-model:value="extraDepFileName"
+                :maxlength="255"
+                :options="extraDepAutocompleteOptions"
+                placeholder="搜索并选择依赖文件"
+                clearable
+                @update:value="handleExtraDepSearch"
+                @select="handleExtraDepSelect"
+              />
+              <n-select v-model:value="extraDepRelation" :options="depRelationOptions" placeholder="依赖关系" />
+            </n-space>
+          </n-form-item>
+        </n-tab-pane>
+      </n-tabs>
     </n-form>
 
-	    <!-- 剪贴板粘贴预览 -->
-	    <template v-if="form.uploadMethod === 'clipboard'">
-		      <div style="margin-top: 16px;">
-		        <!-- 未读取 -->
-		        <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
-		          仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
-		        </div>
+    <!-- 底部：左侧为剪贴板操作按钮 + 上传提示，右侧为操作按钮 -->
+    <n-space justify="space-between" align="center" style="margin-top: 16px;">
+      <div class="upload-footer-left">
+        <template v-if="form.uploadMethod === 'clipboard'">
+          <div v-if="!clipboardRead">
+            <n-button @click="readClipboard" :loading="clipboardReading" type="primary" secondary size="small">
+              读取剪贴板
+            </n-button>
+          </div>
+          <n-space v-else>
+            <n-tag type="success" size="small">已读取</n-tag>
+            <n-button size="tiny" @click="clearClipboard">重新读取</n-button>
+            <n-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
+              确认选择
+            </n-button>
+          </n-space>
+        </template>
+        <n-alert v-if="uploadMessage" :type="uploadMessageType" :title="uploadMessage" class="upload-footer-message" />
+      </div>
 
-		        <!-- 已读取，未选择类型：展示可选类型 -->
-		        <div v-else-if="!clipboardTypeConfirmed">
-		          <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: #666;">
-		            检测到剪贴板包含多种格式，请选择要读取的数据类型:
-		          </div>
-		          <n-radio-group v-model:value="clipboardSelectedType">
-		            <n-space vertical>
-		              <n-radio v-for="opt in clipboardOptions" :key="opt.value" :value="opt.value">
-		                {{ opt.label }}
-		              </n-radio>
-		            </n-space>
-		          </n-radio-group>
-		        </div>
-
-		        <!-- 已选择类型：展示预览 -->
-		        <template v-else>
-		          <n-input v-model:value="clipboardFilename" placeholder="保存的文件名" clearable style="margin-bottom: 4px;" />
-		          <!-- 图片预览 -->
-		          <div v-if="clipboardPreview.type === 'image'" class="clipboard-preview">
-		            <img :src="clipboardPreview.data" class="clipboard-preview-img" />
-		          </div>
-		          <!-- 文本预览 -->
-		          <div v-else-if="clipboardPreview.type === 'text'" style="width: 100%;">
-		            <n-input
-		              type="textarea"
-		              :value="clipboardPreview.text"
-		              :rows="8"
-		              readonly
-		              :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
-		            />
-		          </div>
-		          <!-- 其它文件预览 -->
-		          <div v-else-if="clipboardPreview.type === 'other'" class="clipboard-preview-file">
-		            <n-icon size="40" :depth="3"><DocumentIcon /></n-icon>
-		            <div class="clipboard-preview-filename">{{ clipboardFilename }}</div>
-		            <div class="clipboard-preview-info">大小: {{ formatFileSize(clipboardPreview.size) }}</div>
-		          </div>
-		        </template>
-		      </div>
-		    </template>
-
-	    <!-- 新建文本 -->
-	    <template v-if="form.uploadMethod === 'text'">
-	      <div style="margin-top: 16px;">
-	        <n-input v-model:value="textFilename" placeholder="文件名，如 readme.md" clearable style="margin-bottom: 12px;" />
-	        <n-input
-	          v-model:value="textContent"
-	          type="textarea"
-	          :rows="15"
-	          placeholder="在此输入文件内容..."
-	          :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
-	        />
-	      </div>
-	    </template>
-
-	    <!-- URL 上传进度 -->
-	    <div v-if="form.uploadMethod === 'url' && urlUploadState.status" class="url-upload-progress" style="margin-top: 16px;">
-	      <div class="queue-item">
-	        <div class="queue-item-info">
-	          <span class="queue-item-name" :title="urlUploadState.fileName">{{ urlUploadState.fileName }}</span>
-	          <div class="queue-item-meta">
-	            <span class="queue-item-size">{{ formatFileSize(urlUploadState.fileSize) }}</span>
-	            <div class="queue-item-progress">
-	              <span v-if="urlUploadState.status === 'failed'" class="queue-item-error">{{ urlUploadState.error }}</span>
-	              <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
-	            </div>
-	          </div>
-	          <n-progress
-	            v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
-	            type="line"
-	            :percentage="urlUploadState.progress"
-	            :show-indicator="false"
-	            :height="4"
-	            :border-radius="2"
-	          />
-	        </div>
-	        <div class="queue-item-actions">
-	          <n-tag :type="getUrlUploadStatusTag" size="small">{{ getUrlUploadStatusText }}</n-tag>
-	        </div>
-	      </div>
-	    </div>
-
-	    <div v-if="uploadMessage" style="margin-top: 16px;">
-	      <n-alert :type="uploadMessageType" :title="uploadMessage" />
-	    </div>
-
-	    <n-space justify="space-between" style="margin-top: 16px;">
-		      <!-- 左侧：剪贴板操作按钮 -->
-		      <div>
-		        <template v-if="form.uploadMethod === 'clipboard'">
-		          <div v-if="!clipboardRead">
-		            <n-button @click="readClipboard" :loading="clipboardReading" type="primary" secondary size="small">
-		              读取剪贴板
-		            </n-button>
-		          </div>
-		          <n-space v-else>
-		            <n-tag type="success" size="small">已读取</n-tag>
-		            <n-button size="tiny" @click="clearClipboard">重新读取</n-button>
-		            <n-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
-		              确认选择
-		            </n-button>
-		          </n-space>
-		        </template>
-		      </div>
-
-		      <!-- 右侧：操作按钮 -->
-		      <n-space>
-		        <template v-if="form.uploadMethod === 'clipboard'">
-		          <n-button
-		            type="primary"
-		            @click="uploadClipboard"
-		            :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
-		            :loading="uploading"
-		          >
-		            开始上传
-		          </n-button>
-		        </template>
-		        <template v-else-if="form.uploadMethod === 'text'">
-		          <n-button
-		            type="primary"
-		            @click="saveTextFile"
-		            :disabled="!textFilename.trim()"
-		          >
-		            保存并上传
-		          </n-button>
-		        </template>
-		        <template v-else>
-		          <n-button
-		            type="primary"
-		            @click="handleFooterClick"
-		            :disabled="!canStartUpload"
-		            :loading="uploading"
-		          >
-		            开始上传
-		          </n-button>
-		        </template>
-		        <n-button @click="emit('close')">关闭</n-button>
-		      </n-space>
-		    </n-space>
+      <!-- 右侧：操作按钮 -->
+      <n-space>
+        <template v-if="form.uploadMethod === 'clipboard'">
+          <n-button
+            type="primary"
+            @click="uploadClipboard"
+            :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
+            :loading="uploading"
+          >
+            开始上传
+          </n-button>
+        </template>
+        <template v-else-if="form.uploadMethod === 'text'">
+          <n-button
+            type="primary"
+            @click="saveTextFile"
+            :disabled="!textFilename.trim()"
+          >
+            保存并上传
+          </n-button>
+        </template>
+        <template v-else>
+          <n-button
+            type="primary"
+            @click="handleFooterClick"
+            :disabled="!canStartUpload"
+            :loading="uploading"
+          >
+            开始上传
+          </n-button>
+        </template>
+        <n-button @click="emit('close')">关闭</n-button>
+      </n-space>
+    </n-space>
   </div>
 </template>
 
+
 <script setup>
 import { ref, reactive, computed, h, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { NForm, NFormItem, NInput, NInputGroup, NRadioGroup, NRadio, NUpload, NButton, NIcon, NProgress, NAlert, NSelect, NTag, NAutoComplete, NSpace, useMessage, useDialog } from 'naive-ui'
+import { NForm, NFormItem, NInput, NInputGroup, NRadioGroup, NRadio, NUpload, NButton, NIcon, NProgress, NAlert, NSelect, NTag, NAutoComplete, NSpace, NTabs, NTabPane, useMessage, useDialog } from 'naive-ui'
 import { NumberUtils, xxh3Hash } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
@@ -487,7 +512,9 @@ const draggedFileCount = ref(0)
 const queueItemRefs = {}
 const queueListRef = ref(null)
 let dragCounter = 0 // Track nested drag events
-const STORAGE_KEY = 'fuzhan_upload_sessions'
+// 上传会话持久化：每个会话独立 key（按 uploadId），避免多页面同时上传时互相覆盖，
+// 同时 localStorage 持久化保证浏览器重启后仍可自动恢复
+const SESSION_KEY_PREFIX = 'fuzhan_upload_session_'
 
 // 内联编辑文件名状态
 const editingItemId = ref(null)
@@ -604,43 +631,59 @@ const pollUrlTask = (taskId) => {
   }, 1500)
 }
 
-// 上传会话持久化
+// 上传会话持久化：每个会话独立 key（按 uploadId），只写自己的 key，不清理其它会话，
+// 避免多页面同时上传时互相覆盖或误删其它页签的会话
 const saveUploadSessions = () => {
   const filtered = uploadQueue.value.filter(item => item.status === 'uploading' || item.status === 'pending' || item.status === 'paused')
-  const sessions = filtered.map(item => ({
-    id: item.id,
-    name: item.name,
-    size: item.size,
-    uploadId: item.uploadId,
-    status: item.status,
-    progress: item.progress,
-    speed: item.speed,
-    elapsed: item.elapsed,
-    remaining: item.remaining,
-    displayText: item.displayText,
-    rootName: item.rootName || form.rootName,
-    uploadDir: item.uploadDir || form.uploadDir
-  }))
-  if (sessions.length > 0) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-  } else {
-    localStorage.removeItem(STORAGE_KEY)
+  for (const item of filtered) {
+    if (!item.uploadId) continue
+    const session = {
+      id: item.id,
+      name: item.name,
+      size: item.size,
+      uploadId: item.uploadId,
+      status: item.status,
+      progress: item.progress,
+      speed: item.speed,
+      elapsed: item.elapsed,
+      remaining: item.remaining,
+      displayText: item.displayText,
+      rootName: item.rootName || form.rootName,
+      uploadDir: item.uploadDir || form.uploadDir
+    }
+    localStorage.setItem(SESSION_KEY_PREFIX + item.uploadId, JSON.stringify(session))
   }
 }
 
 const loadUploadSessions = () => {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (!saved) return []
-  try {
-    return JSON.parse(saved)
-  } catch (e) {
-    localStorage.removeItem(STORAGE_KEY)
-    return []
+  const sessions = []
+  const keys = Object.keys(localStorage)
+  for (const key of keys) {
+    if (!key.startsWith(SESSION_KEY_PREFIX)) continue
+    const saved = localStorage.getItem(key)
+    if (!saved) continue
+    try {
+      const session = JSON.parse(saved)
+      if (session && session.uploadId) sessions.push(session)
+    } catch (e) {
+      localStorage.removeItem(key)
+    }
   }
+  return sessions
+}
+
+const removeUploadSession = (uploadId) => {
+  if (!uploadId) return
+  localStorage.removeItem(SESSION_KEY_PREFIX + uploadId)
 }
 
 const clearUploadSessions = () => {
-  localStorage.removeItem(STORAGE_KEY)
+  const keys = Object.keys(localStorage)
+  for (const key of keys) {
+    if (key.startsWith(SESSION_KEY_PREFIX)) {
+      localStorage.removeItem(key)
+    }
+  }
 }
 
 // 从路径中提取根目录名和相对路径
@@ -782,13 +825,13 @@ const restoreUploadSessions = async () => {
           message.info(`已恢复上传会话: ${saved.name}${statusText}`)
         } else {
           // 会话已完成或已取消，清除本地记录
-          clearUploadSessions()
+          removeUploadSession(saved.uploadId)
         }
       }
     } catch (e) {
-      // 恢复失败时清空本地记录，用户需要重新开始
+      // 恢复失败时清除该会话的本地记录，用户需要重新开始
       console.error('恢复上传会话失败:', e)
-      clearUploadSessions()
+      removeUploadSession(saved.uploadId)
     }
   }
 }
@@ -922,6 +965,36 @@ const handleUrlDepSelect = (value) => {
   if (opt) {
     form.urlDepRecordId = parseInt(value)
     form.urlDepFileName = opt.label.split(' (')[0]
+  }
+}
+
+// 剪贴板/文本上传的备注和依赖（共用）
+const extraNotes = ref('')
+const extraDepFileName = ref('')
+const extraDepRecordId = ref(null)
+const extraDepRelation = ref('requires')
+const extraDepDescription = ref('')
+const extraDepAutocompleteOptions = ref([])
+const handleExtraDepSearch = async (value) => {
+  if (!value || value.length < 1) {
+    extraDepAutocompleteOptions.value = []
+    return
+  }
+  try {
+    const res = await FileRecordApi.searchFiles(value)
+    if (res.success && res.data.records) {
+      extraDepAutocompleteOptions.value = res.data.records.map(r => ({
+        label: `${r.fileName} (${r.fullPath})`,
+        value: String(r.id)
+      }))
+    }
+  } catch (e) {}
+}
+const handleExtraDepSelect = (value) => {
+  const opt = extraDepAutocompleteOptions.value.find(o => o.value === value)
+  if (opt) {
+    extraDepRecordId.value = parseInt(value)
+    extraDepFileName.value = opt.label.split(' (')[0]
   }
 }
 
@@ -1181,7 +1254,7 @@ const processQueue = async () => {
     }
     nextItem.status = 'completed'
     nextItem.progress = 100
-    clearUploadSessions()
+    removeUploadSession(nextItem.uploadId)
   } catch (e) {
     nextItem.status = 'failed'
     nextItem.error = formatErrorMessage(e, '上传失败')
@@ -1377,8 +1450,8 @@ const uploadSingleFile = async (queueItem) => {
       updateProgress(uploadedBytes)
     }
   } else if (!sessionStatusData.success) {
-    // 会话不存在或已过期，清除本地记录并创建新会话
-    clearUploadSessions()
+    // 会话不存在或已过期，清除该会话的本地记录并创建新会话
+    removeUploadSession(queueItem.uploadId)
     delete queueItem.uploadId
     throw new Error(sessionStatusData.message || '上传会话已失效，请重新开始上传')
   }
@@ -1539,11 +1612,21 @@ const saveTextFile = async () => {
     name: filename,
     size: file.size,
     file: file,
+    notes: extraNotes.value,
+    depFileName: extraDepFileName.value,
+    depFileRecordId: extraDepRecordId.value,
+    depRelation: extraDepRelation.value,
+    depDescription: extraDepDescription.value
   })
   message.success(`已添加文本文件: ${filename}`)
   // 清空编辑器
   textFilename.value = 'newfile.txt'
   textContent.value = ''
+  extraNotes.value = ''
+  extraDepFileName.value = ''
+  extraDepRecordId.value = null
+  extraDepRelation.value = 'requires'
+  extraDepDescription.value = ''
   // 切换到 local 模式并开始上传
   form.uploadMethod = 'local'
   uploadMessage.value = ''
@@ -1705,7 +1788,12 @@ const uploadClipboard = async () => {
   addFileToQueue({
     name: finalName,
     size: file.size,
-    file: new File([file], finalName, { type: file.type })
+    file: new File([file], finalName, { type: file.type }),
+    notes: extraNotes.value,
+    depFileName: extraDepFileName.value,
+    depFileRecordId: extraDepRecordId.value,
+    depRelation: extraDepRelation.value,
+    depDescription: extraDepDescription.value
   })
   message.success(`已添加文件: ${finalName}`)
   // 切换到 local 模式并开始上传
@@ -1882,11 +1970,11 @@ const addFileToQueue = (fileData) => {
     rootName: form.rootName,
     uploadDir: form.uploadDir,
     // 备注和依赖
-    notes: '',
-    depFileName: '',
-    depFileRecordId: null,
-    depRelation: 'requires',
-    depDescription: '',
+    notes: fileData.notes || '',
+    depFileName: fileData.depFileName || '',
+    depFileRecordId: fileData.depFileRecordId || null,
+    depRelation: fileData.depRelation || 'requires',
+    depDescription: fileData.depDescription || '',
     showNotes: false,
     showDeps: false,
     uploadDirPath: form.uploadDir
@@ -2127,6 +2215,34 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
   .clipboard-preview-info {
     color: #999;
+    font-size: 12px;
+  }
+
+  .upload-method-tabs {
+    margin-top: 4px;
+
+    :deep(.n-tabs-nav) {
+      width: 120px;
+    }
+
+    :deep(.n-tabs-pane-wrapper) {
+      padding-left: 16px;
+    }
+  }
+
+  .upload-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding-right: 12px;
+  }
+
+  .upload-footer-message {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 12px;
     font-size: 12px;
   }
 }

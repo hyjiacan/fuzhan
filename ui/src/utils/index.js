@@ -124,6 +124,51 @@ export const PathUtils = {
   }
 }
 
+// 文件名排序比较器：英文（ASCII）排在中文等非 ASCII 名称前面
+// 组内排序使用 localeCompare（中文按拼音），避免 zh-CN 默认把中文排在英文前
+export const compareFileNames = (a, b) => {
+  const aIsAscii = /^[\x00-\x7F]/.test(a)
+  const bIsAscii = /^[\x00-\x7F]/.test(b)
+  if (aIsAscii && !bIsAscii) return -1
+  if (!aIsAscii && bIsAscii) return 1
+  return a.localeCompare(b, undefined, { sensitivity: 'base' })
+}
+
+// ========== 版本标记分析 ==========
+// 提取"程序基名"：剥离文件名尾部的版本/数字段（支持多段版本号）
+// 例：app_v1.2.3.exe → app；report(1).pdf → report；app-2.zip → app；backup-20240101.zip → backup
+const VERSION_SEGMENT_RE = /(?:[_\-.[\]()]*)(?:v?\d+(?:\.\d+)*)(?:[_\-.[\]()]*)$/i
+
+export const extractBaseName = (filename) => {
+  const name = String(filename || '')
+  const dotIdx = name.lastIndexOf('.')
+  const stem = dotIdx > 0 ? name.slice(0, dotIdx) : name
+  const base = stem.replace(VERSION_SEGMENT_RE, '')
+  return (base.trim() || name).toLowerCase()
+}
+
+// 分析当前目录文件列表，返回"最新版本"文件的 path 集合
+// 规则：基名相同的文件 ≥2 个时，修改时间最新的标记为最新版本
+export const analyzeLatestVersions = (files) => {
+  const latest = new Set()
+  const groups = new Map()
+  for (const f of files || []) {
+    if (f.type === 'dir' || f.type === 'directory') continue
+    const key = extractBaseName(f.name)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(f)
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    let newest = group[0]
+    for (const f of group) {
+      if (new Date(f.modifiedTime) > new Date(newest.modifiedTime)) newest = f
+    }
+    latest.add(newest.path)
+  }
+  return latest
+}
+
 // ========== 时间工具函数 ==========
 export const TimeUtils = {
   // 相对时间格式化
@@ -203,6 +248,9 @@ export default {
   NumberUtils,
   FileUtils,
   PathUtils,
+  compareFileNames,
+  extractBaseName,
+  analyzeLatestVersions,
   TimeUtils,
   FileTypeUtils
 }

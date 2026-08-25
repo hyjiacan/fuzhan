@@ -2,6 +2,8 @@ package file
 
 import (
     "net/http"
+    "os"
+    "path/filepath"
     "strings"
 
     "github.com/gin-gonic/gin"
@@ -103,7 +105,12 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
         return
     }
     if len(files) == 0 {
-        // 检查该路径自身是否有记录（目录索引记录）
+        // 目录为空：先检查文件系统确认目录真实存在（空目录可能没有索引记录）
+        if fh.directoryExistsOnDisk(rootName, prefix) {
+            utils.HandleSuccess(c, http.StatusOK, "", files)
+            return
+        }
+        // 文件系统不存在时，回退检查索引记录（可能是尚未扫描到的目录）
         var count int64
         fh.DB.Model(&models.FileRecordPublic{}).
             Where("root_name = ? AND file_path = ? AND status = ?",
@@ -116,6 +123,32 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
         // 有索引记录但无子项，返回空列表
     }
     utils.HandleSuccess(c, http.StatusOK, "", files)
+}
+
+// directoryExistsOnDisk 检查目录在文件系统上是否存在（带路径越界防护）
+func (fh *FileHandlers) directoryExistsOnDisk(rootName, prefix string) bool {
+    rootPath, ok := appconfig.RootNames[rootName]
+    if !ok {
+        return false
+    }
+    cleanPrefix := strings.Trim(prefix, "/")
+    dirPath := rootPath
+    if cleanPrefix != "" {
+        dirPath = filepath.Join(rootPath, filepath.FromSlash(cleanPrefix))
+    }
+    absDir, err := filepath.Abs(dirPath)
+    if err != nil {
+        return false
+    }
+    absRoot, err := filepath.Abs(rootPath)
+    if err != nil {
+        return false
+    }
+    if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(filepath.Separator)) {
+        return false
+    }
+    info, err := os.Stat(absDir)
+    return err == nil && info.IsDir()
 }
 
 // getRootNameList 获取配置的根目录名称列表
@@ -207,6 +240,17 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
         return
     }
 
+    // 在删除前判断是否为目录（删除后 os.Stat 会失败）
+    isDir := false
+    if rootName, relPath := splitPath(req.Path); rootName != "" {
+        if rootPath, exists := appconfig.RootNames[rootName]; exists {
+            realPath := filepath.Join(rootPath, relPath)
+            if info, err := os.Stat(realPath); err == nil {
+                isDir = info.IsDir()
+            }
+        }
+    }
+
     // 执行删除
     if err := fh.FileService.DeleteFile(req.Path); err != nil {
         middleware.LogOperation(c, "file.delete", req.Path, err)
@@ -217,12 +261,22 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
     // 删除成功后硬删除索引记录
     if rootName, relPath := splitPath(req.Path); rootName != "" {
         var records []models.FileRecordPublic
-        if err := fh.DB.Where("root_name = ? AND file_path = ? AND status = ?",
-            rootName, relPath, models.FileStatusActive).Find(&records).Error; err != nil {
+        var queryErr error
+        if isDir {
+            // 目录删除：清理该目录下所有索引记录（前缀匹配）
+            prefix := strings.TrimPrefix(relPath, "/") + "/"
+            queryErr = fh.DB.Where("root_name = ? AND file_path LIKE ? AND status = ?",
+                rootName, "/"+prefix+"%", models.FileStatusActive).Find(&records).Error
+        } else {
+            // 文件删除：精确匹配
+            queryErr = fh.DB.Where("root_name = ? AND file_path = ? AND status = ?",
+                rootName, relPath, models.FileStatusActive).Find(&records).Error
+        }
+        if queryErr != nil {
             utils.Warn("查找索引记录失败",
                 utils.String("root", rootName),
                 utils.String("path", relPath),
-                utils.Err(err))
+                utils.Err(queryErr))
         } else {
             for _, rec := range records {
                 if err := fh.BaseHandler.IndexSvc.DeleteRecord(rec.ID); err != nil {

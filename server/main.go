@@ -317,7 +317,8 @@ func main() {
     // 上传会话处理器
     chunkSize := cfg.Upload.ChunkSize
     uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService)
-    uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService)
+    taskService := services.NewTaskService(db)
+    uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService, taskService)
     privateUploadHandler := file.NewPrivateUploadHandler(uploadSessionSvc, db, chunkSize, cfg.Storage.Private.Path, indexService)
     privateStorageHandler := file.NewPrivateStorageHandlers()
     // 初始化迁移服务
@@ -329,8 +330,9 @@ func main() {
     adminHandler := admin.NewHandler(adminService, db, recoveryService, rollbackService)
     notificationHandler := notification.NewHandler(db)
     adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
-    taskService := services.NewTaskService(db)
     taskHandler := admin.NewTaskHandler(taskService)
+    // 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
+    indexService.SetTaskService(taskService)
 
     // 临时文件处理器 (基于IP，无需认证)
     tempSvcConfig := services.TempServiceConfig{

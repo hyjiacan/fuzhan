@@ -63,6 +63,18 @@ import { TimeUtils } from '@/utils'
 import { useMessage } from 'naive-ui'
 import { NTag, NButton, NProgress, NSpace, NSelect, NPagination, NIcon, NSpin } from 'naive-ui'
 
+// 计算耗时（startedAt 到 endedAt 的差值，返回可读字符串）
+const formatDuration = (startedAt, endedAt) => {
+  if (!startedAt || !endedAt) return '-'
+  const start = new Date(startedAt).getTime()
+  const end = new Date(endedAt).getTime()
+  const diff = Math.max(0, end - start)
+  if (diff < 1000) return diff + 'ms'
+  if (diff < 60000) return (diff / 1000).toFixed(1) + 's'
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm' + Math.floor((diff % 60000) / 1000) + 's'
+  return Math.floor(diff / 3600000) + 'h' + Math.floor((diff % 3600000) / 60000) + 'm'
+}
+
 const message = useMessage()
 const loading = ref(false)
 const loadingHistory = ref(false)
@@ -148,6 +160,12 @@ const activeColumns = [
     render: (row) => row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-'
   },
   {
+    title: '已运行',
+    key: 'runningDuration',
+    width: 90,
+    render: (row) => row.startedAt ? formatDuration(row.startedAt, new Date().toISOString()) : '-'
+  },
+  {
     title: '错误信息',
     key: 'errorMessage',
     ellipsis: { tooltip: true },
@@ -206,6 +224,12 @@ const historyColumns = [
     key: 'endedAt',
     width: 180,
     render: (row) => row.endedAt ? TimeUtils.formatDateTime(row.endedAt) : '-'
+  },
+  {
+    title: '耗时',
+    key: 'duration',
+    width: 90,
+    render: (row) => formatDuration(row.startedAt, row.endedAt)
   },
   {
     title: '错误信息',
