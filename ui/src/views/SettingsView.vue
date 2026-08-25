@@ -5,7 +5,7 @@
       <p class="description">管理系统配置和参数调整</p>
     </div>
 
-    <el-tabs>
+    <el-tabs v-model="activeTab">
       <!-- 基本信息 -->
       <el-tab-pane name="basic" label="基本信息">
         <el-row :gutter="16">
@@ -537,6 +537,7 @@ const dialog = {
   }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() })
 }
 const saving = ref(false)
+const activeTab = ref('basic')
 const showMigrationWizard = ref(false)
 const formRef = ref(null)
 

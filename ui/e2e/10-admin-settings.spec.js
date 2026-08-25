@@ -5,13 +5,13 @@ import { test, expect } from '@playwright/test'
  *
  * 业务场景：
  * 1. 管理员登录后访问系统设置
- * 2. 基础配置：应用名称、HTTP/HTTPS 服务配置
- * 3. 数据库配置：切换数据库类型
- * 4. 存储配置：共享目录、私有/临时文件
- * 5. 上传配置：分片大小、文件大小限制
- * 6. 高级配置：扩展名、预览 MIME 类型
- * 7. FTP/FTPS/TLS 配置：FTP 开关、TLS 证书上传
- * 8. WebDAV 配置：开关、公开用户名
+ * 2. 基本信息：应用名称、共享目录、私有/临时文件、上传配置
+ * 3. 服务配置：HTTP/HTTPS/FTP/FTPS/WebDAV/TLS
+ * 4. 存储配置：文件索引定时扫描
+ * 5. 预览配置：MIME 类型、扩展名、分块大小
+ * 6. 数据库：切换数据库类型
+ * 7. 访问控制：IP 访问控制、文件扩展名
+ * 8. 底部保存/重置按钮
  */
 
 // 登录管理员辅助函数（复用 08 的模式）
@@ -32,6 +32,12 @@ async function adminLogin(page) {
   }
 }
 
+// 切换到指定 label 的标签页
+async function switchTab(page, label) {
+  await page.locator('.el-tabs__item').filter({ hasText: label }).click()
+  await page.waitForTimeout(500)
+}
+
 test.describe('系统设置页面', () => {
   test.beforeEach(async ({ page }) => {
     await adminLogin(page)
@@ -41,24 +47,59 @@ test.describe('系统设置页面', () => {
   })
 
   test('页面可以访问', async ({ page }) => {
-    const title = page.locator('text=系统设置')
+    const title = page.locator('h2:has-text("系统设置")')
     await expect(title).toBeVisible({ timeout: 10000 })
   })
 
-  test('基础配置标签页 - 应用名称和 HTTP/HTTPS 配置', async ({ page }) => {
-    // 基础配置标签默认激活
-    const basicTab = page.locator('text=基础配置').first()
+  test('基本信息标签页 - 应用名称和共享目录配置', async ({ page }) => {
+    // 基本信息标签默认激活
+    const basicTab = page.locator('.el-tabs__item').filter({ hasText: '基本信息' }).first()
     await expect(basicTab).toBeVisible({ timeout: 5000 })
 
     // 应用名称输入框
     const appNameInput = page.locator('input[placeholder*="应用名称"]')
     await expect(appNameInput).toBeVisible()
 
-    // HTTP 区域
+    // 共享目录配置卡片
+    const dirConfig = page.locator('.el-tabs .el-card:has-text("共享目录配置")').first()
+    await expect(dirConfig).toBeVisible()
+  })
+
+  test('基本信息标签页 - 私有文件配置', async ({ page }) => {
+    const privateSection = page.locator('.el-card:has-text("私有文件配置")').first()
+    await expect(privateSection).toBeVisible()
+
+    // 启用私有文件开关存在
+    const enableSwitch = privateSection.locator('.el-switch').first()
+    await expect(enableSwitch).toBeVisible()
+  })
+
+  test('基本信息标签页 - 临时文件配置', async ({ page }) => {
+    const tempSection = page.locator('.el-card:has-text("临时文件配置")').first()
+    await expect(tempSection).toBeVisible()
+
+    // 是否包含启用开关和过期天数输入
+    const expireInput = tempSection.locator('.el-input-number').first()
+    await expect(expireInput).toBeVisible()
+  })
+
+  test('基本信息标签页 - 上传配置显示分片大小和最大文件大小', async ({ page }) => {
+    const uploadSection = page.locator('.el-card:has-text("上传配置")').first()
+    await expect(uploadSection).toBeVisible()
+
+    const chunkSize = uploadSection.locator('label:has-text("分片大小")')
+    await expect(chunkSize).toBeVisible()
+
+    const maxFileSize = uploadSection.locator('label:has-text("最大文件大小")')
+    await expect(maxFileSize).toBeVisible()
+  })
+
+  test('服务配置标签页 - HTTP/HTTPS 配置', async ({ page }) => {
+    await switchTab(page, '服务配置')
+
     const httpLabel = page.getByText('启用 HTTP', { exact: true })
     await expect(httpLabel).toBeVisible()
 
-    // HTTPS 区域
     const httpsLabel = page.getByText('启用 HTTPS', { exact: true })
     await expect(httpsLabel).toBeVisible()
 
@@ -68,23 +109,77 @@ test.describe('系统设置页面', () => {
     expect(switchCount).toBeGreaterThanOrEqual(2)
   })
 
-  test('基础配置 - HTTPS 启用后显示端口', async ({ page }) => {
-    // 找到 HTTPS 相关的开关
-    const httpsSwitches = page.getByText('启用 HTTPS', { exact: true }).locator('..').locator('.el-switch')
-    if (await httpsSwitches.isVisible()) {
-      await httpsSwitches.click()
+  test('服务配置标签页 - HTTPS 启用后显示端口', async ({ page }) => {
+    await switchTab(page, '服务配置')
+
+    // 找到 HTTPS 相关的开关（label 为"启用 HTTPS"的 form-item 内）
+    const httpsSwitch = page.locator('.el-form-item:has(.el-switch):has-text("启用 HTTPS") .el-switch')
+    if (await httpsSwitch.isVisible()) {
+      await httpsSwitch.click()
       await page.waitForTimeout(300)
 
       // HTTPS 端口输入应出现
-      const httpsPort = page.getByText('HTTPS 端口', { exact: true })
+      const httpsPort = page.locator('label:has-text("HTTPS 端口")')
       await expect(httpsPort).toBeVisible({ timeout: 3000 })
     }
   })
 
+  test('服务配置标签页 - FTP/FTPS/TLS 证书配置', async ({ page }) => {
+    await switchTab(page, '服务配置')
+
+    // FTP 服务
+    const ftpSection = page.locator('.el-card:has-text("FTP 服务")').first()
+    await expect(ftpSection).toBeVisible()
+
+    // FTPS 服务
+    const ftpsSection = page.locator('.el-card:has-text("FTPS 服务")').first()
+    await expect(ftpsSection).toBeVisible()
+
+    // TLS 证书配置区域（证书文件和密钥文件输入）
+    const tlsSection = page.locator('.el-form-item:has-text("证书文件")').first()
+    await expect(tlsSection).toBeVisible()
+  })
+
+  test('服务配置标签页 - WebDAV 配置', async ({ page }) => {
+    await switchTab(page, '服务配置')
+
+    // WebDAV 卡片
+    const webdavSwitch = page.locator('.el-form-item:has-text("启用 WebDAV") .el-switch')
+    await expect(webdavSwitch).toBeVisible()
+
+    // 打开 WebDAV 后公开用户名输入出现
+    await webdavSwitch.click()
+    await page.waitForTimeout(300)
+    const publicUserInput = page.locator('input[placeholder="public"]')
+    await expect(publicUserInput).toBeVisible({ timeout: 3000 })
+  })
+
+  test('存储配置标签页 - 显示定时扫描配置', async ({ page }) => {
+    await switchTab(page, '存储配置')
+
+    const indexSection = page.locator('.el-card:has-text("文件索引配置")').first()
+    await expect(indexSection).toBeVisible()
+
+    // 定时扫描 Cron 输入框
+    const cronInput = page.locator('input[type="text"]').nth(0)
+    await expect(indexSection.locator('label:has-text("定时扫描间隔")')).toBeVisible()
+  })
+
+  test('预览配置标签页 - 显示 MIME 类型和扩展名', async ({ page }) => {
+    await switchTab(page, '预览配置')
+
+    const previewSection = page.locator('.el-card:has-text("预览配置")').first()
+    await expect(previewSection).toBeVisible()
+
+    const mimeLabel = previewSection.locator('label:has-text("MIME 类型")')
+    await expect(mimeLabel).toBeVisible()
+
+    const extLabel = previewSection.locator('label:has-text("文件扩展名")')
+    await expect(extLabel).toBeVisible()
+  })
+
   test('数据库标签页 - 显示数据库类型选择和切换', async ({ page }) => {
-    // 点击数据库标签
-    await page.locator('.el-tabs__item').filter({ hasText: '数据库' }).click()
-    await page.waitForTimeout(500)
+    await switchTab(page, '数据库')
 
     // 数据库类型选项（使用 radio label 精确定位）
     const sqliteRadio = page.locator('.el-radio-group .el-radio').filter({ hasText: 'SQLite' })
@@ -97,88 +192,17 @@ test.describe('系统设置页面', () => {
     await expect(pgRadio.first()).toBeVisible()
   })
 
-  test('存储标签页 - 显示共享目录、私有/临时文件配置', async ({ page }) => {
-    await page.locator('.el-tabs__item').filter({ hasText: '存储' }).click()
-    await page.waitForTimeout(500)
+  test('访问控制标签页 - 显示 IP 访问控制和文件扩展名', async ({ page }) => {
+    await switchTab(page, '访问控制')
 
-    // 共享目录
-    const dirConfig = page.locator('text=共享目录配置')
-    await expect(dirConfig).toBeVisible()
+    const ipSection = page.locator('.el-card:has-text("IP 访问控制")').first()
+    await expect(ipSection).toBeVisible()
 
-    // 私有文件
-    const privateSection = page.locator('text=私有文件配置')
-    await expect(privateSection).toBeVisible()
+    const fileAccessSection = page.locator('.el-card:has-text("文件访问控制")').first()
+    await expect(fileAccessSection).toBeVisible()
 
-    // 临时文件
-    const tempSection = page.locator('text=临时文件配置')
-    await expect(tempSection).toBeVisible()
-  })
-
-  test('上传标签页 - 显示分片大小和最大文件大小', async ({ page }) => {
-    await page.locator('.el-tabs__item').filter({ hasText: '上传' }).click()
-    await page.waitForTimeout(500)
-
-    const chunkSize = page.locator('text=分片大小')
-    await expect(chunkSize).toBeVisible()
-
-    const maxFileSize = page.locator('text=最大文件大小')
-    await expect(maxFileSize).toBeVisible()
-  })
-
-  test('高级标签页 - 显示扩展名和预览配置', async ({ page }) => {
-    await page.locator('.el-tabs__item').filter({ hasText: '高级' }).click()
-    await page.waitForTimeout(500)
-
-    const extLabel = page.locator('text=允许的扩展名')
+    const extLabel = fileAccessSection.locator('label:has-text("允许的扩展名")')
     await expect(extLabel).toBeVisible()
-
-    const previewSection = page.locator('text=预览配置')
-    await expect(previewSection).toBeVisible()
-  })
-
-  test('FTP 标签页 - 显示 FTP/FTPS/TLS 证书配置', async ({ page }) => {
-    await page.locator('.el-tabs__item').filter({ hasText: 'FTP' }).click()
-    await page.waitForTimeout(500)
-
-    // FTP 服务
-    const ftpSection = page.locator('text=FTP 服务')
-    await expect(ftpSection).toBeVisible()
-
-    // FTPS 服务
-    const ftpsSection = page.locator('text=FTPS 服务')
-    await expect(ftpsSection).toBeVisible()
-
-    // TLS 证书配置（共享） — 新增的共享 TLS 证书区域
-    const tlsSection = page.locator('text=TLS 证书配置（共享）')
-    await expect(tlsSection).toBeVisible()
-
-    // 证书文件和密钥文件输入
-    const certInput = page.locator('input[placeholder="未配置"]').first()
-    await expect(certInput).toBeVisible()
-
-    // 上传按钮存在
-    const uploadBtns = page.locator('button:has-text("上传")')
-    const uploadCount = await uploadBtns.count()
-    expect(uploadCount).toBeGreaterThanOrEqual(2)
-  })
-
-  test('WebDAV 标签页 - 显示 WebDAV 配置', async ({ page }) => {
-    await page.locator('.el-tabs__item').filter({ hasText: 'WebDAV' }).click()
-    await page.waitForTimeout(500)
-
-    // WebDAV 区域标题
-    const webdavSection = page.locator('text=WebDAV 服务').first()
-    await expect(webdavSection).toBeVisible()
-
-    // 启用 WebDAV 开关
-    const webdavSwitch = page.locator('.el-switch').last()
-    await expect(webdavSwitch).toBeVisible()
-
-    // 打开 WebDAV 后公开用户名出现
-    await webdavSwitch.click()
-    await page.waitForTimeout(300)
-    const publicUserInput = page.locator('input[placeholder="public"]')
-    await expect(publicUserInput).toBeVisible({ timeout: 3000 })
   })
 
   test('页面底部有保存和重置按钮', async ({ page }) => {
