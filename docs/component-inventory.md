@@ -11,7 +11,7 @@
 - [API 客户端](#api-客户端)
 - [状态管理](#状态管理)
 - [路由配置](#路由配置)
-- [Naive UI 组件使用统计](#naive-ui-组件使用统计)
+- [Element Plus 组件使用统计](#element-plus-组件使用统计)
 - [组件关系图](#组件关系图)
 
 ---
@@ -29,8 +29,8 @@
 **功能**: 应用顶部导航栏，含Logo、菜单、登录/注册弹框
 
 **子组件**:
-- LoginModal (NModal) - 登录弹框
-- RegisterModal (NModal) - 注册弹框
+- LoginModal (el-dialog) - 登录弹框
+- RegisterModal (el-dialog) - 注册弹框
 - NotificationBell - 通知铃铛（未读计数）
 
 ---
@@ -152,19 +152,22 @@
 
 | 页面 | 路由 | 主要组件 | 功能描述 |
 |------|------|----------|----------|
-| HomeView | `/files`, `/files/:path*` | NButton, NDataTable, NBreadcrumb, NModal, NInput, NSpin | 首页文件浏览，含搜索、上传、面包屑导航、文件预览 |
-| SetupView | `/setup` | NSteps, NForm, NInput, NInputNumber, NRadioGroup | 首次运行配置向导，4步完成基本配置 |
-| TempView | `/temp` | NDataTable, NTag, NModal, NInput | 临时文件管理，基于IP的访问码分享系统 |
-| PrivateStorageView | `/private` | NDataTable, NTag, NModal, NProgress | 私有存储管理，需登录，上传/删除/分享文件 |
-| RecentView | `/recent` | NDataTable, NButton, NTag, NEmpty | 最近上传文件列表展示 |
-| HotView | `/hot` | NDataTable, NTag, NEmpty | 热门下载文件排行 |
-| UserView | `/user` | NCard, NDescriptions, NProgress, NForm | 个人中心，用户信息、配额展示、修改密码 |
-| SettingsView | `/settings` | NTabs, NForm, NInput, NSwitch, NDynamicTags | 系统设置，多标签页配置 |
-| AdminDashboardView | `/admin/dashboard` | NGrid, NGi, NCard, NProgress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
-| AdminFilesView | `/admin/files`, `/admin/files/:path*` | NBreadcrumb, NDataTable, NTreeSelect | 管理员文件管理，支持搜索、重命名、移动、删除 |
-| AdminUsersView | `/admin/users` | NDataTable, NModal, NTag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
-| AdminZombieView | `/admin/zombie` | NGrid, NDataTable, NAlert, NList | 僵尸文件管理，清理过期上传会话和残留文件 |
-| AdminURLTaskView | `/admin/url-tasks` | NDataTable, NTag, NButton | URL下载任务管理，查看/删除下载任务 |
+| HomeView | `/files`, `/files/:path*` | el-button, el-table-v2, el-breadcrumb, el-dialog, el-input | 首页文件浏览，含搜索、上传、面包屑导航、文件预览 |
+| SetupView | `/setup` | el-steps, el-form, el-input, el-input-number, el-radio-group | 首次运行配置向导，分步完成基本配置 |
+| TempView | `/temp` | el-table-v2, el-tag, el-dialog, el-input | 临时文件管理，基于IP的访问码分享系统 |
+| PrivateStorageView | `/private` | el-table-v2, el-tag, el-dialog, el-progress | 私有存储管理，需登录，上传/删除/分享文件 |
+| RecentView | `/recent` | el-table-v2, el-button, el-tag, el-empty | 最近上传文件列表展示 |
+| HotView | `/hot` | el-table-v2, el-tag, el-empty | 热门下载文件排行 |
+| UserView | `/user` | el-card, el-descriptions, el-progress, el-form | 个人中心，用户信息、配额展示、修改密码 |
+| SettingsView | `/settings` | el-tabs, el-form, el-input, el-switch, el-card | 系统设置，多标签页配置 |
+| AdminDashboardView | `/admin/dashboard` | el-card, el-descriptions, el-progress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
+| AdminFilesView | `/admin/files`, `/admin/files/:path*` | el-breadcrumb, el-table-v2, el-tree-select | 管理员文件管理，支持搜索、重命名、移动、删除 |
+| AdminUsersView | `/admin/users` | el-table-v2, el-dialog, el-tag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
+| AdminTasksView | `/admin/tasks` | el-table-v2, el-button, el-progress | 任务管理，查看/执行定时任务 |
+| AdminUploadsView | `/admin/uploads` | el-table-v2, el-pagination | 上传管理，跟踪上传会话、清理残留 |
+| AdminRecordsView | `/admin/records` | el-table-v2, el-button | 记录管理，查看系统操作记录 |
+| AdminDuplicatesView | `/admin/duplicates` | el-table-v2, el-tag | 重复文件管理，检测与清理重复文件 |
+| AdminApiKeyView / AdminOpenApiView | `/admin/openapi` | el-form, el-input, el-table-v2 | OpenAPI 与 API Key 管理 |
 
 ---
 
@@ -297,37 +300,34 @@
 
 ---
 
-## Naive UI 组件使用统计
+## Element Plus 组件使用统计
 
-| 组件类型 | 使用页面数 | 使用页面 |
+> 前端架构已于 2026-08 从 Naive UI 迁移至 Element Plus 2.4.4。
+> 以下为迁移后主要组件及使用页面统计。
+
+| 组件类型 | 使用页面数 | 典型使用页面 |
 |---------|-----------|----------|
-| NButton | 13 (全部) | 所有页面 |
-| NDataTable | 9 | HomeView, TempView, PrivateStorageView, RecentView, HotView, AdminDashboardView, AdminFilesView, AdminUsersView, AdminURLTaskView |
-| NModal | 7 | HomeView, TempView, PrivateStorageView, UserView, AdminUsersView |
-| NCard | 6 | UserView, SettingsView, AdminDashboardView, AdminZombieView |
-| NForm/NFormItem | 6 | SetupView, UserView, SettingsView |
-| NInput | 6 | HomeView, TempView, SetupView, SettingsView, AdminUsersView |
-| NSpace | 6 | SetupView, UserView, SettingsView |
-| NIcon | 5 | AdminDashboardView, AdminUsersView |
-| NTag | 6 | TempView, PrivateStorageView, RecentView, HotView, AdminUsersView, AdminURLTaskView |
-| NEmpty | 5 | HomeView, RecentView, HotView, AdminDashboardView |
-| NAlert | 3 | SetupView, AdminZombieView |
-| NGrid/NGi | 3 | AdminDashboardView, AdminZombieView |
-| NProgress | 3 | PrivateStorageView, UserView, AdminDashboardView |
-| NBreadcrumb | 2 | HomeView, AdminFilesView |
-| NTabs/NTabPane | 1 | SettingsView |
-| NSwitch | 1 | SettingsView |
-| NTreeSelect | 1 | AdminFilesView |
-| NDynamicTags | 1 | SettingsView |
-| NDescriptions | 1 | UserView |
-| NBadge | 1 | AdminUsersView |
-| NList/NListItem | 1 | AdminZombieView |
-| NInputNumber | 1 | SetupView |
-| NRadioGroup | 1 | SetupView |
-| NSpin | 1 | HomeView |
-| NInputGroup | 1 | UserView |
-| NSteps | 1 | SetupView |
-| NScrollbar | 1 | PrivateStorageView |
+| el-button | 全部 | 所有页面 |
+| el-table-v2 | 8 | HomeView, TempView, PrivateStorageView, RecentView, HotView, AdminFilesView, AdminUsersView, AdminUploadsView |
+| el-dialog | 7 | HomeView, TempView, PrivateStorageView, UserView, AppHeader, AdminUsersView, UploadStatusDialog |
+| el-card | 6 | UserView, SettingsView, AdminDashboardView, HotView, RecentView, SetupView |
+| el-form/el-form-item | 6 | SetupView, UserView, SettingsView, AppHeader, AdminUsersView, UploadManager |
+| el-input | 6 | HomeView, TempView, SetupView, SettingsView, AdminUsersView, PrivateStorageView |
+| el-icon | 5 | AdminDashboardView, AdminUsersView, AppHeader |
+| el-tag | 4 | TempView, PrivateStorageView, RecentView, AppHeader |
+| el-empty | 4 | HomeView, RecentView, HotView, AdminDashboardView |
+| el-alert | 3 | SetupView, AdminDashboardView |
+| el-progress | 3 | PrivateStorageView, UserView, AdminDashboardView |
+| el-breadcrumb | 2 | HomeView, AdminFilesView, PrivateStorageView, TempView |
+| el-tabs/el-tab-pane | 2 | SettingsView, SetupView |
+| el-switch | 2 | SettingsView, SetupView |
+| el-tree-select | 1 | AdminFilesView |
+| el-descriptions | 1 | UserView, AdminDashboardView |
+| el-badge | 1 | AdminDashboardView |
+| el-input-number | 2 | SetupView, SettingsView, AdminDashboardView |
+| el-radio-group | 2 | SetupView, SettingsView |
+| el-steps | 1 | SetupView |
+| el-pagination | 4 | RecentView, AdminFilesView, AdminUploadsView, AdminTasksView |
 
 ---
 
@@ -336,8 +336,8 @@
 ```
 App.vue
 ├── AppHeader
-│   ├── LoginModal (NModal)
-│   ├── RegisterModal (NModal)
+│   ├── LoginModal (el-dialog)
+│   ├── RegisterModal (el-dialog)
 │   └── NotificationBell
 ├── router-view
 │   ├── HomeView
@@ -358,8 +358,9 @@ App.vue
 │   ├── AdminDashboardView
 │   ├── AdminFilesView
 │   ├── AdminUsersView
-│   ├── AdminZombieView
-│   └── AdminURLTaskView
+│   ├── AdminTasksView
+│   ├── AdminUploadsView
+│   └── AdminOpenApiView
 └── AppFooter
     └── ToastContainer
         └── Toast

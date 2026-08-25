@@ -79,7 +79,7 @@
 │   │   └── xxh3/                  # xxh3 实现
 │   └── integration/               # 集成测试
 │
-└── ui/                            # 前端 (Vue 3 + Naive UI)
+└── ui/                            # 前端 (Vue 3 + Element Plus)
     ├── src/
     │   ├── main.js               # 入口文件
     │   ├── App.vue               # 根组件
@@ -107,7 +107,7 @@
 | 权限控制 | RBAC | 基于角色的访问控制 |
 | 日志 | Zap + lumberjack | 结构化日志，支持轮转 |
 | 前端框架 | Vue 3.5.24 | 组合式 API |
-| UI 组件库 | Naive UI 2.41.0 | Vue 3 组件库 |
+| UI 组件库 | Element Plus 2.4.4 | Vue 3 组件库 |
 | 构建工具 | Vite 7.2.4 | 快速开发构建 |
 | 实时通信 | SSE | Server-Sent Events |
 

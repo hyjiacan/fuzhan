@@ -33,7 +33,7 @@
 | FTP服务器 | ftpserverlib | v0.32.0 |
 | 前端 | Vue | 3.5.24 |
 | 构建工具 | Vite | 7.2.4 |
-| UI 库 | Naive UI | 2.41.0 |
+| UI 库 | Element Plus | 2.4.4 |
 | 路由 | Vue Router | 4.5.0 |
 | HTTP客户端 | Axios | 1.17.0 |
 | CSS预处理器 | Less | 4.2.2 |

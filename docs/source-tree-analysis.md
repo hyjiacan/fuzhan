@@ -255,7 +255,6 @@ fuzhan/                              # 项目根目录
 │   │   │   └── preview.js               # 预览配置加载
 │   │   │
 │   │   ├── plugins/                     # Vue 插件
-│   │   │   └── naive-ui.js              # Naive UI 按需注册
 │   │   │
 │   │   ├── styles/                      # 全局样式
 │   │   │
@@ -267,7 +266,7 @@ fuzhan/                              # 项目根目录
 │   │           └── xxhash.test.js
 │   │
 │   ├── public/                          # 静态资源（favicon 等）
-│   ├── package.json                     # Vue 3.5.24, Vite 7.2.4, Naive UI 2.41.0
+│   ├── package.json                     # Vue 3.5.24, Vite 7.2.4, Element Plus 2.4.4
 │   ├── vite.config.js                   # Vite 构建配置
 │   └── README.md                        # 前端说明
 │
