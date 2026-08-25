@@ -25,7 +25,7 @@ async function adminLogin(page) {
     await page.waitForTimeout(500)
     await page.locator('input[placeholder*="用户"], input[type="text"]').first().fill('admin')
     await page.locator('input[type="password"]').first().fill('admin123')
-    await page.locator('.n-modal .n-button--primary-type, .n-modal .n-button.primary').first().click()
+    await page.locator('.el-dialog .el-button--primary').first().click()
     await page.waitForTimeout(3000)
     await page.keyboard.press('Escape')
     await page.waitForTimeout(500)
@@ -63,14 +63,14 @@ test.describe('系统设置页面', () => {
     await expect(httpsLabel).toBeVisible()
 
     // 有开关控件
-    const switches = page.locator('.n-switch')
+    const switches = page.locator('.el-switch')
     const switchCount = await switches.count()
     expect(switchCount).toBeGreaterThanOrEqual(2)
   })
 
   test('基础配置 - HTTPS 启用后显示端口', async ({ page }) => {
     // 找到 HTTPS 相关的开关
-    const httpsSwitches = page.getByText('启用 HTTPS', { exact: true }).locator('..').locator('.n-switch')
+    const httpsSwitches = page.getByText('启用 HTTPS', { exact: true }).locator('..').locator('.el-switch')
     if (await httpsSwitches.isVisible()) {
       await httpsSwitches.click()
       await page.waitForTimeout(300)
@@ -83,22 +83,22 @@ test.describe('系统设置页面', () => {
 
   test('数据库标签页 - 显示数据库类型选择和切换', async ({ page }) => {
     // 点击数据库标签
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: '数据库' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: '数据库' }).click()
     await page.waitForTimeout(500)
 
     // 数据库类型选项（使用 radio label 精确定位）
-    const sqliteRadio = page.locator('.n-radio-group .n-radio').filter({ hasText: 'SQLite' })
+    const sqliteRadio = page.locator('.el-radio-group .el-radio').filter({ hasText: 'SQLite' })
     await expect(sqliteRadio.first()).toBeVisible()
 
-    const mysqlRadio = page.locator('.n-radio-group .n-radio').filter({ hasText: 'MySQL' })
+    const mysqlRadio = page.locator('.el-radio-group .el-radio').filter({ hasText: 'MySQL' })
     await expect(mysqlRadio.first()).toBeVisible()
 
-    const pgRadio = page.locator('.n-radio-group .n-radio').filter({ hasText: 'PostgreSQL' })
+    const pgRadio = page.locator('.el-radio-group .el-radio').filter({ hasText: 'PostgreSQL' })
     await expect(pgRadio.first()).toBeVisible()
   })
 
   test('存储标签页 - 显示共享目录、私有/临时文件配置', async ({ page }) => {
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: '存储' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: '存储' }).click()
     await page.waitForTimeout(500)
 
     // 共享目录
@@ -115,7 +115,7 @@ test.describe('系统设置页面', () => {
   })
 
   test('上传标签页 - 显示分片大小和最大文件大小', async ({ page }) => {
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: '上传' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: '上传' }).click()
     await page.waitForTimeout(500)
 
     const chunkSize = page.locator('text=分片大小')
@@ -126,7 +126,7 @@ test.describe('系统设置页面', () => {
   })
 
   test('高级标签页 - 显示扩展名和预览配置', async ({ page }) => {
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: '高级' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: '高级' }).click()
     await page.waitForTimeout(500)
 
     const extLabel = page.locator('text=允许的扩展名')
@@ -137,7 +137,7 @@ test.describe('系统设置页面', () => {
   })
 
   test('FTP 标签页 - 显示 FTP/FTPS/TLS 证书配置', async ({ page }) => {
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: 'FTP' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: 'FTP' }).click()
     await page.waitForTimeout(500)
 
     // FTP 服务
@@ -163,7 +163,7 @@ test.describe('系统设置页面', () => {
   })
 
   test('WebDAV 标签页 - 显示 WebDAV 配置', async ({ page }) => {
-    await page.locator('.n-tabs .n-tabs-nav .n-tabs-tab').filter({ hasText: 'WebDAV' }).click()
+    await page.locator('.el-tabs__item').filter({ hasText: 'WebDAV' }).click()
     await page.waitForTimeout(500)
 
     // WebDAV 区域标题
@@ -171,7 +171,7 @@ test.describe('系统设置页面', () => {
     await expect(webdavSection).toBeVisible()
 
     // 启用 WebDAV 开关
-    const webdavSwitch = page.locator('.n-switch').last()
+    const webdavSwitch = page.locator('.el-switch').last()
     await expect(webdavSwitch).toBeVisible()
 
     // 打开 WebDAV 后公开用户名出现

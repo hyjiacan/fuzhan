@@ -1,21 +1,20 @@
 <template>
   <div class="test-step">
-    <n-alert v-if="testResult" :type="testResult.connected ? 'success' : 'error'" class="test-alert">
-      <template #icon>
-        <div class="alert-icon">{{ testResult.connected ? '✓' : '✗' }}</div>
-      </template>
-      <div v-if="testResult.connected">
-        <strong>连接成功！</strong>
-        <div class="connection-info">
-          <div>版本: {{ testResult.version }}</div>
-          <div>字符集: {{ testResult.characterSet || testResult.DatabaseInfo?.charset || 'N/A' }}</div>
-          <div>表数量: {{ testResult.tableCount || testResult.Tables?.length || 0 }}</div>
-          <div>记录数: {{ testResult.recordCount || testResult.DatabaseInfo?.recordCount || 0 }}</div>
-          <div>预估大小: {{ testResult.estimatedSize || testResult.DatabaseInfo?.dataSize || '0 KB' }}</div>
-        </div>
+    <el-alert
+      v-if="testResult"
+      :type="testResult.connected ? 'success' : 'error'"
+      :closable="false"
+      :title="testResult.connected ? '连接成功！' : '连接失败'"
+      class="test-alert"
+    >
+      <div v-if="testResult.connected" class="connection-info">
+        <div>版本: {{ testResult.version }}</div>
+        <div>字符集: {{ testResult.characterSet || testResult.DatabaseInfo?.charset || 'N/A' }}</div>
+        <div>表数量: {{ testResult.tableCount || testResult.Tables?.length || 0 }}</div>
+        <div>记录数: {{ testResult.recordCount || testResult.DatabaseInfo?.recordCount || 0 }}</div>
+        <div>预估大小: {{ testResult.estimatedSize || testResult.DatabaseInfo?.dataSize || '0 KB' }}</div>
       </div>
       <div v-else>
-        <strong>连接失败</strong>
         <div v-if="testResult.errorInfo">
           <div>错误码: {{ testResult.errorInfo.code }}</div>
           <div>原因: {{ testResult.errorInfo.message }}</div>
@@ -23,35 +22,30 @@
         </div>
         <div v-else>请检查连接配置</div>
       </div>
-    </n-alert>
+    </el-alert>
 
     <div class="test-actions">
-      <n-button :loading="testing" type="primary" @click="handleTest">
+      <el-button :loading="testing" type="primary" @click="handleTest">
         {{ testing ? '测试中...' : '测试连接' }}
-      </n-button>
+      </el-button>
     </div>
 
     <div class="step-actions">
-      <n-button @click="$emit('back')">上一步</n-button>
-      <n-button type="primary" :disabled="!testResult?.connected" @click="handleNext">
+      <el-button @click="$emit('back')">上一步</el-button>
+      <el-button type="primary" :disabled="!testResult?.connected" @click="handleNext">
         下一步
-      </n-button>
+      </el-button>
     </div>
   </div>
 </template>
 
 <script>
 import { ref } from 'vue'
-import { NAlert, NButton } from 'naive-ui'
 import { DatabaseApi } from '@/api'
 import { formatErrorMessage } from '@/utils/error'
 
 export default {
   name: 'TestStep',
-
-  components: {
-    NAlert, NButton
-  },
 
   props: {
     config: {

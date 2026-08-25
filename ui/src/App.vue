@@ -1,35 +1,19 @@
 <template>
-  <n-config-provider :theme-overrides="themeOverrides">
-    <n-message-provider>
-      <n-dialog-provider>
-        <n-notification-provider>
-          <n-loading-bar-provider>
-            <AppShell />
-            <ToastContainer />
-          </n-loading-bar-provider>
-        </n-notification-provider>
-      </n-dialog-provider>
-    </n-message-provider>
-  </n-config-provider>
+  <el-config-provider :locale="zhCn">
+    <AppShell />
+    <ToastContainer />
+  </el-config-provider>
 </template>
 
 <script setup>
 import { onMounted } from 'vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@/styles/global.less'
 import AppShell from '@/components/common/AppShell.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import store from '@/store'
 import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
-
-const themeOverrides = {
-  common: {
-    primaryColor: '#FFA500',
-    primaryColorHover: '#FFB733',
-    primaryColorPressed: '#E69500',
-    primaryColorSuppl: '#FFA50020',
-  }
-}
 
 // 页面宽度偏好
 const STORAGE_KEY = 'page-width-preference'
@@ -107,8 +91,14 @@ body {
   --app-width: 100%;
 }
 
-.n-config-provider {
-  width: 100%;
-  height: 100%;
+/* element-plus 主色主题覆盖（原 naive-ui 橙色主题） */
+:root {
+  --el-color-primary: #ffa500;
+  --el-color-primary-light-3: #ffb733;
+  --el-color-primary-light-5: #ffca73;
+  --el-color-primary-light-7: #ffdda3;
+  --el-color-primary-light-8: #ffe8c6;
+  --el-color-primary-light-9: #fff4e4;
+  --el-color-primary-dark-2: #e69500;
 }
 </style>

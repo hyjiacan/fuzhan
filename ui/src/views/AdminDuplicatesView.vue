@@ -3,9 +3,9 @@
     <div class="header-section">
       <div class="header-row">
         <span class="page-title">重复文件管理</span>
-        <n-button @click="loadDuplicates" :loading="dupLoading" quaternary>
+        <el-button @click="loadDuplicates" :loading="dupLoading" link>
           刷新
-        </n-button>
+        </el-button>
       </div>
       <div class="summary-text" v-if="duplicateGroups.length > 0">
         共 {{ dupTotal }} 组重复文件，按 xxh3 哈希分组
@@ -13,71 +13,53 @@
     </div>
 
     <div class="content-section">
-      <n-empty v-if="!dupLoading && duplicateGroups.length === 0" description="暂无重复文件" />
+      <el-empty v-if="!dupLoading && duplicateGroups.length === 0" description="暂无重复文件" />
 
-      <n-collapse v-else>
-        <n-collapse-item
+      <el-collapse v-else v-model="openGroups">
+        <el-collapse-item
           v-for="(group, idx) in duplicateGroups"
           :key="group.xxh3Hash"
+          :name="group.xxh3Hash"
           :title="`#${idx + 1}  ${group.xxh3Hash.substring(0, 16)}...  (${group.fileCount} 个文件, ${formatSizeDup(group.totalSize)})`"
         >
-          <n-data-table
-            :columns="dupColumns"
-            :data="group.files"
-            :bordered="false"
-            :single-line="true"
-            striped
-            size="small"
-          />
-        </n-collapse-item>
-      </n-collapse>
+          <!-- 表内嵌于可折叠面板中，容器高度动态变化，虚拟滚动(el-table-v2)难以稳定测量高度，故采用普通 el-table 实现 -->
+          <el-table :data="group.files" size="small" stripe :border="false">
+            <el-table-column label="文件路径" prop="fullPath" min-width="120" show-overflow-tooltip />
+            <el-table-column label="大小" width="100">
+              <template #default="{ row }">{{ formatSizeDup(row.fileSize) }}</template>
+            </el-table-column>
+            <el-table-column label="修改时间" prop="modTime" width="170" />
+            <el-table-column label="操作" width="80">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" link @click="handleKeepDuplicate(row)">保留</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-collapse-item>
+      </el-collapse>
 
-      <n-space justify="center" :style="{ marginTop: '16px' }" v-if="dupTotal > dupPageSize">
-        <n-button @click="dupPage++" :loading="dupLoading">加载更多</n-button>
-      </n-space>
+      <div style="display: flex; justify-content: center; margin-top: 16px;" v-if="dupTotal > dupPageSize">
+        <el-button @click="dupPage++" :loading="dupLoading">加载更多</el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, h, onMounted } from 'vue'
-import {
-  NButton, NDataTable, NEmpty, NCollapse, NCollapseItem,
-  NSpace, useMessage, useDialog
-} from 'naive-ui'
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { IndexApi } from '@/api'
 import { NumberUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
-
-const message = useMessage()
-const dialog = useDialog()
 
 const duplicateGroups = ref([])
 const dupLoading = ref(false)
 const dupTotal = ref(0)
 const dupPage = ref(1)
 const dupPageSize = 20
+const openGroups = ref([])
 
 const formatSizeDup = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
-
-const dupColumns = [
-  { title: '文件路径', key: 'fullPath', ellipsis: { tooltip: true } },
-  { title: '大小', key: 'fileSize', width: 100,
-    render: (row) => formatSizeDup(row.fileSize)
-  },
-  { title: '修改时间', key: 'modTime', width: 170 },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 80,
-    render(row) {
-      return h(NButton, {
-        size: 'small', type: 'primary', quaternary: true,
-        onClick: () => handleKeepDuplicate(row)
-      }, () => '保留')
-    }
-  }
-]
 
 async function loadDuplicates() {
   dupLoading.value = true
@@ -95,30 +77,31 @@ async function loadDuplicates() {
       dupTotal.value = res.data.total || 0
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '加载重复文件失败'))
+    ElMessage.error(formatErrorMessage(err, '加载重复文件失败'))
   } finally {
     dupLoading.value = false
   }
 }
 
 async function handleKeepDuplicate(row) {
-  dialog.warning({
-    title: '确认保留',
-    content: `确认保留 "${row.fileName}"，并删除其他同哈希的重复文件吗？此操作将删除磁盘文件且不可恢复。`,
-    positiveText: '确认保留',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const res = await IndexApi.keepDuplicate(row.id)
-        if (res.success) {
-          message.success(`保留成功，已删除 ${res.data.deletedFiles.length} 个重复文件`)
-          loadDuplicates()
-        }
-      } catch (err) {
-        message.error(formatErrorMessage(err, '保留失败'))
-      }
+  try {
+    await ElMessageBox.confirm(
+      `确认保留 "${row.fileName}"，并删除其他同哈希的重复文件吗？此操作将删除磁盘文件且不可恢复。`,
+      '确认保留',
+      { confirmButtonText: '确认保留', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await IndexApi.keepDuplicate(row.id)
+    if (res.success) {
+      ElMessage.success(`保留成功，已删除 ${res.data.deletedFiles.length} 个重复文件`)
+      loadDuplicates()
     }
-  })
+  } catch (err) {
+    ElMessage.error(formatErrorMessage(err, '保留失败'))
+  }
 }
 
 onMounted(() => {

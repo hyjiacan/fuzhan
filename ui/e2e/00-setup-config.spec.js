@@ -40,7 +40,7 @@ test.describe('部署向导页面', () => {
     await expect(appNameInput).toBeVisible()
 
     // 端口输入框
-    const portInput = page.locator('.n-input-number').first()
+    const portInput = page.locator('.el-input-number').first()
     await expect(portInput).toBeVisible()
   })
 
@@ -50,7 +50,7 @@ test.describe('部署向导页面', () => {
     await expect(httpsSection).toBeVisible({ timeout: 5000 })
 
     // HTTPS 开关存在
-    const httpsSwitch = page.locator('.n-switch').first()
+    const httpsSwitch = page.locator('.el-switch').first()
     await expect(httpsSwitch).toBeVisible()
 
     // HTTPS 提示文本存在
@@ -60,20 +60,20 @@ test.describe('部署向导页面', () => {
 
   test('启用 HTTPS 后显示端口和证书上传区域', async ({ page }) => {
     // 点击 HTTPS 开关
-    const httpsSwitch = page.locator('.n-switch').first()
+    const httpsSwitch = page.locator('.el-switch').first()
     await httpsSwitch.click()
     await page.waitForTimeout(500)
 
-    // HTTPS 端口输入应可见（使用 n-form-item-label 精确定位）
-    const httpsPortLabel = page.locator('.n-form-item-label__text', { hasText: 'HTTPS 端口' })
+    // HTTPS 端口输入应可见（使用 el-form-item 的 label 精确定位）
+    const httpsPortLabel = page.locator('.el-form-item__label', { hasText: 'HTTPS 端口' })
     await expect(httpsPortLabel).toBeVisible({ timeout: 3000 })
 
     // 证书文件上传区域可见
-    const certLabel = page.locator('.n-form-item-label__text', { hasText: '证书文件' })
+    const certLabel = page.locator('.el-form-item__label', { hasText: '证书文件' })
     await expect(certLabel).toBeVisible()
 
     // 密钥文件上传区域可见
-    const keyLabel = page.locator('.n-form-item-label__text', { hasText: '密钥文件' })
+    const keyLabel = page.locator('.el-form-item__label', { hasText: '密钥文件' })
     await expect(keyLabel).toBeVisible()
 
     // 上传证书按钮存在

@@ -1,17 +1,17 @@
 <template>
-  <n-modal v-model:show="show" :mask-closable="false" preset="card" title="上传状态" style="width: 800px; max-height: 80vh;">
-    <n-tabs type="line" animated>
-      <n-tab-pane name="public" tab="公共上传">
+  <el-dialog v-model="show" :close-on-click-modal="false" title="上传状态" width="800px">
+    <el-tabs>
+      <el-tab-pane name="public" label="公共上传">
         <UploadTaskTable type="public" />
-      </n-tab-pane>
-      <n-tab-pane name="temp" tab="临时上传">
+      </el-tab-pane>
+      <el-tab-pane name="temp" label="临时上传">
         <UploadTaskTable type="temp" />
-      </n-tab-pane>
-      <n-tab-pane name="private" tab="私有上传">
+      </el-tab-pane>
+      <el-tab-pane name="private" label="私有上传">
         <UploadTaskTable type="private" />
-      </n-tab-pane>
-    </n-tabs>
-  </n-modal>
+      </el-tab-pane>
+    </el-tabs>
+  </el-dialog>
 </template>
 
 <script setup>

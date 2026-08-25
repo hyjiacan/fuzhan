@@ -1,8 +1,8 @@
 <template>
   <div class="index-status-bar">
     <!-- 正在扫描 -->
-    <n-tooltip v-if="status.isScanning">
-      <template #trigger>
+    <el-tooltip v-if="status.isScanning">
+      <template #default>
         <span class="status-item scanning">
           <span class="icon">⏳</span>
           正在扫描 {{ status.scanScope }}
@@ -11,13 +11,13 @@
           </span>
         </span>
       </template>
-      点击「立即扫描」可重新触发
-    </n-tooltip>
+      <template #content>点击「立即扫描」可重新触发</template>
+    </el-tooltip>
 
     <!-- 空闲状态 -->
     <template v-else>
-      <n-tooltip>
-        <template #trigger>
+      <el-tooltip>
+        <template #default>
           <span class="status-item idle">
             <span class="icon">📋</span>
             索引:
@@ -33,25 +33,26 @@
             </span>
           </span>
         </template>
-        <div>
-          <div v-if="status.scanCronExpression">
-            Cron: {{ status.scanCronExpression }}
-          </div>
-          <div v-else>定时扫描未配置</div>
+        <template #content>
           <div>
-            <a class="tooltip-link" href="javascript:void(0)" @click="$emit('triggerScan')">
-              点击立即扫描
-            </a>
+            <div v-if="status.scanCronExpression">
+              Cron: {{ status.scanCronExpression }}
+            </div>
+            <div v-else>定时扫描未配置</div>
+            <div>
+              <a class="tooltip-link" href="javascript:void(0)" @click="$emit('triggerScan')">
+                点击立即扫描
+              </a>
+            </div>
           </div>
-        </div>
-      </n-tooltip>
+        </template>
+      </el-tooltip>
     </template>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { NTooltip } from 'naive-ui'
 import { IndexApi } from '@/api'
 import { TimeUtils } from '@/utils'
 

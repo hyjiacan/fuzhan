@@ -23,7 +23,7 @@ test.describe('文件浏览功能', () => {
     await page.waitForTimeout(5000)
 
     // 页面结构应该加载（即使根目录为空）
-    const hasLayout = await page.locator('.home-layout, .n-layout, #app > *').isVisible().catch(() => false)
+    const hasLayout = await page.locator('.home-layout, .el-container, #app > *').isVisible().catch(() => false)
 
     if (hasLayout) {
       expect(hasLayout).toBeTruthy()
@@ -64,11 +64,11 @@ test.describe('文件浏览功能', () => {
       await page.waitForTimeout(2000)
     }
 
-    const breadcrumb = page.locator('.n-breadcrumb')
+    const breadcrumb = page.locator('.el-breadcrumb')
     const hasBreadcrumb = await breadcrumb.isVisible().catch(() => false)
 
     if (hasBreadcrumb) {
-      const breadcrumbLinks = page.locator('.n-breadcrumb-item a')
+      const breadcrumbLinks = page.locator('.el-breadcrumb__inner a')
       const linkCount = await breadcrumbLinks.count()
       expect(linkCount).toBeGreaterThan(0)
     }
@@ -139,7 +139,7 @@ test.describe('文件浏览功能', () => {
     if (hasShareButton) {
       await shareButton.click()
       await page.waitForTimeout(1000)
-      const hasMessage = await page.locator('.n-message, .n-notification').isVisible().catch(() => false)
+      const hasMessage = await page.locator('.el-message, .el-notification').isVisible().catch(() => false)
       expect(hasMessage || hasShareButton).toBeTruthy()
     }
   })

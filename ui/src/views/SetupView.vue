@@ -1,8 +1,8 @@
 <template>
   <div class="setup-view">
-    <n-layout class="setup-layout">
-      <n-layout-content class="setup-content">
-        <n-card class="setup-card" :bordered="false" content-style="padding: 32px;">
+    <div class="setup-layout">
+      <div class="setup-content">
+        <el-card class="setup-card" :body-style="'padding: 32px;'">
           <template #header>
             <div class="setup-header">
               <span class="setup-icon">⚙️</span>
@@ -16,355 +16,336 @@
           <!-- Basic Config Section -->
           <div class="setup-section">
             <h3 class="section-title">基本配置</h3>
-            <n-form ref="formRef" :model="form" label-placement="top" :show-feedback="true">
-              <n-grid :cols="1" :x-gap="24">
-                <n-gi>
-                  <n-form-item label="应用名称" path="appName" :rule="requiredRule">
-                    <n-input v-model:value="form.appName" placeholder="请输入应用名称" size="large" />
-                  </n-form-item>
-                </n-gi>
-                <n-gi>
-                  <n-form-item label="监听地址" path="host">
-                    <n-select v-model:value="form.host" :options="ipOptions" size="large" />
-                    <template #feedback>
-                      <span class="field-hint">0.0.0.0 表示监听所有网络接口</span>
-                    </template>
-                  </n-form-item>
-                </n-gi>
-                <n-gi>
-                  <n-form-item label="服务端口" path="port">
-                    <n-input-number v-model:value="form.port" :min="1" :max="65535" size="large" class="full-width" />
-                    <template #feedback>
-                      <span class="field-hint">访问地址: http://{{ form.host === '0.0.0.0' ? 'localhost' : form.host }}:{{ form.port }}</span>
-                    </template>
-                  </n-form-item>
-                </n-gi>
-                </n-grid>
-            </n-form>
+            <el-form ref="formRef" :model="form" label-position="top">
+              <el-row :gutter="24">
+                <el-col :span="24">
+                  <el-form-item label="应用名称" prop="appName">
+                    <el-input v-model="form.appName" placeholder="请输入应用名称" size="large" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                  <el-form-item label="监听地址" prop="host">
+                    <el-select v-model="form.host" size="large">
+                      <el-option v-for="opt in ipOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                    </el-select>
+                    <div class="field-hint">0.0.0.0 表示监听所有网络接口</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                  <el-form-item label="服务端口" prop="port">
+                    <el-input-number v-model="form.port" :min="1" :max="65535" size="large" class="full-width" />
+                    <div class="field-hint">访问地址: http://{{ form.host === '0.0.0.0' ? 'localhost' : form.host }}:{{ form.port }}</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+            </el-form>
           </div>
 
           <!-- HTTPS Config Section -->
           <div class="setup-section">
             <h3 class="section-title">HTTPS 服务配置</h3>
-            <n-form label-placement="top">
-              <n-form-item label="启用 HTTPS">
-                <n-switch v-model:value="form.https.enabled" />
-                <template #feedback>
-                  <span class="field-hint">启用 HTTPS 加密传输，需要上传证书和密钥文件</span>
-                </template>
-              </n-form-item>
+            <el-form label-position="top">
+              <el-form-item label="启用 HTTPS">
+                <el-switch v-model="form.https.enabled" />
+                <div class="field-hint">启用 HTTPS 加密传输，需要上传证书和密钥文件</div>
+              </el-form-item>
 
-              <n-form-item v-if="form.https.enabled" label="HTTPS 端口">
-                <n-input-number v-model:value="form.https.port" :min="1" :max="65535" size="large" class="full-width" />
-                <template #feedback>
-                  <span class="field-hint">HTTPS 端口，默认 8443。访问地址: https://{{ form.host === '0.0.0.0' ? 'localhost' : form.host }}:{{ form.https.port }}</span>
-                </template>
-              </n-form-item>
+              <el-form-item v-if="form.https.enabled" label="HTTPS 端口">
+                <el-input-number v-model="form.https.port" :min="1" :max="65535" size="large" class="full-width" />
+                <div class="field-hint">HTTPS 端口，默认 8443。访问地址: https://{{ form.host === '0.0.0.0' ? 'localhost' : form.host }}:{{ form.https.port }}</div>
+              </el-form-item>
 
               <template v-if="form.https.enabled">
-                <n-grid :cols="2" :x-gap="16">
-                  <n-gi>
-                    <n-form-item label="证书文件 (.pem)">
-                      <n-upload
-                        :max="1"
+                <el-row :gutter="16">
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="证书文件 (.pem)">
+                      <el-upload
+                        :show-file-list="false"
                         accept=".pem,.crt"
-                        :custom-request="handleCertUpload"
-                        :file-list="certFileList"
-                        @update:file-list="handleCertFileListChange"
+                        :http-request="handleCertUpload"
                       >
-                        <n-button>上传证书</n-button>
-                      </n-upload>
-                      <template #feedback>
-                        <span class="field-hint" v-if="form.tls.certFile">当前: {{ form.tls.certFile }}</span>
-                        <span class="field-hint" v-else>支持 .pem 或 .crt 格式</span>
-                      </template>
-                    </n-form-item>
-                  </n-gi>
-                  <n-gi>
-                    <n-form-item label="密钥文件 (.key)">
-                      <n-upload
-                        :max="1"
+                        <el-button>上传证书</el-button>
+                      </el-upload>
+                      <div class="field-hint" v-if="form.tls.certFile">当前: {{ form.tls.certFile }}</div>
+                      <div class="field-hint" v-else>支持 .pem 或 .crt 格式</div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="密钥文件 (.key)">
+                      <el-upload
+                        :show-file-list="false"
                         accept=".key"
-                        :custom-request="handleKeyUpload"
-                        :file-list="keyFileList"
-                        @update:file-list="handleKeyFileListChange"
+                        :http-request="handleKeyUpload"
                       >
-                        <n-button>上传密钥</n-button>
-                      </n-upload>
-                      <template #feedback>
-                        <span class="field-hint" v-if="form.tls.keyFile">当前: {{ form.tls.keyFile }}</span>
-                        <span class="field-hint" v-else>支持 .key 格式</span>
-                      </template>
-                    </n-form-item>
-                  </n-gi>
-                </n-grid>
+                        <el-button>上传密钥</el-button>
+                      </el-upload>
+                      <div class="field-hint" v-if="form.tls.keyFile">当前: {{ form.tls.keyFile }}</div>
+                      <div class="field-hint" v-else>支持 .key 格式</div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
               </template>
-            </n-form>
+            </el-form>
           </div>
 
           <!-- Database Config Section -->
           <div class="setup-section">
             <h3 class="section-title">数据库配置</h3>
-            <n-form ref="dbFormRef" :model="form" label-placement="top">
-              <n-form-item label="数据库类型" path="dbDriver">
-                <n-radio-group v-model:value="form.dbDriver" size="large">
-                  <n-space>
-                    <n-radio value="sqlite">
+            <el-form ref="dbFormRef" :model="form" label-position="top">
+              <el-form-item label="数据库类型" prop="dbDriver">
+                <el-radio-group v-model="form.dbDriver" size="large">
+                  <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                    <el-radio label="sqlite">
                       <div class="db-option">
                         <div class="db-option-title">SQLite</div>
                         <div class="db-option-desc">轻量级，无需安装（推荐）</div>
                       </div>
-                    </n-radio>
-                    <n-radio value="mysql">
+                    </el-radio>
+                    <el-radio label="mysql">
                       <div class="db-option">
                         <div class="db-option-title">MySQL</div>
                         <div class="db-option-desc">需要 MySQL 5.7+</div>
                       </div>
-                    </n-radio>
-                    <n-radio value="postgres">
+                    </el-radio>
+                    <el-radio label="postgres">
                       <div class="db-option">
                         <div class="db-option-title">PostgreSQL</div>
                         <div class="db-option-desc">需要 PostgreSQL 10+</div>
                       </div>
-                    </n-radio>
-                  </n-space>
-                </n-radio-group>
-              </n-form-item>
+                    </el-radio>
+                  </div>
+                </el-radio-group>
+              </el-form-item>
 
               <!-- SQLite 配置 -->
-              <n-form-item v-if="form.dbDriver === 'sqlite'" label="数据库文件" path="dsn" :rule="requiredRule">
-                <n-input v-model:value="form.dsn" placeholder="fuzhan.db" size="large" />
-                <template #feedback>
-                  <span class="field-hint">SQLite 数据库文件路径，如 <code>./fuzhan.db</code></span>
-                </template>
-              </n-form-item>
+              <el-form-item v-if="form.dbDriver === 'sqlite'" label="数据库文件" prop="dsn">
+                <el-input v-model="form.dsn" placeholder="fuzhan.db" size="large" />
+                <div class="field-hint">SQLite 数据库文件路径，如 <code>./fuzhan.db</code></div>
+              </el-form-item>
 
               <!-- MySQL 配置 -->
               <template v-if="form.dbDriver === 'mysql'">
-                <n-grid :cols="2" :x-gap="16">
-                  <n-gi>
-                    <n-form-item label="主机地址" path="mysqlHost" :rule="requiredRule">
-                      <n-input v-model:value="form.mysqlHost" placeholder="localhost" size="large" />
-                      <template #feedback><span class="field-hint">MySQL 服务器地址，通常为 <code>localhost</code></span></template>
-                    </n-form-item>
-                  </n-gi>
-                  <n-gi>
-                    <n-form-item label="端口" path="mysqlPort">
-                      <n-input-number v-model:value="form.mysqlPort" :min="1" :max="65535" size="large" class="full-width" />
-                      <template #feedback><span class="field-hint">默认 <code>3306</code></span></template>
-                    </n-form-item>
-                  </n-gi>
-                </n-grid>
-                <n-grid :cols="2" :x-gap="16">
-                  <n-gi>
-                    <n-form-item label="用户名" path="mysqlUser" :rule="requiredRule">
-                      <n-input v-model:value="form.mysqlUser" placeholder="root" size="large" />
-                      <template #feedback><span class="field-hint">MySQL 数据库用户名</span></template>
-                    </n-form-item>
-                  </n-gi>
-                  <n-gi>
-                    <n-form-item label="密码">
-                      <n-input v-model:value="form.mysqlPassword" type="password" placeholder="输入密码（可选）" show-password-on="click" size="large" />
-                      <template #feedback><span class="field-hint">数据库密码，留空表示无密码</span></template>
-                    </n-form-item>
-                  </n-gi>
-                </n-grid>
-                <n-form-item label="数据库名" path="mysqlDatabase" :rule="requiredRule">
-                  <n-input v-model:value="form.mysqlDatabase" placeholder="fuzhan" size="large" />
-                <template #feedback>
-                  <span class="field-hint">
+                <el-row :gutter="16">
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="主机地址" prop="mysqlHost">
+                      <el-input v-model="form.mysqlHost" placeholder="localhost" size="large" />
+                      <div class="field-hint">MySQL 服务器地址，通常为 <code>localhost</code></div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="端口" prop="mysqlPort">
+                      <el-input-number v-model="form.mysqlPort" :min="1" :max="65535" size="large" class="full-width" />
+                      <div class="field-hint">默认 <code>3306</code></div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="16">
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="用户名" prop="mysqlUser">
+                      <el-input v-model="form.mysqlUser" placeholder="root" size="large" />
+                      <div class="field-hint">MySQL 数据库用户名</div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="密码">
+                      <el-input v-model="form.mysqlPassword" type="password" placeholder="输入密码（可选）" show-password size="large" />
+                      <div class="field-hint">数据库密码，留空表示无密码</div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-form-item label="数据库名" prop="mysqlDatabase">
+                  <el-input v-model="form.mysqlDatabase" placeholder="fuzhan" size="large" />
+                  <div class="field-hint">
                     需提前创建数据库：<br>
                     <code>CREATE DATABASE fuzhan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;</code>
-                    </span>
-                  </template>
-                </n-form-item>
+                  </div>
+                </el-form-item>
 
                 <!-- 测试连接按钮 -->
-                <n-form-item>
-                  <n-space align="center">
-                    <n-button
+                <el-form-item>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <el-button
                       :loading="testingDb"
-                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'error' : 'default'"
+                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
                       @click="testDbConnection"
                     >
                       {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                    </n-button>
+                    </el-button>
                     <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
                       {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
                     </span>
-                  </n-space>
-                </n-form-item>
+                  </div>
+                </el-form-item>
               </template>
 
               <!-- PostgreSQL 配置 -->
               <template v-if="form.dbDriver === 'postgres'">
-                <n-grid :cols="2" :x-gap="16">
-                  <n-gi>
-                    <n-form-item label="主机地址" path="postgresHost" :rule="requiredRule">
-                      <n-input v-model:value="form.postgresHost" placeholder="localhost" size="large" />
-                      <template #feedback><span class="field-hint">PostgreSQL 服务器地址，通常为 <code>localhost</code></span></template>
-                    </n-form-item>
-                  </n-gi>
-                  <n-gi>
-                    <n-form-item label="端口" path="postgresPort">
-                      <n-input-number v-model:value="form.postgresPort" :min="1" :max="65535" size="large" class="full-width" />
-                      <template #feedback><span class="field-hint">默认 <code>5432</code></span></template>
-                    </n-form-item>
-                  </n-gi>
-                </n-grid>
-                <n-grid :cols="2" :x-gap="16">
-                  <n-gi>
-                    <n-form-item label="用户名" path="postgresUser" :rule="requiredRule">
-                      <n-input v-model:value="form.postgresUser" placeholder="postgres" size="large" />
-                      <template #feedback><span class="field-hint">PostgreSQL 数据库用户名</span></template>
-                    </n-form-item>
-                  </n-gi>
-                  <n-gi>
-                    <n-form-item label="密码">
-                      <n-input v-model:value="form.postgresPassword" type="password" placeholder="输入密码" show-password-on="click" size="large" />
-                      <template #feedback><span class="field-hint">数据库密码</span></template>
-                    </n-form-item>
-                  </n-gi>
-                </n-grid>
-                <n-form-item label="数据库名" path="postgresDatabase" :rule="requiredRule">
-                  <n-input v-model:value="form.postgresDatabase" placeholder="fuzhan" size="large" />
-                  <template #feedback>
-                    <span class="field-hint">
-                      需提前创建数据库：<br>
-                      <code>CREATE DATABASE fuzhan;</code>
-                    </span>
-                  </template>
-                </n-form-item>
+                <el-row :gutter="16">
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="主机地址" prop="postgresHost">
+                      <el-input v-model="form.postgresHost" placeholder="localhost" size="large" />
+                      <div class="field-hint">PostgreSQL 服务器地址，通常为 <code>localhost</code></div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="端口" prop="postgresPort">
+                      <el-input-number v-model="form.postgresPort" :min="1" :max="65535" size="large" class="full-width" />
+                      <div class="field-hint">默认 <code>5432</code></div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="16">
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="用户名" prop="postgresUser">
+                      <el-input v-model="form.postgresUser" placeholder="postgres" size="large" />
+                      <div class="field-hint">PostgreSQL 数据库用户名</div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" :xs="24">
+                    <el-form-item label="密码">
+                      <el-input v-model="form.postgresPassword" type="password" placeholder="输入密码" show-password size="large" />
+                      <div class="field-hint">数据库密码</div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-form-item label="数据库名" prop="postgresDatabase">
+                  <el-input v-model="form.postgresDatabase" placeholder="fuzhan" size="large" />
+                  <div class="field-hint">
+                    需提前创建数据库：<br>
+                    <code>CREATE DATABASE fuzhan;</code>
+                  </div>
+                </el-form-item>
 
                 <!-- 测试连接按钮 -->
-                <n-form-item>
-                  <n-space align="center">
-                    <n-button
+                <el-form-item>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <el-button
                       :loading="testingDb"
-                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'error' : 'default'"
+                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
                       @click="testDbConnection"
                     >
                       {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                    </n-button>
+                    </el-button>
                     <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
                       {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
                     </span>
-                  </n-space>
-                </n-form-item>
+                  </div>
+                </el-form-item>
               </template>
-            </n-form>
+            </el-form>
           </div>
 
           <!-- Root Dirs Section -->
           <div class="setup-section">
             <h3 class="section-title">共享目录</h3>
-            <n-form ref="dirsFormRef" :model="form" label-placement="top">
+            <el-form ref="dirsFormRef" :model="form" label-position="top">
               <div class="dir-list">
                 <div v-for="(dir, index) in form.rootDirs" :key="index" class="dir-item">
                   <div class="dir-header">
                     <span class="dir-index">{{ form.rootDirs.length > 1 ? '目录 ' + (index + 1) : '目录' }}</span>
-                    <n-button type="error" quaternary circle size="tiny" @click="removeDir(index)"
+                    <el-button type="danger" link circle size="small" @click="removeDir(index)"
                       :disabled="form.rootDirs.length <= 1" class="dir-delete-btn" title="删除">
-                      <template #icon><n-icon><CloseIcon /></n-icon></template>
-                    </n-button>
+                      <el-icon><component :is="CloseIcon" /></el-icon>
+                    </el-button>
                   </div>
-                  <n-form-item label="路径" label-placement="top" path-path :show-feedback="false">
-                    <n-input v-model:value="dir.path" placeholder="D:\SharedFiles"
+                  <el-form-item label="路径" :show-message="false">
+                    <el-input v-model="dir.path" placeholder="D:\SharedFiles"
                       @blur="() => validateDir(index)" @keyup.enter="() => validateDir(index)" size="large">
-                      <template #prefix><n-icon><FolderIcon /></n-icon></template>
+                      <template #prefix><el-icon><component :is="FolderIcon" /></el-icon></template>
                       <template #suffix>
-                        <n-icon v-if="dir.validating" class="rotate" size="small">
-                          <LoadingIcon />
-                        </n-icon>
-                        <n-icon v-else-if="dir.validated === true" color="#18a058" size="small">
-                          <CheckIcon />
-                        </n-icon>
-                        <n-icon v-else-if="dir.validated === false" color="#d03050" size="small">
-                          <CloseIcon />
-                        </n-icon>
+                        <el-icon v-if="dir.validating" class="rotate">
+                          <component :is="LoadingIcon" />
+                        </el-icon>
+                        <el-icon v-else-if="dir.validated === true" :color="'#18a058'" :size="14">
+                          <component :is="CheckIcon" />
+                        </el-icon>
+                        <el-icon v-else-if="dir.validated === false" :color="'#d03050'" :size="14">
+                          <component :is="CloseIcon" />
+                        </el-icon>
                       </template>
-                    </n-input>
-                    <template #feedback>
-                      <div class="dir-feedback" :class="{ 'feedback-error': dir.validated === false }">
-                        <template v-if="dir.validating">正在验证目录...</template>
-                        <template v-else-if="dir.validated === true">目录有效</template>
-                        <template v-else-if="dir.validated === false">{{ dir.error }}</template>
-                        <template v-else>按回车或失焦验证目录</template>
-                      </div>
-                    </template>
-                  </n-form-item>
+                    </el-input>
+                    <div class="dir-feedback" :class="{ 'feedback-error': dir.validated === false }">
+                      <template v-if="dir.validating">正在验证目录...</template>
+                      <template v-else-if="dir.validated === true">目录有效</template>
+                      <template v-else-if="dir.validated === false">{{ dir.error }}</template>
+                      <template v-else>按回车或失焦验证目录</template>
+                    </div>
+                  </el-form-item>
                   <div class="dir-hint">例: D:\SharedFiles 或 /home/user/shared</div>
 
-                  <n-form-item label="显示名称" label-placement="top" path-name :show-feedback="false">
-                    <n-input v-model:value="dir.name" placeholder="共享文件" size="large" />
-                  </n-form-item>
+                  <el-form-item label="显示名称" :show-message="false">
+                    <el-input v-model="dir.name" placeholder="共享文件" size="large" />
+                  </el-form-item>
                   <div class="dir-hint">设置你自己喜欢的名称，比如：张三的共享</div>
 
-                  <n-form-item label="存储配额" label-placement="top" path-quota :show-feedback="false">
-                    <n-input v-model:value="dir.quota" placeholder="0" size="large" />
-                  </n-form-item>
+                  <el-form-item label="存储配额" :show-message="false">
+                    <el-input v-model="dir.quota" placeholder="0" size="large" />
+                  </el-form-item>
                   <div class="dir-hint">配额留空或0表示无限制，支持 K / M / G / T 单位</div>
                 </div>
-                <n-button type="primary" dashed block @click="addDir" size="large" class="add-dir-btn">
-                  <template #icon><n-icon><PlusIcon /></n-icon></template>
+                <el-button type="primary" plain block @click="addDir" size="large" class="add-dir-btn">
+                  <el-icon style="margin-right: 4px;"><component :is="PlusIcon" /></el-icon>
                   添加共享目录
-                </n-button>
+                </el-button>
               </div>
-            </n-form>
+            </el-form>
           </div>
 
           <!-- Admin Config Section -->
           <div class="setup-section">
             <h3 class="section-title">管理员配置</h3>
-            <n-form ref="adminFormRef" :model="form" label-placement="top">
-              <n-grid :cols="2" :x-gap="16">
-                <n-gi>
-                  <n-form-item label="管理员用户名" path="adminUsername" :rule="requiredRule">
-                    <n-input v-model:value="form.adminUsername" placeholder="admin" size="large" />
-                    <template #feedback>
-                      <span class="field-hint">用于管理后台登录</span>
-                    </template>
-                  </n-form-item>
-                </n-gi>
-                <n-gi>
-                  <n-form-item label="管理员密码" path="adminPassword" :rule="requiredRule">
-                    <n-input v-model:value="form.adminPassword" type="password" placeholder="设置管理员密码" show-password-on="click" size="large" />
-                    <template #feedback>
-                      <span class="field-hint">请妥善保管</span>
-                    </template>
-                  </n-form-item>
-                </n-gi>
-              </n-grid>
-            </n-form>
+            <el-form ref="adminFormRef" :model="form" label-position="top">
+              <el-row :gutter="16">
+                <el-col :span="12" :xs="24">
+                  <el-form-item label="管理员用户名" prop="adminUsername">
+                    <el-input v-model="form.adminUsername" placeholder="admin" size="large" />
+                    <div class="field-hint">用于管理后台登录</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12" :xs="24">
+                  <el-form-item label="管理员密码" prop="adminPassword">
+                    <el-input v-model="form.adminPassword" type="password" placeholder="设置管理员密码" show-password size="large" />
+                    <div class="field-hint">请妥善保管</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+            </el-form>
           </div>
 
           <!-- Error Alert -->
-          <n-alert v-if="errorMessage" type="error" :title="errorMessage" class="error-alert" />
+          <el-alert v-if="errorMessage" type="error" :title="errorMessage" :closable="false" class="error-alert" />
 
           <template #footer>
             <div class="setup-footer">
-              <n-button type="primary" size="large" @click="submitConfig" :loading="submitting">
+              <el-button type="primary" size="large" @click="submitConfig" :loading="submitting">
                 完成配置
-              </n-button>
+              </el-button>
             </div>
           </template>
-        </n-card>
-      </n-layout-content>
-    </n-layout>
+        </el-card>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, h, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { NLayout, NLayoutContent, NCard, NForm, NFormItem, NInput, NInputNumber, NRadioGroup, NRadio, NButton, NIcon, NAlert, NSpace, NGrid, NGi, NSelect, NSwitch, NUpload, useMessage, useDialog } from 'naive-ui'
 import { SetupApi, DatabaseApi, SystemApi } from '@/api'
 import { NumberUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 
 const router = useRouter()
-const message = useMessage()
-const dialog = useDialog()
+const message = ElMessage
+const dialog = {
+  warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
+    confirmButtonText: opts.positiveText || '确定',
+    cancelButtonText: opts.negativeText || '取消',
+    type: 'warning',
+    closeOnClickModal: !!opts.onMaskClick
+  }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() })
+}
 
 // Icons
 const PlusIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -448,35 +429,38 @@ const dbTestResult = ref(null)
 const initialHost = ref('0.0.0.0')
 const initialPort = ref(8888)
 
-// 文件上传处理
-const handleCertUpload = async ({ file }) => {
+// 证书上传处理（el-upload http-request）
+const handleCertUpload = async ({ file, onSuccess, onError }) => {
   try {
-    const res = await SystemApi.uploadCert(file.file)
+    const res = await SystemApi.uploadCert(file)
     if (res.success && res.data?.path) {
       form.tls.certFile = res.data.path
       message.success('证书上传成功')
     } else {
       message.error(res.message || '证书上传失败')
     }
+    onSuccess?.(res)
   } catch (e) {
     message.error('证书上传失败')
+    onError?.(e)
   }
-  return false
 }
 
-const handleKeyUpload = async ({ file }) => {
+// 密钥上传处理（el-upload http-request）
+const handleKeyUpload = async ({ file, onSuccess, onError }) => {
   try {
-    const res = await SystemApi.uploadKey(file.file)
+    const res = await SystemApi.uploadKey(file)
     if (res.success && res.data?.path) {
       form.tls.keyFile = res.data.path
       message.success('密钥上传成功')
     } else {
       message.error(res.message || '密钥上传失败')
     }
+    onSuccess?.(res)
   } catch (e) {
     message.error('密钥上传失败')
+    onError?.(e)
   }
-  return false
 }
 
 const handleCertFileListChange = (list) => {
@@ -703,11 +687,9 @@ const showRestartDialog = () => {
     const newUrl = 'http://' + displayHost + ':' + form.port
     dialog.warning({
       title: '服务器地址已变更',
-      content: '\u670d\u52a1\u5df2\u5207\u6362\u5230\u65b0\u5730\u5740\uff1a' + newUrl,
+      content: '服务已切换到新地址：' + newUrl,
       positiveText: '前往新地址',
-      negativeText: '\u7559\u5728\u5f53\u524d\u9875\u9762',
-      maskClosable: false,
-      closable: false,
+      negativeText: '留在当前页面',
       onPositiveClick: () => {
         // 等待新服务端口就绪后再导航
         pollServerHealth(newUrl, 20, 500, () => {
@@ -719,7 +701,7 @@ const showRestartDialog = () => {
       }
     })
   } else {
-    // \u7aef\u53e3\u672a\u53d8\u5316\uff0c\u76f4\u63a5\u8df3\u8f6c\u9996\u9875
+    // 端口未变化，直接跳转首页
     router.push('/')
   }
 
@@ -765,11 +747,11 @@ onMounted(async () => {
 .setup-layout {
   height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  overflow-y: auto;
 }
 
 .setup-content {
   padding: 40px;
-  overflow-y: auto;
 }
 
 .setup-card {
@@ -777,6 +759,7 @@ onMounted(async () => {
   max-width: 920px;
   margin: 0 auto;
   border-radius: 16px;
+  border: none;
 }
 
 .setup-header {
@@ -872,7 +855,7 @@ onMounted(async () => {
     }
   }
 
-  .n-form-item {
+  :deep(.el-form-item) {
     margin-bottom: 12px;
   }
 
@@ -926,12 +909,6 @@ onMounted(async () => {
 @media @tablet {
   .setup-content {
     padding: 24px 16px;
-  }
-
-  .setup-section {
-    .n-grid {
-      // 2列在小屏变1列
-    }
   }
 }
 

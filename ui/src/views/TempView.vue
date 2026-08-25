@@ -3,11 +3,11 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb-row">
       <div class="breadcrumb-left">
-        <n-breadcrumb v-if="breadcrumb.length > 1">
-          <n-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+        <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
+          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
             <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
-          </n-breadcrumb-item>
-        </n-breadcrumb>
+          </el-breadcrumb-item>
+        </el-breadcrumb>
         <span v-else class="breadcrumb-root">临时文件</span>
         <span class="temp-description">无需登录即可上传分享，文件到期自动删除</span>
       </div>
@@ -22,126 +22,134 @@
     <div class="toolbar-row">
         <!-- 左侧：访问码入口 -->
         <div class="access-code-section">
-          <n-input-group>
-            <n-input
-              v-model:value="accessCodeInput"
-              placeholder="输入访问码快速访问文件"
-              size="small"
-              style="width: 200px"
-              @keydown.enter="handleAccessCode"
-            />
-            <n-button type="primary" size="small" @click="handleAccessCode" :loading="accessingCode">
-              访问
-            </n-button>
-          </n-input-group>
+          <el-input
+            v-model="accessCodeInput"
+            placeholder="输入访问码快速访问文件"
+            size="small"
+            style="width: 200px"
+            @keydown.enter="handleAccessCode"
+          >
+            <template #append>
+              <el-button type="primary" size="small" @click="handleAccessCode" :loading="accessingCode">
+                访问
+              </el-button>
+            </template>
+          </el-input>
         </div>
         <!-- 右侧：搜索和上传 -->
         <div class="toolbar-right">
-          <n-input
+          <el-input
             ref="searchInputRef"
-            v-model:value="searchQuery"
+            v-model="searchQuery"
             placeholder="搜索文件..."
             size="small"
             class="search-input"
             clearable
           />
-          <n-button @click="loadFiles(currentDir)" :loading="loading">
-            <template #icon><n-icon><RefreshIcon /></n-icon></template>
+          <el-button @click="loadFiles(currentDir)" :loading="loading">
+            <el-icon><RefreshIcon /></el-icon>
             刷新
-          </n-button>
-          <n-button type="primary" @click="showUploadDialog = true">
-            <template #icon><n-icon><UploadIcon /></n-icon></template>
+          </el-button>
+          <el-button type="primary" @click="showUploadDialog = true">
+            <el-icon><UploadIcon /></el-icon>
             上传文件
-          </n-button>
+          </el-button>
         </div>
     </div>
 
     <!-- 文件列表 -->
     <div class="content-table">
-      <n-data-table
-        :columns="columns"
-        :data="tableData"
-        :loading="loading"
-        :pagination="pagination"
-        :row-key="row => row._key"
-        :bordered="false"
-        size="small"
-      />
+      <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
+        <el-table-v2
+          :columns="columns"
+          :data="pagedData"
+          :width="tableWidth"
+          :height="tableHeight"
+          row-key="_key"
+        />
+      </div>
+      <div v-if="tableData.length > pageSize" class="table-pagination">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="tableData.length"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="currentPage = 1"
+        />
+      </div>
     </div>
 
     <!-- 上传弹窗 -->
-    <n-modal :show="showUploadDialog" preset="card" title="上传临时文件" class="upload-dialog"
-      @update:show="onUploadDialogShowChange" :mask-closable="false" :closeable="false">
+    <el-dialog :model-value="showUploadDialog" title="上传临时文件" class="upload-dialog" width="640px"
+      :close-on-click-modal="false" :show-close="false" @update:model-value="onUploadDialogShowChange">
       <upload-manager :upload-api="tempUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" ref="uploadManagerRef" @close="handleUploadDialogClose" :delete-on-download="deleteOnDownload" />
       <template #footer>
         <div class="upload-dialog-footer">
-          <n-checkbox v-model:checked="deleteOnDownload">下载后自动删除</n-checkbox>
+          <el-checkbox v-model="deleteOnDownload">下载后自动删除</el-checkbox>
         </div>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 预览弹窗 -->
-    <n-modal v-model:show="previewDialogVisible" preset="card" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
-      :style="previewMaximized ? { width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', top: 0, left: 0, transform: 'none', borderRadius: 0 } : { width: '900px', maxHeight: '80vh' }">
+    <el-dialog v-model="previewDialogVisible" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
+      :style="previewMaximized ? { width: '100vw', maxWidth: '100vw' } : { width: '900px', maxHeight: '80vh' }">
       <file-preview :file="previewFileData" :maximized="previewMaximized" :download-api="() => TempApi.download(previewFileData.code)"
         @close="previewDialogVisible = false" />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <n-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</n-button>
-          <n-button type="primary" @click="downloadFile(previewFileData.code)">下载</n-button>
-          <n-button @click="previewDialogVisible = false">关闭</n-button>
+          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
+          <el-button type="primary" @click="downloadFile(previewFileData.code)">下载</el-button>
+          <el-button @click="previewDialogVisible = false">关闭</el-button>
         </div>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 访问码查询结果弹窗 -->
-    <n-modal v-model:show="showAccessCodeDialog" preset="card" title="文件信息" style="width: 400px">
-      <n-descriptions :column="1" v-if="accessedFile">
-        <n-descriptions-item label="文件名">
+    <el-dialog v-model="showAccessCodeDialog" title="文件信息" width="400px">
+      <el-descriptions :column="1" v-if="accessedFile">
+        <el-descriptions-item label="文件名">
           <span :class="getFileIconClass(accessedFile)"></span>
           {{ accessedFile.filename }}
-        </n-descriptions-item>
-        <n-descriptions-item label="文件大小">
+        </el-descriptions-item>
+        <el-descriptions-item label="文件大小">
           {{ formatSize(accessedFile.fileSize) }}
-        </n-descriptions-item>
-        <n-descriptions-item label="访问码">
-          <n-tag type="info">{{ accessedFile.code }}</n-tag>
-        </n-descriptions-item>
-        <n-descriptions-item label="过期时间">
+        </el-descriptions-item>
+        <el-descriptions-item label="访问码">
+          <el-tag type="info">{{ accessedFile.code }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="过期时间">
           {{ TimeUtils.formatDateTime(accessedFile.expiredAt) }}
-        </n-descriptions-item>
-      </n-descriptions>
+        </el-descriptions-item>
+      </el-descriptions>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showAccessCodeDialog = false; accessedFile = null; accessCodeInput = ''">关闭</n-button>
-          <n-button type="primary" @click="downloadFile(accessedFile.code)">下载</n-button>
-        </n-space>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="showAccessCodeDialog = false; accessedFile = null; accessCodeInput = ''">关闭</el-button>
+          <el-button type="primary" @click="downloadFile(accessedFile.code)">下载</el-button>
+        </div>
       </template>
-    </n-modal>
+    </el-dialog>
 
-	    <!-- 删除确认弹窗 -->
-	    <n-modal v-model:show="showDeleteConfirm" preset="card" title="确认删除" style="width: 400px">
-	      <p>确定要删除文件「{{ deleteTarget?.filename }}」吗？此操作不可恢复。</p>
-	      <template #footer>
-	        <n-space justify="end">
-	          <n-button @click="showDeleteConfirm = false; deleteTarget = null">取消</n-button>
-	          <n-button type="error" :loading="deleting" @click="confirmDelete">删除</n-button>
-	        </n-space>
-	      </template>
-	    </n-modal>
-	  </div>
-	</template>
+      <!-- 删除确认弹窗 -->
+      <el-dialog v-model="showDeleteConfirm" title="确认删除" width="400px">
+        <p>确定要删除文件「{{ deleteTarget?.filename }}」吗？此操作不可恢复。</p>
+        <template #footer>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <el-button @click="showDeleteConfirm = false; deleteTarget = null">取消</el-button>
+            <el-button type="danger" :loading="deleting" @click="confirmDelete">删除</el-button>
+          </div>
+        </template>
+      </el-dialog>
+    </div>
+  </template>
 
-	<script setup>
-	import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
-	import { NButton, NIcon, NDataTable, NTag, NProgress, NModal, NSpace, NInput, NInputGroup, NDescriptions, NDescriptionsItem, NBreadcrumb, NBreadcrumbItem, NCheckbox, useMessage, useDialog } from 'naive-ui'
+<script setup>
+import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
+import { ElMessage, ElMessageBox, ElButton, ElTag, ElIcon } from 'element-plus'
 import { TempApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
-
-const message = useMessage()
-const dialog = useDialog()
 
 // Icons
 const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -177,7 +185,22 @@ const accessCodeInput = ref('')
 const accessingCode = ref(false)
 const accessedFile = ref(null)
 
-const pagination = { pageSize: 10 }
+// 客户端分页（原 naive 表格内置分页 pageSize=10）
+const pageSize = ref(10)
+const currentPage = ref(1)
+
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
 
 // 面包屑
 const breadcrumb = computed(() => {
@@ -227,6 +250,12 @@ const tableData = computed(() => {
   return [...dirRows, ...fileRows]
 })
 
+// 当前页数据
+const pagedData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return tableData.value.slice(start, start + pageSize.value)
+})
+
 // 格式化
 const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
 
@@ -255,6 +284,7 @@ const canPreview = (row) => {
 const navigateToDir = (dir) => {
   currentDir.value = dir
   searchQuery.value = ''
+  currentPage.value = 1
   loadFiles(dir)
 }
 
@@ -277,17 +307,15 @@ const onUploadSuccess = () => {
 const handleUploadDialogClose = () => {
   const mgr = uploadManagerRef.value
   if (mgr?.hasActiveUploads) {
-    dialog.warning({
-      title: '上传进行中',
-      content: '有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？',
-      positiveText: '确认关闭',
-      negativeText: '继续上传',
-      onPositiveClick: () => {
-        showUploadDialog.value = false
-      }
-    })
+    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
+      confirmButtonText: '确认关闭',
+      cancelButtonText: '继续上传',
+      type: 'warning'
+    }).then(() => {
+      showUploadDialog.value = false
+    }).catch(() => {})
   } else if (mgr?.hasUrlUploading) {
-    message.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
+    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
     showUploadDialog.value = false
   } else {
     showUploadDialog.value = false
@@ -324,11 +352,11 @@ const columns = computed(() => [
   {
     title: '文件名',
     key: 'filename',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 300,
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') {
         return h('div', { class: 'file-name-cell', style: 'cursor: pointer;' }, [
-          h(NIcon, { size: 18, style: 'color: #f0a020; margin-right: 8px;' }, () => h(FolderIcon)),
+          h(ElIcon, { size: 18, style: 'color: #f0a020; margin-right: 8px;' }, () => h(FolderIcon)),
           h('span', {
             class: 'file-link',
             style: 'color: #2080f0;',
@@ -368,19 +396,19 @@ const columns = computed(() => [
     title: '大小',
     key: 'fileSize',
     width: 100,
-    render: (row) => row._type === 'dir' ? h('span', { style: 'color: #999;' }, '-') : formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: #999;' }, '-') : formatSize(row.fileSize)
   },
   {
     title: '访问码',
     key: 'code',
     width: 100,
-    render: (row) => row._type === 'dir' ? null : h(NTag, { size: 'small', type: 'info', style: 'cursor: pointer', onClick: () => copyCode(row.code) }, () => row.code)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? null : h(ElTag, { size: 'small', type: 'info', style: 'cursor: pointer', onClick: () => copyCode(row.code) }, () => row.code)
   },
   {
     title: '上传时间',
     key: 'createdAt',
     width: 180,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
       const text = TimeUtils.formatDateTime(row.createdAt)
       if (TimeUtils.isRecent24h(row.createdAt)) {
@@ -393,11 +421,11 @@ const columns = computed(() => [
     title: '过期时间',
     key: 'expiredAt',
     width: 180,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
       const expire = new Date(row.expiredAt)
       const now = new Date()
-      if (expire < now) return h(NTag, { type: 'error', size: 'small' }, () => '已过期')
+      if (expire < now) return h(ElTag, { type: 'danger', size: 'small' }, () => '已过期')
       return TimeUtils.formatDateTime(row.expiredAt)
     }
   },
@@ -405,21 +433,21 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 160,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
       const expire = new Date(row.expiredAt)
       const now = new Date()
       const isExpired = expire < now
 
       return h('div', { class: 'action-buttons' }, [
-        !isExpired && h(NButton, {
-          size: 'tiny',
+        !isExpired && h(ElButton, {
+          size: 'small',
           type: 'primary',
           onClick: () => downloadFile(row.code)
         }, () => '下载'),
-        h(NButton, {
-          size: 'tiny',
-          type: 'error',
+        h(ElButton, {
+          size: 'small',
+          type: 'danger',
           onClick: () => handleDelete(row)
         }, () => '删除')
       ])
@@ -450,7 +478,7 @@ const loadFiles = async (dir) => {
       used.value = data.data?.quota?.used || 0
     }
   } catch (error) {
-    message.error('加载文件列表失败')
+    ElMessage.error('加载文件列表失败')
     console.error(error)
   } finally {
     loading.value = false
@@ -459,9 +487,9 @@ const loadFiles = async (dir) => {
 
 const copyCode = (code) => {
   navigator.clipboard.writeText(code).then(() => {
-    message.success('访问码已复制')
+    ElMessage.success('访问码已复制')
   }).catch(() => {
-    message.error('复制失败')
+    ElMessage.error('复制失败')
   })
 }
 
@@ -486,13 +514,13 @@ const confirmDelete = async () => {
   try {
     const data = await TempApi.delete(file.code)
     if (data.success) {
-      message.success('删除成功')
+      ElMessage.success('删除成功')
       loadFiles(currentDir.value)
     } else {
-      message.error(data.message || '删除失败')
+      ElMessage.error(data.message || '删除失败')
     }
   } catch (error) {
-    message.error('删除失败')
+    ElMessage.error('删除失败')
     console.error(error)
   } finally {
     deleting.value = false
@@ -505,7 +533,7 @@ const confirmDelete = async () => {
 const handleAccessCode = async () => {
   const code = accessCodeInput.value.trim().toUpperCase()
   if (!code) {
-    message.warning('请输入访问码')
+    ElMessage.warning('请输入访问码')
     return
   }
   accessingCode.value = true
@@ -515,17 +543,17 @@ const handleAccessCode = async () => {
       accessedFile.value = data.data
       showAccessCodeDialog.value = true
     } else {
-      message.error(data.message || '访问码无效或文件已过期')
+      ElMessage.error(data.message || '访问码无效或文件已过期')
     }
   } catch (error) {
-    message.error('获取文件信息失败')
+    ElMessage.error('获取文件信息失败')
     console.error(error)
   } finally {
-	    accessingCode.value = false
-	  }
-	}
+    accessingCode.value = false
+  }
+}
 
-	// 键盘快捷键
+// 键盘快捷键
 const handleKeydown = (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
     e.preventDefault()
@@ -538,10 +566,16 @@ onMounted(() => {
   loadClientIP()
   loadFiles('')
   window.addEventListener('keydown', handleKeydown)
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -624,7 +658,7 @@ onUnmounted(() => {
     .access-code-section {
       flex: 1;
 
-      .n-input-group {
+      .el-input-group {
         max-width: 360px;
       }
     }
@@ -651,11 +685,21 @@ onUnmounted(() => {
       box-shadow: @shadow-md;
     }
 
-    :deep(.n-data-table) {
+    .table-v2-wrap {
+      height: 400px;
+    }
+
+    .table-pagination {
+      display: flex;
+      justify-content: flex-end;
+      padding: 8px 16px;
+      border-top: 1px solid @border-color-light;
+    }
+
+    :deep(.el-table-v2) {
       @media @mobile {
         overflow-x: auto;
-        .n-data-table-th,
-        .n-data-table-td {
+        .el-table-v2__row-cell {
           white-space: nowrap;
         }
       }
@@ -710,7 +754,7 @@ onUnmounted(() => {
   }
 }
 
-.preview-maximized :deep(.n-card-content) {
+.preview-maximized :deep(.el-dialog__body) {
   display: flex;
   flex-direction: column;
   min-height: 0;

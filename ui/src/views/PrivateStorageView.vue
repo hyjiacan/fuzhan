@@ -3,11 +3,11 @@
     <div class="header-section">
       <!-- Breadcrumb -->
       <div class="breadcrumb-row">
-        <n-breadcrumb v-if="breadcrumb.length > 1">
-          <n-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+        <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
+          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
             <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
-          </n-breadcrumb-item>
-        </n-breadcrumb>
+          </el-breadcrumb-item>
+        </el-breadcrumb>
         <span v-else class="breadcrumb-root">私有存储</span>
       </div>
 
@@ -21,9 +21,9 @@
       </div>
       <div class="toolbar-row">
         <div class="toolbar-left">
-          <n-input
+          <el-input
             ref="searchInputRef"
-            v-model:value="searchQuery"
+            v-model="searchQuery"
             :maxlength="200"
             placeholder="搜索文件..."
             size="small"
@@ -32,57 +32,67 @@
           />
         </div>
         <div class="toolbar-right">
-          <n-button @click="loadFiles(currentDir)" :loading="loading">
-            <template #icon><n-icon><RefreshIcon /></n-icon></template>
+          <el-button @click="loadFiles(currentDir)" :loading="loading">
+            <el-icon><RefreshIcon /></el-icon>
             刷新
-          </n-button>
-          <n-button type="primary" @click="showUploadDialog = true">
-            <template #icon><n-icon><UploadIcon /></n-icon></template>
+          </el-button>
+          <el-button type="primary" @click="showUploadDialog = true">
+            <el-icon><UploadIcon /></el-icon>
             上传文件
-          </n-button>
+          </el-button>
         </div>
       </div>
     </div>
 
     <!-- 文件列表 -->
     <div class="content-table">
-      <n-data-table
-        :columns="columns"
-        :data="tableData"
-        :loading="loading"
-        :pagination="pagination"
-        :row-key="row => row._key"
-        :bordered="false"
-        size="small"
-      />
+      <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
+        <el-table-v2
+          :columns="columns"
+          :data="pagedData"
+          :width="tableWidth"
+          :height="tableHeight"
+          row-key="_key"
+        />
+      </div>
+      <div v-if="tableData.length > pageSize" class="table-pagination">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="tableData.length"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="currentPage = 1"
+        />
+      </div>
     </div>
 
     <!-- 上传弹窗 -->
-    <n-modal :show="showUploadDialog" preset="card" title="上传文件" class="upload-dialog"
-      @update:show="onUploadDialogShowChange" :mask-closable="false" :closeable="false">
+    <el-dialog :model-value="showUploadDialog" title="上传文件" class="upload-dialog" width="640px"
+      :close-on-click-modal="false" :show-close="false" @update:model-value="onUploadDialogShowChange">
       <upload-manager :upload-api="privateUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" @upload-error="onUploadError" ref="uploadManagerRef" @close="handleUploadDialogClose" />
-    </n-modal>
+    </el-dialog>
 
     <!-- 预览弹窗 -->
-    <n-modal v-model:show="previewDialogVisible" preset="card" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
-      :style="previewMaximized ? { width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', top: 0, left: 0, transform: 'none', borderRadius: 0 } : { width: '900px', maxHeight: '80vh' }">
+    <el-dialog v-model="previewDialogVisible" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
+      :style="previewMaximized ? { width: '100vw', maxWidth: '100vw' } : { width: '900px', maxHeight: '80vh' }">
       <file-preview :file="previewFileData" :maximized="previewMaximized" :download-api="() => PrivateApi.download(previewFileData.code)"
         @close="previewDialogVisible = false" />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <n-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</n-button>
-          <n-button type="primary" @click="downloadFile(previewFileData.code)">下载</n-button>
-          <n-button @click="previewDialogVisible = false">关闭</n-button>
+          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
+          <el-button type="primary" @click="downloadFile(previewFileData.code)">下载</el-button>
+          <el-button @click="previewDialogVisible = false">关闭</el-button>
         </div>
       </template>
-    </n-modal>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, h } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NIcon, NDataTable, NTag, NProgress, NModal, NSpace, NInput, NBreadcrumb, NBreadcrumbItem, useMessage, useDialog } from 'naive-ui'
+import { ElMessage, ElMessageBox, ElButton, ElTag, ElIcon } from 'element-plus'
 import { PrivateApi, AuthApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
@@ -90,8 +100,6 @@ import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 
 const router = useRouter()
-const message = useMessage()
-const dialog = useDialog()
 
 // Icons
 const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -119,6 +127,23 @@ const uploadManagerRef = ref(null)
 const uploadQueueCount = ref(0)
 const searchQuery = ref('')
 const searchInputRef = ref(null)
+
+// 客户端分页（原 naive 表格内置分页 pageSize=10）
+const pageSize = ref(10)
+const currentPage = ref(1)
+
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
 
 // 面包屑
 const breadcrumb = computed(() => {
@@ -167,6 +192,12 @@ const tableData = computed(() => {
   return [...dirRows, ...fileRows]
 })
 
+// 当前页数据
+const pagedData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return tableData.value.slice(start, start + pageSize.value)
+})
+
 // 私有存储上传 API 配置
 const privateUploadApi = {
   type: 'chunked',
@@ -176,8 +207,6 @@ const privateUploadApi = {
   uploadChunk: () => '/api/v1/private/uploads/chunk',
   finalize: () => '/api/v1/private/uploads/finalize'
 }
-
-const pagination = { pageSize: 10 }
 
 // 格式化
 const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
@@ -199,6 +228,7 @@ const canPreview = (row) => {
 const navigateToDir = (dir) => {
   currentDir.value = dir
   searchQuery.value = ''
+  currentPage.value = 1
   loadFiles(dir)
 }
 
@@ -213,30 +243,28 @@ const goUp = () => {
 
 // Methods
 const onUploadSuccess = () => {
-  message.success('上传成功')
+  ElMessage.success('上传成功')
   showUploadDialog.value = false
   loadFiles(currentDir.value)
 }
 
 const onUploadError = (error) => {
-  message.error(formatErrorMessage(error, '上传失败'))
+  ElMessage.error(formatErrorMessage(error, '上传失败'))
 }
 
 // 上传弹框关闭保护
 const handleUploadDialogClose = () => {
   const mgr = uploadManagerRef.value
   if (mgr?.hasActiveUploads) {
-    dialog.warning({
-      title: '上传进行中',
-      content: '有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？',
-      positiveText: '确认关闭',
-      negativeText: '继续上传',
-      onPositiveClick: () => {
-        showUploadDialog.value = false
-      }
-    })
+    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
+      confirmButtonText: '确认关闭',
+      cancelButtonText: '继续上传',
+      type: 'warning'
+    }).then(() => {
+      showUploadDialog.value = false
+    }).catch(() => {})
   } else if (mgr?.hasUrlUploading) {
-    message.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
+    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
     showUploadDialog.value = false
   } else {
     showUploadDialog.value = false
@@ -260,11 +288,11 @@ const columns = computed(() => [
   {
     title: '文件名',
     key: 'filename',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 300,
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') {
         return h('div', { class: 'file-name-cell', style: 'cursor: pointer;' }, [
-          h(NIcon, { size: 18, style: 'color: #f0a020; margin-right: 8px;' }, () => h(FolderIcon)),
+          h(ElIcon, { size: 18, style: 'color: #f0a020; margin-right: 8px;' }, () => h(FolderIcon)),
           h('span', {
             class: 'file-link',
             style: 'color: #2080f0;',
@@ -299,19 +327,19 @@ const columns = computed(() => [
     title: '大小',
     key: 'fileSize',
     width: 100,
-    render: (row) => row._type === 'dir' ? h('span', { style: 'color: #999;' }, '-') : formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: #999;' }, '-') : formatSize(row.fileSize)
   },
   {
     title: '访问码',
     key: 'code',
     width: 100,
-    render: (row) => row._type === 'dir' ? null : h(NTag, { size: 'small', type: 'info', style: 'cursor: pointer', onClick: () => copyCode(row.code) }, () => row.code)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? null : h(ElTag, { size: 'small', type: 'info', style: 'cursor: pointer', onClick: () => copyCode(row.code) }, () => row.code)
   },
   {
     title: '上传时间',
     key: 'uploadTime',
     width: 180,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
       const text = TimeUtils.formatDateTime(row.uploadTime)
       if (TimeUtils.isRecent24h(row.uploadTime)) {
@@ -324,17 +352,17 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 120,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
       return h('div', { class: 'action-buttons' }, [
-        h(NButton, {
-          size: 'tiny',
+        h(ElButton, {
+          size: 'small',
           type: 'primary',
           onClick: () => downloadFile(row.code)
         }, () => '下载'),
-        h(NButton, {
-          size: 'tiny',
-          type: 'error',
+        h(ElButton, {
+          size: 'small',
+          type: 'danger',
           onClick: () => handleDelete(row)
         }, () => '删除')
       ])
@@ -353,7 +381,7 @@ const loadFiles = async (dir) => {
       used.value = data.data?.used || 0
     }
   } catch (error) {
-    message.error('加载文件列表失败')
+    ElMessage.error('加载文件列表失败')
     console.error(error)
   } finally {
     loading.value = false
@@ -362,9 +390,9 @@ const loadFiles = async (dir) => {
 
 const copyCode = (code) => {
   navigator.clipboard.writeText(code).then(() => {
-    message.success('访问码已复制')
+    ElMessage.success('访问码已复制')
   }).catch(() => {
-    message.error('复制失败')
+    ElMessage.error('复制失败')
   })
 }
 
@@ -372,27 +400,28 @@ const downloadFile = (code) => {
   window.open(PrivateApi.download(code), '_blank')
 }
 
-const handleDelete = (file) => {
-  dialog.warning({
-    title: '确认删除',
-    content: `确定要删除文件「${file.filename}」吗？此操作不可恢复。`,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const data = await PrivateApi.delete(file.code)
-        if (data.success) {
-          message.success('删除成功')
-          loadFiles(currentDir.value)
-        } else {
-          message.error(data.message || '删除失败')
-        }
-      } catch (error) {
-        message.error('删除失败')
-        console.error(error)
-      }
+const handleDelete = async (file) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除文件「${file.filename}」吗？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch (e) {
+    return
+  }
+  try {
+    const data = await PrivateApi.delete(file.code)
+    if (data.success) {
+      ElMessage.success('删除成功')
+      loadFiles(currentDir.value)
+    } else {
+      ElMessage.error(data.message || '删除失败')
     }
-  })
+  } catch (error) {
+    ElMessage.error('删除失败')
+    console.error(error)
+  }
 }
 
 // 键盘快捷键
@@ -407,10 +436,16 @@ const handleKeydown = (e) => {
 onMounted(() => {
   loadFiles('')
   window.addEventListener('keydown', handleKeydown)
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -514,11 +549,21 @@ onUnmounted(() => {
       box-shadow: @shadow-md;
     }
 
-    :deep(.n-data-table) {
+    .table-v2-wrap {
+      height: 400px;
+    }
+
+    .table-pagination {
+      display: flex;
+      justify-content: flex-end;
+      padding: 8px 16px;
+      border-top: 1px solid @border-color-light;
+    }
+
+    :deep(.el-table-v2) {
       @media @mobile {
         overflow-x: auto;
-        .n-data-table-th,
-        .n-data-table-td {
+        .el-table-v2__row-cell {
           white-space: nowrap;
         }
       }
@@ -575,7 +620,7 @@ onUnmounted(() => {
   }
 }
 
-.preview-maximized :deep(.n-card-content) {
+.preview-maximized :deep(.el-dialog__body) {
   display: flex;
   flex-direction: column;
   min-height: 0;

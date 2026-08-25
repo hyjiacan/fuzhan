@@ -38,8 +38,8 @@ test.describe('用户认证功能', () => {
     await page.waitForTimeout(500)
 
     // 验证登录表单元素存在
-    const usernameInput = page.locator('.n-modal input[placeholder*="用户"]').first()
-    const passwordInput = page.locator('.n-modal input[type="password"]').first()
+    const usernameInput = page.locator('.el-dialog input[placeholder*="用户"]').first()
+    const passwordInput = page.locator('.el-dialog input[type="password"]').first()
 
     await expect(usernameInput).toBeVisible()
     await expect(passwordInput).toBeVisible()
@@ -52,7 +52,7 @@ test.describe('用户认证功能', () => {
     await page.waitForTimeout(500)
 
     // 验证两个表单字段都存在
-    const inputs = page.locator('.n-modal input')
+    const inputs = page.locator('.el-dialog input')
     const count = await inputs.count()
     expect(count).toBeGreaterThanOrEqual(2)
 
@@ -64,16 +64,17 @@ test.describe('用户认证功能', () => {
     await page.waitForTimeout(500)
 
     // 点击提交按钮
-    const submitButton = page.locator('.n-modal .n-button--primary-type').first()
+    const submitButton = page.locator('.el-dialog .el-button--primary').first()
     await submitButton.click()
     await page.waitForTimeout(500)
 
-    // 验证表单未关闭（验证失败）
-    const modalStillOpen = await page.locator('.n-modal').isVisible().catch(() => false)
+    // 验证表单未关闭（验证失败）。element-plus 会保留已关闭 el-dialog 的 DOM（display:none），
+    // 且页面存在多个 dialog（登录/注册/上传状态等），因此仅按可见的「登录」dialog 判断打开状态
+    const modalStillOpen = await page.getByRole('dialog', { name: '登录' }).isVisible().catch(() => false)
     expect(modalStillOpen).toBeTruthy()
 
     // 或者验证出现了验证错误提示
-    const hasError = await page.locator('.n-form-item-feedback-wrapper, .n-form-item').filter({ has: page.locator('.n-form-item-feedback__message') }).isVisible().catch(() => false)
+    const hasError = await page.locator('.el-form-item__error').isVisible().catch(() => false)
     expect(hasError || modalStillOpen).toBeTruthy()
 
     await closeLoginModal(page)
@@ -84,19 +85,19 @@ test.describe('用户认证功能', () => {
     await page.waitForTimeout(500)
 
     // 输入错误凭据
-    await page.locator('.n-modal input[placeholder*="用户"]').first().fill('wronguser')
-    await page.locator('.n-modal input[type="password"]').first().fill('wrongpass')
+    await page.locator('.el-dialog input[placeholder*="用户"]').first().fill('wronguser')
+    await page.locator('.el-dialog input[type="password"]').first().fill('wrongpass')
 
     // 提交
-    await page.locator('.n-modal .n-button--primary-type').first().click()
+    await page.locator('.el-dialog .el-button--primary').first().click()
     await page.waitForTimeout(2000)
 
     // 验证弹框仍然显示（登录失败）
-    const dialogStillOpen = await page.locator('.n-modal').isVisible().catch(() => false)
+    const dialogStillOpen = await page.getByRole('dialog', { name: '登录' }).isVisible().catch(() => false)
     expect(dialogStillOpen).toBeTruthy()
 
-    // 验证有错误消息显示（n-message 或 n-notification）
-    const hasMessage = await page.locator('.n-message, .n-notification').isVisible().catch(() => false)
+    // 验证有错误消息显示（el-message 或 el-notification）
+    const hasMessage = await page.locator('.el-message, .el-notification').isVisible().catch(() => false)
     // 如果没有消息组件，至少验证弹框还在（表示登录未成功）
     expect(hasMessage || dialogStillOpen).toBeTruthy()
 

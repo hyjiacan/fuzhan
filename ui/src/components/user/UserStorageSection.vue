@@ -5,50 +5,47 @@
       <p class="description">查看您的存储使用情况</p>
     </div>
 
-    <n-grid :cols="2" :x-gap="24" :y-gap="24" responsive="screen" :item-responsive="true">
+    <el-row :gutter="24">
       <!-- Private storage quota -->
-      <n-gi :span="2" :md="1">
-        <n-card title="私有存储" class="quota-card">
-          <n-progress
+      <el-col :xs="24" :md="12">
+        <el-card class="quota-card">
+          <template #header><span>私有存储</span></template>
+          <el-progress
             type="line"
             :percentage="quotaPercentage"
-            :indicator-placement-inside="true"
-            :status="quotaStatus"
+            :stroke-width="20"
+            :status="quotaStatus === 'error' ? 'exception' : quotaStatus"
           >
             {{ formatSize(quotaInfo.used) }} / {{ formatSize(quotaInfo.quota) }}
-          </n-progress>
+          </el-progress>
           <template #footer>
             <div class="quota-hint">已存储 {{ fileCount }} 个文件</div>
           </template>
-        </n-card>
-      </n-gi>
+        </el-card>
+      </el-col>
 
       <!-- Temp file quota -->
-      <n-gi :span="2" :md="1">
-        <n-card title="临时文件配额" class="quota-card">
-          <n-progress
+      <el-col :xs="24" :md="12">
+        <el-card class="quota-card">
+          <template #header><span>临时文件配额</span></template>
+          <el-progress
             type="line"
             :percentage="tempQuotaPercentage"
-            :indicator-placement-inside="true"
-            :status="tempQuotaStatus"
+            :stroke-width="20"
+            :status="tempQuotaStatus === 'error' ? 'exception' : tempQuotaStatus"
           >
             {{ formatSize(tempQuotaInfo.used) }} / {{ formatSize(tempQuotaInfo.limit) }}
-          </n-progress>
-        </n-card>
-      </n-gi>
-    </n-grid>
+          </el-progress>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import {
-  NCard, NGrid, NGi, NProgress, useMessage
-} from 'naive-ui'
 import { PrivateApi, TempApi } from '@/api'
 import { NumberUtils } from '@/utils'
-
-const message = useMessage()
 
 const quotaInfo = ref({
   used: 0,

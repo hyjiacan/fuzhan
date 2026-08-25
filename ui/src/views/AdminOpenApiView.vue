@@ -6,173 +6,167 @@
     </div>
 
     <!-- OpenAPI 服务配置 -->
-    <n-card title="服务配置" style="margin-bottom: 16px;">
-      <n-grid :cols="2" :x-gap="16" :y-gap="16">
-        <n-gi>
-          <n-form label-placement="left" label-width="120">
-            <n-form-item label="启用 Open API">
-              <n-switch v-model:value="openApiConfig.enabled" />
-              <template #feedback>
-                <span class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</span>
-              </template>
-            </n-form-item>
-          </n-form>
-        </n-gi>
-        <n-gi>
-          <n-form label-placement="left" label-width="120">
-            <n-form-item label="启用频率限制">
-              <n-switch v-model:value="openApiConfig.rateLimitEnabled" />
-              <template #feedback>
-                <span class="field-hint">限制 API 调用频率，防止滥用</span>
-              </template>
-            </n-form-item>
-          </n-form>
-        </n-gi>
-        <n-gi>
-          <n-form label-placement="left" label-width="120">
-            <n-form-item label="访问模式">
-              <n-radio-group v-model:value="openApiConfig.ipAccessMode">
-                <n-radio value="allow">白名单模式</n-radio>
-                <n-radio value="deny">黑名单模式</n-radio>
-                <n-radio value="none">不限制</n-radio>
-              </n-radio-group>
-              <template #feedback>
-                <span class="field-hint">白名单和黑名单不能同时生效</span>
-              </template>
-            </n-form-item>
-          </n-form>
-        </n-gi>
-        <n-gi>
-          <n-form label-placement="left" label-width="120" v-if="openApiConfig.rateLimitEnabled">
-            <n-form-item label="请求频率">
-              <n-space>
-                <n-input-number v-model:value="openApiConfig.requestsPerMinute" :min="1" :max="10000" />
-                <span>次/分钟</span>
-              </n-space>
-            </n-form-item>
-          </n-form>
-        </n-gi>
-        <n-gi v-if="openApiConfig.ipAccessMode !== 'none'">
-          <n-form label-placement="left" label-width="120">
-            <n-form-item :label="openApiConfig.ipAccessMode === 'allow' ? 'IP 白名单' : 'IP 黑名单'">
-              <n-input
-                v-model:value="ipAccessListDisplay"
+    <el-card header="服务配置" style="margin-bottom: 16px;">
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form label-width="120px">
+            <el-form-item label="启用 Open API">
+              <el-switch v-model="openApiConfig.enabled" />
+              <div class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</div>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        <el-col :span="12">
+          <el-form label-width="120px">
+            <el-form-item label="启用频率限制">
+              <el-switch v-model="openApiConfig.rateLimitEnabled" />
+              <div class="field-hint">限制 API 调用频率，防止滥用</div>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        <el-col :span="12">
+          <el-form label-width="120px">
+            <el-form-item label="访问模式">
+              <el-radio-group v-model="openApiConfig.ipAccessMode">
+                <el-radio value="allow">白名单模式</el-radio>
+                <el-radio value="deny">黑名单模式</el-radio>
+                <el-radio value="none">不限制</el-radio>
+              </el-radio-group>
+              <div class="field-hint">白名单和黑名单不能同时生效</div>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        <el-col :span="12">
+          <el-form label-width="120px" v-if="openApiConfig.rateLimitEnabled">
+            <el-form-item label="请求频率">
+              <el-input-number v-model="openApiConfig.requestsPerMinute" :min="1" :max="10000" />
+              <span>次/分钟</span>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        <el-col :span="12" v-if="openApiConfig.ipAccessMode !== 'none'">
+          <el-form label-width="120px">
+            <el-form-item :label="openApiConfig.ipAccessMode === 'allow' ? 'IP 白名单' : 'IP 黑名单'">
+              <el-input
+                v-model="ipAccessListDisplay"
                 type="textarea"
                 :placeholder="openApiConfig.ipAccessMode === 'allow' ? '每行一个 IP 或 CIDR，如 192.168.1.0/24' : '每行一个 IP 或 CIDR'"
                 :rows="4"
               />
-            </n-form-item>
-          </n-form>
-        </n-gi>
-      </n-grid>
-      <n-space justify="end" style="margin-top: 16px;">
-        <n-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</n-button>
-      </n-space>
-    </n-card>
+            </el-form-item>
+          </el-form>
+        </el-col>
+      </el-row>
+      <el-space style="margin-top: 16px;">
+        <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
+      </el-space>
+    </el-card>
 
     <!-- API Key 管理 -->
-    <n-card title="API Key 管理">
-      <template #header-extra>
-        <n-space>
-          <n-button size="small" @click="loadApiKeys" :loading="loading">刷新</n-button>
-          <n-button size="small" type="primary" @click="showCreateModal = true">
-            <template #icon><n-icon><AddIcon /></n-icon></template>
-            创建 Key
-          </n-button>
-        </n-space>
+    <el-card header="API Key 管理">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span>API Key 管理</span>
+          <el-space>
+            <el-button size="small" @click="loadApiKeys" :loading="loading">刷新</el-button>
+            <el-button size="small" type="primary" @click="showCreateModal = true">
+              <el-icon><component :is="AddIcon" /></el-icon>
+              创建 Key
+            </el-button>
+          </el-space>
+        </div>
       </template>
 
-      <n-data-table
-        :columns="columns"
-        :data="apiKeys"
-        :loading="loading"
-        :pagination="pagination"
-        :row-key="row => row.id"
-        :bordered="false"
-        size="small"
-      />
-    </n-card>
+      <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
+        <el-table-v2
+          :columns="columns"
+          :data="apiKeys"
+          :width="tableWidth"
+          :height="tableHeight"
+          :estimated-row-height="40"
+          row-key="id"
+        />
+      </div>
+    </el-card>
 
     <!-- 创建 API Key 弹窗 -->
-    <n-modal v-model:show="showCreateModal" preset="card" title="创建 API Key" style="width: 500px">
-      <n-form ref="createFormRef" :model="createForm" :rules="createRules" label-placement="left" label-width="100">
-        <n-form-item label="名称" path="name">
-          <n-input v-model:value="createForm.name" :maxlength="128" placeholder="给这个 Key 起个名字" />
-        </n-form-item>
-        <n-form-item label="权限范围" path="scopes">
-          <n-select
-            v-model:value="createForm.scopes"
-            :options="scopeOptions"
-            placeholder="选择权限范围"
-          />
-          <template #feedback>
-            <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>open_api:writer - 额外包含文件备注、依赖关系</span>
-          </template>
-        </n-form-item>
-        <n-form-item label="过期时间" path="expiresIn">
-          <n-select
-            v-model:value="createForm.expiresIn"
-            :options="expiryOptions"
-            placeholder="选择过期时间"
-          />
-        </n-form-item>
-      </n-form>
+    <el-dialog v-model="showCreateModal" title="创建 API Key" width="500px">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="100px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="createForm.name" :maxlength="128" placeholder="给这个 Key 起个名字" />
+        </el-form-item>
+        <el-form-item label="权限范围" prop="scopes">
+          <el-select v-model="createForm.scopes" placeholder="选择权限范围">
+            <el-option
+              v-for="opt in scopeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+          <div class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>open_api:writer - 额外包含文件备注、依赖关系</div>
+        </el-form-item>
+        <el-form-item label="过期时间" prop="expiresIn">
+          <el-select v-model="createForm.expiresIn" placeholder="选择过期时间">
+            <el-option
+              v-for="opt in expiryOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showCreateModal = false">取消</n-button>
-          <n-button type="primary" :loading="creating" @click="handleCreate">创建</n-button>
-        </n-space>
+        <el-space>
+          <el-button @click="showCreateModal = false">取消</el-button>
+          <el-button type="primary" :loading="creating" @click="handleCreate">创建</el-button>
+        </el-space>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 显示新创建的 Key 弹窗 -->
-    <n-modal v-model:show="showRawKeyModal" preset="card" title="API Key 已创建" style="width: 600px">
-      <n-alert type="warning" :show-icon="false">
+    <el-dialog v-model="showRawKeyModal" title="API Key 已创建" width="600px">
+      <el-alert type="warning" :closable="false">
         请立即复制保存此 Key，它只会显示这一次！
-      </n-alert>
-      <n-input
-        :value="rawKey"
+      </el-alert>
+      <el-input
+        :model-value="rawKey"
         type="textarea"
         readonly
         :rows="3"
         style="margin-top: 16px; font-family: monospace;"
       />
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="copyRawKey">复制</n-button>
-          <n-button type="primary" @click="showRawKeyModal = false">关闭</n-button>
-        </n-space>
+        <el-space>
+          <el-button @click="copyRawKey">复制</el-button>
+          <el-button type="primary" @click="showRawKeyModal = false">关闭</el-button>
+        </el-space>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 确认删除对话框 -->
-    <n-modal v-model:show="showDeleteModal" preset="card" title="确认删除" style="width: 400px">
-      <n-alert type="error">
+    <el-dialog v-model="showDeleteModal" title="确认删除" width="400px">
+      <el-alert type="error" :closable="false">
         确定要删除 API Key「{{ deleteTarget?.name }}」吗？此操作不可恢复。
-      </n-alert>
+      </el-alert>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showDeleteModal = false">取消</n-button>
-          <n-button type="error" :loading="deleting" @click="handleDelete">删除</n-button>
-        </n-space>
+        <el-space>
+          <el-button @click="showDeleteModal = false">取消</el-button>
+          <el-button type="danger" :loading="deleting" @click="handleDelete">删除</el-button>
+        </el-space>
       </template>
-    </n-modal>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, h, onMounted } from 'vue'
-import {
-  NButton, NCard, NDataTable, NForm, NFormItem, NInput, NInputNumber,
-  NModal, NSelect, NSpace, NIcon, NGrid, NGi, NAlert, NTag, useMessage,
-  NPopconfirm, NSwitch, NRadioGroup, NRadio
-} from 'naive-ui'
+import { ref, computed, h, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElButton, ElTag } from 'element-plus'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
 import { TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
-
-const message = useMessage()
 
 // Icons
 const AddIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -248,32 +242,45 @@ const expiryOptions = [
   { label: '1 年', value: 365 * 24 * 60 * 60 }
 ]
 
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
+
 // Columns
 const columns = computed(() => [
   { title: '名称', key: 'name', width: 180 },
-  { title: 'Key ID', key: 'keyId', width: 140, ellipsis: { tooltip: true } },
+  { title: 'Key ID', key: 'keyId', width: 140 },
   {
     title: '权限', key: 'scopes', width: 160,
-    render: (row) => h(NTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
+    cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
       () => row.scopes)
   },
   {
     title: '状态', key: 'status', width: 80,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       const now = new Date()
       const isExpired = row.expiresAt && new Date(row.expiresAt) < now
-      if (isExpired) return h(NTag, { size: 'small', type: 'error' }, () => '已过期')
-      return h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : 'default' },
+      if (isExpired) return h(ElTag, { size: 'small', type: 'danger' }, () => '已过期')
+      return h(ElTag, { size: 'small', type: row.status === 'active' ? 'success' : 'info' },
         () => row.status === 'active' ? '活跃' : '禁用')
     }
   },
   {
     title: '创建时间', key: 'createdAt', width: 170,
-    render: (row) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
+    cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
   },
   {
     title: '过期时间', key: 'expiresAt', width: 170,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       if (!row.expiresAt) return '永不过期'
       return TimeUtils.formatDateTime(row.expiresAt)
     }
@@ -283,24 +290,19 @@ const columns = computed(() => [
     key: 'actions',
     width: 200,
     fixed: 'right',
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const now = new Date()
       const isExpired = row.expiresAt && new Date(row.expiresAt) < now
 
-      return h(NSpace, { size: 'small' }, [
-        h(NButton, {
-          size: 'tiny',
-          quaternary: true,
+      return h('div', { style: 'display: flex; gap: 8px;' }, [
+        h(ElButton, {
+          size: 'small',
+          link: true,
           type: isExpired || row.status === 'disabled' ? 'success' : 'warning',
           disabled: isExpired,
           onClick: () => toggleStatus(row)
         }, () => isExpired ? '已过期' : (row.status === 'active' ? '禁用' : '启用')),
-        h(NPopconfirm, {
-          onPositiveClick: () => confirmDelete(row)
-        }, {
-          trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, () => '删除'),
-          default: () => '确定删除？'
-        })
+        h(ElButton, { size: 'small', link: true, type: 'danger', onClick: () => confirmDelete(row) }, () => '删除')
       ])
     }
   }
@@ -340,14 +342,14 @@ async function saveConfig() {
       }
     })
     if (data.success) {
-      message.success('配置已保存')
+      ElMessage.success('配置已保存')
       // 更新 store 中的 openApiEnabled
       store.setConfig({ openApiEnabled: openApiConfig.value.enabled })
     } else {
-      message.error(data.message || '保存失败')
+      ElMessage.error(data.message || '保存失败')
     }
   } catch (e) {
-    message.error(formatErrorMessage(e, '保存失败'))
+    ElMessage.error(formatErrorMessage(e, '保存失败'))
   } finally {
     savingConfig.value = false
   }
@@ -362,7 +364,7 @@ async function loadApiKeys() {
       pagination.value.itemCount = res.data?.total || 0
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '加载失败'))
+    ElMessage.error(formatErrorMessage(err, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -395,17 +397,17 @@ async function handleCreate() {
       expiresIn: createForm.value.expiresIn
     })
     if (res.success) {
-      message.success('API Key 创建成功')
+      ElMessage.success('API Key 创建成功')
       showCreateModal.value = false
       rawKey.value = res.data?.rawKey || ''
       showRawKeyModal.value = true
       loadApiKeys()
       createForm.value = { name: '', scopes: 'open_api:reader', expiresIn: 0 }
     } else {
-      message.error(res.message || '创建失败')
+      ElMessage.error(res.message || '创建失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '创建失败'))
+    ElMessage.error(formatErrorMessage(err, '创建失败'))
   } finally {
     creating.value = false
   }
@@ -413,9 +415,9 @@ async function handleCreate() {
 
 function copyRawKey() {
   navigator.clipboard.writeText(rawKey.value).then(() => {
-    message.success('已复制到剪贴板')
+    ElMessage.success('已复制到剪贴板')
   }).catch(() => {
-    message.error('复制失败')
+    ElMessage.error('复制失败')
   })
 }
 
@@ -424,13 +426,13 @@ async function toggleStatus(row) {
     const newStatus = row.status === 'active' ? 'disabled' : 'active'
     const res = await ApiKeyApi.updateStatus(row.id, newStatus)
     if (res.success) {
-      message.success(newStatus === 'active' ? '已启用' : '已禁用')
+      ElMessage.success(newStatus === 'active' ? '已启用' : '已禁用')
       loadApiKeys()
     } else {
-      message.error(res.message || '操作失败')
+      ElMessage.error(res.message || '操作失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '操作失败'))
+    ElMessage.error(formatErrorMessage(err, '操作失败'))
   }
 }
 
@@ -445,14 +447,14 @@ async function handleDelete() {
   try {
     const res = await ApiKeyApi.delete(deleteTarget.value.id)
     if (res.success) {
-      message.success('已删除')
+      ElMessage.success('已删除')
       showDeleteModal.value = false
       loadApiKeys()
     } else {
-      message.error(res.message || '删除失败')
+      ElMessage.error(res.message || '删除失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '删除失败'))
+    ElMessage.error(formatErrorMessage(err, '删除失败'))
   } finally {
     deleting.value = false
   }
@@ -462,6 +464,15 @@ onMounted(() => {
   loadConfig()
   loadApiKeys()
   loadCurrentUser()
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
+})
+
+onUnmounted(() => {
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -492,6 +503,10 @@ onMounted(() => {
     font-size: 12px;
     color: @text-color-secondary;
     line-height: 1.5;
+  }
+
+  .table-v2-wrap {
+    height: 420px;
   }
 }
 

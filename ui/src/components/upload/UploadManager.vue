@@ -1,33 +1,32 @@
 <template>
   <div class="upload-manager">
-    <n-form :model="form" label-placement="left" label-width="120">
+    <el-form :model="form" label-width="120px">
       <!-- 共享目录和上传目录合并为一行 -->
-      <n-form-item label="上传目录:" v-if="needsRootSelection">
-        <n-input-group>
-          <n-select
-            v-model:value="form.rootName"
-            :options="rootDirOptions"
+      <el-form-item label="上传目录:" v-if="needsRootSelection">
+        <div style="display: flex; gap: 8px; width: 100%;">
+          <el-select
+            v-model="form.rootName"
             placeholder="选择共享目录"
             :style="{ width: '180px' }"
-          />
-          <n-input
-            v-model:value="form.uploadDir"
+          >
+            <el-option v-for="opt in rootDirOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+          <el-input
+            v-model="form.uploadDir"
             :maxlength="1024"
             placeholder="输入相对目录，如: test"
             :style="{ flex: 1 }"
           />
-        </n-input-group>
-        <template #feedback>
-          <div style="font-size: 12px; color: #999;">
-            可选，留空则上传到根目录
-          </div>
-        </template>
-      </n-form-item>
+        </div>
+        <div style="font-size: 12px; color: #999;">
+          可选，留空则上传到根目录
+        </div>
+      </el-form-item>
 
       <!-- 上传方式：左侧 tabs 切换 -->
-      <n-tabs v-model:value="form.uploadMethod" placement="left" type="line" class="upload-method-tabs">
-        <n-tab-pane name="local" tab="上传本地文件">
-          <n-form-item label="选择文件:">
+      <el-tabs v-model="form.uploadMethod" tab-position="left" class="upload-method-tabs">
+        <el-tab-pane name="local" label="上传本地文件">
+          <el-form-item label="选择文件:">
             <!-- Drop zone with button -->
             <div
               ref="dropZoneRef"
@@ -47,7 +46,7 @@
                 @change="handleFileSelect"
               />
               <div class="drop-zone-content">
-                <n-icon size="36"><UploadIcon /></n-icon>
+                <el-icon :size="36"><component :is="UploadIcon" /></el-icon>
                 <div style="margin-top: 8px; font-size: 14px;">
                   {{ isDragging ? '松开以上传' : '拖拽文件到此处，或点击选择' }}
                 </div>
@@ -61,7 +60,7 @@
             <transition name="fade">
               <div v-if="isDragging" class="drop-overlay">
                 <div class="drop-overlay-content">
-                  <n-icon size="64" color="#fff"><UploadIcon /></n-icon>
+                  <el-icon :size="64" :color="'#fff'"><component :is="UploadIcon" /></el-icon>
                   <div style="margin-top: 16px; font-size: 18px; color: #fff;">松开以上传文件</div>
                   <div style="font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px;">
                     {{ draggedFileCount }} 个文件即将上传
@@ -69,7 +68,7 @@
                 </div>
               </div>
             </transition>
-          </n-form-item>
+          </el-form-item>
 
           <!-- Upload queue -->
           <div v-if="uploadQueue.length > 0" class="upload-queue">
@@ -85,12 +84,11 @@
                 >
                   <div class="queue-item-info">
                     <template v-if="editingItemId === item.id">
-                      <n-input
+                      <el-input
                         ref="renameInputRef"
-                        v-model:value="renameValue"
+                        v-model="renameValue"
                         :maxlength="255"
                         size="small"
-                        :status="renameError ? 'error' : 'default'"
                         class="rename-input"
                         @keyup.enter="confirmRename(item)"
                         @keyup.escape="cancelRename"
@@ -114,83 +112,80 @@
                         <span v-if="item.status === 'needFile'" class="queue-item-error">请重新选择文件以继续上传</span>
                       </div>
                     </div>
-                    <n-progress
+                    <el-progress
                       v-if="item.status === 'uploading' || item.status === 'failed' || item.status === 'needFile'"
-                      type="line"
                       :percentage="item.progress"
-                      :show-indicator="false"
-                      :height="4"
-                      :border-radius="2"
+                      :show-text="false"
+                      :stroke-width="4"
                     />
                   </div>
                   <div class="queue-item-actions">
-                    <n-tag :type="getStatusTagType(item.status)" size="small">{{ getStatusText(item.status) }}</n-tag>
-                    <n-button
+                    <el-tag :type="elTagType(getStatusTagType(item.status))" size="small">{{ getStatusText(item.status) }}</el-tag>
+                    <el-button
                       v-if="item.status === 'pending'"
-                      size="tiny"
-                      quaternary
+                      size="small"
+                      link
                       @click="item.showNotes = !item.showNotes"
                     >
                       {{ item.showNotes ? '收起' : '备注' }}
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'pending'"
-                      size="tiny"
-                      quaternary
+                      size="small"
+                      link
                       @click="item.showDeps = !item.showDeps"
                     >
                       {{ item.showDeps ? '收起' : '依赖' }}
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'needFile'"
                       type="warning"
-                      size="tiny"
+                      size="small"
                       @click="selectFileForItem(item)"
                     >
                       选择文件
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'uploading'"
                       type="info"
-                      size="tiny"
+                      size="small"
                       @click="pauseUpload(item)"
                     >
                       暂停
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'paused'"
                       type="success"
-                      size="tiny"
+                      size="small"
                       @click="resumeUpload(item)"
                     >
                       继续
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'failed'"
                       type="warning"
-                      size="tiny"
+                      size="small"
                       @click="retryUpload(item)"
                     >
                       重试
-                    </n-button>
-                    <n-button
+                    </el-button>
+                    <el-button
                       v-if="item.status === 'needFile' || item.status === 'pending' || item.status === 'failed' || item.status === 'paused' || item.status === 'uploading'"
-                      type="error"
-                      size="tiny"
+                      type="danger"
+                      size="small"
+                      link
                       circle
                       title="取消上传"
                       @click="removeFromQueue(item.id)"
                     >
-                      <template #icon>
-                        <n-icon><DeleteIcon /></n-icon>
-                      </template>
-                    </n-button>
+                      <el-icon><component :is="DeleteIcon" /></el-icon>
+                    </el-button>
                   </div>
                 </div>
                 <!-- 备注区域 -->
                 <div v-if="item.showNotes" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
-                  <n-input
-                    v-model:value="item.notes"
+                  <el-input
+                    v-model="item.notes"
                     :maxlength="500"
                     type="textarea"
                     placeholder="输入文件备注..."
@@ -201,78 +196,72 @@
                 <!-- 依赖区域 -->
                 <div v-if="item.showDeps" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
                   <div :style="{ display: 'flex', gap: '6px', flexDirection: 'column' }">
-                    <n-auto-complete
-                      v-model:value="item.depFileName"
+                    <el-autocomplete
+                      v-model="item.depFileName"
                       :maxlength="255"
-                      :options="getDepAutocompleteOptions(item)"
+                      :fetch-suggestions="(q, cb) => fetchDepSuggestions(item, q, cb)"
                       placeholder="搜索并选择依赖文件"
                       size="small"
                       clearable
-                      :input-props="{ style: 'width: 100%' }"
-                      @update:value="(val) => handleDepSearch(item, val)"
-                      @select="(val) => handleDepSelect(item, val)"
+                      @select="(opt) => handleDepSelect(item, opt)"
                     />
-                    <n-select
-                      v-model:value="item.depRelation"
-                      :options="depRelationOptions"
+                    <el-select
+                      v-model="item.depRelation"
                       size="small"
                       placeholder="依赖关系"
-                    />
+                    >
+                      <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                    </el-select>
                   </div>
                 </div>
               </template>
             </div>
           </div>
-        </n-tab-pane>
+        </el-tab-pane>
 
-        <n-tab-pane name="url" tab="从 URL 上传">
-          <n-form-item label="文件的 URL:">
-            <n-input
-              v-model:value="form.url"
+        <el-tab-pane name="url" label="从 URL 上传">
+          <el-form-item label="文件的 URL:">
+            <el-input
+              v-model="form.url"
               :maxlength="2048"
               placeholder="输入文件的 URL"
               @input="handleUrlInput"
             />
-          </n-form-item>
-          <n-form-item v-if="urlFileInfo.name" label="保存文件名:">
-            <n-input
-              v-model:value="form.filename"
+          </el-form-item>
+          <el-form-item v-if="urlFileInfo.name" label="保存文件名:">
+            <el-input
+              v-model="form.filename"
               :maxlength="255"
               placeholder="输入保存的文件名"
             />
-            <template #feedback>
-              <span style="color: #909399; font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
-            </template>
-          </n-form-item>
+            <span style="color: #909399; font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
+          </el-form-item>
           <!-- URL 备注 -->
-          <n-form-item v-if="urlFileInfo.name" label="备注:">
-            <n-input
-              v-model:value="form.urlNotes"
+          <el-form-item v-if="urlFileInfo.name" label="备注:">
+            <el-input
+              v-model="form.urlNotes"
               :maxlength="500"
               type="textarea"
               :rows="2"
               placeholder="输入文件备注（可选）"
             />
-          </n-form-item>
+          </el-form-item>
           <!-- URL 依赖 -->
-          <n-form-item v-if="urlFileInfo.name" label="依赖:">
-            <n-space vertical :size="6" style="width: 100%">
-              <n-auto-complete
-                v-model:value="form.urlDepFileName"
+          <el-form-item v-if="urlFileInfo.name" label="依赖:">
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">
+              <el-autocomplete
+                v-model="form.urlDepFileName"
                 :maxlength="255"
-                :options="urlDepAutocompleteOptions"
+                :fetch-suggestions="fetchUrlDepSuggestions"
                 placeholder="搜索并选择依赖文件"
                 clearable
-                @update:value="handleUrlDepSearch"
                 @select="handleUrlDepSelect"
               />
-              <n-select
-                v-model:value="form.urlDepRelation"
-                :options="depRelationOptions"
-                placeholder="依赖关系"
-              />
-            </n-space>
-          </n-form-item>
+              <el-select v-model="form.urlDepRelation" placeholder="依赖关系">
+                <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </div>
+          </el-form-item>
           <!-- URL 上传进度 -->
           <div v-if="urlUploadState.status" class="url-upload-progress">
             <div class="queue-item">
@@ -285,23 +274,21 @@
                     <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
                   </div>
                 </div>
-                <n-progress
+                <el-progress
                   v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
-                  type="line"
                   :percentage="urlUploadState.progress"
-                  :show-indicator="false"
-                  :height="4"
-                  :border-radius="2"
+                  :show-text="false"
+                  :stroke-width="4"
                 />
               </div>
               <div class="queue-item-actions">
-                <n-tag :type="getUrlUploadStatusTag" size="small">{{ getUrlUploadStatusText }}</n-tag>
+                <el-tag :type="elTagType(getUrlUploadStatusTag)" size="small">{{ getUrlUploadStatusText }}</el-tag>
               </div>
             </div>
           </div>
-        </n-tab-pane>
+        </el-tab-pane>
 
-        <n-tab-pane name="clipboard" tab="从剪贴板粘贴">
+        <el-tab-pane name="clipboard" label="从剪贴板粘贴">
           <!-- 未读取 -->
           <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
             仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
@@ -312,151 +299,153 @@
             <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: #666;">
               检测到剪贴板包含多种格式，请选择要读取的数据类型:
             </div>
-            <n-radio-group v-model:value="clipboardSelectedType">
-              <n-space vertical>
-                <n-radio v-for="opt in clipboardOptions" :key="opt.value" :value="opt.value">
+            <el-radio-group v-model="clipboardSelectedType">
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <el-radio v-for="opt in clipboardOptions" :key="opt.value" :label="opt.value">
                   {{ opt.label }}
-                </n-radio>
-              </n-space>
-            </n-radio-group>
+                </el-radio>
+              </div>
+            </el-radio-group>
           </div>
 
           <!-- 已选择类型：展示预览 -->
           <template v-else>
-            <n-input v-model:value="clipboardFilename" placeholder="保存的文件名" clearable style="margin-bottom: 4px;" />
+            <el-input v-model="clipboardFilename" placeholder="保存的文件名" clearable style="margin-bottom: 4px;" />
             <!-- 图片预览 -->
             <div v-if="clipboardPreview.type === 'image'" class="clipboard-preview">
               <img :src="clipboardPreview.data" class="clipboard-preview-img" />
             </div>
             <!-- 文本预览 -->
             <div v-else-if="clipboardPreview.type === 'text'" style="width: 100%;">
-              <n-input
+              <el-input
                 type="textarea"
-                :value="clipboardPreview.text"
+                :model-value="clipboardPreview.text"
                 :rows="8"
                 readonly
-                :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
+                style="font-family: monospace; line-height: 1.6; font-size: 13px;"
               />
             </div>
             <!-- 其它文件预览 -->
             <div v-else-if="clipboardPreview.type === 'other'" class="clipboard-preview-file">
-              <n-icon size="40" :depth="3"><DocumentIcon /></n-icon>
+              <el-icon :size="40"><component :is="DocumentIcon" /></el-icon>
               <div class="clipboard-preview-filename">{{ clipboardFilename }}</div>
               <div class="clipboard-preview-info">大小: {{ formatFileSize(clipboardPreview.size) }}</div>
             </div>
             <!-- 剪贴板备注/依赖 -->
-            <n-form-item label="备注:" style="margin-top: 12px;">
-              <n-input v-model:value="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
-            </n-form-item>
-            <n-form-item label="依赖:">
-              <n-space vertical :size="6" style="width: 100%">
-                <n-auto-complete
-                  v-model:value="extraDepFileName"
+            <el-form-item label="备注:" style="margin-top: 12px;">
+              <el-input v-model="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+            </el-form-item>
+            <el-form-item label="依赖:">
+              <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">
+                <el-autocomplete
+                  v-model="extraDepFileName"
                   :maxlength="255"
-                  :options="extraDepAutocompleteOptions"
+                  :fetch-suggestions="fetchExtraDepSuggestions"
                   placeholder="搜索并选择依赖文件"
                   clearable
-                  @update:value="handleExtraDepSearch"
                   @select="handleExtraDepSelect"
                 />
-                <n-select v-model:value="extraDepRelation" :options="depRelationOptions" placeholder="依赖关系" />
-              </n-space>
-            </n-form-item>
+                <el-select v-model="extraDepRelation" placeholder="依赖关系">
+                  <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+              </div>
+            </el-form-item>
           </template>
-        </n-tab-pane>
+        </el-tab-pane>
 
-        <n-tab-pane name="text" tab="新建文本">
-          <n-input v-model:value="textFilename" placeholder="文件名，如 readme.md" clearable style="margin-bottom: 12px;" />
-          <n-input
-            v-model:value="textContent"
+        <el-tab-pane name="text" label="新建文本">
+          <el-input v-model="textFilename" placeholder="文件名，如 readme.md" clearable style="margin-bottom: 12px;" />
+          <el-input
+            v-model="textContent"
             type="textarea"
             :rows="15"
             placeholder="在此输入文件内容..."
-            :input-props="{ style: 'font-family: monospace; line-height: 1.6; font-size: 13px;' }"
+            style="font-family: monospace; line-height: 1.6; font-size: 13px;"
           />
           <!-- 文本备注/依赖 -->
-          <n-form-item label="备注:" style="margin-top: 12px;">
-            <n-input v-model:value="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
-          </n-form-item>
-          <n-form-item label="依赖:">
-            <n-space vertical :size="6" style="width: 100%">
-              <n-auto-complete
-                v-model:value="extraDepFileName"
+          <el-form-item label="备注:" style="margin-top: 12px;">
+            <el-input v-model="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+          </el-form-item>
+          <el-form-item label="依赖:">
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">
+              <el-autocomplete
+                v-model="extraDepFileName"
                 :maxlength="255"
-                :options="extraDepAutocompleteOptions"
+                :fetch-suggestions="fetchExtraDepSuggestions"
                 placeholder="搜索并选择依赖文件"
                 clearable
-                @update:value="handleExtraDepSearch"
                 @select="handleExtraDepSelect"
               />
-              <n-select v-model:value="extraDepRelation" :options="depRelationOptions" placeholder="依赖关系" />
-            </n-space>
-          </n-form-item>
-        </n-tab-pane>
-      </n-tabs>
-    </n-form>
+              <el-select v-model="extraDepRelation" placeholder="依赖关系">
+                <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </div>
+          </el-form-item>
+        </el-tab-pane>
+      </el-tabs>
+    </el-form>
 
     <!-- 底部：左侧为剪贴板操作按钮 + 上传提示，右侧为操作按钮 -->
-    <n-space justify="space-between" align="center" style="margin-top: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
       <div class="upload-footer-left">
         <template v-if="form.uploadMethod === 'clipboard'">
           <div v-if="!clipboardRead">
-            <n-button @click="readClipboard" :loading="clipboardReading" type="primary" secondary size="small">
+            <el-button @click="readClipboard" :loading="clipboardReading" type="primary" plain size="small">
               读取剪贴板
-            </n-button>
+            </el-button>
           </div>
-          <n-space v-else>
-            <n-tag type="success" size="small">已读取</n-tag>
-            <n-button size="tiny" @click="clearClipboard">重新读取</n-button>
-            <n-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
+          <div v-else style="display: flex; gap: 8px; align-items: center;">
+            <el-tag type="success" size="small">已读取</el-tag>
+            <el-button size="small" link @click="clearClipboard">重新读取</el-button>
+            <el-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
               确认选择
-            </n-button>
-          </n-space>
+            </el-button>
+          </div>
         </template>
-        <n-alert v-if="uploadMessage" :type="uploadMessageType" :title="uploadMessage" class="upload-footer-message" />
+        <el-alert v-if="uploadMessage" :type="uploadMessageType" :title="uploadMessage" :closable="false" class="upload-footer-message" />
       </div>
 
       <!-- 右侧：操作按钮 -->
-      <n-space>
+      <div style="display: flex; gap: 12px;">
         <template v-if="form.uploadMethod === 'clipboard'">
-          <n-button
+          <el-button
             type="primary"
             @click="uploadClipboard"
             :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
             :loading="uploading"
           >
             开始上传
-          </n-button>
+          </el-button>
         </template>
         <template v-else-if="form.uploadMethod === 'text'">
-          <n-button
+          <el-button
             type="primary"
             @click="saveTextFile"
             :disabled="!textFilename.trim()"
           >
             保存并上传
-          </n-button>
+          </el-button>
         </template>
         <template v-else>
-          <n-button
+          <el-button
             type="primary"
             @click="handleFooterClick"
             :disabled="!canStartUpload"
             :loading="uploading"
           >
             开始上传
-          </n-button>
+          </el-button>
         </template>
-        <n-button @click="emit('close')">关闭</n-button>
-      </n-space>
-    </n-space>
+        <el-button @click="emit('close')">关闭</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
 
 <script setup>
 import { ref, reactive, computed, h, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { NForm, NFormItem, NInput, NInputGroup, NRadioGroup, NRadio, NUpload, NButton, NIcon, NProgress, NAlert, NSelect, NTag, NAutoComplete, NSpace, NTabs, NTabPane, useMessage, useDialog } from 'naive-ui'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { NumberUtils, xxh3Hash } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
@@ -483,8 +472,18 @@ const props = defineProps({
 const api = computed(() => props.uploadApi)
 
 const emit = defineEmits(['upload-success', 'upload-error', 'upload-start', 'upload-change', 'close', 'start-upload'])
-const message = useMessage()
-const dialog = useDialog()
+const message = ElMessage
+const dialog = {
+  warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
+    confirmButtonText: opts.positiveText || '确定',
+    cancelButtonText: opts.negativeText || '取消',
+    type: 'warning',
+    closeOnClickModal: !!opts.onMaskClick
+  }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() })
+}
+
+// naive 标签类型 -> element-plus 标签类型映射
+const elTagType = (t) => ({ default: '', info: 'info', warning: 'warning', success: 'success', error: 'danger' })[t]
 
 // Icons
 const DeleteIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 16, height: 16 }, [
@@ -934,13 +933,16 @@ const getDepAutocompleteOptions = (item) => {
   return depAutocompleteCache[item.id] || []
 }
 
+// el-autocomplete fetch-suggestions（队列依赖）
+const fetchDepSuggestions = async (item, query, cb) => {
+  await handleDepSearch(item, query)
+  cb((depAutocompleteCache[item.id] || []).map(o => ({ value: o.label, id: parseInt(o.value) })))
+}
+
 // 选择依赖文件
-const handleDepSelect = (item, value) => {
-  const opt = (depAutocompleteCache[item.id] || []).find(o => o.value === value)
-  if (opt) {
-    item.depFileRecordId = parseInt(value)
-    item.depFileName = opt.label.split(' (')[0]
-  }
+const handleDepSelect = (item, opt) => {
+  item.depFileRecordId = opt.id
+  item.depFileName = opt.value.split(' (')[0]
 }
 
 // URL 上传的依赖文件自动完成
@@ -960,12 +962,13 @@ const handleUrlDepSearch = async (value) => {
     }
   } catch (e) {}
 }
-const handleUrlDepSelect = (value) => {
-  const opt = urlDepAutocompleteOptions.value.find(o => o.value === value)
-  if (opt) {
-    form.urlDepRecordId = parseInt(value)
-    form.urlDepFileName = opt.label.split(' (')[0]
-  }
+const fetchUrlDepSuggestions = async (query, cb) => {
+  await handleUrlDepSearch(query)
+  cb((urlDepAutocompleteOptions.value || []).map(o => ({ value: o.label, id: parseInt(o.value) })))
+}
+const handleUrlDepSelect = (opt) => {
+  form.urlDepRecordId = opt.id
+  form.urlDepFileName = opt.value.split(' (')[0]
 }
 
 // 剪贴板/文本上传的备注和依赖（共用）
@@ -990,12 +993,13 @@ const handleExtraDepSearch = async (value) => {
     }
   } catch (e) {}
 }
-const handleExtraDepSelect = (value) => {
-  const opt = extraDepAutocompleteOptions.value.find(o => o.value === value)
-  if (opt) {
-    extraDepRecordId.value = parseInt(value)
-    extraDepFileName.value = opt.label.split(' (')[0]
-  }
+const fetchExtraDepSuggestions = async (query, cb) => {
+  await handleExtraDepSearch(query)
+  cb((extraDepAutocompleteOptions.value || []).map(o => ({ value: o.label, id: parseInt(o.value) })))
+}
+const handleExtraDepSelect = (opt) => {
+  extraDepRecordId.value = opt.id
+  extraDepFileName.value = opt.value.split(' (')[0]
 }
 
 // 是否有活跃的本地文件上传
@@ -2221,11 +2225,11 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   .upload-method-tabs {
     margin-top: 4px;
 
-    :deep(.n-tabs-nav) {
+    :deep(.el-tabs__nav) {
       width: 120px;
     }
 
-    :deep(.n-tabs-pane-wrapper) {
+    :deep(.el-tabs__content) {
       padding-left: 16px;
     }
   }

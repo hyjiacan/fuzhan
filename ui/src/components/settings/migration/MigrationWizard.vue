@@ -1,20 +1,21 @@
 <template>
-  <n-modal
-    v-model:show="showModal"
-    preset="card"
+  <el-dialog
+    v-model="showModal"
     title="数据库迁移向导"
-    style="width: 700px; max-width: 90vw;"
-    :mask-closable="false"
-    :closable="currentStep < 4"
+    width="90vw"
+    style="max-width: 700px"
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
+    :show-close="currentStep < 4"
     @close="handleClose"
   >
-    <n-steps :current="currentStep" size="small" class="migration-steps">
-      <n-step title="配置" />
-      <n-step title="测试连接" />
-      <n-step title="预览" />
-      <n-step title="迁移" />
-      <n-step title="完成" />
-    </n-steps>
+    <el-steps :active="currentStep" class="migration-steps">
+      <el-step title="配置" />
+      <el-step title="测试连接" />
+      <el-step title="预览" />
+      <el-step title="迁移" />
+      <el-step title="完成" />
+    </el-steps>
 
     <div class="step-content">
       <!-- 步骤1: 配置 -->
@@ -65,12 +66,11 @@
         @close="handleClose"
       />
     </div>
-  </n-modal>
+  </el-dialog>
 </template>
 
 <script>
 import { ref, defineComponent } from 'vue'
-import { NModal, NSteps, NStep } from 'naive-ui'
 import ConfigStep from './ConfigStep.vue'
 import TestStep from './TestStep.vue'
 import PreviewStep from './PreviewStep.vue'
@@ -81,9 +81,6 @@ export default defineComponent({
   name: 'MigrationWizard',
 
   components: {
-    NModal,
-    NSteps,
-    NStep,
     ConfigStep,
     TestStep,
     PreviewStep,

@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import legacy from '@vitejs/plugin-legacy'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
-import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { resolve } from 'path'
 
 // https://vitejs.dev/config/
@@ -17,21 +17,12 @@ export default defineConfig({
     }),
     vue(),
     AutoImport({
-      imports: [
-        'vue',
-        {
-          'naive-ui': [
-            'useDialog',
-            'useMessage',
-            'useNotification',
-            'useLoadingBar'
-          ]
-        }
-      ],
+      imports: ['vue'],
+      resolvers: [ElementPlusResolver()],
       dts: 'src/auto-imports.d.ts'
     }),
     Components({
-      resolvers: [NaiveUiResolver()],
+      resolvers: [ElementPlusResolver()],
       dts: 'src/components.d.ts'
     })
   ],
@@ -93,6 +84,6 @@ export default defineConfig({
   },
   // 依赖预构建优化
   optimizeDeps: {
-    include: ['vue', 'vue-router', 'axios', 'naive-ui']
+    include: ['vue', 'vue-router', 'axios', 'element-plus', '@element-plus/icons-vue']
   }
 })

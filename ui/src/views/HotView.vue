@@ -2,45 +2,53 @@
   <div class="hot-view">
     <div class="hot-cards">
       <!-- 热门搜索关键词 -->
-      <n-card title="热门搜索关键词" class="hot-card">
+      <el-card class="hot-card">
+        <template #header>热门搜索关键词</template>
         <div v-if="keywords.length > 0" class="keyword-badges">
-          <n-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
-            <n-tag @click="searchKeyword(kw.word)" style="cursor: pointer">{{ kw.word }}</n-tag>
-          </n-badge>
+          <el-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
+            <el-tag @click="searchKeyword(kw.word)" style="cursor: pointer">{{ kw.word }}</el-tag>
+          </el-badge>
         </div>
-        <n-empty v-else description="暂无搜索数据" />
-      </n-card>
+        <el-empty v-else description="暂无搜索数据" />
+      </el-card>
 
       <!-- 热门下载文件 -->
-      <n-card title="热门下载文件" class="hot-card">
-        <n-data-table :columns="downloadColumns" :data="hotDownloads" :loading="loading" :pagination="false"
-          :row-key="row => row.fileName" striped />
+      <el-card class="hot-card">
+        <template #header>热门下载文件</template>
+        <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="downloadColumns"
+            :data="hotDownloads"
+            :width="tableWidth"
+            :height="tableHeight"
+            row-key="fileName"
+          />
+        </div>
         <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
-          <n-pagination
-            :page="currentPage"
-            :page-size="pageSize"
-            :item-count="total"
+          <el-pagination
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :total="total"
             :page-sizes="[10, 20, 50]"
-            show-size-picker
-            @update:page="onPageChange"
-            @update:page-size="onPageSizeChange"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPageChange"
+            @size-change="onPageSizeChange"
           />
           <span class="total-info">共 {{ total }} 个文件</span>
         </div>
-      </n-card>
+      </el-card>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, h, onMounted } from 'vue'
+import { ref, h, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NDataTable, NEmpty, NPagination, NBadge, NTag, useMessage } from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import { MonitorApi } from '@/api'
 import { TimeUtils, PathUtils } from '@/utils'
 
 const router = useRouter()
-const message = useMessage()
 
 // 热门搜索关键词
 const keywords = ref([])
@@ -51,6 +59,19 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
+
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(360)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 360
+  }
+}
 
 // 格式化
 const formatFileSize = (bytes) => {
@@ -81,15 +102,13 @@ const downloadColumns = [
     title: '#',
     key: 'index',
     width: 50,
-    render(row, index) {
-      return index + 1 + (currentPage.value - 1) * pageSize.value
-    }
+    cellRenderer: ({ rowIndex }) => rowIndex + 1 + (currentPage.value - 1) * pageSize.value
   },
   {
     title: '文件名',
     key: 'fileName',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 300,
+    cellRenderer: ({ rowData: row }) => {
       const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
       const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
@@ -139,13 +158,13 @@ const downloadColumns = [
     title: '大小',
     key: 'fileSize',
     width: 100,
-    render: (row) => formatFileSize(row.fileSize || 0)
+    cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
   },
   {
     title: '时间',
     key: 'uploadTime',
     width: 180,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.uploadTime)
       if (TimeUtils.isRecent24h(row.uploadTime)) {
         return h('span', { style: 'color: #18a058' }, text)
@@ -156,8 +175,7 @@ const downloadColumns = [
   {
     title: '下载次数',
     key: 'count',
-    width: 90,
-    sortable: true
+    width: 90
   }
 ]
 
@@ -200,7 +218,7 @@ const loadHotDownloads = async () => {
       total.value = data.data.total || 0
     }
   } catch (error) {
-    message.error('获取热门下载失败')
+    ElMessage.error('获取热门下载失败')
     console.error(error)
   } finally {
     loading.value = false
@@ -210,6 +228,15 @@ const loadHotDownloads = async () => {
 onMounted(() => {
   loadKeywords()
   loadHotDownloads()
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
+})
+
+onUnmounted(() => {
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -232,6 +259,10 @@ onMounted(() => {
     &:hover {
       box-shadow: @card-hover-shadow;
     }
+  }
+
+  .table-v2-wrap {
+    height: 360px;
   }
 
   .pagination-wrapper {

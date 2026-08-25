@@ -17,8 +17,8 @@ test.describe('临时文件功能', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
 
-    // 关闭可能出现的登录弹框（Naive UI card modal 关闭按钮）
-    const closeBtn = page.locator('.n-card-header__close')
+    // 关闭可能出现的登录弹框（el-dialog / el-card header 关闭按钮）
+    const closeBtn = page.locator('.el-dialog__headerbtn, .el-card__header .el-icon')
     if (await closeBtn.isVisible().catch(() => false)) {
       await closeBtn.click()
       await page.waitForTimeout(500)
@@ -26,7 +26,7 @@ test.describe('临时文件功能', () => {
   })
 
   test('临时文件页面可以访问', async ({ page }) => {
-    const pageContent = page.locator('.temp-view, .temp, [class*="temp"], .n-layout').first()
+    const pageContent = page.locator('.temp-view, .temp, [class*="temp"], .el-container').first()
     await expect(pageContent).toBeVisible({ timeout: 10000 })
   })
 
@@ -38,15 +38,15 @@ test.describe('临时文件功能', () => {
 
   test('可以查看已上传的临时文件列表', async ({ page }) => {
     // 检查是否有文件列表或空状态提示
-    const hasFileList = await page.locator('.n-data-table').isVisible().catch(() => false)
-    const hasEmptyState = await page.locator('.n-empty').isVisible().catch(() => false)
+    const hasFileList = await page.locator('.el-table-v2').isVisible().catch(() => false)
+    const hasEmptyState = await page.locator('.el-empty').isVisible().catch(() => false)
 
     expect(hasFileList || hasEmptyState).toBeTruthy()
   })
 
   test('临时文件显示访问码列', async ({ page }) => {
     // 检查文件列表
-    const hasFileList = await page.locator('.n-data-table').isVisible().catch(() => false)
+    const hasFileList = await page.locator('.el-table-v2').isVisible().catch(() => false)
 
     if (hasFileList) {
       // 检查是否有"访问码"列标题或相关内容
@@ -54,14 +54,14 @@ test.describe('临时文件功能', () => {
       expect(hasAccessCodeColumn).toBeTruthy()
     } else {
       // 空状态也通过
-      const hasEmpty = await page.locator('.n-empty').isVisible().catch(() => false)
+      const hasEmpty = await page.locator('.el-empty').isVisible().catch(() => false)
       expect(hasEmpty).toBeTruthy()
     }
   })
 
   test('可以删除临时文件（如果存在）', async ({ page }) => {
     // 先检查是否有文件可以删除
-    const fileRows = page.locator('.n-data-table-tr')
+    const fileRows = page.locator('.el-table-v2__row')
     const hasFiles = await fileRows.first().isVisible().catch(() => false)
 
     if (hasFiles) {

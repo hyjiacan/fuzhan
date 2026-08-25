@@ -2,55 +2,57 @@
   <div class="recent-view">
     <div class="recent-cards">
       <!-- 最近搜索 -->
-      <n-card title="最近搜索" class="recent-card">
+      <el-card class="recent-card">
+        <template #header>最近搜索</template>
         <div v-if="recentKeywords.length > 0" class="keyword-tags">
-          <n-tag v-for="kw in recentKeywords" :key="kw.word" style="cursor: pointer" @click="searchKeyword(kw.word)">
+          <el-tag v-for="kw in recentKeywords" :key="kw.word" style="cursor: pointer" @click="searchKeyword(kw.word)">
             {{ kw.word }}
-          </n-tag>
+          </el-tag>
         </div>
-        <n-empty v-else description="暂无搜索记录" />
-      </n-card>
+        <el-empty v-else description="暂无搜索记录" />
+      </el-card>
 
       <!-- 最近上传 -->
-      <n-card title="最近上传" class="recent-card">
-        <n-data-table :columns="columns" :data="uploads" :loading="loading"
-          :pagination="false" :row-key="row => row.id" striped />
+      <el-card class="recent-card">
+        <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
+            row-key="id" />
+        </div>
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
-            <n-pagination size="small" :page="uploadPage" :page-size="uploadPageSize" :item-count="uploadTotal"
-              :page-sizes="[5, 10, 20]" show-size-picker @update:page="onUploadPageChange"
-              @update:page-size="onUploadPageSizeChange" />
+            <el-pagination size="small" v-model:current-page="uploadPage" v-model:page-size="uploadPageSize"
+              :total="uploadTotal" :page-sizes="[5, 10, 20]" layout="total, sizes, prev, pager, next"
+              @current-change="onUploadPageChange" @size-change="onUploadPageSizeChange" />
           </div>
         </template>
-      </n-card>
+      </el-card>
 
       <!-- 最近下载 -->
-      <n-card title="最近下载" class="recent-card">
-        <n-data-table :columns="columns" :data="downloads" :loading="loading"
-          :pagination="false" :row-key="row => row.id" striped />
+      <el-card class="recent-card">
+        <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2 :columns="columns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
+            row-key="id" />
+        </div>
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
-            <n-pagination size="small" :page="downloadPage" :page-size="downloadPageSize" :item-count="downloadTotal"
-              :page-sizes="[5, 10, 20]" show-size-picker @update:page="onDownloadPageChange"
-              @update:page-size="onDownloadPageSizeChange" />
+            <el-pagination size="small" v-model:current-page="downloadPage" v-model:page-size="downloadPageSize"
+              :total="downloadTotal" :page-sizes="[5, 10, 20]" layout="total, sizes, prev, pager, next"
+              @current-change="onDownloadPageChange" @size-change="onDownloadPageSizeChange" />
           </div>
         </template>
-      </n-card>
+      </el-card>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, onUnmounted, h } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  NCard, NDataTable, NEmpty, NPagination, NTag, useMessage
-} from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import { FileApi, MonitorApi } from '@/api'
 import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
 
 const router = useRouter()
-const message = useMessage()
 
 // State
 const loading = ref(false)
@@ -67,6 +69,30 @@ const downloads = ref([])
 const downloadTotal = ref(0)
 const downloadPage = ref(1)
 const downloadPageSize = ref(5)
+
+// el-table-v2 需要数值宽高，实时测量容器
+const makeTableResize = () => {
+  const wrapRef = ref(null)
+  const width = ref(600)
+  const height = ref(260)
+  let resizeObs = null
+  const update = () => {
+    const el = wrapRef.value
+    if (el) {
+      width.value = el.clientWidth || 600
+      height.value = el.clientHeight || 260
+    }
+  }
+  const bind = () => {
+    update()
+    resizeObs = new ResizeObserver(update)
+    if (wrapRef.value) resizeObs.observe(wrapRef.value)
+  }
+  const unbind = () => resizeObs?.disconnect()
+  return { wrapRef, width, height, bind, unbind }
+}
+const uploadSize = makeTableResize()
+const downloadSize = makeTableResize()
 
 // 格式化
 const formatFileSize = NumberUtils.formatFileSize
@@ -101,8 +127,8 @@ const columns = [
   {
     title: '文件名',
     key: 'fileName',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 300,
+    cellRenderer: ({ rowData: row }) => {
       const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
       const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
@@ -152,13 +178,13 @@ const columns = [
     title: '大小',
     key: 'fileSize',
     width: 100,
-    render: (row) => formatFileSize(row.fileSize || 0)
+    cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
   },
   {
     title: '时间',
     key: 'createdAt',
     width: 180,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.createdAt)
       if (TimeUtils.isRecent24h(row.createdAt)) {
         return h('span', { style: 'color: #18a058' }, text)
@@ -231,7 +257,7 @@ const loadUploads = async () => {
       uploadTotal.value = data.data.total || 0
     }
   } catch (error) {
-    message.error('加载上传记录失败')
+    ElMessage.error('加载上传记录失败')
     console.error(error)
   }
 }
@@ -246,7 +272,7 @@ const loadDownloads = async () => {
       downloadTotal.value = data.data.total || 0
     }
   } catch (error) {
-    message.error('加载下载记录失败')
+    ElMessage.error('加载下载记录失败')
     console.error(error)
   } finally {
     loading.value = false
@@ -258,6 +284,13 @@ onMounted(() => {
   loadRecentKeywords()
   loadUploads()
   loadDownloads()
+  uploadSize.bind()
+  downloadSize.bind()
+})
+
+onUnmounted(() => {
+  uploadSize.unbind()
+  downloadSize.unbind()
 })
 </script>
 
@@ -285,13 +318,17 @@ onMounted(() => {
     }
   }
 
+  .table-v2-wrap {
+    height: 260px;
+  }
+
   .keyword-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
     padding: 8px 0;
 
-    .n-tag {
+    .el-tag {
       min-width: 30px;
       justify-content: center;
       transition: transform @transition-fast, box-shadow @transition-fast;

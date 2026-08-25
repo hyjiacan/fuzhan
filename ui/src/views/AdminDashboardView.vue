@@ -6,105 +6,107 @@
     </div>
 
     <!-- 统计卡片 -->
-        <n-grid :cols="6" :x-gap="16" :y-gap="16" class="stat-grid">
-          <n-gi>
-            <n-card class="stat-card">
+        <el-row :gutter="16" class="stat-grid">
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="StorageIcon" size="32" />
+                <el-icon :size="32"><component :is="StorageIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ formatSize(storageStats.usedSpace) }}</div>
                   <div class="stat-label">已用存储</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="FileIcon" size="32" />
+                <el-icon :size="32"><component :is="FileIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ indexStats.totalFiles.toLocaleString('zh-CN') }}</div>
                   <div class="stat-label">文件总数</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="FileIcon" size="32" />
+                <el-icon :size="32"><component :is="FileIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ formatSize(indexStats.totalSize) }}</div>
                   <div class="stat-label">总大小</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="DuplicateIcon" size="32" />
+                <el-icon :size="32"><component :is="DuplicateIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ indexStats.duplicateGroups }}</div>
                   <div class="stat-label">重复文件组</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="AccessIcon" size="32" />
+                <el-icon :size="32"><component :is="AccessIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ stats.activeUsers }}</div>
                   <div class="stat-label">活跃用户</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="4">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="GlobeIcon" size="32" />
+                <el-icon :size="32"><component :is="GlobeIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ openApiStats.todayCalls }}</div>
                   <div class="stat-label">API 调用(今日)</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-        </n-grid>
+            </el-card>
+          </el-col>
+        </el-row>
 
         <!-- 系统信息：运行状态 + 版本 -->
         <div class="system-info-row" v-if="systemInfoLoaded">
-          <n-card title="系统信息" class="chart-card system-info-card">
-            <n-descriptions label-placement="left" :column="4" size="small">
-              <n-descriptions-item label="服务状态">
-                <n-tag :type="healthStatus === 'healthy' ? 'success' : 'error'" size="small">
+          <el-card class="chart-card system-info-card" shadow="never">
+            <template #header>系统信息</template>
+            <el-descriptions :column="4" size="small">
+              <el-descriptions-item label="服务状态">
+                <el-tag :type="healthStatus === 'healthy' ? 'success' : 'danger'" size="small">
                   {{ healthStatus === 'healthy' ? '正常运行' : '异常' }}
-                </n-tag>
-              </n-descriptions-item>
-              <n-descriptions-item label="应用名称">
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="应用名称">
                 {{ systemConfig.appName || '-' }}
-              </n-descriptions-item>
-              <n-descriptions-item label="版本号">
+              </el-descriptions-item>
+              <el-descriptions-item label="版本号">
                 {{ systemConfig.version || '-' }}
-              </n-descriptions-item>
-              <n-descriptions-item label="组件状态">
-                <n-space size="small">
-                  <n-tag v-for="check in healthChecks" :key="check.name" :type="check.status === 'ok' ? 'success' : 'error'" size="small">
+              </el-descriptions-item>
+              <el-descriptions-item label="组件状态">
+                <el-space size="small">
+                  <el-tag v-for="check in healthChecks" :key="check.name" :type="check.status === 'ok' ? 'success' : 'danger'" size="small">
                     {{ check.label }}: {{ check.status === 'ok' ? '正常' : '异常' }}
-                  </n-tag>
-                </n-space>
-              </n-descriptions-item>
-            </n-descriptions>
-          </n-card>
+                  </el-tag>
+                </el-space>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-card>
         </div>
 
         <!-- 下方：左侧存储区域 / 右侧文件区域 -->
         <div class="dashboard-bottom">
           <div class="bottom-left">
-            <n-card title="存储使用情况" class="chart-card">
+            <el-card class="chart-card" shadow="never">
+              <template #header>存储使用情况</template>
               <div class="storage-list">
                 <div class="storage-header">
                   <span>分区</span>
@@ -116,7 +118,7 @@
                 <div v-for="root in storageStats.roots" :key="root.name" class="storage-item">
                   <div class="storage-progress-bar" :style="{ width: getUsagePercent(root) + '%' }"></div>
                   <span class="storage-name">
-                    <n-icon :component="FolderIcon" size="16" />
+                    <el-icon :size="16"><component :is="FolderIcon" /></el-icon>
                     {{ root.name }}
                   </span>
                   <span class="storage-value">{{ root.quota > 0 ? formatSize(root.quota) : '无限制' }}</span>
@@ -125,8 +127,9 @@
                   <span class="storage-value" :class="{ 'usage-high': getUsagePercent(root) > 90 }">{{ getUsagePercent(root) }}%</span>
                 </div>
               </div>
-            </n-card>
-            <n-card title="临时文件配额" class="chart-card">
+            </el-card>
+            <el-card class="chart-card" shadow="never">
+              <template #header>临时文件配额</template>
               <div v-if="Object.keys(storageStats.temp?.usedByIP || {}).length > 0" class="quota-list">
                 <div class="quota-header">
                   <span>IP地址</span>
@@ -139,9 +142,10 @@
                   <span class="quota-value">{{ formatSize(storageStats.temp?.quotaPerIP || 0) }}</span>
                 </div>
               </div>
-              <n-empty v-else description="暂无临时文件" />
-            </n-card>
-            <n-card title="私有存储配额" class="chart-card">
+              <el-empty v-else description="暂无临时文件" />
+            </el-card>
+            <el-card class="chart-card" shadow="never">
+              <template #header>私有存储配额</template>
               <div v-if="Object.keys(storageStats.private?.usedByUser || {}).length > 0" class="quota-list">
                 <div class="quota-header cols-2">
                   <span>用户ID</span>
@@ -152,38 +156,41 @@
                   <span class="quota-value">{{ formatSize(used) }}</span>
                 </div>
               </div>
-              <n-empty v-else description="暂无私有文件" />
-            </n-card>
+              <el-empty v-else description="暂无私有文件" />
+            </el-card>
           </div>
           <div class="bottom-right">
-            <n-card title="热门搜索词" class="chart-card">
+            <el-card class="chart-card" shadow="never">
+              <template #header>热门搜索词</template>
               <div v-if="keywords.length > 0" class="keyword-badges">
-                <n-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
-                  <n-tag>{{ kw.word }}</n-tag>
-                </n-badge>
+                <el-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
+                  <el-tag>{{ kw.word }}</el-tag>
+                </el-badge>
               </div>
-              <n-empty v-else description="暂无搜索记录" />
-            </n-card>
-            <n-card title="最近上传" class="chart-card">
+              <el-empty v-else description="暂无搜索记录" />
+            </el-card>
+            <el-card class="chart-card" shadow="never">
+              <template #header>最近上传</template>
               <div v-if="rankings.recentUploads.length > 0" class="rank-list">
                 <div v-for="(item, index) in rankings.recentUploads" :key="'u' + index" class="rank-item">
-                  <n-icon :component="UploadIcon" size="16" class="rank-icon upload" />
+                  <el-icon :size="16" class="rank-icon upload"><component :is="UploadIcon" /></el-icon>
                   <span class="rank-filename">{{ item.filename }}</span>
                   <span class="rank-time">{{ formatTime(item.time) }}</span>
                 </div>
               </div>
-              <n-empty v-else description="暂无上传记录" />
-            </n-card>
-            <n-card title="最近下载" class="chart-card">
+              <el-empty v-else description="暂无上传记录" />
+            </el-card>
+            <el-card class="chart-card" shadow="never">
+              <template #header>最近下载</template>
               <div v-if="rankings.recentDownloads.length > 0" class="rank-list">
                 <div v-for="(item, index) in rankings.recentDownloads" :key="'d' + index" class="rank-item">
-                  <n-icon :component="DownloadIcon" size="16" class="rank-icon download" />
+                  <el-icon :size="16" class="rank-icon download"><component :is="DownloadIcon" /></el-icon>
                   <span class="rank-filename">{{ item.filename }}</span>
                   <span class="rank-time">{{ formatTime(item.time) }}</span>
                 </div>
               </div>
-              <n-empty v-else description="暂无下载记录" />
-            </n-card>
+              <el-empty v-else description="暂无下载记录" />
+            </el-card>
           </div>
         </div>
       </div>
@@ -191,15 +198,10 @@
 
 <script setup>
 import { ref, reactive, h, onMounted } from 'vue'
-import {
-  NGrid, NGi, NCard, NIcon, NEmpty, NButton, NBadge, NTag,
-  NSpace, NDescriptions, NDescriptionsItem, useMessage
-} from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { AdminApi, MonitorApi, SystemApi, IndexApi } from '@/api'
 import store from '@/store'
-
-const message = useMessage()
 
 // ============ 概览部分 ============
 
@@ -319,7 +321,7 @@ const loadStats = async () => {
     const failedCount = [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData]
       .filter(d => !d.success).length
     if (failedCount > 0) {
-      message.warning(`部分统计数据加载失败 (${failedCount}/6)，请刷新重试`)
+      ElMessage.warning(`部分统计数据加载失败 (${failedCount}/6)，请刷新重试`)
     }
 
     if (usersData.success) {
@@ -429,7 +431,7 @@ const zombieHandleSelectionChange = (keys) => {
 
 const zombieCleanSelected = () => {
   if (zombieSelectedRowKeys.value.length === 0) {
-    message.info('请先选择要清理的会话')
+    ElMessage.info('请先选择要清理的会话')
     return
   }
   const selected = zombieSessions.value.filter(s => zombieSelectedRowKeys.value.includes(s.id))
@@ -471,7 +473,7 @@ onMounted(() => {
     }
   }
 
-  .stat-grid .n-gi {
+  .stat-grid :deep(.el-col) {
     display: flex;
   }
 
@@ -511,7 +513,7 @@ onMounted(() => {
       box-shadow: @card-hover-shadow;
     }
 
-    .n-card__content {
+    :deep(.el-card__body) {
       padding: 16px;
     }
   }
@@ -521,12 +523,12 @@ onMounted(() => {
     align-items: center;
     gap: 16px;
 
-    .n-icon {
+    .el-icon {
       color: @primary-color;
       transition: transform @transition-bounce;
     }
 
-    &:hover .n-icon {
+    &:hover .el-icon {
       transform: scale(1.1);
     }
   }
@@ -751,7 +753,7 @@ onMounted(() => {
 }
 
 .system-info-card {
-  .n-descriptions {
+  :deep(.el-descriptions) {
     padding: 4px 0;
   }
 }

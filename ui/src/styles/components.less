@@ -164,7 +164,7 @@
         width: 200px;
       }
 
-      .n-button {
+      .el-button {
         transition: transform @transition-smooth, box-shadow @transition-smooth;
 
         &:hover {
@@ -211,15 +211,12 @@
   min-height: 200px;
   padding: 40px 20px;
 
-  .n-empty {
-    --n-icon-size: 48px;
-    --n-font-size: 14px;
-
-    .n-empty__icon {
+  .el-empty {
+    .el-empty__image {
       color: @text-color-placeholder;
     }
 
-    .n-empty__description {
+    .el-empty__description p {
       color: @text-color-secondary;
       margin-top: 12px;
     }
@@ -430,7 +427,7 @@
   padding: 8px 0;
 
   .keyword-badge {
-    .n-tag {
+    .el-tag {
       min-width: 40px;
       justify-content: center;
       transition: transform @transition-fast, box-shadow @transition-fast;
@@ -446,8 +443,8 @@
     }
 
     /* 关键字后面的数量标记变小 */
-    .n-badge-sup {
-      transform: translateX(-50%) scale(0.85);
+    .el-badge__content {
+      transform: translateX(50%) scale(0.85);
     }
   }
 }

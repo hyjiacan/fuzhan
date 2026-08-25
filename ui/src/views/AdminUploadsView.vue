@@ -5,217 +5,232 @@
       <p class="description">管理僵尸文件和 URL 上传任务</p>
     </div>
 
-    <n-tabs type="line" animated default-value="zombie">
+    <el-tabs v-model="activeTab">
       <!-- 僵尸文件标签页 -->
-      <n-tab-pane name="zombie" tab="僵尸文件">
+      <el-tab-pane name="zombie" label="僵尸文件">
         <!-- 统计卡片 -->
-        <n-grid :cols="3" :x-gap="16" :y-gap="16" style="margin-bottom: 16px;">
-          <n-gi>
-            <n-card class="stat-card">
+        <el-row :gutter="16" style="margin-bottom: 16px;">
+          <el-col :span="8">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="ZombieIcon" size="32" color="#faad14" />
+                <el-icon :size="32" color="#faad14"><ZombieIcon /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ zombieStats.zombieSessions }}</div>
                   <div class="stat-label">过期会话</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="8">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="FileIcon" size="32" color="#1890ff" />
+                <el-icon :size="32" color="#1890ff"><FileIcon /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ zombieStats.totalSessions }}</div>
                   <div class="stat-label">总会话</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="8">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <n-icon :component="TrashIcon" size="32" color="#f5222d" />
+                <el-icon :size="32" color="#f5222d"><TrashIcon /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ formatSize(zombieStats.totalSize) }}</div>
                   <div class="stat-label">占用空间</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-        </n-grid>
+            </el-card>
+          </el-col>
+        </el-row>
 
         <!-- 会话列表 -->
-        <n-card title="过期会话列表">
-          <template #header-extra>
-            <n-space>
-              <n-button size="small" type="error" :disabled="zombieSelectedRowKeys.length === 0" @click="zombieCleanSelected" :loading="zombieCleaning">
-                清理选中 ({{ zombieSelectedRowKeys.length }})
-              </n-button>
-              <n-button size="small" type="warning" @click="zombieCleanAllExpired" :loading="zombieCleaning">
-                一键清理
-              </n-button>
-              <n-button size="small" @click="loadZombieSessions" :loading="zombieLoading">刷新</n-button>
-            </n-space>
+        <el-card header="过期会话列表" shadow="never">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>过期会话列表</span>
+              <el-space>
+                <el-button size="small" type="danger" :disabled="zombieSelectedRowKeys.length === 0" @click="zombieCleanSelected" :loading="zombieCleaning">
+                  清理选中 ({{ zombieSelectedRowKeys.length }})
+                </el-button>
+                <el-button size="small" type="warning" @click="zombieCleanAllExpired" :loading="zombieCleaning">
+                  一键清理
+                </el-button>
+                <el-button size="small" @click="loadZombieSessions" :loading="zombieLoading">刷新</el-button>
+              </el-space>
+            </div>
           </template>
 
-          <n-data-table
-            :columns="zombieColumns"
-            :data="zombieSessions"
-            :loading="zombieLoading"
-            :pagination="zombiePagination"
-            :row-key="row => row.id"
-            :checked-row-keys="zombieSelectedRowKeys"
-            @update:checked-row-keys="zombieHandleSelectionChange"
-          />
-        </n-card>
+          <div ref="zombieWrapRef" class="table-v2-wrap" v-loading="zombieLoading">
+            <el-table-v2
+              :columns="zombieColumns"
+              :data="zombieSessions"
+              :width="zombieTableWidth"
+              :height="zombieTableHeight"
+              :estimated-row-height="34"
+              row-key="id"
+            />
+          </div>
+        </el-card>
 
         <!-- 确认清理对话框 -->
-        <n-modal v-model:show="zombieConfirmVisible" preset="card" title="确认清理" style="width: 400px">
-          <n-alert type="warning">
+        <el-dialog v-model="zombieConfirmVisible" title="确认清理" width="400px">
+          <el-alert type="warning" :closable="false">
             确定要清理这 {{ zombieSelectedSessions.length }} 个会话吗？此操作将删除相关的残留文件。
-          </n-alert>
+          </el-alert>
           <template #footer>
-            <n-space justify="end">
-              <n-button @click="zombieConfirmVisible = false">取消</n-button>
-              <n-button type="error" :loading="zombieCleaning" @click="zombieConfirmClean">确认清理</n-button>
-            </n-space>
+            <el-space>
+              <el-button @click="zombieConfirmVisible = false">取消</el-button>
+              <el-button type="danger" :loading="zombieCleaning" @click="zombieConfirmClean">确认清理</el-button>
+            </el-space>
           </template>
-        </n-modal>
-      </n-tab-pane>
+        </el-dialog>
+      </el-tab-pane>
 
       <!-- URL上传标签页 -->
-      <n-tab-pane name="url-tasks" tab="URL上传">
+      <el-tab-pane name="url-tasks" label="URL上传">
         <!-- 统计卡片 -->
-        <n-grid :cols="4" :x-gap="16" :y-gap="16" style="margin-bottom: 16px;">
-          <n-gi>
-            <n-card class="stat-card">
+        <el-row :gutter="16" style="margin-bottom: 16px;">
+          <el-col :span="6">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <div class="stat-info">
                   <div class="stat-value">{{ urlStats.total }}</div>
                   <div class="stat-label">全部任务</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <div class="stat-info">
                   <div class="stat-value" style="color: #52c41a;">{{ urlStats.completed }}</div>
                   <div class="stat-label">已完成</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <div class="stat-info">
                   <div class="stat-value" style="color: #ff4d4f;">{{ urlStats.failed }}</div>
                   <div class="stat-label">失败</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card class="stat-card">
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <div class="stat-info">
                   <div class="stat-value" style="color: #1890ff;">{{ urlStats.downloading }}</div>
                   <div class="stat-label">上传中/等待</div>
                 </div>
               </div>
-            </n-card>
-          </n-gi>
-        </n-grid>
+            </el-card>
+          </el-col>
+        </el-row>
 
         <!-- 过滤和操作栏 -->
-        <n-card>
-          <template #header-extra>
-            <n-space>
-              <n-button
-                size="small" type="error"
-                :disabled="urlSelectedRowKeys.length === 0"
-                @click="batchDelete"
-              >
-                删除选中 ({{ urlSelectedRowKeys.length }})
-              </n-button>
-              <n-button
-                size="small" type="warning"
-                :disabled="urlSelectedRowKeys.length === 0"
-                @click="batchRetry"
-              >
-                重试选中 ({{ urlSelectedRowKeys.length }})
-              </n-button>
-              <n-button size="small" @click="loadURLTasks" :loading="urlLoading">刷新</n-button>
-            </n-space>
+        <el-card shadow="never">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>URL 上传任务</span>
+              <el-space>
+                <el-button
+                  size="small" type="danger"
+                  :disabled="urlSelectedRowKeys.length === 0"
+                  @click="batchDelete"
+                >
+                  删除选中 ({{ urlSelectedRowKeys.length }})
+                </el-button>
+                <el-button
+                  size="small" type="warning"
+                  :disabled="urlSelectedRowKeys.length === 0"
+                  @click="batchRetry"
+                >
+                  重试选中 ({{ urlSelectedRowKeys.length }})
+                </el-button>
+                <el-button size="small" @click="loadURLTasks" :loading="urlLoading">刷新</el-button>
+              </el-space>
+            </div>
           </template>
 
           <!-- 状态过滤 -->
           <div style="margin-bottom: 12px;">
-            <n-radio-group v-model:value="urlStatusFilter" size="small" @update-value="onURLStatusFilterChange">
-              <n-radio-button value="">全部</n-radio-button>
-              <n-radio-button value="pending">等待中</n-radio-button>
-              <n-radio-button value="downloading">上传中</n-radio-button>
-              <n-radio-button value="completed">已完成</n-radio-button>
-              <n-radio-button value="failed">失败</n-radio-button>
-            </n-radio-group>
+            <el-radio-group v-model="urlStatusFilter" @change="onURLStatusFilterChange">
+              <el-radio-button value="">全部</el-radio-button>
+              <el-radio-button value="pending">等待中</el-radio-button>
+              <el-radio-button value="downloading">上传中</el-radio-button>
+              <el-radio-button value="completed">已完成</el-radio-button>
+              <el-radio-button value="failed">失败</el-radio-button>
+            </el-radio-group>
           </div>
 
-          <n-data-table
-            :columns="urlColumns"
-            :data="urlTasks"
-            :loading="urlLoading"
-            :pagination="urlPagination"
-            :row-key="row => row.id"
-            :checked-row-keys="urlSelectedRowKeys"
-            @update:checked-row-keys="handleURLSelectionChange"
-          />
-        </n-card>
+          <div ref="urlWrapRef" class="table-v2-wrap" v-loading="urlLoading">
+            <el-table-v2
+              :columns="urlColumns"
+              :data="urlTasks"
+              :width="urlTableWidth"
+              :height="urlTableHeight"
+              :estimated-row-height="34"
+              row-key="id"
+            />
+          </div>
+          <div class="pagination-wrap" v-if="urlTotal > pageSize">
+            <el-pagination
+              v-model:current-page="urlPage"
+              v-model:page-size="urlPageSize"
+              :total="urlTotal"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="loadURLTasks"
+              @size-change="onURLPageSizeChange"
+            />
+          </div>
+        </el-card>
 
         <!-- 确认删除对话框 -->
-        <n-modal v-model:show="deleteModalVisible" preset="card" title="确认删除" style="width: 400px">
-          <n-alert type="warning">
+        <el-dialog v-model="deleteModalVisible" title="确认删除" width="400px">
+          <el-alert type="warning" :closable="false">
             确定要删除选中的 {{ toDeleteTasks.length }} 个任务吗？相关文件也会被清理。
-          </n-alert>
+          </el-alert>
           <template #footer>
-            <n-space justify="end">
-              <n-button @click="deleteModalVisible = false">取消</n-button>
-              <n-button type="error" :loading="deleting" @click="confirmDelete">确认删除</n-button>
-            </n-space>
+            <el-space>
+              <el-button @click="deleteModalVisible = false">取消</el-button>
+              <el-button type="danger" :loading="deleting" @click="confirmDelete">确认删除</el-button>
+            </el-space>
           </template>
-        </n-modal>
+        </el-dialog>
 
         <!-- 确认重试对话框 -->
-        <n-modal v-model:show="retryModalVisible" preset="card" title="确认重试" style="width: 400px">
-          <n-alert type="warning">
+        <el-dialog v-model="retryModalVisible" title="确认重试" width="400px">
+          <el-alert type="warning" :closable="false">
             确定要重试选中的 {{ toRetryTasks.length }} 个失败任务吗？
-          </n-alert>
+          </el-alert>
           <template #footer>
-            <n-space justify="end">
-              <n-button @click="retryModalVisible = false">取消</n-button>
-              <n-button type="warning" :loading="retrying" @click="confirmRetry">确认重试</n-button>
-            </n-space>
+            <el-space>
+              <el-button @click="retryModalVisible = false">取消</el-button>
+              <el-button type="warning" :loading="retrying" @click="confirmRetry">确认重试</el-button>
+            </el-space>
           </template>
-        </n-modal>
-      </n-tab-pane>
-    </n-tabs>
+        </el-dialog>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, h, onMounted } from 'vue'
-import {
-  NGrid, NGi, NCard, NButton, NSpace, NDataTable,
-  NRadioGroup, NRadioButton, NAlert, NModal, NIcon, NTabs, NTabPane,
-  useMessage
-} from 'naive-ui'
+import { ref, reactive, computed, h, onMounted, onUnmounted, nextTick } from 'vue'
+import { ElMessage, ElButton, ElTag, ElCheckbox } from 'element-plus'
 import { AdminApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import store from '@/store'
 
-const message = useMessage()
+const activeTab = ref('zombie')
 
 // ============ 格式工具 ============
 const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
@@ -230,6 +245,27 @@ const ZombieIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 const TrashIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z' })
 ])
+
+// ============ 尺寸测量 ============
+const zombieWrapRef = ref(null)
+const urlWrapRef = ref(null)
+const zombieTableWidth = ref(600)
+const zombieTableHeight = ref(300)
+const urlTableWidth = ref(600)
+const urlTableHeight = ref(300)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const z = zombieWrapRef.value
+  if (z && z.clientWidth > 0) {
+    zombieTableWidth.value = z.clientWidth
+    zombieTableHeight.value = z.clientHeight || 300
+  }
+  const u = urlWrapRef.value
+  if (u && u.clientWidth > 0) {
+    urlTableWidth.value = u.clientWidth
+    urlTableHeight.value = u.clientHeight || 300
+  }
+}
 
 // ============ 僵尸文件部分 ============
 const zombieLoading = ref(false)
@@ -246,21 +282,55 @@ const zombieStats = reactive({
 
 const zombieSessions = ref([])
 
-const zombiePagination = {
-  pageSize: 20
+// 勾选（el-table-v2 不内置选择列，手动实现）
+const zombieIsAllSelected = computed(() => {
+  return zombieSessions.value.length > 0 &&
+    zombieSessions.value.every(s => zombieSelectedRowKeys.value.includes(s.id))
+})
+const zombieIsIndeterminate = computed(() => {
+  if (zombieSessions.value.length === 0) return false
+  const count = zombieSessions.value.filter(s => zombieSelectedRowKeys.value.includes(s.id)).length
+  return count > 0 && count < zombieSessions.value.length
+})
+const zombieToggleSelectAll = (val) => {
+  zombieSelectedRowKeys.value = val ? zombieSessions.value.map(s => s.id) : []
 }
+const zombieToggleSingle = (row, val) => {
+  if (val) {
+    if (!zombieSelectedRowKeys.value.includes(row.id)) {
+      zombieSelectedRowKeys.value = zombieSelectedRowKeys.value.concat(row.id)
+    }
+  } else {
+    zombieSelectedRowKeys.value = zombieSelectedRowKeys.value.filter(key => key !== row.id)
+  }
+}
+
+const statusTypeMap = { default: 'info', info: 'info', success: 'success', warning: 'warning', error: 'danger' }
 
 const zombieColumns = [
   {
+    key: 'selection',
+    width: 50,
+    headerCellRenderer: () => h(ElCheckbox, {
+      modelValue: zombieIsAllSelected.value,
+      indeterminate: zombieIsIndeterminate.value,
+      onChange: (val) => zombieToggleSelectAll(val)
+    }),
+    cellRenderer: ({ rowData: row }) => h(ElCheckbox, {
+      modelValue: zombieSelectedRowKeys.value.includes(row.id),
+      onChange: (val) => zombieToggleSingle(row, val)
+    })
+  },
+  {
     title: '文件名',
     key: 'fileName',
-    ellipsis: { tooltip: true }
+    width: 200
   },
   {
     title: '状态',
     key: 'status',
     width: 100,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const statusMap = {
         pending: { text: '等待中', type: 'default' },
         in_progress: { text: '上传中', type: 'info' },
@@ -269,22 +339,20 @@ const zombieColumns = [
         expired: { text: '已过期', type: 'error' }
       }
       const status = statusMap[row.status] || { text: row.status, type: 'default' }
-      return h('n-tag', { type: status.type, size: 'small' }, () => status.text)
+      return h(ElTag, { type: statusTypeMap[status.type], size: 'small' }, () => status.text)
     }
   },
   {
     title: '文件大小',
     key: 'fileSize',
     width: 120,
-    render(row) {
-      return formatSize(row.fileSize)
-    }
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
   {
     title: '已上传',
     key: 'uploadedSize',
     width: 120,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const percent = row.fileSize > 0 ? Math.round((row.uploadedSize / row.fileSize) * 100) : 0
       return `${formatSize(row.uploadedSize)} (${percent}%)`
     }
@@ -293,34 +361,26 @@ const zombieColumns = [
     title: '创建时间',
     key: 'createdAt',
     width: 180,
-    render(row) {
-      return row.createdAt || '-'
-    }
+    cellRenderer: ({ rowData: row }) => row.createdAt || '-'
   },
   {
     title: '过期时间',
     key: 'expiredAt',
     width: 180,
-    render(row) {
-      return row.expiredAt || '-'
-    }
-  },
-  {
-    type: 'selection',
-    width: 50
+    cellRenderer: ({ rowData: row }) => row.expiredAt || '-'
   },
   {
     title: '操作',
     key: 'actions',
     width: 80,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       if (row.status === 'completed' || row.status === 'cancelled') {
         return null
       }
-      return h(NButton, {
+      return h(ElButton, {
         size: 'small',
-        type: 'error',
-        quaternary: true,
+        type: 'danger',
+        link: true,
         onClick: () => zombieCleanSession(row)
       }, () => '清理')
     }
@@ -344,16 +404,13 @@ const loadZombieSessions = async () => {
     console.error('加载会话列表失败', e)
   } finally {
     zombieLoading.value = false
+    nextTick(updateTableSize)
   }
-}
-
-const zombieHandleSelectionChange = (keys) => {
-  zombieSelectedRowKeys.value = keys
 }
 
 const zombieCleanSelected = () => {
   if (zombieSelectedRowKeys.value.length === 0) {
-    message.info('请先选择要清理的会话')
+    ElMessage.info('请先选择要清理的会话')
     return
   }
   const selected = zombieSessions.value.filter(s => zombieSelectedRowKeys.value.includes(s.id))
@@ -371,7 +428,7 @@ const zombieCleanAllExpired = () => {
     s.status === 'expired' || s.status === 'pending' || s.status === 'in_progress'
   )
   if (expiredSessions.length === 0) {
-    message.info('没有需要清理的过期会话')
+    ElMessage.info('没有需要清理的过期会话')
     return
   }
   zombieSelectedRowKeys.value = expiredSessions.map(s => s.id)
@@ -385,16 +442,16 @@ const zombieConfirmClean = async () => {
     const sessionIds = zombieSelectedSessions.value.map(s => s.id)
     const data = await AdminApi.cleanupSessions(sessionIds)
     if (data.success) {
-      message.success(`成功清理 ${sessionIds.length} 个会话`)
+      ElMessage.success(`成功清理 ${sessionIds.length} 个会话`)
       zombieConfirmVisible.value = false
       zombieSelectedRowKeys.value = []
       zombieSelectedSessions.value = []
       loadZombieSessions()
     } else {
-      message.error(data.message || '清理失败')
+      ElMessage.error(data.message || '清理失败')
     }
   } catch (e) {
-    message.error('清理失败')
+    ElMessage.error('清理失败')
   } finally {
     zombieCleaning.value = false
   }
@@ -410,6 +467,9 @@ const toDeleteTasks = ref([])
 const toRetryTasks = ref([])
 const urlSelectedRowKeys = ref([])
 const urlStatusFilter = ref('')
+const urlPage = ref(1)
+const urlPageSize = ref(20)
+const urlTotal = ref(0)
 
 const urlStats = reactive({
   total: 0,
@@ -420,23 +480,30 @@ const urlStats = reactive({
 
 const urlTasks = ref([])
 
-const urlPagination = reactive({
-  page: 1,
-  pageSize: 20,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50, 100],
-  onChange: (page) => {
-    urlPagination.page = page
-    loadURLTasks()
-  },
-  onPageSizeChange: (pageSize) => {
-    urlPagination.pageSize = pageSize
-    urlPagination.page = 1
-    loadURLTasks()
-  }
+// 勾选（el-table-v2 不内置选择列，手动实现）
+const urlIsAllSelected = computed(() => {
+  return urlTasks.value.length > 0 &&
+    urlTasks.value.every(t => urlSelectedRowKeys.value.includes(t.id))
 })
+const urlIsIndeterminate = computed(() => {
+  if (urlTasks.value.length === 0) return false
+  const count = urlTasks.value.filter(t => urlSelectedRowKeys.value.includes(t.id)).length
+  return count > 0 && count < urlTasks.value.length
+})
+const urlToggleSelectAll = (val) => {
+  urlSelectedRowKeys.value = val ? urlTasks.value.map(t => t.id) : []
+}
+const urlToggleSingle = (row, val) => {
+  if (val) {
+    if (!urlSelectedRowKeys.value.includes(row.id)) {
+      urlSelectedRowKeys.value = urlSelectedRowKeys.value.concat(row.id)
+    }
+  } else {
+    urlSelectedRowKeys.value = urlSelectedRowKeys.value.filter(key => key !== row.id)
+  }
+}
 
-const statusOptions = {
+const statusTextOptions = {
   pending: { text: '等待中', type: 'default' },
   downloading: { text: '上传中', type: 'info' },
   completed: { text: '已完成', type: 'success' },
@@ -445,38 +512,45 @@ const statusOptions = {
 
 const urlColumns = [
   {
-    type: 'selection',
-    width: 50
+    key: 'selection',
+    width: 50,
+    headerCellRenderer: () => h(ElCheckbox, {
+      modelValue: urlIsAllSelected.value,
+      indeterminate: urlIsIndeterminate.value,
+      onChange: (val) => urlToggleSelectAll(val)
+    }),
+    cellRenderer: ({ rowData: row }) => h(ElCheckbox, {
+      modelValue: urlSelectedRowKeys.value.includes(row.id),
+      onChange: (val) => urlToggleSingle(row, val)
+    })
   },
   {
     title: '文件名',
     key: 'fileName',
-    width: 200,
-    ellipsis: { tooltip: true }
+    width: 200
   },
   {
     title: 'URL',
     key: 'url',
     width: 250,
-    ellipsis: { tooltip: true },
-    render(row) {
-      return h('span', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '12px' } }, row.url)
+    cellRenderer: ({ rowData: row }) => {
+      return h('span', { style: { color: 'rgba(0,0,0,0.6)', fontSize: '12px' } }, row.url)
     }
   },
   {
     title: '状态',
     key: 'status',
     width: 100,
-    render(row) {
-      const s = statusOptions[row.status] || { text: row.status, type: 'default' }
-      return h('n-tag', { type: s.type, size: 'small' }, () => s.text)
+    cellRenderer: ({ rowData: row }) => {
+      const s = statusTextOptions[row.status] || { text: row.status, type: 'default' }
+      return h(ElTag, { type: statusTypeMap[s.type], size: 'small' }, () => s.text)
     }
   },
   {
     title: '存储类型',
     key: 'storageType',
     width: 90,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const map = { temp: '临时', private: '私有', regular: '普通' }
       return map[row.storageType] || row.storageType
     }
@@ -485,22 +559,20 @@ const urlColumns = [
     title: '文件大小',
     key: 'fileSize',
     width: 100,
-    render(row) {
-      return formatSize(row.fileSize)
-    }
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
   {
     title: '上传进度',
     key: 'downloadedBytes',
     width: 150,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       if (row.status === 'completed') return '100%'
       if (row.fileSize <= 0) return '-'
       const pct = Math.round((row.downloadedBytes / row.fileSize) * 100)
       return h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, [
         h('div', {
           style: {
-            width: '80px', height: '6px', background: 'rgba(255,255,255,0.1)',
+            width: '80px', height: '6px', background: 'rgba(0,0,0,0.1)',
             borderRadius: '3px', overflow: 'hidden'
           }
         }, [
@@ -512,7 +584,7 @@ const urlColumns = [
             }
           })
         ]),
-        h('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.6)' } },
+        h('span', { style: { fontSize: '12px', color: 'rgba(0,0,0,0.6)' } },
           `${formatSize(row.downloadedBytes)} / ${formatSize(row.fileSize)}`)
       ])
     }
@@ -521,8 +593,7 @@ const urlColumns = [
     title: '错误信息',
     key: 'errorMessage',
     width: 180,
-    ellipsis: { tooltip: true },
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       if (!row.errorMessage) return null
       return h('span', { style: { color: '#ff4d4f', fontSize: '12px' } }, row.errorMessage)
     }
@@ -531,7 +602,7 @@ const urlColumns = [
     title: '创建时间',
     key: 'createdAt',
     width: 170,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.createdAt)
       if (TimeUtils.isRecent24h(row.createdAt)) {
         return h('span', { style: 'color: #18a058' }, text)
@@ -543,47 +614,48 @@ const urlColumns = [
     title: '完成时间',
     key: 'completedAt',
     width: 170,
-    render(row) {
-      return row.completedAt ? TimeUtils.formatDateTime(row.completedAt) : '-'
-    }
+    cellRenderer: ({ rowData: row }) => row.completedAt ? TimeUtils.formatDateTime(row.completedAt) : '-'
   },
   {
     title: '操作',
     key: 'actions',
     width: 140,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const btns = []
       if (row.status === 'failed') {
-        btns.push(h(NButton, {
-          size: 'small', type: 'warning', quaternary: true,
+        btns.push(h(ElButton, {
+          size: 'small', type: 'warning', link: true,
           onClick: () => retrySingle(row)
         }, () => '重试'))
       }
-      btns.push(h(NButton, {
-        size: 'small', type: 'error', quaternary: true,
+      btns.push(h(ElButton, {
+        size: 'small', type: 'danger', link: true,
         onClick: () => deleteSingle(row)
       }, () => '删除'))
-      return h('div', { style: { display: 'flex', gap: '4px' } }, btns)
+      return h('div', { style: { display: 'flex', gap: '8px' } }, btns)
     }
   }
 ]
 
 function loadURLTasks() {
   urlLoading.value = true
-  AdminApi.getURLTasks(urlPagination.page, urlPagination.pageSize, urlStatusFilter.value)
+  AdminApi.getURLTasks(urlPage.value, urlPageSize.value, urlStatusFilter.value)
     .then(res => {
       if (res.success) {
         urlTasks.value = res.data.items || []
-        urlPagination.page = res.data.page
-        urlPagination.pageSize = res.data.pageSize
-        urlPagination.itemCount = res.data.total
+        urlPage.value = res.data.page
+        urlPageSize.value = res.data.pageSize
+        urlTotal.value = res.data.total
         updateURLStats(res.data.items || [])
       } else {
-        message.error(res.message || '加载失败')
+        ElMessage.error(res.message || '加载失败')
       }
     })
-    .catch(() => message.error('加载任务列表失败'))
-    .finally(() => { urlLoading.value = false })
+    .catch(() => ElMessage.error('加载任务列表失败'))
+    .finally(() => {
+      urlLoading.value = false
+      nextTick(updateTableSize)
+    })
 }
 
 function updateURLStats(items) {
@@ -594,13 +666,14 @@ function updateURLStats(items) {
 }
 
 function onURLStatusFilterChange() {
-  urlPagination.page = 1
+  urlPage.value = 1
   urlSelectedRowKeys.value = []
   loadURLTasks()
 }
 
-function handleURLSelectionChange(keys) {
-  urlSelectedRowKeys.value = keys
+function onURLPageSizeChange() {
+  urlPage.value = 1
+  loadURLTasks()
 }
 
 function deleteSingle(row) {
@@ -616,7 +689,7 @@ function retrySingle(row) {
 function batchDelete() {
   const selected = urlTasks.value.filter(t => urlSelectedRowKeys.value.includes(t.id))
   if (selected.length === 0) {
-    message.info('请先选择任务')
+    ElMessage.info('请先选择任务')
     return
   }
   toDeleteTasks.value = selected
@@ -628,7 +701,7 @@ function batchRetry() {
     urlSelectedRowKeys.value.includes(t.id) && t.status === 'failed'
   )
   if (selected.length === 0) {
-    message.info('没有可重试的失败任务')
+    ElMessage.info('没有可重试的失败任务')
     return
   }
   toRetryTasks.value = selected
@@ -647,13 +720,13 @@ async function confirmDelete() {
         console.error('删除任务失败:', task.id, e)
       }
     }
-    message.success(`成功删除 ${successCount} 个任务`)
+    ElMessage.success(`成功删除 ${successCount} 个任务`)
     deleteModalVisible.value = false
     urlSelectedRowKeys.value = []
     toDeleteTasks.value = []
     loadURLTasks()
   } catch (e) {
-    message.error('删除失败')
+    ElMessage.error('删除失败')
   } finally {
     deleting.value = false
   }
@@ -672,21 +745,29 @@ async function confirmRetry() {
         console.error('重试任务失败:', task.id, e)
       }
     }
-    message.success(`成功重试 ${successCount} 个任务`)
+    ElMessage.success(`成功重试 ${successCount} 个任务`)
     retryModalVisible.value = false
     urlSelectedRowKeys.value = []
     toRetryTasks.value = []
     loadURLTasks()
   } catch (e) {
-    message.error('重试失败')
+    ElMessage.error('重试失败')
   } finally {
     retrying.value = false
   }
 }
 
 onMounted(() => {
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (zombieWrapRef.value) tableResizeObs.observe(zombieWrapRef.value)
+  if (urlWrapRef.value) tableResizeObs.observe(urlWrapRef.value)
   loadZombieSessions()
   loadURLTasks()
+})
+
+onUnmounted(() => {
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -716,7 +797,7 @@ onMounted(() => {
     }
   }
 
-  .stat-card .n-card__content {
+  .stat-card :deep(.el-card__body) {
     padding: 16px;
   }
 
@@ -736,6 +817,16 @@ onMounted(() => {
       font-size: @font-size-base;
       color: @text-color-secondary;
     }
+  }
+
+  .table-v2-wrap {
+    height: 420px;
+  }
+
+  .pagination-wrap {
+    display: flex;
+    justify-content: flex-end;
+    padding: 16px 0 8px;
   }
 }
 </style>

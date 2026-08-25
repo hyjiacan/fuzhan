@@ -1,71 +1,69 @@
 <template>
   <div class="preview-step">
-    <n-grid :cols="2" :x-gap="16" :y-gap="16">
-      <n-gi>
-        <n-card title="源数据库" size="small">
-          <n-descriptions :column="1" size="small">
-            <n-descriptions-item label="类型">{{ sourceInfo?.driver || 'SQLite' }}</n-descriptions-item>
-            <n-descriptions-item label="表数量">{{ sourceInfo?.tableCount || 0 }}</n-descriptions-item>
-            <n-descriptions-item label="记录数">{{ sourceInfo?.recordCount || 0 }}</n-descriptions-item>
-            <n-descriptions-item label="预估大小">{{ sourceInfo?.estimatedSize || '0 KB' }}</n-descriptions-item>
-          </n-descriptions>
-        </n-card>
-      </n-gi>
-      <n-gi>
-        <n-card title="目标数据库" size="small">
-          <n-descriptions :column="1" size="small">
-            <n-descriptions-item label="类型">{{ targetInfo?.driver || 'MySQL' }}</n-descriptions-item>
-            <n-descriptions-item label="状态">
-              <n-tag v-if="targetInfo?.connected" type="success" size="small">已连接</n-tag>
-              <n-tag v-else type="error" size="small">未连接</n-tag>
-            </n-descriptions-item>
-            <n-descriptions-item label="表数量">{{ targetInfo?.tableCount || 0 }}</n-descriptions-item>
-            <n-descriptions-item label="数据库状态">
-              <n-tag v-if="targetInfo?.databaseEmpty" type="success" size="small">空库</n-tag>
-              <n-tag v-else type="warning" size="small">非空</n-tag>
-            </n-descriptions-item>
-          </n-descriptions>
-        </n-card>
-      </n-gi>
-    </n-grid>
+    <el-row :gutter="16">
+      <el-col :span="12">
+        <el-card>
+          <template #header><span>源数据库</span></template>
+          <el-descriptions :column="1" size="small">
+            <el-descriptions-item label="类型">{{ sourceInfo?.driver || 'SQLite' }}</el-descriptions-item>
+            <el-descriptions-item label="表数量">{{ sourceInfo?.tableCount || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="记录数">{{ sourceInfo?.recordCount || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="预估大小">{{ sourceInfo?.estimatedSize || '0 KB' }}</el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card>
+          <template #header><span>目标数据库</span></template>
+          <el-descriptions :column="1" size="small">
+            <el-descriptions-item label="类型">{{ targetInfo?.driver || 'MySQL' }}</el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag v-if="targetInfo?.connected" type="success" size="small">已连接</el-tag>
+              <el-tag v-else type="error" size="small">未连接</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="表数量">{{ targetInfo?.tableCount || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="数据库状态">
+              <el-tag v-if="targetInfo?.databaseEmpty" type="success" size="small">空库</el-tag>
+              <el-tag v-else type="warning" size="small">非空</el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
+    </el-row>
 
-    <n-card title="风险评估" size="small" class="risk-card">
-      <template #header-extra>
-        <n-tag :type="riskType" size="small">{{ riskLevel || 'low' }}</n-tag>
+    <el-card class="risk-card">
+      <template #header>
+        <span>风险评估</span>
+        <el-tag :type="riskType" size="small">{{ riskLevel || 'low' }}</el-tag>
       </template>
-      <n-space vertical>
+      <el-space direction="vertical" fill>
         <div>预估耗时: {{ estimatedDuration || '未知' }}</div>
-        <n-alert v-if="warnings?.length" type="warning" :title="'风险提示: ' + warnings.length + ' 项'">
+        <el-alert v-if="warnings?.length" type="warning" :title="'风险提示: ' + warnings.length + ' 项'" :closable="false">
           <ul class="warnings-list">
             <li v-for="(warning, i) in warnings" :key="i">{{ warning }}</li>
           </ul>
-        </n-alert>
-      </n-space>
-    </n-card>
+        </el-alert>
+      </el-space>
+    </el-card>
 
-    <n-checkbox v-model:checked="confirmed" class="confirm-checkbox">
+    <el-checkbox v-model="confirmed" class="confirm-checkbox">
       我已了解迁移风险，确认执行数据库迁移
-    </n-checkbox>
+    </el-checkbox>
 
     <div class="step-actions">
-      <n-button @click="$emit('back')">上一步</n-button>
-      <n-button type="warning" :disabled="!confirmed" @click="handleNext">
+      <el-button @click="$emit('back')">上一步</el-button>
+      <el-button type="warning" :disabled="!confirmed" @click="handleNext">
         开始迁移
-      </n-button>
+      </el-button>
     </div>
   </div>
 </template>
 
 <script>
 import { ref, computed } from 'vue'
-import { NGrid, NGi, NCard, NDescriptions, NDescriptionsItem, NTag, NSpace, NCheckbox, NButton, NAlert } from 'naive-ui'
 
 export default {
   name: 'PreviewStep',
-
-  components: {
-    NGrid, NGi, NCard, NDescriptions, NDescriptionsItem, NTag, NSpace, NCheckbox, NButton, NAlert
-  },
 
   props: {
     sourceInfo: Object,

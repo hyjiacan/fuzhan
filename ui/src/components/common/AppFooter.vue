@@ -18,21 +18,24 @@
 				<span>hyjiacan © 2025</span>
 			</div>
 
-			<n-modal v-model:show="showPreferences" preset="card" title="偏好设置" style="width: 400px;">
+			<el-dialog v-model="showPreferences" title="偏好设置" width="400px">
 				<div class="preference-item">
 					<span class="preference-label">页面宽度</span>
-					<n-select
-						v-model:value="pageWidth"
-						:options="widthOptions"
-						@update:value="savePreferences"
-					/>
+					<el-select v-model="pageWidth" @change="savePreferences">
+						<el-option
+							v-for="opt in widthOptions"
+							:key="opt.value"
+							:label="opt.label"
+							:value="opt.value"
+						/>
+					</el-select>
 				</div>
 				<template #footer>
-					<n-button type="primary" @click="showPreferences = false">关闭</n-button>
+					<el-button type="primary" @click="showPreferences = false">关闭</el-button>
 				</template>
-			</n-modal>
+			</el-dialog>
 
-			<n-modal v-model:show="showHelp" preset="card" title="帮助" style="width: 500px;">
+			<el-dialog v-model="showHelp" title="帮助" width="500px">
 				<div class="help-content">
 					<h4>基本操作</h4>
 					<ul>
@@ -53,18 +56,18 @@
 					</p>
 				</div>
 				<template #footer>
-					<n-button type="primary" @click="showHelp = false">关闭</n-button>
+					<el-button type="primary" @click="showHelp = false">关闭</el-button>
 				</template>
-			</n-modal>
+			</el-dialog>
 
-			<n-modal v-model:show="showAbout" preset="card" title="关于" style="width: 400px;">
+			<el-dialog v-model="showAbout" title="关于" width="400px">
 				<div class="about-content">
 					<div class="about-logo">
-						<n-icon size="48" color="#18a058">
+						<el-icon size="48" color="#18a058">
 							<svg viewBox="0 0 24 24" fill="currentColor">
 								<path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
 							</svg>
-						</n-icon>
+						</el-icon>
 					</div>
 					<h3>轻共享</h3>
 					<p class="version">版本 1.0.0</p>
@@ -81,22 +84,20 @@
 					</div>
 				</div>
 				<template #footer>
-					<n-button type="primary" @click="showAbout = false">关闭</n-button>
+					<el-button type="primary" @click="showAbout = false">关闭</el-button>
 				</template>
-			</n-modal>
+			</el-dialog>
 		</footer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { NModal, NSelect, NButton, NIcon, useMessage } from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import store from '@/store'
 import IndexStatusBar from './IndexStatusBar.vue'
 import { IndexApi } from '@/api'
 
 const openApiEnabled = computed(() => store.state.config.openApiEnabled)
-
-const message = useMessage()
 
 const showHelp = ref(false)
 const showAbout = ref(false)
@@ -117,9 +118,9 @@ const fetchRuntimeInfo = async () => {
 const handleTriggerScan = async () => {
 	try {
 		await IndexApi.triggerFullScan()
-		message.success('全量扫描已触发')
+		ElMessage.success('全量扫描已触发')
 	} catch (e) {
-		message.error('触发扫描失败: ' + (e.message || '未知错误'))
+		ElMessage.error('触发扫描失败: ' + (e.message || '未知错误'))
 	}
 }
 
@@ -207,7 +208,7 @@ onMounted(() => {
 				font-weight: 500;
 			}
 
-			.n-select {
+			.el-select {
 				width: 120px;
 			}
 		}

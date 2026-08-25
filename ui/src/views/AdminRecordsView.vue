@@ -6,132 +6,118 @@
         <p class="description">查看公开文件的操作记录</p>
       </div>
       <div class="header-right">
-        <n-button
+        <el-button
           type="warning"
-          secondary
           size="small"
           :loading="clearingRecord === 'search'"
           :disabled="clearingRecord !== null"
           @click="handleClearRecords('search')"
         >
-          <template #icon>
-            <n-icon><DeleteIcon /></n-icon>
-          </template>
+          <el-icon><DeleteIcon /></el-icon>
           清空搜索
-        </n-button>
-        <n-button
-          type="error"
-          secondary
+        </el-button>
+        <el-button
+          type="danger"
           size="small"
           :loading="clearingRecord === 'upload'"
           :disabled="clearingRecord !== null"
           @click="handleClearRecords('upload')"
         >
-          <template #icon>
-            <n-icon><DeleteIcon /></n-icon>
-          </template>
+          <el-icon><DeleteIcon /></el-icon>
           清空上传
-        </n-button>
-        <n-button
-          type="error"
-          secondary
+        </el-button>
+        <el-button
+          type="danger"
           size="small"
           :loading="clearingRecord === 'download'"
           :disabled="clearingRecord !== null"
           @click="handleClearRecords('download')"
         >
-          <template #icon>
-            <n-icon><DeleteIcon /></n-icon>
-          </template>
+          <el-icon><DeleteIcon /></el-icon>
           清空下载
-        </n-button>
+        </el-button>
       </div>
     </div>
 
-    <n-tabs
-      type="line"
-      :value="activeTab"
-      @update:value="handleTabChange"
+    <el-tabs
+      v-model="activeTab"
+      @tab-change="handleTabChange"
       class="records-tabs"
     >
-      <n-tab-pane name="upload" tab="最近上传">
-        <n-data-table
-          :columns="uploadColumns"
-          :data="uploadRecords"
-          :loading="loading"
-          :bordered="false"
-          :single-line="true"
-          striped
-          size="small"
-          :row-key="(row) => row.id"
-          class="records-table"
-        />
+      <el-tab-pane name="upload" label="最近上传">
+        <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="uploadColumns"
+            :data="uploadRecords"
+            :width="uploadWidth"
+            :height="uploadHeight"
+            :estimated-row-height="34"
+            row-key="id"
+          />
+        </div>
         <div class="pagination-wrap" v-if="uploadTotal > 0">
-          <n-pagination
-            :page="uploadPage"
+          <el-pagination
+            v-model:current-page="uploadPage"
             :page-size="pageSize"
-            :item-count="uploadTotal"
-            @update:page="(p) => { uploadPage = p; loadRecords('upload') }"
+            :total="uploadTotal"
+            layout="prev, pager, next"
+            @current-change="() => loadRecords('upload')"
           />
         </div>
-      </n-tab-pane>
+      </el-tab-pane>
 
-      <n-tab-pane name="download" tab="最近下载">
-        <n-data-table
-          :columns="downloadColumns"
-          :data="downloadRecords"
-          :loading="loading"
-          :bordered="false"
-          :single-line="true"
-          striped
-          size="small"
-          :row-key="(row) => row.id"
-          class="records-table"
-        />
+      <el-tab-pane name="download" label="最近下载">
+        <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="downloadColumns"
+            :data="downloadRecords"
+            :width="downloadWidth"
+            :height="downloadHeight"
+            :estimated-row-height="34"
+            row-key="id"
+          />
+        </div>
         <div class="pagination-wrap" v-if="downloadTotal > 0">
-          <n-pagination
-            :page="downloadPage"
+          <el-pagination
+            v-model:current-page="downloadPage"
             :page-size="pageSize"
-            :item-count="downloadTotal"
-            @update:page="(p) => { downloadPage = p; loadRecords('download') }"
+            :total="downloadTotal"
+            layout="prev, pager, next"
+            @current-change="() => loadRecords('download')"
           />
         </div>
-      </n-tab-pane>
+      </el-tab-pane>
 
-      <n-tab-pane name="search" tab="最近搜索">
-        <n-data-table
-          :columns="searchColumns"
-          :data="searchRecords"
-          :loading="loading"
-          :bordered="false"
-          :single-line="true"
-          striped
-          size="small"
-          :row-key="(row) => row.id"
-          class="records-table"
-        />
-        <div class="pagination-wrap" v-if="searchTotal > 0">
-          <n-pagination
-            :page="searchPage"
-            :page-size="pageSize"
-            :item-count="searchTotal"
-            @update:page="(p) => { searchPage = p; loadRecords('search') }"
+      <el-tab-pane name="search" label="最近搜索">
+        <div ref="searchWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="searchColumns"
+            :data="searchRecords"
+            :width="searchWidth"
+            :height="searchHeight"
+            :estimated-row-height="34"
+            row-key="id"
           />
         </div>
-      </n-tab-pane>
-    </n-tabs>
+        <div class="pagination-wrap" v-if="searchTotal > 0">
+          <el-pagination
+            v-model:current-page="searchPage"
+            :page-size="pageSize"
+            :total="searchTotal"
+            layout="prev, pager, next"
+            @current-change="() => loadRecords('search')"
+          />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup>
-import { ref, h, onMounted } from 'vue'
-import {
-  NTabs, NTabPane, NDataTable, NPagination, NButton, NIcon, useMessage
-} from 'naive-ui'
+import { ref, h, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { FileApi, AdminApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
-
-const message = useMessage()
 
 // ============ 状态 ============
 
@@ -163,6 +149,36 @@ const DeleteIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
   h('path', { d: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z' })
 ])
 
+// ============ el-table-v2 尺寸测量 ============
+const uploadWrapRef = ref(null)
+const downloadWrapRef = ref(null)
+const searchWrapRef = ref(null)
+const uploadWidth = ref(600)
+const uploadHeight = ref(300)
+const downloadWidth = ref(600)
+const downloadHeight = ref(300)
+const searchWidth = ref(600)
+const searchHeight = ref(300)
+let tableResizeObs = null
+
+const updateTableSize = () => {
+  const u = uploadWrapRef.value
+  if (u && u.clientWidth > 0) {
+    uploadWidth.value = u.clientWidth
+    uploadHeight.value = u.clientHeight || 300
+  }
+  const d = downloadWrapRef.value
+  if (d && d.clientWidth > 0) {
+    downloadWidth.value = d.clientWidth
+    downloadHeight.value = d.clientHeight || 300
+  }
+  const s = searchWrapRef.value
+  if (s && s.clientWidth > 0) {
+    searchWidth.value = s.clientWidth
+    searchHeight.value = s.clientHeight || 300
+  }
+}
+
 // ============ 表格列定义 ============
 
 const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
@@ -170,32 +186,32 @@ const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
 const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
 const uploadColumns = [
-  { title: '文件路径', key: 'fullPath', ellipsis: { tooltip: true }, width: 400 },
+  { title: '文件路径', key: 'fullPath', width: 400 },
   { title: '大小', key: 'fileSize', width: 100,
-    render: (row) => formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
-  { title: 'IP地址', key: 'clientIP', width: 140, ellipsis: { tooltip: true } },
+  { title: 'IP地址', key: 'clientIP', width: 140 },
   { title: '上传时间', key: 'uploadTime', width: 170,
-    render: (row) => formatTime(row.uploadTime || row.createdAt)
+    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }
 ]
 
 const downloadColumns = [
-  { title: '文件路径', key: 'fullPath', ellipsis: { tooltip: true }, width: 400 },
+  { title: '文件路径', key: 'fullPath', width: 400 },
   { title: '大小', key: 'fileSize', width: 100,
-    render: (row) => formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
-  { title: 'IP地址', key: 'clientIP', width: 140, ellipsis: { tooltip: true } },
+  { title: 'IP地址', key: 'clientIP', width: 140 },
   { title: '下载时间', key: 'uploadTime', width: 170,
-    render: (row) => formatTime(row.uploadTime || row.createdAt)
+    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }
 ]
 
 const searchColumns = [
-  { title: '搜索关键词', key: 'searchQuery', ellipsis: { tooltip: true }, width: 300 },
-  { title: 'IP地址', key: 'clientIP', width: 140, ellipsis: { tooltip: true } },
+  { title: '搜索关键词', key: 'searchQuery', width: 300 },
+  { title: 'IP地址', key: 'clientIP', width: 140 },
   { title: '搜索时间', key: 'uploadTime', width: 170,
-    render: (row) => formatTime(row.uploadTime || row.createdAt)
+    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }
 ]
 
@@ -225,12 +241,13 @@ const loadRecords = async (action) => {
         searchTotal.value = total
       }
     } else {
-      message.error('加载记录失败：' + (res.message || '未知错误'))
+      ElMessage.error('加载记录失败：' + (res.message || '未知错误'))
     }
   } catch (e) {
-    message.error('加载记录失败：' + e.message)
+    ElMessage.error('加载记录失败：' + e.message)
   } finally {
     loading.value = false
+    nextTick(updateTableSize)
   }
 }
 
@@ -252,14 +269,14 @@ const handleClearRecords = async (action) => {
   try {
     const res = await AdminApi.clearRecords(action)
     if (res.success) {
-      message.success(`已清空 ${res.data.count} 条${label}记录`)
+      ElMessage.success(`已清空 ${res.data.count} 条${label}记录`)
       // 刷新当前标签页
       loadRecords(activeTab.value)
     } else {
-      message.error('清空失败：' + (res.message || '未知错误'))
+      ElMessage.error('清空失败：' + (res.message || '未知错误'))
     }
   } catch (e) {
-    message.error('清空失败：' + e.message)
+    ElMessage.error('清空失败：' + e.message)
   } finally {
     clearingRecord.value = null
   }
@@ -268,7 +285,20 @@ const handleClearRecords = async (action) => {
 // ============ 初始化 ============
 
 onMounted(() => {
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (uploadWrapRef.value) tableResizeObs.observe(uploadWrapRef.value)
+  if (downloadWrapRef.value) tableResizeObs.observe(downloadWrapRef.value)
+  if (searchWrapRef.value) tableResizeObs.observe(searchWrapRef.value)
   loadRecords('upload')
+})
+
+onUnmounted(() => {
+  tableResizeObs?.disconnect()
+})
+
+watch(activeTab, () => {
+  nextTick(updateTableSize)
 })
 </script>
 
@@ -309,7 +339,8 @@ onMounted(() => {
   }
 
   .records-tabs {
-    .records-table {
+    .table-v2-wrap {
+      height: 420px;
       margin-bottom: 16px;
     }
 

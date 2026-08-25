@@ -21,7 +21,7 @@ async function adminLogin(page) {
     await page.waitForTimeout(500)
     await page.locator('input[placeholder*="用户"], input[type="text"]').first().fill('admin')
     await page.locator('input[type="password"]').first().fill('admin123')
-    await page.locator('.n-modal .n-button--primary-type, .n-modal .n-button.primary').first().click()
+    await page.locator('.el-dialog .el-button--primary').first().click()
     await page.waitForTimeout(3000)
     await page.keyboard.press('Escape')
     await page.waitForTimeout(500)
@@ -39,7 +39,7 @@ test.describe('管理后台 - 仪表盘（已登录）', () => {
     await page.waitForLoadState('networkidle')
 
     // 验证页面
-    const dashboard = page.locator('.admin-dashboard, [class*="dashboard"], .n-layout').first()
+    const dashboard = page.locator('.admin-dashboard, [class*="dashboard"], .el-container').first()
     await expect(dashboard).toBeVisible({ timeout: 15000 })
   })
 
@@ -61,7 +61,7 @@ test.describe('管理后台 - 仪表盘（已登录）', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(3000)
 
-    const progress = page.locator('.n-progress, [class*="progress"]')
+    const progress = page.locator('.el-progress, [class*="progress"]')
     await expect(progress.first()).toBeVisible({ timeout: 10000 })
   })
 
@@ -115,7 +115,7 @@ test.describe('管理后台 - 仪表盘（未登录）', () => {
     await page.waitForTimeout(2000)
 
     // 验证登录弹框出现（实现：未登录时显示登录弹框而非重定向）
-    const loginDialog = page.locator('.n-modal').first()
+    const loginDialog = page.locator('.el-overlay, .el-dialog').first()
     await expect(loginDialog).toBeVisible({ timeout: 5000 })
   })
 })

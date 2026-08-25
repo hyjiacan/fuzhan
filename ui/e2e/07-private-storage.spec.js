@@ -19,9 +19,9 @@ async function loginAsAdmin(page) {
   if (await loginButton.isVisible().catch(() => false)) {
     await loginButton.click()
     await page.waitForTimeout(500)
-    await page.locator('.n-modal input[placeholder*="用户"]').first().fill('admin')
-    await page.locator('.n-modal input[type="password"]').first().fill('admin123')
-    await page.locator('.n-modal .n-button--primary-type').first().click()
+    await page.locator('.el-dialog input[placeholder*="用户"]').first().fill('admin')
+    await page.locator('.el-dialog input[type="password"]').first().fill('admin123')
+    await page.locator('.el-dialog .el-button--primary').first().click()
     await page.waitForTimeout(3000)
     await page.keyboard.press('Escape')
     await page.waitForTimeout(500)
@@ -56,8 +56,8 @@ test.describe('私有存储功能', () => {
 
     // 验证私有存储页面内容：配额、文件列表、空状态至少有一种
     const hasQuota = await page.getByText(/配额|Quota|已用|存储|空间/i).isVisible().catch(() => false)
-    const hasFileList = await page.locator('.n-data-table').isVisible().catch(() => false)
-    const hasEmpty = await page.locator('.n-empty').isVisible().catch(() => false)
+    const hasFileList = await page.locator('.el-table-v2').isVisible().catch(() => false)
+    const hasEmpty = await page.locator('.el-empty').isVisible().catch(() => false)
     const hasUpload = await page.locator('button:has-text("上传")').isVisible().catch(() => false)
 
     // 至少应该显示配额信息或文件列表或上传按钮

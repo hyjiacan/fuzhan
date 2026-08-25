@@ -9,45 +9,39 @@
 
     <p class="complete-message">{{ message }}</p>
 
-    <n-divider />
+    <el-divider />
 
     <div v-if="success" class="next-steps">
       <h4>后续步骤</h4>
-      <n-space vertical>
-        <n-text>1. 数据库已成功迁移到新配置</n-text>
-        <n-text>2. 点击"重启应用"使配置生效</n-text>
-        <n-text>3. 重启后验证数据完整性</n-text>
-      </n-space>
+      <el-space direction="vertical" fill>
+        <el-text>1. 数据库已成功迁移到新配置</el-text>
+        <el-text>2. 点击"重启应用"使配置生效</el-text>
+        <el-text>3. 重启后验证数据完整性</el-text>
+      </el-space>
     </div>
 
     <div v-else class="error-details">
       <h4>错误详情</h4>
-      <n-alert type="error">
+      <el-alert type="error" :closable="false">
         {{ message }}
-      </n-alert>
-      <n-text depth="3" class="help-text">
+      </el-alert>
+      <el-text class="help-text">
         如需帮助，请查看服务器日志或联系技术支持
-      </n-text>
+      </el-text>
     </div>
 
     <div class="step-actions">
-      <n-button @click="$emit('close')">关闭</n-button>
-      <n-button v-if="success" type="primary" @click="$emit('restart')">
+      <el-button @click="$emit('close')">关闭</el-button>
+      <el-button v-if="success" type="primary" @click="$emit('restart')">
         重启应用
-      </n-button>
+      </el-button>
     </div>
   </div>
 </template>
 
 <script>
-import { NDivider, NSpace, NText, NAlert } from 'naive-ui'
-
 export default {
   name: 'CompleteStep',
-
-  components: {
-    NDivider, NSpace, NText, NAlert
-  },
 
   props: {
     success: {

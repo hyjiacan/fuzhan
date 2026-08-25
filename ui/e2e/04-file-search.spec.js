@@ -28,7 +28,7 @@ test.describe('文件搜索功能', () => {
       await page.waitForTimeout(2000)
 
       // 验证进入了子目录（面包屑应该显示）
-      const breadcrumb = page.locator('.n-breadcrumb')
+      const breadcrumb = page.locator('.el-breadcrumb')
       const inDir = await breadcrumb.isVisible().catch(() => false)
 
       if (inDir) {
@@ -115,7 +115,7 @@ test.describe('文件搜索功能', () => {
       await page.waitForTimeout(1000)
 
       // 清空搜索框
-      const clearButton = page.locator('.content-header .search-input .n-input__clear')
+      const clearButton = page.locator('.content-header .search-input .el-input__clear, .content-header .search-input .el-input__suffix .el-icon')
       if (await clearButton.isVisible().catch(() => false)) {
         await clearButton.click()
       } else {
@@ -125,8 +125,8 @@ test.describe('文件搜索功能', () => {
       await page.waitForTimeout(1000)
 
       // 验证文件列表恢复（表格存在或显示空状态）
-      const hasTable = await page.locator('.n-data-table').isVisible().catch(() => false)
-      const hasEmpty = await page.locator('.n-empty').isVisible().catch(() => false)
+      const hasTable = await page.locator('.el-table-v2').isVisible().catch(() => false)
+      const hasEmpty = await page.locator('.el-empty').isVisible().catch(() => false)
       expect(hasTable || hasEmpty).toBeTruthy()
     } else {
       expect(true).toBeTruthy()

@@ -11,27 +11,26 @@
       </div>
     </div>
     <div class="file-actions" v-if="showActions">
-      <n-button
+      <el-button
         v-if="!isDir && canPreview"
         size="small"
         @click="$emit('preview', fileInfo)"
       >
         预览
-      </n-button>
-      <n-button
+      </el-button>
+      <el-button
         size="small"
         type="primary"
         @click="$emit('download', fileInfo)"
       >
         下载
-      </n-button>
+      </el-button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, h } from 'vue'
-import { NButton } from 'naive-ui'
 import { FileUtils } from '@/utils'
 
 const props = defineProps({

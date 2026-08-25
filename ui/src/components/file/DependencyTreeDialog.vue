@@ -1,16 +1,15 @@
 <template>
-  <n-modal v-model:show="visible" title="文件依赖树" preset="card"
-    :style="{ width: '960px' }" :mask-closable="false">
+  <el-dialog v-model="visible" title="文件依赖树" width="960px" :close-on-click-modal="false">
     <!-- 当前文件 -->
     <div v-if="rootNode" :style="{ marginBottom: '12px', padding: '12px', background: '#f6f8fa', borderRadius: '8px' }">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-weight: 600;">{{ rootNode.fileName }}</span>
         </div>
-        <n-button v-if="rootNode.downloadURL" size="small" quaternary type="primary"
+        <el-button v-if="rootNode.downloadURL" size="small" link type="primary"
           @click="window.open(rootNode.downloadURL, '_blank')">
           下载
-        </n-button>
+        </el-button>
       </div>
       <div v-if="recordInfo" :style="{ marginTop: '4px', fontSize: '12px', color: '#999' }">
         路径: {{ recordInfo.fullPath }}
@@ -19,60 +18,68 @@
 
     <!-- 依赖树 -->
     <div :style="{ maxHeight: '480px', overflow: 'auto', marginBottom: '12px' }">
-      <n-tree
+      <el-tree
         v-if="!loading && treeData.length > 0"
         :data="treeData"
-        :default-expand-all="true"
-        :render-label="renderTreeNode"
-        block-line
-        selectable
-        :virtual-scroll="false"
-      />
-      <n-empty v-else-if="!loading && treeData.length === 0" description="暂无依赖关系" />
-      <n-tag v-if="loading" type="info">加载中...</n-tag>
+        :props="{ label: 'label', children: 'children' }"
+        default-expand-all
+        node-key="key"
+      >
+        <template #default="{ data }">
+          <span v-if="data._raw === null" style="font-weight: bold; color: #888; font-size: 12px;">{{ data.label }}</span>
+          <div v-else style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0;">
+            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ data.label }}</span>
+            <el-button v-if="data._raw?.downloadURL" size="small" link type="primary"
+              @click.stop="window.open(data._raw.downloadURL, '_blank')">下载</el-button>
+            <el-button v-if="data._raw?.dependencyId" size="small" link type="danger"
+              @click.stop="deleteDependency(data._raw.dependencyId)">移除</el-button>
+          </div>
+        </template>
+      </el-tree>
+      <el-empty v-else-if="!loading && treeData.length === 0" description="暂无依赖关系" />
+      <el-tag v-if="loading" type="info">加载中...</el-tag>
     </div>
 
     <!-- 添加依赖 -->
-    <n-divider />
+    <el-divider />
     <div style="display: flex; flex-direction: column; gap: 8px;">
       <h4 style="margin:0 0 4px">添加上游依赖</h4>
-      <n-auto-complete
-        v-model:value="searchName"
+      <el-autocomplete
+        v-model="searchName"
         :maxlength="255"
-        :options="autocompleteOptions"
+        :fetch-suggestions="fetchAutocomplete"
         placeholder="搜索并选择文件"
         clearable
-        @update:value="handleSearch"
         @select="handleSelect"
       />
-      <n-select v-model:value="relValue" :options="relationOptions" placeholder="依赖关系" />
+      <el-select v-model="relValue" placeholder="依赖关系">
+        <el-option v-for="opt in relationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+      </el-select>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <n-input v-model:value="descValue" :maxlength="500" placeholder="关系描述（可选）" style="flex: 1" />
-        <n-button type="primary" @click="handleAdd" :loading="saving">添加</n-button>
+        <el-input v-model="descValue" :maxlength="500" placeholder="关系描述（可选）" style="flex: 1" />
+        <el-button type="primary" @click="handleAdd" :loading="saving">添加</el-button>
       </div>
     </div>
 
     <template #footer>
-      <n-space justify="space-between">
-        <n-button size="small" @click="handleDownloadAll" :disabled="!treeData.length && !rootNode?.downloadURL">
-          <template #icon>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </template>
-          下载全部
-        </n-button>
-        <n-button @click="visible = false">关闭</n-button>
-      </n-space>
+      <div style="display: flex; justify-content: space-between;">
+        <el-button size="small" @click="handleDownloadAll" :disabled="!treeData.length && !rootNode?.downloadURL">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span style="margin-left: 4px;">下载全部</span>
+        </el-button>
+        <el-button @click="visible = false">关闭</el-button>
+      </div>
     </template>
-  </n-modal>
+  </el-dialog>
 </template>
 
 <script setup>
-import { ref, h } from 'vue'
-import { NButton, NModal, NTree, NEmpty, NTag, NDivider, NSpace, NAutoComplete, NSelect, NInput, useMessage, useDialog } from 'naive-ui'
+import { ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { DependencyApi, IndexApi } from '@/api'
 
 const STORAGE_KEY = 'fuzhan_download_all_dont_remind'
@@ -83,8 +90,20 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
-const message = useMessage()
-const dialog = useDialog()
+const message = ElMessage
+const dialog = {
+  warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
+    confirmButtonText: opts.positiveText || '确定',
+    cancelButtonText: opts.negativeText || '取消',
+    type: 'warning',
+    closeOnClickModal: !!opts.onMaskClick
+  }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() }),
+  info: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
+    confirmButtonText: opts.positiveText || '确定',
+    cancelButtonText: opts.negativeText || '取消',
+    type: 'info'
+  }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() })
+}
 
 const visible = ref(false)
 const loading = ref(false)
@@ -227,24 +246,6 @@ function handleDownloadAll() {
   })
 }
 
-// 渲染树节点
-function renderTreeNode({ node, option }) {
-  if (option._raw === null) {
-    return h('span', { style: 'font-weight: bold; color: #888; fontSize: 12px' }, option.label)
-  }
-  return h('div', { style: 'display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0' }, [
-    h('span', { style: 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap' }, option.label),
-    option._raw.downloadURL ? h(NButton, {
-      size: 'tiny', quaternary: true, type: 'primary',
-      onClick: (e) => { e.stopPropagation(); window.open(option._raw.downloadURL, '_blank') }
-    }, () => '下载') : null,
-    option._raw.dependencyId ? h(NButton, {
-      size: 'tiny', quaternary: true, type: 'error',
-      onClick: (e) => { e.stopPropagation(); deleteDependency(option._raw.dependencyId) }
-    }, () => '移除') : null
-  ])
-}
-
 // 删除依赖
 const deleteDependency = async (depId) => {
   dialog.warning({
@@ -269,6 +270,12 @@ const deleteDependency = async (depId) => {
   })
 }
 
+// 自动完成搜索（el-autocomplete fetch-suggestions）
+const fetchAutocomplete = async (query, cb) => {
+  await handleSearch(query)
+  cb((autocompleteOptions.value || []).map(o => ({ value: o.label, id: parseInt(o.value) })))
+}
+
 // 自动完成搜索
 const handleSearch = async (value) => {
   if (!value || value.length < 1) { autocompleteOptions.value = []; return }
@@ -285,12 +292,9 @@ const handleSearch = async (value) => {
   } catch (e) {}
 }
 
-const handleSelect = (value) => {
-  targetId.value = parseInt(value)
-  const opt = autocompleteOptions.value.find(o => o.value === value)
-  if (opt) {
-    searchName.value = opt.label.split(' (')[0]
-  }
+const handleSelect = (item) => {
+  targetId.value = item.id
+  searchName.value = item.value.split(' (')[0]
 }
 
 // 添加依赖

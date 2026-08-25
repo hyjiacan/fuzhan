@@ -1,59 +1,56 @@
 <template>
   <div class="progress-step">
-    <n-progress
-      type="line"
+    <el-progress
       :percentage="progress"
       :status="progressStatus"
-      :indicator-placement="inside"
+      text-inside
     >
       {{ progress }}%
-    </n-progress>
+    </el-progress>
 
-    <n-descriptions :column="1" size="small" class="progress-info">
-      <n-descriptions-item label="当前阶段">
-        <n-tag :type="stageType" size="small">{{ stageLabel }}</n-tag>
-      </n-descriptions-item>
-      <n-descriptions-item label="正在处理" v-if="currentTable">
+    <el-descriptions :column="1" size="small" class="progress-info">
+      <el-descriptions-item label="当前阶段">
+        <el-tag :type="stageType" size="small">{{ stageLabel }}</el-tag>
+      </el-descriptions-item>
+      <el-descriptions-item label="正在处理" v-if="currentTable">
         {{ currentTable }}
-      </n-descriptions-item>
-      <n-descriptions-item label="已迁移记录">
+      </el-descriptions-item>
+      <el-descriptions-item label="已迁移记录">
         {{ recordsMigrated.toLocaleString() }} 条
-      </n-descriptions-item>
-      <n-descriptions-item label="已处理表">
+      </el-descriptions-item>
+      <el-descriptions-item label="已处理表">
         {{ tablesCompleted }} / {{ tablesTotal }}
-      </n-descriptions-item>
-    </n-descriptions>
+      </el-descriptions-item>
+    </el-descriptions>
 
-    <n-alert v-if="error" type="error" class="error-alert">
-      <strong>迁移出错</strong>
+    <el-alert v-if="error" type="error" title="迁移出错" :closable="false" class="error-alert">
       <div>{{ error }}</div>
       <div v-if="rollbackAvailable" class="rollback-info">
         系统已保存原数据库，可以安全回滚
       </div>
-    </n-alert>
+    </el-alert>
 
     <div class="step-actions">
-      <n-popconfirm @positive-click="handleCancel">
-        <template #trigger>
-          <n-button type="error">取消迁移</n-button>
+      <el-popconfirm
+        title="确定要取消迁移吗？迁移将被中断，可能需要回滚。"
+        confirm-button-text="确定"
+        cancel-button-text="取消"
+        @confirm="handleCancel"
+      >
+        <template #reference>
+          <el-button type="error">取消迁移</el-button>
         </template>
-        确定要取消迁移吗？迁移将被中断，可能需要回滚。
-      </n-popconfirm>
+      </el-popconfirm>
     </div>
   </div>
 </template>
 
 <script>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { NProgress, NDescriptions, NDescriptionsItem, NTag, NAlert, NButton, NPopconfirm } from 'naive-ui'
 import { DatabaseApi } from '@/api'
 
 export default {
   name: 'ProgressStep',
-
-  components: {
-    NProgress, NDescriptions, NDescriptionsItem, NTag, NAlert, NButton, NPopconfirm
-  },
 
   emits: ['complete', 'error', 'cancel'],
 
@@ -90,7 +87,7 @@ export default {
     }
 
     const stageTypes = {
-      preparing: 'default',
+      preparing: '',
       backup: 'info',
       export: 'info',
       transform: 'info',
@@ -101,12 +98,12 @@ export default {
     }
 
     const stageLabel = computed(() => stageLabels[stage.value] || stage.value)
-    const stageType = computed(() => stageTypes[stage.value] || 'default')
+    const stageType = computed(() => stageTypes[stage.value] || '')
 
     const progressStatus = computed(() => {
-      if (error.value) return 'error'
+      if (error.value) return 'exception'
       if (progress.value >= 100) return 'success'
-      return 'active'
+      return ''
     })
 
     const startMigration = async () => {

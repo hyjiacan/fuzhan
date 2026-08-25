@@ -5,89 +5,95 @@
       <div class="breadcrumb-actions">
         <!-- 搜索状态显示 -->
         <div v-if="isSearching || searchCompleted" class="search-status">
-          <n-spin v-if="isSearching && searchResultCount < 0" size="small" />
+          <el-icon v-if="isSearching && searchResultCount < 0" class="is-loading" :size="16"><Loading /></el-icon>
           <template v-else>
             <span v-if="isSearching">搜索中...</span>
             <span v-else>搜索完成</span>
             <span class="search-count">{{ searchResultCount }} 个结果</span>
             <span class="search-time">耗时 {{ searchTime }}ms</span>
           </template>
-          <n-button v-if="!isSearching" size="tiny" quaternary @click="clearSearch" title="清除搜索">
+          <el-button v-if="!isSearching" link size="small" @click="clearSearch" title="清除搜索">
             ×
-          </n-button>
+          </el-button>
         </div>
-        <n-breadcrumb v-else-if="breadcrumb.length > 1" class="breadcrumb">
-          <n-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+        <el-breadcrumb v-else-if="breadcrumb.length > 1" class="breadcrumb" separator="/">
+          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
             <a :href="getBreadcrumbHref(item)" class="breadcrumb-link">{{ item.name }}</a>
-          </n-breadcrumb-item>
-        </n-breadcrumb>
+          </el-breadcrumb-item>
+        </el-breadcrumb>
         <span v-else class="breadcrumb-root">文件</span>
         <div class="header-actions">
-          <n-input ref="searchInputRef" v-model:value="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
+          <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
             class="search-input" clearable @keydown.enter="searchFiles" />
-          <n-button @click="searchFiles" size="small">
+          <el-button @click="searchFiles" size="small">
             搜索
-          </n-button>
-          <n-button @click="showUploadDialog" type="primary" size="small">
+          </el-button>
+          <el-button @click="showUploadDialog" type="primary" size="small">
             上传
-          </n-button>
+          </el-button>
         </div>
       </div>
     </div>
 
     <!-- File List -->
     <div class="content-table">
-      <n-data-table
-        :columns="columns"
-        :data="fileList"
-        size="small"
-        :pagination="false"
-        :row-key="row => row.path"
-        :bordered="false"
-        :loading="store.state.loading || isSearching"
-        virtual-scroll
-        flex-height
-      />
+      <div ref="tableWrapRef" class="table-v2-wrap">
+        <el-table-v2
+          :columns="columns"
+          :data="fileList"
+          :width="tableWidth"
+          :height="tableHeight"
+          :estimated-row-height="34"
+          row-key="path"
+        />
+      </div>
     </div>
 
     <dependency-tree-dialog ref="depTreeDialogRef" />
     <!-- 备注编辑弹窗 -->
-    <n-modal v-model:show="notesModalVisible" preset="card" title="编辑备注" style="width: 500px">
-      <n-input v-model:value="editNotes" :maxlength="500" type="textarea" :rows="4" placeholder="输入备注内容..." />
+    <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px">
+      <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="500" placeholder="输入备注内容..." />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <n-button @click="notesModalVisible = false">取消</n-button>
-          <n-button type="primary" :loading="savingNotes" @click="saveNotes">保存</n-button>
+          <el-button @click="notesModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingNotes" @click="saveNotes">保存</el-button>
         </div>
       </template>
-    </n-modal>
-    <!-- Dialogs -->
-    <n-modal :show="uploadDialogVisible" preset="card" title="上传文件" class="upload-dialog"
-      @update:show="onUploadDialogShowChange" :mask-closable="false" :closeable="false">
+    </el-dialog>
+
+    <!-- 上传弹窗（关闭保护：由 UploadManager 的 close 事件控制） -->
+    <el-dialog v-model="uploadDialogVisible" title="上传文件" class="upload-dialog" width="600px"
+      :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
       <upload-manager ref="uploadManagerRef" :upload-api="uploadApi" @upload-start="onUploadStart"
         @upload-success="onUploadSuccess" @upload-error="onUploadError" @upload-change="uploadQueueCount = $event"
         @close="handleUploadDialogClose" />
-    </n-modal>
+    </el-dialog>
 
-    <n-modal v-model:show="previewDialogVisible" preset="card" title="文件预览" :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']"
-      :style="previewMaximized ? { width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', top: 0, left: 0, transform: 'none', borderRadius: 0 } : {}">
+    <!-- 文件预览弹窗 -->
+    <el-dialog
+      v-model="previewDialogVisible"
+      title="文件预览"
+      width="80%"
+      top="5vh"
+      :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']">
       <file-preview :file="previewFileData" :maximized="previewMaximized"
         @close="previewDialogVisible = false" />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <n-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</n-button>
-          <n-button type="primary" @click="downloadFile(previewFileData)">下载</n-button>
-          <n-button @click="previewDialogVisible = false">关闭</n-button>
+          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
+          <el-button type="primary" @click="downloadFile(previewFileData)">下载</el-button>
+          <el-button @click="previewDialogVisible = false">关闭</el-button>
         </div>
       </template>
-    </n-modal>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NButton, NDataTable, NBreadcrumb, NBreadcrumbItem, NModal, NInput, NSpin, useMessage, useDialog } from 'naive-ui'
+import { ElMessage, ElMessageBox, ElButton } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
@@ -110,8 +116,6 @@ const uploadApi = {
 
 const router = useRouter()
 const route = useRoute()
-const message = useMessage()
-const modalDialog = useDialog()
 
 // 备注编辑
 const notesModalVisible = ref(false)
@@ -128,7 +132,7 @@ const openNotesEditor = (row) => {
 const saveNotes = async () => {
   const row = editNotesRow.value
   if (!row) {
-    message.warning('无法获取文件记录')
+    ElMessage.warning('无法获取文件记录')
     return
   }
   savingNotes.value = true
@@ -143,21 +147,21 @@ const saveNotes = async () => {
       const indexPath = rootName ? fullPath.slice(rootName.length + 1) : fullPath
       const findRes = await FileRecordApi.findRecord(fileName, rootName, indexPath)
       if (!findRes.success || !findRes.data?.record) {
-        message.warning('未找到文件索引记录，请稍后重试')
+        ElMessage.warning('未找到文件索引记录，请稍后重试')
         return
       }
       recordId = findRes.data.record.id
     }
     const res = await FileRecordApi.updateNotes(recordId, editNotes.value)
     if (res.success) {
-      message.success('备注已更新')
+      ElMessage.success('备注已更新')
       store.setFileNotes(row.path, editNotes.value, recordId)
       notesModalVisible.value = false
     } else {
-      message.error(res.message || '更新备注失败')
+      ElMessage.error(res.message || '更新备注失败')
     }
   } catch (e) {
-    message.error(formatErrorMessage(e, '更新备注失败'))
+    ElMessage.error(formatErrorMessage(e, '更新备注失败'))
   } finally {
     savingNotes.value = false
   }
@@ -319,8 +323,8 @@ const columns = [
   {
     title: '文件名',
     key: 'name',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 260,
+    cellRenderer: ({ rowData: row }) => {
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
       const isLatest = latestVersionPaths.value.has(row.path)
       // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
@@ -411,9 +415,13 @@ const columns = [
       }, isSearching.value || searchCompleted.value ? renderSearchMode() : renderNormalMode())
     }
   },
-  { title: '大小', key: 'size', width: 150, render: (row) => formatSize(row.size) },
-  { title: '修改时间', key: 'modifiedTime', width: 200,
-    render: (row) => {
+  {
+    title: '大小', key: 'size', width: 150,
+    cellRenderer: ({ rowData: row }) => formatSize(row.size)
+  },
+  {
+    title: '修改时间', key: 'modifiedTime', width: 200,
+    cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.modifiedTime)
       if (TimeUtils.isRecent24h(row.modifiedTime)) {
         return h('span', { style: 'color: #18a058' }, text)
@@ -421,21 +429,36 @@ const columns = [
       return text
     }
   },
-  { title: '备注', key: 'notes', width: 150, ellipsis: { tooltip: true },
-    render: (row) => {
+  {
+    title: '备注', key: 'notes', width: 150,
+    cellRenderer: ({ rowData: row }) => {
       return h('span', {
         class: `notes-cell`,
         onClick: () => openNotesEditor(row)
       }, row.notes || '')
     }
   },
-  { title: '依赖', width: 80,
-    render: (row) => isDir(row) ? null : h(NButton, {
-      size: 'tiny', quaternary: true,
+  {
+    title: '依赖', key: 'deps', width: 80,
+    cellRenderer: ({ rowData: row }) => isDir(row) ? null : h(ElButton, {
+      size: 'small', link: true,
       onClick: () => openDepTree(row)
     }, () => '依赖')
   }
 ]
+
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
 
 const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
 
@@ -472,7 +495,7 @@ const openDepTree = (row) => {
       if (res.success && res.data.records?.length > 0) {
         depTreeDialogRef.value?.open(res.data.records[0].id)
       } else {
-        message.warning('未找到文件索引记录')
+        ElMessage.warning('未找到文件索引记录')
       }
     })
   }
@@ -489,6 +512,12 @@ const onUploadError = (error) => {
 // Lifecycle
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
+
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
 
   // 等待 main.js 中的初始化检查完成（避免重复调用 setup/status）
   if (!initializationComplete) {
@@ -534,6 +563,7 @@ const handleKeydown = (e) => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  tableResizeObs?.disconnect()
 })
 
 // 监听路由参数变化
@@ -554,41 +584,25 @@ const onUploadStart = () => {
 }
 
 // 上传弹框关闭保护
-// 由于使用了 :show 而非 v-model:show，需要手动控制显示状态
 const handleUploadDialogClose = () => {
   const mgr = uploadManagerRef.value
   if (mgr?.hasActiveUploads) {
     // 本地文件正在上传，需要确认
-    modalDialog.warning({
-      title: '上传进行中',
-      content: '有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？',
-      positiveText: '确认关闭',
-      negativeText: '继续上传',
-      onPositiveClick: () => {
-        uploadDialogVisible.value = false
-      },
-      onNegativeClick: () => {
-        // 不关闭，保持打开
-      }
+    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
+      confirmButtonText: '确认关闭',
+      cancelButtonText: '继续上传',
+      type: 'warning'
+    }).then(() => {
+      uploadDialogVisible.value = false
+    }).catch(() => {
+      // 不关闭，保持打开
     })
     return
   } else if (mgr?.hasUrlUploading) {
     // URL 上传在后台执行，仅提示
-    message.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
+    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
   }
   uploadDialogVisible.value = false
-}
-
-// 拦截模态框关闭事件（点击遮罩或按 ESC）
-const onUploadDialogShowChange = (show) => {
-  if (!show) {
-    handleUploadDialogClose()
-  }
-}
-
-// 重写 showUploadDialog 以兼容 :show 模式
-const showUploadDialogInternal = () => {
-  uploadDialogVisible.value = true
 }
 </script>
 
@@ -661,7 +675,7 @@ const showUploadDialogInternal = () => {
           width: 200px;
         }
 
-        .n-button {
+        .el-button {
           transition: transform @transition-smooth, box-shadow @transition-smooth;
 
           &:hover {
@@ -678,17 +692,21 @@ const showUploadDialogInternal = () => {
   }
 
   .content-table {
+    flex: 1 1 auto;
+    min-height: 0;
     background: #fff;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     transition: box-shadow @transition-smooth;
+    overflow: hidden;
 
     &:hover {
       box-shadow: @shadow-md;
     }
 
-    :deep(.n-data-table) {
+    .table-v2-wrap {
       height: 100%;
+      width: 100%;
     }
   }
 }

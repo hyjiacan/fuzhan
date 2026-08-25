@@ -6,135 +6,149 @@
     </div>
 
     <!-- 统计卡片 -->
-    <n-grid :cols="3" :x-gap="16" :y-gap="16" style="margin-bottom: 16px;">
-      <n-gi>
-        <n-card class="stat-card">
+    <el-row :gutter="16" style="margin-bottom: 16px;">
+      <el-col :span="8">
+        <el-card class="stat-card" shadow="never">
           <div class="stat-content">
             <div class="stat-value" style="color: #1890ff;">{{ stats.active }}</div>
             <div class="stat-label">活跃 Key</div>
           </div>
-        </n-card>
-      </n-gi>
-      <n-gi>
-        <n-card class="stat-card">
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card class="stat-card" shadow="never">
           <div class="stat-content">
             <div class="stat-value" style="color: #faad14;">{{ stats.total }}</div>
             <div class="stat-label">总计</div>
           </div>
-        </n-card>
-      </n-gi>
-      <n-gi>
-        <n-card class="stat-card">
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card class="stat-card" shadow="never">
           <div class="stat-content">
             <div class="stat-value" style="color: #f5222d;">{{ stats.expired }}</div>
             <div class="stat-label">已过期</div>
           </div>
-        </n-card>
-      </n-gi>
-    </n-grid>
+        </el-card>
+      </el-col>
+    </el-row>
 
     <!-- 操作栏 -->
-    <n-space style="margin-bottom: 16px;">
-      <n-button type="primary" @click="showCreateModal = true">
-        <template #icon>
-          <n-icon><AddIcon /></n-icon>
-        </template>
+    <el-space style="margin-bottom: 16px;">
+      <el-button type="primary" @click="showCreateModal = true">
+        <el-icon class="el-icon--left"><component :is="AddIcon" /></el-icon>
         创建 API Key
-      </n-button>
-      <n-button @click="loadApiKeys" :loading="loading">刷新</n-button>
-    </n-space>
+      </el-button>
+      <el-button @click="loadApiKeys" :loading="loading">刷新</el-button>
+    </el-space>
 
     <!-- API Key 列表 -->
-    <n-card>
-      <n-data-table
-        :columns="columns"
-        :data="apiKeys"
-        :loading="loading"
-        :pagination="pagination"
-        :row-key="row => row.id"
-      />
-    </n-card>
+    <el-card shadow="never">
+      <div ref="tableWrapRef" class="table-v2-wrap">
+        <el-table-v2
+          :columns="columns"
+          :data="apiKeys"
+          :width="tableWidth"
+          :height="tableHeight"
+          row-key="id"
+        />
+        <div v-if="loading" class="table-loading-mask">
+          <el-icon class="is-loading" :size="22"><Loading /></el-icon>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <el-pagination
+          v-if="pagination.itemCount > 0"
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.itemCount"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
+    </el-card>
 
     <!-- 创建 API Key 弹窗 -->
-    <n-modal v-model:show="showCreateModal" preset="card" title="创建 API Key" style="width: 500px">
-      <n-form ref="createFormRef" :model="createForm" :rules="createRules" label-placement="left" label-width="100">
-        <n-form-item label="名称" path="name">
-          <n-input v-model:value="createForm.name" :maxlength="128" placeholder="给这个 Key 起个名字" />
-        </n-form-item>
-        <n-form-item label="权限范围" path="scopes">
-          <n-select
-            v-model:value="createForm.scopes"
-            :options="scopeOptions"
-            placeholder="选择权限范围"
-          />
-          <template #feedback>
-            <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>
+    <el-dialog v-model="showCreateModal" title="创建 API Key" width="500px">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="100px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="createForm.name" :maxlength="128" placeholder="给这个 Key 起个名字" />
+        </el-form-item>
+        <el-form-item label="权限范围" prop="scopes">
+          <el-select v-model="createForm.scopes" placeholder="选择权限范围" style="width: 100%;">
+            <el-option
+              v-for="opt in scopeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+          <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>
             open_api:writer - 额外包含文件备注、依赖关系</span>
-          </template>
-        </n-form-item>
-        <n-form-item label="过期时间" path="expiresIn">
-          <n-select
-            v-model:value="createForm.expiresIn"
-            :options="expiryOptions"
-            placeholder="选择过期时间"
-          />
-        </n-form-item>
-      </n-form>
+        </el-form-item>
+        <el-form-item label="过期时间" prop="expiresIn">
+          <el-select v-model="createForm.expiresIn" placeholder="选择过期时间" style="width: 100%;">
+            <el-option
+              v-for="opt in expiryOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showCreateModal = false">取消</n-button>
-          <n-button type="primary" :loading="creating" @click="handleCreate">创建</n-button>
-        </n-space>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="showCreateModal = false">取消</el-button>
+          <el-button type="primary" :loading="creating" @click="handleCreate">创建</el-button>
+        </div>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 显示新创建的 Key 弹窗 -->
-    <n-modal v-model:show="showRawKeyModal" preset="card" title="API Key 已创建" style="width: 600px">
-      <n-alert type="warning" :show-icon="false">
+    <el-dialog v-model="showRawKeyModal" title="API Key 已创建" width="600px">
+      <el-alert type="warning" :show-icon="false">
         请立即复制保存此 Key，它只会显示这一次！
-      </n-alert>
-      <n-input
-        :value="rawKey"
+      </el-alert>
+      <el-input
+        :model-value="rawKey"
         type="textarea"
         readonly
         :rows="3"
         style="margin-top: 16px; font-family: monospace;"
       />
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="copyRawKey">复制</n-button>
-          <n-button type="primary" @click="showRawKeyModal = false">关闭</n-button>
-        </n-space>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="copyRawKey">复制</el-button>
+          <el-button type="primary" @click="showRawKeyModal = false">关闭</el-button>
+        </div>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 确认删除对话框 -->
-    <n-modal v-model:show="showDeleteModal" preset="card" title="确认删除" style="width: 400px">
-      <n-alert type="error">
+    <el-dialog v-model="showDeleteModal" title="确认删除" width="400px">
+      <el-alert type="error" :closable="false">
         确定要删除 API Key「{{ deleteTarget?.name }}」吗？此操作不可恢复。
-      </n-alert>
+      </el-alert>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showDeleteModal = false">取消</n-button>
-          <n-button type="error" :loading="deleting" @click="handleDelete">删除</n-button>
-        </n-space>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="showDeleteModal = false">取消</el-button>
+          <el-button type="danger" :loading="deleting" @click="handleDelete">删除</el-button>
+        </div>
       </template>
-    </n-modal>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, h, onMounted } from 'vue'
-import {
-  NButton, NCard, NDataTable, NForm, NFormItem, NInput, NInputGroup,
-  NModal, NSelect, NSpace, NIcon, NGrid, NGi, NAlert, NTag, useMessage,
-  NPopconfirm
-} from 'naive-ui'
+import { ref, computed, h, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox, ElTag, ElButton, ElPopconfirm } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { ApiKeyApi, AuthApi } from '../api'
 import { TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
-
-const message = useMessage()
 
 // Icons
 const AddIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -194,60 +208,80 @@ const stats = computed(() => {
   return { total, active, expired }
 })
 
-// Columns
-const columns = computed(() => [
-  { title: 'ID', key: 'id', width: 60 },
-  { title: '名称', key: 'name', width: 180 },
-  { title: 'Key ID', key: 'keyId', width: 140, ellipsis: { tooltip: true } },
-  { title: '权限', key: 'scopes', width: 160,
-    render: (row) => h(NTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
+
+// Columns (el-table-v2)
+const columns = [
+  { key: 'id', dataKey: 'id', title: 'ID', width: 60 },
+  { key: 'name', dataKey: 'name', title: '名称', width: 180 },
+  { key: 'keyId', dataKey: 'keyId', title: 'Key ID', width: 140 },
+  {
+    key: 'scopes', title: '权限', width: 160,
+    cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
       () => row.scopes)
   },
-  { title: '状态', key: 'status', width: 80,
-    render: (row) => {
+  {
+    key: 'status', title: '状态', width: 80,
+    cellRenderer: ({ rowData: row }) => {
       const now = new Date()
       const isExpired = row.expiresAt && new Date(row.expiresAt) < now
-      if (isExpired) return h(NTag, { size: 'small', type: 'error' }, () => '已过期')
-      return h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : 'default' },
+      if (isExpired) return h(ElTag, { size: 'small', type: 'danger' }, () => '已过期')
+      return h(ElTag, { size: 'small', type: row.status === 'active' ? 'success' : 'info' },
         () => row.status === 'active' ? '活跃' : '禁用')
     }
   },
-  { title: '创建时间', key: 'createdAt', width: 170,
-    render: (row) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
+  {
+    key: 'createdAt', title: '创建时间', width: 170,
+    cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
   },
-  { title: '过期时间', key: 'expiresAt', width: 170,
-    render: (row) => {
+  {
+    key: 'expiresAt', title: '过期时间', width: 170,
+    cellRenderer: ({ rowData: row }) => {
       if (!row.expiresAt) return '永不过期'
       return TimeUtils.formatDateTime(row.expiresAt)
     }
   },
   {
-    title: '操作',
     key: 'actions',
+    title: '操作',
     width: 200,
     fixed: 'right',
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       const now = new Date()
       const isExpired = row.expiresAt && new Date(row.expiresAt) < now
 
-      return h(NSpace, { size: 'small' }, [
-        h(NButton, {
-          size: 'tiny',
-          quaternary: true,
+      return h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [
+        h(ElButton, {
+          size: 'small',
+          link: true,
           type: isExpired || row.status === 'disabled' ? 'success' : 'warning',
           disabled: isExpired,
           onClick: () => toggleStatus(row)
         }, () => isExpired ? '已过期' : (row.status === 'active' ? '禁用' : '启用')),
-        h(NPopconfirm, {
-          onPositiveClick: () => confirmDelete(row)
+        h(ElPopconfirm, {
+          title: '确定删除？',
+          confirmButtonText: '删除',
+          cancelButtonText: '取消',
+          width: 160,
+          onConfirm: () => confirmDelete(row)
         }, {
-          trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, () => '删除'),
-          default: () => '确定删除？'
+          reference: () => h(ElButton, { size: 'small', link: true, type: 'danger' }, () => '删除')
         })
       ])
     }
   }
-])
+]
 
 // Methods
 async function loadApiKeys() {
@@ -259,7 +293,7 @@ async function loadApiKeys() {
       pagination.value.itemCount = res.data?.total || 0
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '加载失败'))
+    ElMessage.error(formatErrorMessage(err, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -299,7 +333,7 @@ async function handleCreate() {
       expiresIn: createForm.value.expiresIn
     })
     if (res.success) {
-      message.success('API Key 创建成功')
+      ElMessage.success('API Key 创建成功')
       showCreateModal.value = false
       rawKey.value = res.data?.rawKey || ''
       showRawKeyModal.value = true
@@ -307,10 +341,10 @@ async function handleCreate() {
       // 重置表单
       createForm.value = { name: '', scopes: 'open_api:reader', expiresIn: 0 }
     } else {
-      message.error(res.message || '创建失败')
+      ElMessage.error(res.message || '创建失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '创建失败'))
+    ElMessage.error(formatErrorMessage(err, '创建失败'))
   } finally {
     creating.value = false
   }
@@ -318,9 +352,9 @@ async function handleCreate() {
 
 function copyRawKey() {
   navigator.clipboard.writeText(rawKey.value).then(() => {
-    message.success('已复制到剪贴板')
+    ElMessage.success('已复制到剪贴板')
   }).catch(() => {
-    message.error('复制失败')
+    ElMessage.error('复制失败')
   })
 }
 
@@ -329,13 +363,13 @@ async function toggleStatus(row) {
     const newStatus = row.status === 'active' ? 'disabled' : 'active'
     const res = await ApiKeyApi.updateStatus(row.id, newStatus)
     if (res.success) {
-      message.success(newStatus === 'active' ? '已启用' : '已禁用')
+      ElMessage.success(newStatus === 'active' ? '已启用' : '已禁用')
       loadApiKeys()
     } else {
-      message.error(res.message || '操作失败')
+      ElMessage.error(res.message || '操作失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '操作失败'))
+    ElMessage.error(formatErrorMessage(err, '操作失败'))
   }
 }
 
@@ -350,14 +384,14 @@ async function handleDelete() {
   try {
     const res = await ApiKeyApi.delete(deleteTarget.value.id)
     if (res.success) {
-      message.success('已删除')
+      ElMessage.success('已删除')
       showDeleteModal.value = false
       loadApiKeys()
     } else {
-      message.error(res.message || '删除失败')
+      ElMessage.error(res.message || '删除失败')
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '删除失败'))
+    ElMessage.error(formatErrorMessage(err, '删除失败'))
   } finally {
     deleting.value = false
   }
@@ -377,6 +411,15 @@ function handlePageSizeChange(size) {
 onMounted(() => {
   loadApiKeys()
   loadCurrentUser()
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
+})
+
+onUnmounted(() => {
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -397,6 +440,7 @@ onMounted(() => {
   margin: 4px 0 0;
   font-size: 14px;
 }
+.stat-card :deep(.el-card__body),
 .stat-card .stat-content {
   display: flex;
   align-items: center;
@@ -414,5 +458,22 @@ onMounted(() => {
   font-size: 12px;
   color: #888;
   line-height: 1.5;
+}
+.table-v2-wrap {
+  position: relative;
+  height: 480px;
+  width: 100%;
+}
+.table-loading-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+  z-index: 5;
 }
 </style>

@@ -35,7 +35,7 @@ test.describe('文件预览功能', () => {
       await previewButton.click()
 
       // 验证预览弹框出现
-      const previewDialog = page.locator('.preview-dialog, [class*="preview"] .n-modal').first()
+      const previewDialog = page.locator('.preview-dialog, .el-dialog').first()
       await expect(previewDialog).toBeVisible({ timeout: 5000 })
     }
   })
@@ -49,7 +49,7 @@ test.describe('文件预览功能', () => {
       await page.waitForTimeout(500)
 
       // 验证有关闭按钮
-      const closeButton = page.locator('.n-modal-close, button[class*="close"]').first()
+      const closeButton = page.locator('.el-dialog__headerbtn, button[class*="close"]').first()
       await expect(closeButton).toBeVisible()
     }
   })
@@ -62,7 +62,7 @@ test.describe('文件预览功能', () => {
       await previewButton.click()
 
       // 验证标题包含"预览"
-      const dialogTitle = page.locator('.n-modal-card .n-card-header, [class*="preview"] .n-card-header').first()
+      const dialogTitle = page.locator('.el-dialog__header').first()
       await expect(dialogTitle).toContainText('预览')
     }
   })

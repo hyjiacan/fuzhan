@@ -5,34 +5,34 @@
       <div class="breadcrumb-actions">
         <!-- 搜索状态显示（与 HomeView 一致） -->
         <div v-if="isSearching || searchCompleted" class="search-status">
-          <n-spin v-if="isSearching && searchResultCount < 0" size="small" />
+          <el-icon v-if="isSearching && searchResultCount < 0" class="is-loading" size="14"><Loading /></el-icon>
           <template v-else>
             <span v-if="isSearching">搜索中...</span>
             <span v-else>搜索完成</span>
             <span class="search-count">{{ searchResultCount }} 个结果</span>
             <span class="search-time">耗时 {{ searchTime }}ms</span>
           </template>
-          <n-button v-if="!isSearching" size="tiny" quaternary @click="clearSearch" title="清除搜索">
+          <el-button v-if="!isSearching" size="small" link @click="clearSearch" title="清除搜索">
             ×
-          </n-button>
+          </el-button>
         </div>
-        <n-breadcrumb v-else-if="breadcrumb.length > 1" class="breadcrumb">
-          <n-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+        <el-breadcrumb v-else-if="breadcrumb.length > 1" class="breadcrumb" separator="/">
+          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
             <span class="breadcrumb-link" @click="navigateToBreadcrumb(index)">{{ item.name }}</span>
-          </n-breadcrumb-item>
-        </n-breadcrumb>
+          </el-breadcrumb-item>
+        </el-breadcrumb>
         <span v-else class="breadcrumb-root">文件管理</span>
         <div class="header-actions">
-          <n-input ref="searchInputRef" v-model:value="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
+          <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
             class="search-input" clearable name="search-query" @keydown.enter="searchFiles" />
-          <n-button size="small" @click="loadCurrentDir" :loading="loading">刷新</n-button>
-          <n-button v-if="checkedRowKeys.length > 0" size="small" type="error" @click="handleBatchDelete">
+          <el-button size="small" @click="loadCurrentDir" :loading="loading">刷新</el-button>
+          <el-button v-if="checkedRowKeys.length > 0" size="small" type="danger" @click="handleBatchDelete">
             删除选中 ({{ checkedRowKeys.length }})
-          </n-button>
-          <n-divider vertical class="action-divider" />
-          <n-button size="small" type="primary" @click="handleScan" :loading="scanning">
+          </el-button>
+          <el-divider direction="vertical" class="action-divider" />
+          <el-button size="small" type="primary" @click="handleScan" :loading="scanning">
             触发全量扫描
-          </n-button>
+          </el-button>
           <span v-if="scanProgress.status === 'running'" class="scan-progress-text">
             扫描中: {{ scanProgress.scannedFiles }} / {{ scanProgress.totalFiles }}
           </span>
@@ -48,67 +48,69 @@
 
       <!-- 文件浏览 -->
     <div class="content-table">
-      <n-data-table :columns="columns" :data="displayList" :loading="loading || isSearching" :pagination="false"
-        :row-key="row => row.path" :checked-row-keys="checkedRowKeys" @update:checked-row-keys="handleCheck"
-        @dblclick-row="handleDblClick" virtual-scroll flex-height />
+      <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading || isSearching">
+        <el-table-v2
+          :columns="columns"
+          :data="displayList"
+          :width="tableWidth"
+          :height="tableHeight"
+          :estimated-row-height="34"
+          row-key="path"
+          @row-dblclick="handleDblClick"
+        />
+      </div>
     </div>
 
     <!-- 移动/重命名对话框（类似 Linux mv 命令） -->
-    <n-modal v-model:show="moveModalVisible" preset="card" title="移动或重命名"
-      style="width: var(--app-width, 600px); max-width: 80vw">
-      <n-form label-placement="left" label-width="100">
-        <n-form-item label="文件名">
-          <n-input :value="currentFile?.name" disabled />
-        </n-form-item>
-        <n-form-item label="当前路径">
-          <n-input :value="currentFile?.path" disabled />
-        </n-form-item>
-        <n-form-item label="目标路径">
+    <el-dialog v-model="moveModalVisible" title="移动或重命名" width="620px">
+      <el-form label-width="100px">
+        <el-form-item label="文件名">
+          <el-input :model-value="currentFile?.name" disabled />
+        </el-form-item>
+        <el-form-item label="当前路径">
+          <el-input :model-value="currentFile?.path" disabled />
+        </el-form-item>
+        <el-form-item label="目标路径">
           <div class="target-path-input">
-            <n-input :value="targetRootName" disabled placeholder="根目录" class="root-input" />
+            <el-input :model-value="targetRootName" disabled placeholder="根目录" class="root-input" />
             <span class="path-separator">/</span>
-            <n-input v-model:value="targetSubPath" :maxlength="1024" placeholder="输入子目录/文件名" class="sub-path-input" />
+            <el-input v-model="targetSubPath" :maxlength="1024" placeholder="输入子目录/文件名" class="sub-path-input" />
           </div>
-          <template #feedback>
-            <div class="help-text">
-              <p>输入目标路径（相对于根目录），如 <code>newname.pdf</code> 或 <code>subdir/newname.pdf</code></p>
-            </div>
-          </template>
-        </n-form-item>
-      </n-form>
+          <div class="help-text">
+            <p>输入目标路径（相对于根目录），如 <code>newname.pdf</code> 或 <code>subdir/newname.pdf</code></p>
+          </div>
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="moveModalVisible = false">取消</n-button>
-          <n-button type="primary" :loading="moving" @click="handleMove">确定</n-button>
-        </n-space>
+        <el-space>
+          <el-button @click="moveModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="moving" @click="handleMove">确定</el-button>
+        </el-space>
       </template>
-    </n-modal>
+    </el-dialog>
 
     <!-- 预览对话框 -->
-    <n-modal v-model:show="previewDialogVisible" preset="card" title="文件预览" :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']"
-      :style="previewMaximized ? { width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', top: 0, left: 0, transform: 'none', borderRadius: 0 } : {}">
+    <el-dialog v-model="previewDialogVisible" title="文件预览" width="700px"
+      :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']"
+      :style="previewMaximized ? { width: '100vw', maxWidth: '100vw' } : {}">
       <file-preview :file="previewFileData" :maximized="previewMaximized"
         @close="previewDialogVisible = false" />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <n-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</n-button>
-          <n-button type="primary" @click="downloadFile(previewFileData)">下载</n-button>
-          <n-button @click="previewDialogVisible = false">关闭</n-button>
+          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
+          <el-button type="primary" @click="downloadFile(previewFileData)">下载</el-button>
+          <el-button @click="previewDialogVisible = false">关闭</el-button>
         </div>
       </template>
-    </n-modal>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, h, watch, onUnmounted } from 'vue'
+import { ref, computed, h, watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  NBreadcrumb, NBreadcrumbItem, NButton, NDataTable, NModal, NForm, NFormItem,
-  NInput, NTreeSelect, NIcon, NSpin,
-  NTag, NDivider,
-  useMessage, useDialog, useLoadingBar
-} from 'naive-ui'
+import { ElMessage, ElMessageBox, ElButton, ElCheckbox } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { AdminApi, IndexApi } from '@/api'
 import { NumberUtils, TimeUtils, PathUtils, compareFileNames } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
@@ -118,9 +120,6 @@ import store from '@/store'
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
-const dialog = useDialog()
-const loadingBar = useLoadingBar()
 const loading = ref(false)
 const moving = ref(false)
 
@@ -180,11 +179,11 @@ async function handleScan() {
   try {
     const res = await IndexApi.triggerScan()
     if (res.success) {
-      message.success('扫描已启动')
+      ElMessage.success('扫描已启动')
       startPollProgress()
     }
   } catch (err) {
-    message.error(formatErrorMessage(err, '启动扫描失败'))
+    ElMessage.error(formatErrorMessage(err, '启动扫描失败'))
   } finally {
     scanning.value = false
   }
@@ -230,21 +229,67 @@ const encodePath = (path) => {
   return path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
 }
 
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
+
+// ==== 勾选状态（el-table-v2 不内置选择列，手动实现）====
+const isAllSelected = computed(() => {
+  return displayList.value.length > 0 && displayList.value.every(f => checkedRowKeys.value.includes(f.path))
+})
+const isIndeterminate = computed(() => {
+  if (displayList.value.length === 0) return false
+  const count = displayList.value.filter(f => checkedRowKeys.value.includes(f.path)).length
+  return count > 0 && count < displayList.value.length
+})
+const toggleSelectAll = (val) => {
+  if (val) {
+    checkedRowKeys.value = displayList.value.map(f => f.path)
+  } else {
+    checkedRowKeys.value = []
+  }
+}
+const handleSingleCheck = (row, checked) => {
+  if (checked) {
+    if (!checkedRowKeys.value.includes(row.path)) {
+      checkedRowKeys.value = checkedRowKeys.value.concat(row.path)
+    }
+  } else {
+    checkedRowKeys.value = checkedRowKeys.value.filter(key => key !== row.path)
+  }
+}
+
 // Table columns
 const columns = [
   {
-    type: 'selection',
+    key: 'selection',
     width: 40,
-    disabled(row) {
-      // 根目录不允许操作
-      return isAtRoot.value
-    }
+    headerCellRenderer: () => h(ElCheckbox, {
+      modelValue: isAllSelected.value,
+      indeterminate: isIndeterminate.value,
+      disabled: isAtRoot.value,
+      onChange: (val) => toggleSelectAll(val)
+    }),
+    cellRenderer: ({ rowData: row }) => h(ElCheckbox, {
+      modelValue: checkedRowKeys.value.includes(row.path),
+      disabled: isAtRoot.value,
+      onChange: (val) => handleSingleCheck(row, val)
+    })
   },
   {
     title: '文件名',
     key: 'name',
-    ellipsis: { tooltip: true },
-    render(row) {
+    minWidth: 300,
+    cellRenderer: ({ rowData: row }) => {
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
       // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
       const currentNavPath = currentPath.value
@@ -334,9 +379,9 @@ const columns = [
       }, isSearching.value || searchCompleted.value ? renderSearchMode() : renderNormalMode())
     }
   },
-  { title: '大小', key: 'size', width: 150, render: (row) => formatSize(row.size) },
+  { title: '大小', key: 'size', width: 150, cellRenderer: ({ rowData: row }) => formatSize(row.size) },
   { title: '修改时间', key: 'modifiedTime', width: 200,
-    render: (row) => {
+    cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.modifiedTime)
       if (TimeUtils.isRecent24h(row.modifiedTime)) {
         return h('span', { style: 'color: #18a058' }, text)
@@ -348,17 +393,15 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 200,
-    render(row) {
+    cellRenderer: ({ rowData: row }) => {
       // 根目录不显示操作按钮
       if (isAtRoot.value) {
         return null
       }
-      const actions = []
-      actions.push(
-        h(NButton, { size: 'small', quaternary: true, onClick: () => openMoveModal(row) }, () => '移动/重命名'),
-        h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => handleDelete(row) }, () => '删除')
-      )
-      return h('div', { class: 'action-buttons' }, actions)
+      return h('div', { class: 'action-buttons' }, [
+        h(ElButton, { size: 'small', link: true, onClick: () => openMoveModal(row) }, () => '移动/重命名'),
+        h(ElButton, { size: 'small', link: true, type: 'danger', onClick: () => handleDelete(row) }, () => '删除')
+      ])
     }
   }
 ]
@@ -511,7 +554,7 @@ const loadCurrentDir = async () => {
     }
   } catch (e) {
     console.error('加载文件列表失败', e)
-    message.error('加载文件列表失败')
+    ElMessage.error('加载文件列表失败')
   } finally {
     loading.value = false
   }
@@ -527,14 +570,14 @@ const openMoveModal = (file) => {
 
 const handleMove = async () => {
   if (!targetSubPath.value || !targetSubPath.value.trim()) {
-    message.warning('请输入目标路径（子目录或新文件名）')
+    ElMessage.warning('请输入目标路径（子目录或新文件名）')
     return
   }
 
   // 验证目标路径不能包含 .. 等越权路径
   const subPath = targetSubPath.value.trim()
   if (subPath.includes('..')) {
-    message.error('目标路径无效，不能包含 ..')
+    ElMessage.error('目标路径无效，不能包含 ..')
     return
   }
 
@@ -547,15 +590,15 @@ const handleMove = async () => {
   try {
     const data = await AdminApi.move(oldFullPath, target)
     if (data.success) {
-      message.success('操作成功')
+      ElMessage.success('操作成功')
       moveModalVisible.value = false
       targetSubPath.value = ''
       loadCurrentDir()
     } else {
-      message.error(data.message || '操作失败')
+      ElMessage.error(data.message || '操作失败')
     }
   } catch (e) {
-    message.error('操作失败')
+    ElMessage.error('操作失败')
   } finally {
     moving.value = false
   }
@@ -583,40 +626,42 @@ const downloadFile = (file) => {
 // 删除
 const deleting = ref(false)
 const checkedRowKeys = ref([])
-const handleCheck = (keys) => {
-  checkedRowKeys.value = keys
-}
 const handleDelete = async (file) => {
   const isDirectory = isDir(file)
-  dialog.warning({
-    title: '确认删除',
-    content: isDirectory
-      ? `确定要删除目录 "${file.name}" 及其所有内容吗？此操作不可恢复。`
-      : `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      deleting.value = true
-      try {
-        const deletePath = file.path
-        const data = await AdminApi.delete(deletePath)
-        if (data.success) {
-          message.success('删除成功')
-          loadCurrentDir()
-        } else {
-          message.error(data.message || '删除失败')
-        }
-      } catch (e) {
-        message.error('删除失败')
-      } finally {
-        deleting.value = false
+  try {
+    await ElMessageBox.confirm(
+      isDirectory
+        ? `确定要删除目录 "${file.name}" 及其所有内容吗？此操作不可恢复。`
+        : `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
+      '确认删除',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
       }
+    )
+  } catch {
+    return
+  }
+  deleting.value = true
+  try {
+    const deletePath = file.path
+    const data = await AdminApi.delete(deletePath)
+    if (data.success) {
+      ElMessage.success('删除成功')
+      loadCurrentDir()
+    } else {
+      ElMessage.error(data.message || '删除失败')
     }
-  })
+  } catch (e) {
+    ElMessage.error('删除失败')
+  } finally {
+    deleting.value = false
+  }
 }
 
 // 批量删除选中的文件
-const handleBatchDelete = () => {
+const handleBatchDelete = async () => {
   const selected = displayList.value.filter(f => checkedRowKeys.value.includes(f.path))
   if (selected.length === 0) return
   const dirCount = selected.filter(f => isDir(f)).length
@@ -629,31 +674,32 @@ const handleBatchDelete = () => {
   } else {
     contentText = `确定要删除选中的 ${fileCount} 个文件吗？此操作不可恢复。`
   }
-  dialog.warning({
-    title: '确认删除',
-    content: contentText,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      deleting.value = true
-      try {
-        let successCount = 0
-        for (const file of selected) {
-          const data = await AdminApi.delete(file.path)
-          if (data.success) {
-            successCount++
-          }
-        }
-        message.success(`已删除 ${successCount} 个文件`)
-        checkedRowKeys.value = []
-        loadCurrentDir()
-      } catch (e) {
-        message.error('删除失败')
-      } finally {
-        deleting.value = false
+  try {
+    await ElMessageBox.confirm(contentText, '确认删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  deleting.value = true
+  try {
+    let successCount = 0
+    for (const file of selected) {
+      const data = await AdminApi.delete(file.path)
+      if (data.success) {
+        successCount++
       }
     }
-  })
+    ElMessage.success(`已删除 ${successCount} 个文件`)
+    checkedRowKeys.value = []
+    loadCurrentDir()
+  } catch (e) {
+    ElMessage.error('删除失败')
+  } finally {
+    deleting.value = false
+  }
 }
 
 // 监听路由变化
@@ -672,8 +718,17 @@ watch(
   { immediate: true }
 )
 
+onMounted(() => {
+  updateTableSize()
+  tableResizeObs = new ResizeObserver(updateTableSize)
+  if (tableWrapRef.value) {
+    tableResizeObs.observe(tableWrapRef.value)
+  }
+})
+
 onUnmounted(() => {
   stopPollProgress()
+  tableResizeObs?.disconnect()
 })
 </script>
 
@@ -765,7 +820,8 @@ onUnmounted(() => {
   }
 
   .content-table {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     background: #fff;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
@@ -775,7 +831,7 @@ onUnmounted(() => {
       box-shadow: @shadow-md;
     }
 
-    :deep(.n-data-table) {
+    .table-v2-wrap {
       height: 100%;
     }
   }
@@ -902,9 +958,17 @@ onUnmounted(() => {
   }
 }
 
-.preview-maximized :deep(.n-card-content) {
+.preview-maximized :deep(.el-dialog) {
+  height: 100vh;
+  max-height: 100vh;
+  max-width: 100vw;
+  margin: 0;
+  top: 0;
+}
+.preview-maximized :deep(.el-dialog__body) {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 </style>

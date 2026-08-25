@@ -1,5 +1,5 @@
 <template>
-  <n-layout-header class="app-header">
+  <header class="app-header">
     <div class="header-content">
       <!-- Logo -->
       <router-link to="/" class="logo-link">
@@ -30,120 +30,124 @@
         <div class="nav-mobile-auth">
           <template v-if="authState.isLoggedIn">
             <span class="username">{{ authState.username }}</span>
-            <n-button quaternary size="small" class="logout-btn" @click="handleLogout">退出</n-button>
+            <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
           </template>
           <template v-else>
-            <n-button type="primary" size="small" @click="showLoginModal = true">登录</n-button>
+            <el-button type="primary" size="small" @click="showLoginModal = true">登录</el-button>
           </template>
         </div>
       </nav>
 
       <!-- Desktop: Right side Login/User -->
       <div class="header-actions">
-        <n-button quaternary size="small" class="upload-status-btn" @click="showUploadStatus = true">
-          <template #icon>
-            <n-icon><UploadIcon /></n-icon>
-          </template>
-          上传状态
-        </n-button>
+        <el-button text size="small" class="upload-status-btn" @click="showUploadStatus = true">
+          <el-icon><UploadFilled /></el-icon>
+          <span>上传状态</span>
+        </el-button>
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
-          <n-button quaternary size="small" class="logout-btn" @click="handleLogout">退出</n-button>
+          <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
         </template>
         <template v-else>
-          <n-button type="primary" size="small" @click="showLoginModal = true">登录</n-button>
+          <el-button type="primary" size="small" @click="showLoginModal = true">登录</el-button>
         </template>
       </div>
     </div>
-  </n-layout-header>
+  </header>
 
   <!-- 登录弹框 -->
-  <n-modal v-model:show="showLoginModal" preset="card" title="登录" style="width: 400px">
-    <n-form ref="loginFormRef" :model="loginForm" :rules="loginRules">
-      <n-form-item path="username" label="用户名">
-        <n-input
-          v-model:value="loginForm.username"
+  <el-dialog v-model="showLoginModal" title="登录" width="400px">
+    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="60px">
+      <el-form-item prop="username" label="用户名">
+        <el-input
+          v-model="loginForm.username"
           :maxlength="64"
           placeholder="请输入用户名"
+          type="text"
+          autocomplete="username"
           @keydown.enter="handleLogin"
         />
-      </n-form-item>
-      <n-form-item path="password" label="密码">
-        <n-input
-          v-model:value="loginForm.password"
+      </el-form-item>
+      <el-form-item prop="password" label="密码">
+        <el-input
+          v-model="loginForm.password"
           :maxlength="128"
           type="password"
+          show-password
           placeholder="请输入密码"
           autocomplete="current-password"
           @keydown.enter="handleLogin"
         />
-      </n-form-item>
-    </n-form>
+      </el-form-item>
+    </el-form>
     <template #footer>
       <div class="auth-footer">
-        <n-button type="primary" block :loading="loggingIn" @click="handleLogin">
+        <el-button type="primary" :loading="loggingIn" class="auth-submit" @click="handleLogin">
           登录
-        </n-button>
-        <n-button text v-if="privateStorageEnabled" @click="switchToRegister" class="switch-link">
+        </el-button>
+        <el-button link v-if="privateStorageEnabled" @click="switchToRegister" class="switch-link">
           还没有账号？去注册
-        </n-button>
+        </el-button>
       </div>
     </template>
-  </n-modal>
+  </el-dialog>
 
   <!-- 注册弹框 -->
-  <n-modal v-model:show="showRegisterModal" preset="card" title="注册" style="width: 400px">
-    <n-form ref="registerFormRef" :model="registerForm" :rules="registerRules">
-      <n-form-item path="username" label="用户名">
-        <n-input
-          v-model:value="registerForm.username"
+  <el-dialog v-model="showRegisterModal" title="注册" width="400px">
+    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="60px">
+      <el-form-item prop="username" label="用户名">
+        <el-input
+          v-model="registerForm.username"
           :maxlength="64"
           placeholder="请输入用户名"
           autocomplete="username"
           @keydown.enter="handleRegister"
         />
-      </n-form-item>
-      <n-form-item path="password" label="密码">
-        <n-input
-          v-model:value="registerForm.password"
+      </el-form-item>
+      <el-form-item prop="password" label="密码">
+        <el-input
+          v-model="registerForm.password"
           :maxlength="128"
           type="password"
+          show-password
           placeholder="请输入密码"
           autocomplete="new-password"
           @keydown.enter="handleRegister"
         />
-      </n-form-item>
-      <n-form-item path="confirmPassword" label="确认密码">
-        <n-input
-          v-model:value="registerForm.confirmPassword"
+      </el-form-item>
+      <el-form-item prop="confirmPassword" label="确认密码">
+        <el-input
+          v-model="registerForm.confirmPassword"
           :maxlength="128"
           type="password"
+          show-password
           placeholder="请再次输入密码"
           autocomplete="new-password"
           @keydown.enter="handleRegister"
         />
-      </n-form-item>
-	    </n-form>
-	    <template #footer>
-	      <div class="auth-footer">
-	        <n-button type="primary" block :loading="registering" @click="handleRegister">
-	          注册
-	        </n-button>
-	        <n-button text @click="switchToLogin" class="switch-link">
-	          已有账号？去登录
-	        </n-button>
-	      </div>
-	    </template>
-	  </n-modal>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <div class="auth-footer">
+        <el-button type="primary" :loading="registering" class="auth-submit" @click="handleRegister">
+          注册
+        </el-button>
+        <el-button link @click="switchToLogin" class="switch-link">
+          已有账号？去登录
+        </el-button>
+      </div>
+    </template>
+  </el-dialog>
 
   <!-- 上传管理弹框 -->
   <UploadStatusDialog v-model:show="showUploadStatus" />
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NLayoutHeader, NButton, NModal, NForm, NFormItem, NInput, NIcon, useMessage } from 'naive-ui'
+import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
@@ -151,15 +155,9 @@ import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
-const message = useMessage()
 
 // Upload manager dialog
 const showUploadStatus = ref(false)
-
-// Upload icon
-const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 18, height: 18 }, [
-  h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
-])
 
 // Config
 const appName = computed(() => store.state.config.appName)
@@ -302,8 +300,8 @@ const isActive = (path) => {
 const handleLogin = async () => {
   if (!loginFormRef.value) return
 
-  loginFormRef.value.validate(async (errors) => {
-    if (errors) return
+  loginFormRef.value.validate(async (valid) => {
+    if (!valid) return
 
     loggingIn.value = true
     try {
@@ -329,16 +327,16 @@ const handleLogin = async () => {
           // 合并失败不影响登录流程
         }
 
-        message.success('登录成功')
+        ElMessage.success('登录成功')
         showLoginModal.value = false
         loginForm.username = ''
         loginForm.password = ''
         updateAuthState()
       } else {
-        message.error(data.message || '登录失败')
+        ElMessage.error(data.message || '登录失败')
       }
     } catch (error) {
-      message.error('登录失败：' + error.message)
+      ElMessage.error('登录失败：' + error.message)
     } finally {
       loggingIn.value = false
     }
@@ -348,15 +346,15 @@ const handleLogin = async () => {
 const handleRegister = async () => {
   if (!registerFormRef.value) return
 
-  registerFormRef.value.validate(async (errors) => {
-    if (errors) return
+  registerFormRef.value.validate(async (valid) => {
+    if (!valid) return
 
     registering.value = true
     try {
       const data = await AuthApi.register(registerForm.username, registerForm.password)
 
       if (data.success) {
-        message.success('注册成功，请登录')
+        ElMessage.success('注册成功，请登录')
 
         // 自动填充登录表单
         loginForm.username = registerForm.username
@@ -369,10 +367,10 @@ const handleRegister = async () => {
         registerForm.confirmPassword = ''
         showLoginModal.value = true
       } else {
-        message.error(data.message || '注册失败')
+        ElMessage.error(data.message || '注册失败')
       }
     } catch (error) {
-      message.error('注册失败：' + error.message)
+      ElMessage.error('注册失败：' + error.message)
     } finally {
       registering.value = false
     }
@@ -599,11 +597,28 @@ export default {
   margin-right: 8px;
   border-radius: 6px;
   transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
+  gap: 6px;
 
   &:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.2) !important;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
   }
+}
+
+.auth-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+
+  .switch-link {
+    justify-content: center;
+    margin: 0 auto;
+  }
+}
+
+.auth-submit {
+  width: 100%;
 }
 </style>

@@ -1,99 +1,92 @@
 <template>
   <div class="config-step">
-    <n-form
+    <el-form
       ref="formRef"
       :model="formData"
       :rules="rules"
-      label-placement="top"
+      label-position="top"
     >
-      <n-form-item label="目标数据库类型" path="driver">
-        <n-radio-group v-model:value="formData.driver" name="driver">
-          <n-space>
-            <n-radio value="mysql">MySQL</n-radio>
-            <n-radio value="postgres">PostgreSQL</n-radio>
-            <n-radio value="sqlite">SQLite</n-radio>
-          </n-space>
-        </n-radio-group>
-      </n-form-item>
+      <el-form-item label="目标数据库类型" prop="driver">
+        <el-radio-group v-model="formData.driver">
+          <el-radio label="mysql">MySQL</el-radio>
+          <el-radio label="postgres">PostgreSQL</el-radio>
+          <el-radio label="sqlite">SQLite</el-radio>
+        </el-radio-group>
+      </el-form-item>
 
       <template v-if="formData.driver === 'mysql'">
-        <n-grid :cols="2" :x-gap="12">
-          <n-gi>
-            <n-form-item label="主机地址" path="host">
-              <n-input v-model:value="formData.host" :maxlength="255" placeholder="localhost" />
-            </n-form-item>
-          </n-gi>
-          <n-gi>
-            <n-form-item label="端口" path="port">
-              <n-input-number v-model:value="formData.port" :min="1" :max="65535" placeholder="3306" style="width: 100%" />
-            </n-form-item>
-          </n-gi>
-        </n-grid>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="主机地址" prop="host">
+              <el-input v-model="formData.host" :maxlength="255" placeholder="localhost" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="端口" prop="port">
+              <el-input-number v-model="formData.port" :min="1" :max="65535" placeholder="3306" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <n-form-item label="用户名" path="user">
-          <n-input v-model:value="formData.user" :maxlength="64" placeholder="root" />
-        </n-form-item>
+        <el-form-item label="用户名" prop="user">
+          <el-input v-model="formData.user" :maxlength="64" placeholder="root" />
+        </el-form-item>
 
-        <n-form-item label="密码" path="password">
-          <n-input v-model:value="formData.password" :maxlength="128" type="password" placeholder="请输入密码" show-password-on="click" />
-        </n-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="formData.password" :maxlength="128" type="password" show-password placeholder="请输入密码" />
+        </el-form-item>
 
-        <n-form-item label="数据库名" path="database">
-          <n-input v-model:value="formData.database" :maxlength="64" placeholder="fuzhan" />
-        </n-form-item>
+        <el-form-item label="数据库名" prop="database">
+          <el-input v-model="formData.database" :maxlength="64" placeholder="fuzhan" />
+        </el-form-item>
       </template>
 
       <template v-else-if="formData.driver === 'postgres'">
-        <n-grid :cols="2" :x-gap="12">
-          <n-gi>
-            <n-form-item label="主机地址" path="host">
-              <n-input v-model:value="formData.host" :maxlength="255" placeholder="localhost" />
-            </n-form-item>
-          </n-gi>
-          <n-gi>
-            <n-form-item label="端口" path="port">
-              <n-input-number v-model:value="formData.port" :min="1" :max="65535" placeholder="5432" style="width: 100%" />
-            </n-form-item>
-          </n-gi>
-        </n-grid>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="主机地址" prop="host">
+              <el-input v-model="formData.host" :maxlength="255" placeholder="localhost" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="端口" prop="port">
+              <el-input-number v-model="formData.port" :min="1" :max="65535" placeholder="5432" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <n-form-item label="用户名" path="user">
-          <n-input v-model:value="formData.user" :maxlength="64" placeholder="postgres" />
-        </n-form-item>
+        <el-form-item label="用户名" prop="user">
+          <el-input v-model="formData.user" :maxlength="64" placeholder="postgres" />
+        </el-form-item>
 
-        <n-form-item label="密码" path="password">
-          <n-input v-model:value="formData.password" :maxlength="128" type="password" placeholder="请输入密码" show-password-on="click" />
-        </n-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="formData.password" :maxlength="128" type="password" show-password placeholder="请输入密码" />
+        </el-form-item>
 
-        <n-form-item label="数据库名" path="database">
-          <n-input v-model:value="formData.database" :maxlength="64" placeholder="fuzhan" />
-        </n-form-item>
+        <el-form-item label="数据库名" prop="database">
+          <el-input v-model="formData.database" :maxlength="64" placeholder="fuzhan" />
+        </el-form-item>
       </template>
 
       <template v-else>
-        <n-form-item label="数据库文件路径" path="dsn">
-          <n-input v-model:value="formData.dsn" :maxlength="1024" placeholder="fuzhan.db" />
-        </n-form-item>
+        <el-form-item label="数据库文件路径" prop="dsn">
+          <el-input v-model="formData.dsn" :maxlength="1024" placeholder="fuzhan.db" />
+        </el-form-item>
       </template>
-    </n-form>
+    </el-form>
 
     <div class="step-actions">
-      <n-button @click="$emit('cancel')">取消</n-button>
-      <n-button type="primary" @click="handleNext">下一步</n-button>
+      <el-button @click="$emit('cancel')">取消</el-button>
+      <el-button type="primary" @click="handleNext">下一步</el-button>
     </div>
   </div>
 </template>
 
 <script>
 import { ref, reactive, watch } from 'vue'
-import { NForm, NFormItem, NRadioGroup, NRadio, NSpace, NInput, NInputNumber, NGrid, NGi, NButton } from 'naive-ui'
 
 export default {
   name: 'ConfigStep',
-
-  components: {
-    NForm, NFormItem, NRadioGroup, NRadio, NSpace, NInput, NInputNumber, NGrid, NGi, NButton
-  },
 
   props: {
     databaseType: {

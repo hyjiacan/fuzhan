@@ -5,108 +5,108 @@
       <p class="description">管理您的个人信息和存储空间</p>
     </div>
 
-    <n-grid :cols="2" :x-gap="24" :y-gap="24" responsive="screen" :item-responsive="true">
+    <el-row :gutter="24">
       <!-- 用户信息卡片 -->
-      <n-gi :span="2" :md="1">
-        <n-card title="个人信息" class="info-card">
-          <n-descriptions label-placement="left" :column="1">
-            <n-descriptions-item label="用户名">
-              <n-badge :value="userInfo.role" type="success" :offset="[10, 0]">
+      <el-col :xs="24" :md="12">
+        <el-card class="info-card">
+          <template #header><span>个人信息</span></template>
+          <el-descriptions :column="1">
+            <el-descriptions-item label="用户名">
+              <el-badge :value="userInfo.role" type="success">
                 {{ userInfo.username }}
-              </n-badge>
-            </n-descriptions-item>
-            <n-descriptions-item label="用户ID">
+              </el-badge>
+            </el-descriptions-item>
+            <el-descriptions-item label="用户ID">
               {{ userInfo.uuid }}
-            </n-descriptions-item>
-            <n-descriptions-item label="注册时间">
+            </el-descriptions-item>
+            <el-descriptions-item label="注册时间">
               {{ formatDate(userInfo.createdAt) }}
-            </n-descriptions-item>
-          </n-descriptions>
-        </n-card>
-      </n-gi>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
 
       <!-- 存储空间卡片 -->
-      <n-gi :span="2" :md="1">
-        <n-card title="存储空间" class="quota-card">
-          <n-progress
+      <el-col :xs="24" :md="12">
+        <el-card class="quota-card">
+          <template #header><span>存储空间</span></template>
+          <el-progress
             type="line"
             :percentage="quotaPercentage"
-            :indicator-placement-inside="true"
-            :status="quotaStatus"
+            :stroke-width="20"
+            :status="quotaStatus === 'error' ? 'exception' : quotaStatus"
           >
             {{ NumberUtils.formatFileSize(quotaInfo.used) }} / {{ NumberUtils.formatFileSize(quotaInfo.quota) }}
-          </n-progress>
+          </el-progress>
           <template #footer>
             <div class="quota-hint">已存储 {{ fileCount }} 个文件</div>
           </template>
-        </n-card>
-      </n-gi>
-    </n-grid>
+        </el-card>
+      </el-col>
+    </el-row>
 
     <!-- 临时文件配额 -->
-    <n-card title="临时文件配额" class="quota-card">
-      <n-progress
+    <el-card class="quota-card">
+      <template #header><span>临时文件配额</span></template>
+      <el-progress
         type="line"
         :percentage="tempQuotaPercentage"
-        :indicator-placement-inside="true"
-        :status="tempQuotaStatus"
+        :stroke-width="20"
+        :status="tempQuotaStatus === 'error' ? 'exception' : tempQuotaStatus"
       >
         {{ NumberUtils.formatFileSize(tempQuotaInfo.used) }} / {{ NumberUtils.formatFileSize(tempQuotaInfo.limit) }}
-      </n-progress>
-    </n-card>
+      </el-progress>
+    </el-card>
 
     <!-- 修改密码 -->
-    <n-card title="修改密码" class="password-card">
-      <n-form ref="formRef" :model="passwordForm" :rules="passwordRules" label-placement="left" label-width="120">
-        <n-form-item label="当前密码" path="oldPassword">
-          <n-input
-            v-model:value="passwordForm.oldPassword"
+    <el-card class="password-card">
+      <template #header><span>修改密码</span></template>
+      <el-form ref="formRef" :model="passwordForm" :rules="passwordRules" label-width="120">
+        <el-form-item label="当前密码" prop="oldPassword">
+          <el-input
+            v-model="passwordForm.oldPassword"
             type="password"
-            show-password-on="click"
+            show-password
             placeholder="请输入当前密码"
             autocomplete="current-password"
           />
-        </n-form-item>
-        <n-form-item label="新密码" path="newPassword">
-          <n-input
-            v-model:value="passwordForm.newPassword"
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+            v-model="passwordForm.newPassword"
             type="password"
-            show-password-on="click"
+            show-password
             placeholder="请输入新密码"
             autocomplete="new-password"
           />
-        </n-form-item>
-        <n-form-item label="确认密码" path="confirmPassword">
-          <n-input
-            v-model:value="passwordForm.confirmPassword"
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input
+            v-model="passwordForm.confirmPassword"
             type="password"
-            show-password-on="click"
+            show-password
             placeholder="请再次输入新密码"
             autocomplete="new-password"
           />
-        </n-form-item>
-        <n-form-item>
-          <n-button type="primary" :loading="changingPassword" @click="handleChangePassword">
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="changingPassword" @click="handleChangePassword">
             确认修改
-          </n-button>
-        </n-form-item>
-      </n-form>
-    </n-card>
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  NCard, NGrid, NGi, NDescriptions, NDescriptionsItem, NProgress,
-  NForm, NFormItem, NInput, NButton, NBadge, useMessage
-} from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import { AuthApi, PrivateApi, TempApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 
 const router = useRouter()
-const message = useMessage()
 
 // State
 const userInfo = ref({
@@ -190,7 +190,7 @@ const loadUserInfo = async () => {
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
-    message.error('获取用户信息失败')
+    ElMessage.error('获取用户信息失败')
   }
 }
 
@@ -241,13 +241,13 @@ const handleChangePassword = async () => {
       passwordForm.value.newPassword
     )
     if (data.success) {
-      message.success('密码修改成功')
+      ElMessage.success('密码修改成功')
       passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
     } else {
-      message.error(data.message || '密码修改失败')
+      ElMessage.error(data.message || '密码修改失败')
     }
   } catch (error) {
-    message.error('密码修改失败')
+    ElMessage.error('密码修改失败')
     console.error(error)
   } finally {
     changingPassword.value = false
@@ -289,7 +289,7 @@ onMounted(() => {
     }
   }
 
-  .n-card {
+  .el-card {
     transition: transform @transition-smooth, box-shadow @transition-smooth;
 
     &:hover {
@@ -297,7 +297,7 @@ onMounted(() => {
       box-shadow: @card-hover-shadow;
     }
 
-    .n-card-header {
+    .el-card__header {
       font-weight: 600;
     }
   }
@@ -320,7 +320,7 @@ onMounted(() => {
     padding: 8px;
   }
 
-  :deep(.n-form .n-form-item .n-form-item-label) {
+  :deep(.el-form .el-form-item .el-form-item__label) {
     padding-bottom: 4px;
   }
 }

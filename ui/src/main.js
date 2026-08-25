@@ -1,13 +1,11 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router, { setSetupRedirect } from './router'
-import naive from './plugins/naive-ui'
 import { loadPreviewConfig } from '@/config/preview'
 import store from '@/store'
 import { SetupApi, SystemApi, AuthApi, NotificationApi } from '@/api'
 
 const app = createApp(App)
-app.use(naive)
 app.use(router)
 
 // 预加载公开配置和检查初始化状态

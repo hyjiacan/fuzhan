@@ -28,7 +28,7 @@ test.describe('文件上传功能', () => {
   })
 
   test('上传按钮可以打开上传弹框', async ({ page }) => {
-    const uploadButton = page.locator('button:has-text("上传")').first()
+    const uploadButton = page.getByRole('button', { name: '上传', exact: true }).first()
 
     const isVisible = await uploadButton.isVisible().catch(() => false)
 
@@ -37,18 +37,18 @@ test.describe('文件上传功能', () => {
       await page.waitForTimeout(500)
 
       // 验证上传弹框出现
-      const uploadDialog = page.locator('.upload-dialog, .n-modal').first()
+      const uploadDialog = page.locator('.upload-dialog, .el-dialog').first()
       await expect(uploadDialog).toBeVisible({ timeout: 5000 })
     } else {
       // 没有上传按钮，说明可能不在可上传目录
       // 验证页面基本正常
-      const hasContent = await page.locator('.n-data-table, .n-empty').isVisible().catch(() => false)
+      const hasContent = await page.locator('.el-table-v2, .el-empty').isVisible().catch(() => false)
       expect(hasContent).toBeTruthy()
     }
   })
 
   test('上传弹框包含必要元素', async ({ page }) => {
-    const uploadButton = page.locator('button:has-text("上传")').first()
+    const uploadButton = page.getByRole('button', { name: '上传', exact: true }).first()
     const isUploadVisible = await uploadButton.isVisible().catch(() => false)
 
     if (isUploadVisible) {
@@ -56,7 +56,7 @@ test.describe('文件上传功能', () => {
       await page.waitForTimeout(500)
 
       // 验证上传弹框存在
-      const uploadModal = page.locator('.upload-dialog, .n-modal')
+      const uploadModal = page.locator('.upload-dialog, .el-dialog')
       await expect(uploadModal.first()).toBeVisible({ timeout: 5000 })
     } else {
       expect(true).toBeTruthy()
@@ -64,7 +64,7 @@ test.describe('文件上传功能', () => {
   })
 
   test('拖拽上传区域显示正确的拖拽提示', async ({ page }) => {
-    const uploadButton = page.locator('button:has-text("上传")').first()
+    const uploadButton = page.getByRole('button', { name: '上传', exact: true }).first()
     const isUploadVisible = await uploadButton.isVisible().catch(() => false)
 
     if (isUploadVisible) {
@@ -80,7 +80,7 @@ test.describe('文件上传功能', () => {
   })
 
   test('上传弹框包含文件选择功能', async ({ page }) => {
-    const uploadButton = page.locator('button:has-text("上传")').first()
+    const uploadButton = page.getByRole('button', { name: '上传', exact: true }).first()
     const isUploadVisible = await uploadButton.isVisible().catch(() => false)
 
     if (isUploadVisible) {
@@ -98,7 +98,7 @@ test.describe('文件上传功能', () => {
   })
 
   test('选中文件后添加到上传队列', async ({ page }) => {
-    const uploadButton = page.locator('button:has-text("上传")').first()
+    const uploadButton = page.getByRole('button', { name: '上传', exact: true }).first()
     const isUploadVisible = await uploadButton.isVisible().catch(() => false)
 
     if (isUploadVisible) {

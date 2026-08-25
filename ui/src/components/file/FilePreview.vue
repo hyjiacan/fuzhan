@@ -2,17 +2,17 @@
   <div :style="{ minHeight: '400px', maxHeight: maximized ? 'none' : '600px', overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: maximized ? 1 : 'none' }">
     <!-- 分段导航 -->
     <div v-if="chunked && totalChunks > 1" class="chunk-nav">
-      <n-button-group size="small">
-        <n-button :disabled="currentChunk <= 0" @click="loadChunk(currentChunk - 1)">
-          <n-icon><ChevronLeftIcon /></n-icon> 上一页
-        </n-button>
-        <n-button disabled>
+      <el-button-group size="small">
+        <el-button :disabled="currentChunk <= 0" @click="loadChunk(currentChunk - 1)">
+          <el-icon><component :is="ChevronLeftIcon" /></el-icon> 上一页
+        </el-button>
+        <el-button disabled>
           第 {{ currentChunk + 1 }} / {{ totalChunks }} 段
-        </n-button>
-        <n-button :disabled="currentChunk >= totalChunks - 1" @click="loadChunk(currentChunk + 1)">
-          下一页 <n-icon><ChevronRightIcon /></n-icon>
-        </n-button>
-      </n-button-group>
+        </el-button>
+        <el-button :disabled="currentChunk >= totalChunks - 1" @click="loadChunk(currentChunk + 1)">
+          下一页 <el-icon><component :is="ChevronRightIcon" /></el-icon>
+        </el-button>
+      </el-button-group>
       <span class="chunk-info">
         位置: {{ formatOffset(startOffset) }} - {{ formatOffset(endOffset) }} / {{ formatSize(totalSize) }}
       </span>
@@ -20,7 +20,7 @@
 
     <!-- 加载状态 -->
     <div v-if="loading" style="display: flex; justify-content: center; align-items: center; height: 300px;">
-      <n-spin size="large" />
+      <el-icon class="is-loading" :size="24"><Loading /></el-icon>
       <span v-if="chunked" style="margin-left: 12px;">加载分段 {{ currentChunk + 1 }}...</span>
     </div>
 
@@ -31,9 +31,9 @@
 
     <!-- 文本文件预览 -->
     <div v-else-if="fileType === 'text'" :style="textContainerStyle">
-      <n-input
+      <el-input
         type="textarea"
-        v-model:value="textContent"
+        v-model="textContent"
         readonly
         :autosize="maximized ? undefined : { minRows: 20, maxRows: 30 }"
         :style="inputStyleComputed"
@@ -60,11 +60,11 @@
 
     <!-- 不支持预览的文件 -->
     <div v-else style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 300px;">
-      <n-icon size="64" color="#999">
-        <FileIcon />
-      </n-icon>
+      <el-icon :size="64" style="color: #999">
+        <component :is="FileIcon" />
+      </el-icon>
       <p style="font-size: 16px; color: #666; margin: 20px 0;">{{ errorMessage || '该文件类型不支持预览' }}</p>
-      <n-button type="primary" @click="downloadFile">下载文件</n-button>
+      <el-button type="primary" @click="downloadFile">下载文件</el-button>
     </div>
 
   </div>
@@ -72,7 +72,7 @@
 
 <script setup>
 import { ref, computed, watch, h } from 'vue'
-import { NInput, NIcon, NButton, NButtonGroup, NSpin } from 'naive-ui'
+import { Loading } from '@element-plus/icons-vue'
 import { FileApi } from '@/api'
 import { PathUtils } from '@/utils'
 import { marked } from 'marked'
@@ -288,23 +288,19 @@ watch(() => props.file, () => {
     }
   }
 }
-.preview-maximized .n-card-content {
+.preview-maximized .el-card__body {
   display: flex;
   flex-direction: column;
   min-height: 0;
 
-  .n-input {
+  .el-textarea {
     flex: 1;
     min-height: 0;
+    height: 100%;
 
-    .n-input__textarea {
+    .el-textarea__inner {
       height: 100% !important;
       min-height: 0;
-
-      textarea {
-        height: 100% !important;
-        min-height: 0;
-      }
     }
   }
 }

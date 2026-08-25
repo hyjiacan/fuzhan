@@ -1,29 +1,66 @@
 <template>
-  <div class="upload-task-table">
-    <n-spin :show="loading">
-      <n-data-table
-        :columns="columns"
-        :data="tasks"
-        :pagination="pagination"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        :max-height="400"
-      />
-    </n-spin>
+  <div class="upload-task-table" v-loading="loading">
+    <el-table
+      :data="tasks"
+      size="small"
+      stripe
+      max-height="400"
+    >
+      <el-table-column prop="fileName" label="文件名" width="200" show-overflow-tooltip />
+      <el-table-column prop="_type" label="上传类型" width="100">
+        <template #default="{ row }">
+          <el-tag :type="elTagType(typeMap[row._type]?.type || 'default')" size="small">{{ typeMap[row._type]?.text || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="progress" label="进度" width="200">
+        <template #default="{ row }">
+          <el-progress
+            v-if="getProgress(row) !== null"
+            :percentage="getProgress(row)"
+            :stroke-width="20"
+            :text-inside="true"
+            :status="row.status === 'completed' ? 'success' : undefined"
+          />
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="status" label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="elTagType(statusMap[row.status]?.type || 'default')" size="small">{{ statusMap[row.status]?.text || row.status }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="fileSize" label="文件大小" width="100">
+        <template #default="{ row }">{{ row.fileSize ? formatSize(row.fileSize) : '-' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="180">
+        <template #default="{ row }">
+          <el-button v-if="['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status)" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
+          <el-button v-if="['failed', 'cancelled'].includes(row.status)" size="small" type="primary" @click="handleRetry(row)">重试</el-button>
+          <el-button v-if="['completed', 'cancelled', 'failed', 'expired'].includes(row.status)" size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <el-pagination
+      v-model:current-page="pagination.page"
+      v-model:page-size="pagination.pageSize"
+      :page-sizes="pagination.pageSizes"
+      :total="tasks.length"
+      layout="total, sizes, prev, pager, next, jumper"
+      @current-change="loadData"
+      @size-change="loadData"
+    />
   </div>
 </template>
 
 <script setup>
-import { h, ref, onMounted, onUnmounted } from 'vue'
-import { NButton, NTag, NProgress, NSpace, useMessage } from 'naive-ui'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { UploadApi } from '../../api'
 
 const props = defineProps({
   type: { type: String, required: true }
 })
 
-const message = useMessage()
 const loading = ref(false)
 const tasks = ref([])
 const pagination = ref({ page: 1, pageSize: 50, showSizePicker: true, pageSizes: [20, 50, 100] })
@@ -45,56 +82,17 @@ const typeMap = {
   url: { type: 'warning', text: 'URL 上传' },
 }
 
-const columns = [
-  { title: '文件名', key: 'fileName', width: 200, ellipsis: { tooltip: true } },
-  {
-    title: '上传类型', key: '_type', width: 100,
-    render: (row) => {
-      const label = typeMap[row._type] || { type: 'default', text: '-' }
-      return h(NTag, { type: label.type, size: 'small' }, { default: () => label.text })
-    }
-  },
-  { title: '进度', key: 'progress', width: 200,
-    render: (row) => {
-      const total = row.fileSize || 0
-      const downloaded = row.downloadedBytes || row.uploadedBytes || 0
-      if (total > 0) {
-        return h(NProgress, {
-          type: 'line',
-          status: row.status === 'completed' ? 'success' : 'info',
-          percentage: Math.round(downloaded / total * 100),
-          indicatorPlacement: 'inside',
-          height: 20
-        })
-      }
-      return '-'
-    }
-  },
-  { title: '状态', key: 'status', width: 100,
-    render: (row) => {
-      const info = statusMap[row.status] || { type: 'default', text: row.status }
-      return h(NTag, { type: info.type, size: 'small' }, { default: () => info.text })
-    }
-  },
-  { title: '文件大小', key: 'fileSize', width: 100,
-    render: (row) => row.fileSize ? formatSize(row.fileSize) : '-'
-  },
-  { title: '操作', key: 'actions', width: 180,
-    render: (row) => {
-      const btns = []
-      if (['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status)) {
-        btns.push(h(NButton, { size: 'tiny', type: 'warning', onClick: () => handleCancel(row) }, { default: () => '取消' }))
-      }
-      if (['failed', 'cancelled'].includes(row.status)) {
-        btns.push(h(NButton, { size: 'tiny', type: 'primary', onClick: () => handleRetry(row) }, { default: () => '重试' }))
-      }
-      if (['completed', 'cancelled', 'failed', 'expired'].includes(row.status)) {
-        btns.push(h(NButton, { size: 'tiny', type: 'error', onClick: () => handleDelete(row) }, { default: () => '删除' }))
-      }
-      return h(NSpace, {}, { default: () => btns })
-    }
-  }
-]
+const tagTypeMap = { info: 'info', warning: 'warning', success: 'success', error: 'danger', default: '' }
+function elTagType(type) {
+  return tagTypeMap[type] ?? ''
+}
+
+function getProgress(row) {
+  const total = row.fileSize || 0
+  const downloaded = row.downloadedBytes || row.uploadedBytes || 0
+  if (total > 0) return Math.round(downloaded / total * 100)
+  return null
+}
 
 function formatSize(bytes) {
   if (!bytes) return '0 B'
@@ -117,30 +115,30 @@ async function handleCancel(row) {
     } else {
       await UploadApi.cancelURLTask(row.id)
     }
-    message.success('已取消')
+    ElMessage.success('已取消')
     await loadData()
   } catch (e) {
-    message.error('取消失败')
+    ElMessage.error('取消失败')
   }
 }
 
 async function handleRetry(row) {
   try {
     await UploadApi.retryURLTask(row.id)
-    message.success('已重试')
+    ElMessage.success('已重试')
     await loadData()
   } catch (e) {
-    message.error('重试失败')
+    ElMessage.error('重试失败')
   }
 }
 
 async function handleDelete(row) {
   try {
     await UploadApi.deleteURLTask(row.id)
-    message.success('已删除')
+    ElMessage.success('已删除')
     await loadData()
   } catch (e) {
-    message.error('删除失败')
+    ElMessage.error('删除失败')
   }
 }
 
@@ -155,7 +153,7 @@ async function loadData() {
     const urlTasks = (urlRes?.data?.tasks || []).map(t => ({ ...t, _type: 'url' }))
     tasks.value = [...sessions, ...urlTasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
   } catch (e) {
-    message.error('加载失败')
+    ElMessage.error('加载失败')
   } finally {
     loading.value = false
   }

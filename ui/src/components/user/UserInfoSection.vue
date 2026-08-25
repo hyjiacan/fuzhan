@@ -5,33 +5,29 @@
       <p class="description">查看您的账号信息</p>
     </div>
 
-    <n-card class="info-card">
-      <n-descriptions label-placement="left" :column="1">
-        <n-descriptions-item label="用户名">
-          <n-badge :value="userInfo.role" type="success" :offset="[10, 0]">
+    <el-card class="info-card">
+      <el-descriptions :column="1">
+        <el-descriptions-item label="用户名">
+          <el-badge :value="userInfo.role" type="success">
             {{ userInfo.username }}
-          </n-badge>
-        </n-descriptions-item>
-        <n-descriptions-item label="用户ID">
+          </el-badge>
+        </el-descriptions-item>
+        <el-descriptions-item label="用户ID">
           {{ userInfo.uuid }}
-        </n-descriptions-item>
-        <n-descriptions-item label="注册时间">
+        </el-descriptions-item>
+        <el-descriptions-item label="注册时间">
           {{ formatDate(userInfo.createdAt) }}
-        </n-descriptions-item>
-      </n-descriptions>
-    </n-card>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import {
-  NCard, NDescriptions, NDescriptionsItem, NBadge, useMessage
-} from 'naive-ui'
+import { ElMessage } from 'element-plus'
 import { AuthApi } from '@/api'
 import { TimeUtils } from '@/utils'
-
-const message = useMessage()
 
 const userInfo = ref({
   username: '',
@@ -51,7 +47,7 @@ const loadUserInfo = async () => {
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
-    message.error('获取用户信息失败')
+    ElMessage.error('获取用户信息失败')
   }
 }
 
