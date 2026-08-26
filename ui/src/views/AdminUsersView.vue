@@ -22,7 +22,7 @@
           :data="filteredUsers"
           :width="tableWidth"
           :height="tableHeight"
-          :estimated-row-height="40"
+          :row-height="32"
           row-key="uuid"
         />
       </div>
@@ -121,7 +121,11 @@ const columns = [
   {
     title: '用户名',
     key: 'username',
-    width: 150
+    minWidth: 150,
+    flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.username || '' }, [
+      h('span', { class: 'file-link' }, row.username || '-')
+    ])
   },
   {
     title: '状态',

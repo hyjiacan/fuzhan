@@ -22,7 +22,7 @@
             :width="tableWidth"
             :height="tableHeight"
             row-key="fileName"
-          />
+          :row-height="32" />
         </div>
         <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
           <el-pagination
@@ -107,7 +107,8 @@ const downloadColumns = [
   {
     title: '文件名',
     key: 'fileName',
-    minWidth: 300,
+    minWidth: 220,
+    flexGrow: 1,
     cellRenderer: ({ rowData: row }) => {
       const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)

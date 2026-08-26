@@ -53,7 +53,7 @@
           :width="tableWidth"
           :height="tableHeight"
           row-key="_key"
-        />
+        :row-height="32" />
       </div>
       <div v-if="tableData.length > pageSize" class="table-pagination">
         <el-pagination
@@ -288,7 +288,8 @@ const columns = computed(() => [
   {
     title: '文件名',
     key: 'filename',
-    minWidth: 300,
+    minWidth: 220,
+    flexGrow: 1,
     cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') {
         return h('div', { class: 'file-name-cell', style: 'cursor: pointer;' }, [

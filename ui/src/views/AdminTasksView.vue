@@ -36,13 +36,13 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="开始时间" min-width="180">
+          <el-table-column label="开始时间" width="180">
             <template #default="{ row }">{{ row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-' }}</template>
           </el-table-column>
           <el-table-column label="已运行" width="100">
             <template #default="{ row }">{{ row.startedAt ? formatDuration(row.startedAt, new Date().toISOString()) : '-' }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" min-width="200" prop="errorMessage" show-overflow-tooltip>
+          <el-table-column label="错误信息" width="240" prop="errorMessage" show-overflow-tooltip>
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
               <span v-else>-</span>
@@ -67,7 +67,7 @@
               clearable
               placeholder="全部类型"
               size="small"
-              @change="loadHistory"
+              @change="onFilterTypeChange"
             >
               <el-option
                 v-for="opt in typeOptions"
@@ -103,16 +103,16 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="开始时间" min-width="180">
+          <el-table-column label="开始时间" width="180">
             <template #default="{ row }">{{ row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-' }}</template>
           </el-table-column>
-          <el-table-column label="完成时间" min-width="180">
+          <el-table-column label="完成时间" width="180">
             <template #default="{ row }">{{ row.endedAt ? TimeUtils.formatDateTime(row.endedAt) : '-' }}</template>
           </el-table-column>
           <el-table-column label="耗时" width="90">
             <template #default="{ row }">{{ formatDuration(row.startedAt, row.endedAt) }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" min-width="200" prop="errorMessage" show-overflow-tooltip>
+          <el-table-column label="错误信息" width="240" prop="errorMessage" show-overflow-tooltip>
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
               <span v-else>-</span>
@@ -246,6 +246,12 @@ const loadHistory = async () => {
 
 const onPageChange = (page) => {
   currentPage.value = page
+  loadHistory()
+}
+
+// 切换类型过滤时回到第一页，避免停留在无数据的旧页码
+const onFilterTypeChange = () => {
+  currentPage.value = 1
   loadHistory()
 }
 

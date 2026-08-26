@@ -10,6 +10,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 
   &:hover {
     .icon-filetype {
@@ -46,10 +48,14 @@
   }
 
   .file-path-content {
+    display: inline-flex;
+    align-items: center;
     gap: 0;
     text-overflow: ellipsis;
     overflow: hidden;
+    white-space: nowrap;
     flex: 1 1 auto;
+    min-width: 0;
 
     .path-segment {
       color: @info-color;
@@ -78,6 +84,14 @@
         text-decoration: line-through;
       }
     }
+  }
+
+  > .file-link {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

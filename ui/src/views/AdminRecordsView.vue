@@ -51,7 +51,7 @@
             :data="uploadRecords"
             :width="uploadWidth"
             :height="uploadHeight"
-            :estimated-row-height="34"
+            :row-height="32"
             row-key="id"
           />
         </div>
@@ -73,7 +73,7 @@
             :data="downloadRecords"
             :width="downloadWidth"
             :height="downloadHeight"
-            :estimated-row-height="34"
+            :row-height="32"
             row-key="id"
           />
         </div>
@@ -95,7 +95,7 @@
             :data="searchRecords"
             :width="searchWidth"
             :height="searchHeight"
-            :estimated-row-height="34"
+            :row-height="32"
             row-key="id"
           />
         </div>
@@ -185,31 +185,36 @@ const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
 
 const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
+// 长文本列渲染：超出列宽时省略号截断，并保留完整内容 title 提示
+const formatTypeText = (text) => h('div', { class: 'file-name-cell', title: text || '' }, [
+  h('span', { class: 'file-link' }, text || '-')
+])
+
 const uploadColumns = [
-  { title: '文件路径', key: 'fullPath', width: 400 },
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.fullPath) },
   { title: '大小', key: 'fileSize', width: 100,
     cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
-  { title: 'IP地址', key: 'clientIP', width: 140 },
+  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '上传时间', key: 'uploadTime', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }
 ]
 
 const downloadColumns = [
-  { title: '文件路径', key: 'fullPath', width: 400 },
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.fullPath) },
   { title: '大小', key: 'fileSize', width: 100,
     cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
-  { title: 'IP地址', key: 'clientIP', width: 140 },
+  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '下载时间', key: 'uploadTime', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }
 ]
 
 const searchColumns = [
-  { title: '搜索关键词', key: 'searchQuery', width: 300 },
-  { title: 'IP地址', key: 'clientIP', width: 140 },
+  { title: '搜索关键词', key: 'searchQuery', minWidth: 200, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.searchQuery) },
+  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '搜索时间', key: 'uploadTime', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
   }

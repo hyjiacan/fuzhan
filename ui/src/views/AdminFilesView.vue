@@ -54,7 +54,7 @@
           :data="displayList"
           :width="tableWidth"
           :height="tableHeight"
-          :estimated-row-height="34"
+          :row-height="32"
           row-key="path"
           @row-dblclick="handleDblClick"
         />
@@ -288,7 +288,8 @@ const columns = [
   {
     title: '文件名',
     key: 'name',
-    minWidth: 300,
+    minWidth: 240,
+    flexGrow: 1,
     cellRenderer: ({ rowData: row }) => {
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
       // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
@@ -843,6 +844,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 
   &:hover {
     .icon-filetype {
@@ -859,10 +862,26 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
 
     .icon-filetype {
       color: #888;
     }
+  }
+
+  .file-path-content {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .file-link {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

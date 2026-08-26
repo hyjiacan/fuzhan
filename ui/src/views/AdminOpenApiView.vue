@@ -83,7 +83,7 @@
           :data="apiKeys"
           :width="tableWidth"
           :height="tableHeight"
-          :estimated-row-height="40"
+          :row-height="32"
           row-key="id"
         />
       </div>
@@ -257,8 +257,11 @@ const updateTableSize = () => {
 
 // Columns
 const columns = computed(() => [
-  { title: '名称', key: 'name', width: 180 },
-  { title: 'Key ID', key: 'keyId', width: 140 },
+  { title: '名称', key: 'name', minWidth: 180, flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.name || '' }, [
+      h('span', { class: 'file-link' }, row.name || '-')
+    ]) },
+  { title: 'Key ID', key: 'keyId', dataKey: 'keyId', width: 140 },
   {
     title: '权限', key: 'scopes', width: 160,
     cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },

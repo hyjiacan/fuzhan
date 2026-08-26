@@ -68,7 +68,7 @@
               :data="zombieSessions"
               :width="zombieTableWidth"
               :height="zombieTableHeight"
-              :estimated-row-height="34"
+              :row-height="32"
               row-key="id"
             />
           </div>
@@ -176,11 +176,11 @@
               :data="urlTasks"
               :width="urlTableWidth"
               :height="urlTableHeight"
-              :estimated-row-height="34"
+              :row-height="32"
               row-key="id"
             />
           </div>
-          <div class="pagination-wrap" v-if="urlTotal > pageSize">
+          <div class="pagination-wrap" v-if="urlTotal > urlPageSize">
             <el-pagination
               v-model:current-page="urlPage"
               v-model:page-size="urlPageSize"
@@ -324,7 +324,11 @@ const zombieColumns = [
   {
     title: '文件名',
     key: 'fileName',
-    width: 200
+    minWidth: 160,
+    flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.fileName || '' }, [
+      h('span', { class: 'file-link' }, row.fileName || '-')
+    ])
   },
   {
     title: '状态',
@@ -361,13 +365,13 @@ const zombieColumns = [
     title: '创建时间',
     key: 'createdAt',
     width: 180,
-    cellRenderer: ({ rowData: row }) => row.createdAt || '-'
+    cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
   },
   {
     title: '过期时间',
     key: 'expiredAt',
     width: 180,
-    cellRenderer: ({ rowData: row }) => row.expiredAt || '-'
+    cellRenderer: ({ rowData: row }) => row.expiredAt ? TimeUtils.formatDateTime(row.expiredAt) : '-'
   },
   {
     title: '操作',
@@ -527,14 +531,21 @@ const urlColumns = [
   {
     title: '文件名',
     key: 'fileName',
-    width: 200
+    minWidth: 160,
+    flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.fileName || '' }, [
+      h('span', { class: 'file-link' }, row.fileName || '-')
+    ])
   },
   {
     title: 'URL',
     key: 'url',
-    width: 250,
+    width: 200,
+    flexShrink: 1,
     cellRenderer: ({ rowData: row }) => {
-      return h('span', { style: { color: 'rgba(0,0,0,0.6)', fontSize: '12px' } }, row.url)
+      return h('div', { class: 'file-name-cell', title: row.url }, [
+        h('span', { class: 'file-link', style: 'color: rgba(0,0,0,0.6); font-size: 12px;' }, row.url || '-')
+      ])
     }
   },
   {

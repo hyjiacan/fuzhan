@@ -28,7 +28,9 @@
             <el-table-column label="大小" width="100">
               <template #default="{ row }">{{ formatSizeDup(row.fileSize) }}</template>
             </el-table-column>
-            <el-table-column label="修改时间" prop="modTime" width="170" />
+            <el-table-column label="修改时间" width="170">
+              <template #default="{ row }">{{ row.modTime ? TimeUtils.formatDateTime(row.modTime) : '-' }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="80">
               <template #default="{ row }">
                 <el-button size="small" type="primary" link @click="handleKeepDuplicate(row)">保留</el-button>
@@ -49,7 +51,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { IndexApi } from '@/api'
-import { NumberUtils } from '@/utils'
+import { NumberUtils, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 
 const duplicateGroups = ref([])

@@ -513,7 +513,6 @@
       v-model:show="showMigrationWizard"
       :initial-type="settings.database.driver"
       :initial-config="settings.database"
-      @migrated="handleMigrated"
     />
   </div>
 </template>

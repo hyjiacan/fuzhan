@@ -16,7 +16,7 @@
       <el-card class="recent-card">
         <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
-            row-key="id" />
+            row-key="id" :row-height="32" />
         </div>
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
@@ -31,7 +31,7 @@
       <el-card class="recent-card">
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
-            row-key="id" />
+            row-key="id" :row-height="32" />
         </div>
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
@@ -94,6 +94,14 @@ const makeTableResize = () => {
 const uploadSize = makeTableResize()
 const downloadSize = makeTableResize()
 
+// 将工厂返回的嵌套对象扁平化，供模板直接引用（el-table-v2 需数值 width/height）
+const uploadWrapRef = uploadSize.wrapRef
+const uploadWidth = uploadSize.width
+const uploadHeight = uploadSize.height
+const downloadWrapRef = downloadSize.wrapRef
+const downloadWidth = downloadSize.width
+const downloadHeight = downloadSize.height
+
 // 格式化
 const formatFileSize = NumberUtils.formatFileSize
 
@@ -127,7 +135,8 @@ const columns = [
   {
     title: '文件名',
     key: 'fileName',
-    minWidth: 300,
+    minWidth: 220,
+    flexGrow: 1,
     cellRenderer: ({ rowData: row }) => {
       const fullPath = row.fullPath || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)

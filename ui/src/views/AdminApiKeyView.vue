@@ -51,7 +51,7 @@
           :width="tableWidth"
           :height="tableHeight"
           row-key="id"
-        />
+        :row-height="32" />
         <div v-if="loading" class="table-loading-mask">
           <el-icon class="is-loading" :size="22"><Loading /></el-icon>
         </div>
@@ -224,7 +224,10 @@ const updateTableSize = () => {
 // Columns (el-table-v2)
 const columns = [
   { key: 'id', dataKey: 'id', title: 'ID', width: 60 },
-  { key: 'name', dataKey: 'name', title: '名称', width: 180 },
+  { key: 'name', dataKey: 'name', title: '名称', minWidth: 180, flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.name || '' }, [
+      h('span', { class: 'file-link' }, row.name || '-')
+    ]) },
   { key: 'keyId', dataKey: 'keyId', title: 'Key ID', width: 140 },
   {
     key: 'scopes', title: '权限', width: 160,
