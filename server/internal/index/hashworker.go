@@ -258,20 +258,23 @@ func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTo
 
 // computeAndSave 计算哈希并保存，返回错误表示失败
 func (w *HashWorker) computeAndSave(tableName string, id uint, fullPath string) error {
-    h, err := xxh3pkg.ComputeFileHash(fullPath)
-    if err != nil {
-        errMsg := categorizeError(fullPath, err)
-        w.markFailed(tableName, id, errMsg, 0)
-        return err
-    }
+	h, err := xxh3pkg.ComputeFileHash(fullPath)
+	if err != nil {
+		errMsg := categorizeError(fullPath, err)
+		w.markFailed(tableName, id, errMsg, 0)
+		return err
+	}
 
-    // 成功
-    result := w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
-        "xxh3_hash":   h,
-        "hash_status": "done",
-        "hash_error":  "",
-        "hash_retries": 0,
-    })
+	// 成功：加写锁后更新哈希状态
+	release := lockWrite()
+	defer release()
+	// 成功
+	result := w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
+		"xxh3_hash":   h,
+		"hash_status": "done",
+		"hash_error":  "",
+		"hash_retries": 0,
+	})
     if result.Error != nil {
         utils.Warn("更新哈希记录失败",
             utils.Int("id", int(id)),
@@ -284,11 +287,13 @@ func (w *HashWorker) computeAndSave(tableName string, id uint, fullPath string) 
 
 // markFailed 标记记录为失败
 func (w *HashWorker) markFailed(tableName string, id uint, errMsg string, retries int) {
-    w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
-        "hash_status":  "failed",
-        "hash_error":   errMsg,
-        "hash_retries": retries + 1,
-    })
+	release := lockWrite()
+	defer release()
+	w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
+		"hash_status":  "failed",
+		"hash_error":   errMsg,
+		"hash_retries": retries + 1,
+	})
 }
 
 // incStat 递增失败统计

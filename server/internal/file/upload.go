@@ -38,7 +38,7 @@ type UploadSessionHandler struct {
 	service     *services.UploadSessionService
 	db          *gorm.DB
 	urlTaskRepo *repositories.URLDownloadTaskRepository
-	recordRepo  *repositories.RecordRepository
+	recordRepo  repositories.AuditStore
 	indexSvc    *index.Service
 	taskSvc     *services.TaskService
 	chunkSize   int64
@@ -84,7 +84,7 @@ func createSSRFProtectedHTTPClient(timeout time.Duration, urlCfg utils.URLUpload
 }
 
 // NewUploadSessionHandler 创建上传会话处理器实例
-func NewUploadSessionHandler(svc *services.UploadSessionService, db *gorm.DB, chunkSize int64, recordRepo *repositories.RecordRepository, indexSvc *index.Service, taskSvc *services.TaskService) *UploadSessionHandler {
+func NewUploadSessionHandler(svc *services.UploadSessionService, db *gorm.DB, chunkSize int64, recordRepo repositories.AuditStore, indexSvc *index.Service, taskSvc *services.TaskService) *UploadSessionHandler {
     return &UploadSessionHandler{
         service:     svc,
         db:          db,

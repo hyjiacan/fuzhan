@@ -24,16 +24,19 @@ type DatabaseConfig struct {
 
 // PoolConfig 数据库连接池配置
 type PoolConfig struct {
-    MaxIdleConns    int `yaml:"max_idle_conns"`    // 最大空闲连接数，默认 5
-    MaxOpenConns    int `yaml:"max_open_conns"`    // 最大打开连接数，默认 25
+    MaxIdleConns    int `yaml:"max_idle_conns"`    // 最大空闲连接数，默认 2
+    MaxOpenConns    int `yaml:"max_open_conns"`    // 最大打开连接数，默认 8
     ConnMaxLifetime int `yaml:"conn_max_lifetime"` // 连接最大生存时间（秒），默认 3600
 }
 
 // DefaultPoolConfig 返回默认连接池配置
+// 注意：SQLite 是单写者数据库，过大的连接池并不能提升写并发，
+// 反而会放大写锁争抢、并在等锁时占满连接池。
+// 因此对 SQLite 应使用小型连接池。
 func DefaultPoolConfig() PoolConfig {
     return PoolConfig{
-        MaxIdleConns:    5,
-        MaxOpenConns:    25,
+        MaxIdleConns:    2,
+        MaxOpenConns:    8,
         ConnMaxLifetime: 3600, // 1小时
     }
 }
@@ -109,10 +112,10 @@ func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
     // 应用连接池配置，使用默认值（0值会使用默认值）
     pool := cfg.Pool
     if pool.MaxIdleConns <= 0 {
-        pool.MaxIdleConns = 5
+        pool.MaxIdleConns = 2
     }
     if pool.MaxOpenConns <= 0 {
-        pool.MaxOpenConns = 25
+        pool.MaxOpenConns = 8
     }
     if pool.ConnMaxLifetime <= 0 {
         pool.ConnMaxLifetime = 3600
@@ -131,10 +134,12 @@ func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
 
 // appendSQLitePragmas 在 SQLite DSN 上追加连接级 pragma。
 // busy_timeout 接受写锁等待时间（毫秒），避免并发写时立即返回 SQLITE_BUSY；
+// 值不宜过大：等待期间会占用连接池连接和 goroutine，过大会把数据库锁竞争
+// 放大成连接池耗尽。配合小型连接池 + 后台写串行化，2 秒已足够消化单条写锁碰撞。
 // journal_mode=WAL 提升读写并发能力。
 func appendSQLitePragmas(dsn string) string {
     const (
-        busyTimeout    = "busy_timeout(15000)"
+        busyTimeout    = "busy_timeout(2000)"
         journalModeWAL = "journal_mode(WAL)"
     )
 

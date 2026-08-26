@@ -65,7 +65,7 @@ type UploadSessionService struct {
     db          *gorm.DB
     sessionRepo *repositories.SessionRepository
     chunkRepo   *repositories.ChunkRepository
-    recordRepo  *repositories.RecordRepository
+    recordRepo  repositories.AuditStore
     indexSvc    *index.Service
     chunkSize   int64
     mu          sync.Mutex

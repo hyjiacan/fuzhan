@@ -26,11 +26,11 @@ func isValidAction(action string) bool {
 
 // RecentHandler 最近上传处理器
 type RecentHandler struct {
-    recordRepo *repositories.RecordRepository
+    recordRepo repositories.AuditStore
 }
 
 // NewRecentHandler 创建最近上传处理器实例
-func NewRecentHandler(recordRepo *repositories.RecordRepository) *RecentHandler {
+func NewRecentHandler(recordRepo repositories.AuditStore) *RecentHandler {
     return &RecentHandler{recordRepo: recordRepo}
 }
 

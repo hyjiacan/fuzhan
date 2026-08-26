@@ -100,12 +100,12 @@ type HotDownloadResult struct {
 
 // MonitorService 监控服务
 type MonitorService struct {
-    recordRepo *repositories.RecordRepository
+    recordRepo repositories.AuditStore
     db         *gorm.DB
 }
 
 // NewMonitorService 创建监控服务
-func NewMonitorService(recordRepo *repositories.RecordRepository, db *gorm.DB) *MonitorService {
+func NewMonitorService(recordRepo repositories.AuditStore, db *gorm.DB) *MonitorService {
     return &MonitorService{
         recordRepo: recordRepo,
         db:         db,

@@ -326,7 +326,9 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
         if len(batch) == 0 {
             return nil
         }
-        // 写入 file_records_public
+        // 写入 file_records_public（批量写加写锁，避免与 HashWorker 抢占写锁）
+        release := lockWrite()
+        defer release()
         if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
             return err
         }
@@ -448,16 +450,19 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
             idsToDelete = append(idsToDelete, id)
         }
         now := time.Now()
+        release := lockWrite()
         if err := s.db.Model(&models.FileRecordPublic{}).
             Where("id IN ?", idsToDelete).
             Updates(map[string]interface{}{
                 "status":        models.FileStatusDeleted,
                 "updated_at":    now,
             }).Error; err != nil {
+            release()
             utils.Error("标记已删除文件失败",
                 utils.Int("count", deleted),
                 utils.Err(err))
         } else {
+            release()
             utils.Info("已标记文件为已删除",
                 utils.Int("count", deleted),
                 utils.String("root_name", rootName))
@@ -545,7 +550,10 @@ func (s *Scanner) runTempScan(ctx context.Context) {
         progress.SetScanned(int64(i + 1))
 
         if len(batch) >= s.batchSize {
-            if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
+            release := lockWrite()
+            err := s.db.CreateInBatches(batch, s.batchSize).Error
+            release()
+            if err != nil {
                 utils.Error("批量写入 file_records_temp 失败", utils.Err(err))
             }
             batch = batch[:0]
@@ -553,7 +561,10 @@ func (s *Scanner) runTempScan(ctx context.Context) {
     }
 
     if len(batch) > 0 {
-        if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
+        release := lockWrite()
+        err := s.db.CreateInBatches(batch, s.batchSize).Error
+        release()
+        if err != nil {
             utils.Error("批量写入 file_records_temp 失败(尾批)", utils.Err(err))
         }
     }
@@ -697,7 +708,10 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
             }
 
             if len(batch) >= s.batchSize {
-                if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
+                release := lockWrite()
+                err := s.db.CreateInBatches(batch, s.batchSize).Error
+                release()
+                if err != nil {
                     utils.Error("批量写入 file_records_private 失败", utils.Err(err))
                 }
                 batch = batch[:0]
@@ -706,7 +720,10 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
     }
 
     if len(batch) > 0 {
-        if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
+        release := lockWrite()
+        err := s.db.CreateInBatches(batch, s.batchSize).Error
+        release()
+        if err != nil {
             utils.Error("批量写入 file_records_private 失败(尾批)", utils.Err(err))
         }
     }

@@ -11,7 +11,7 @@ import (
 type ServiceDependencies struct {
     DB                *gorm.DB
     IndexService      *index.Service
-    RecordRepo        *repositories.RecordRepository
+    RecordRepo        repositories.AuditStore
     FileService       *FileService
     SearchService     *SearchService
     AuthService       *AuthService

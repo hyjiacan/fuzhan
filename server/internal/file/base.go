@@ -10,11 +10,11 @@ import (
 type BaseHandler struct {
     Config     *appconfig.Config
     IndexSvc   *index.Service
-    RecordRepo *repositories.RecordRepository
+    RecordRepo repositories.AuditStore
 }
 
 // NewBaseHandler 创建基础处理器实例
-func NewBaseHandler(cfg *appconfig.Config, indexSvc *index.Service, recordRepo *repositories.RecordRepository) *BaseHandler {
+func NewBaseHandler(cfg *appconfig.Config, indexSvc *index.Service, recordRepo repositories.AuditStore) *BaseHandler {
     return &BaseHandler{
         Config:     cfg,
         IndexSvc:   indexSvc,
