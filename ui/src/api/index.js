@@ -341,6 +341,14 @@ export const DependencyApi = {
 export const SearchApi = {
   search(query) {
     return request.get(`/search/${encodeURIComponent(query)}`)
+  },
+  // 文件名检索：自动补全（搜索框实时联想）
+  autocomplete(query, limit = 10) {
+    return request.get('/search-suggest', { params: { q: query, limit } })
+  },
+  // 文件名检索：拼写纠错（输入错误时给推荐）
+  spellcheck(query, limit = 5) {
+    return request.get('/search-spellcheck', { params: { q: query, limit } })
   }
 }
 

@@ -188,6 +188,9 @@ type URLUploadConfig struct {
 
 // Config 主配置结构体
 type Config struct {
+    // WorkDir 工作目录。映射到顶层 yaml 键 work_dir。
+    // 为空时默认取二进制文件（fuzhan.exe）所在目录；可用 ${work_dir} 占位符被其它路径字段引用。
+    WorkDir           string               `yaml:"work_dir"`
     App               APPConfig            `yaml:"app"`
     Account           AccountConfig        `yaml:"account"`
     Server            ServerConfig         `yaml:"server"`
@@ -395,4 +398,22 @@ func RUnlockConfig() { configMu.RUnlock() }
 // GetBackupsDir 获取备份目录
 func GetBackupsDir() string {
     return filepath.Join(WorkDir, "backups")
+}
+
+// GetDataDir 获取数据目录（工作目录下的 data 子目录）。
+// 默认 SQLite 数据文件与搜索索引均存放于此。
+func GetDataDir() string {
+    return filepath.Join(WorkDir, "data")
+}
+
+// ExpandWorkDirPath 将路径中的 ${work_dir} 占位符展开为工作目录绝对路径。
+// 未包含占位符时原样返回，用于兼容旧配置中的相对路径。
+func ExpandWorkDirPath(p string) string {
+    if strings.Contains(p, "${work_dir}") {
+        p = strings.ReplaceAll(p, "${work_dir}", WorkDir)
+        if abs, err := filepath.Abs(p); err == nil {
+            return abs
+        }
+    }
+    return p
 }

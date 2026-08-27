@@ -40,9 +40,14 @@ func (ch *CLIHandlers) CliList(c *gin.Context) {
 	CliList(c.Writer, c.Request, hashMap)
 }
 
-// InstallScript 生成 shell 脚本
+// InstallScript 生成安装脚本（将 fuzhan 安装到用户 PATH）
 func (ch *CLIHandlers) InstallScript(c *gin.Context) {
 	HandleInstallScript(c.Writer, c.Request)
+}
+
+// FuzhanScript 生成独立的 fuzhan 命令行工具脚本
+func (ch *CLIHandlers) FuzhanScript(c *gin.Context) {
+	HandleFuzhanScript(c.Writer, c.Request)
 }
 
 // loadHashMap 从数据库加载所有文件的 xxh3 哈希映射

@@ -34,6 +34,7 @@ import (
     "fuzhan/internal/monitor"
     "fuzhan/internal/openapi"
     "fuzhan/internal/cli"
+    "fuzhan/internal/search"
     "fuzhan/internal/models"
     "fuzhan/pkg/jwt"
     "fuzhan/internal/services"
@@ -333,6 +334,23 @@ func main() {
     taskHandler := admin.NewTaskHandler(taskService)
     // 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
     indexService.SetTaskService(taskService)
+
+    // ===== 文件名检索索引（自动补全 / 拼写纠错）=====
+    // 数据存放于 <data>/search_index，用于 HomeView 搜索框的下拉联想与纠错。
+    idxSearch, err := search.OpenIndex(filepath.Join(appconfig.GetDataDir(), "search_index"))
+    if err != nil {
+        utils.Warn("文件名检索索引初始化失败，搜索联想/纠错功能不可用", utils.Err(err))
+    } else {
+        utils.Info("文件名检索索引已打开", utils.String("dir", filepath.Join(appconfig.GetDataDir(), "search_index")))
+        if rerr := idxSearch.RebuildFromDB(db); rerr != nil {
+            utils.Warn("文件名检索索引全量构建失败，将依赖后续增量同步", utils.Err(rerr))
+        } else {
+            utils.Info("文件名检索索引全量构建完成")
+        }
+        // 文件增/删/改后增量同步检索索引
+        indexService.SetFileIndexNotifier(idxSearch)
+    }
+    suggestHandler := search.NewHandler(idxSearch)
 
     // 临时文件处理器 (基于IP，无需认证)
     tempSvcConfig := services.TempServiceConfig{
@@ -769,6 +787,10 @@ func main() {
 
                 // 搜索路由（无需认证）
                 api.GET("/search/*query", searchHandlers.SearchFiles)
+
+                // 文件名检索：自动补全（搜索框实时联想）与拼写纠错
+                api.GET("/search-suggest", suggestHandler.Autocomplete)
+                api.GET("/search-spellcheck", suggestHandler.SpellCheck)
             }
 
             // 需要认证的路由组
@@ -854,6 +876,7 @@ func main() {
                 cli.GET("/search/*query", cliHandlers.CliSearch)
                 cli.GET("/list/*path", cliHandlers.CliList)
                 cli.GET("/install.sh", cliHandlers.InstallScript)
+                cli.GET("/fuzhan.sh", cliHandlers.FuzhanScript)
             }
         }
 
@@ -864,6 +887,7 @@ func main() {
             cliAlias.GET("/search/*query", cliHandlers.CliSearch)
             cliAlias.GET("/list/*path", cliHandlers.CliList)
             cliAlias.GET("/install.sh", cliHandlers.InstallScript)
+            cliAlias.GET("/fuzhan.sh", cliHandlers.FuzhanScript)
         }
 
         // 下载路由别名（无需认证，/download 作为 /api/v1/download 的快捷入口）
@@ -1319,6 +1343,11 @@ func main() {
             cancel()
             stopAllWorkers(wm)
             waitWorkersWithTimeout(wm)
+            if idxSearch != nil {
+                if cerr := idxSearch.CloseWriter(); cerr != nil {
+                    utils.Warn("关闭文件名检索索引失败", utils.Err(cerr))
+                }
+            }
             utils.Info("服务器已关闭")
             return
         case <-configCh:

@@ -2,6 +2,7 @@ package index
 
 import (
     "fmt"
+    "path/filepath"
     "testing"
     "time"
 
@@ -10,15 +11,23 @@ import (
     "fuzhan/internal/models"
 )
 
-// setupTestDB 创建内存 SQLite 数据库用于测试
+// setupTestDB 创建临时文件 SQLite 数据库用于测试。
+// 使用文件型数据库而非 :memory:，避免内存库按连接隔离导致跨连接查不到表；
+// 同时保留正常连接池语义（removeFileOnce 事务内还会另取连接调用 isDirectory）。
 func setupTestDB(t *testing.T) *gorm.DB {
-    db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+    db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "test.db")), &gorm.Config{})
     if err != nil {
-        t.Fatalf("打开内存数据库失败: %v", err)
+        t.Fatalf("打开测试数据库失败: %v", err)
     }
     if err := db.AutoMigrate(&models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}); err != nil {
         t.Fatalf("自动迁移失败: %v", err)
     }
+    // 测试结束后关闭连接池，释放数据库文件句柄，保证 t.TempDir 能清理
+    t.Cleanup(func() {
+        if sqlDB, e := db.DB(); e == nil {
+            sqlDB.Close()
+        }
+    })
     return db
 }
 

@@ -12,6 +12,16 @@ import (
     "fuzhan/internal/utils"
 )
 
+// FileIndexNotifier 文件名检索索引（如 Bluge 建议索引）的变更通知器。
+// 文件记录增/删/改后同步更新检索索引，保证"搜索联想/拼写纠错"与文件记录目录一致。
+// 可选注入：未设置时不产生任何副作用（不影响原有同步逻辑）。
+type FileIndexNotifier interface {
+    // IndexFile 新增或更新某条文件名的检索索引（幂等，按 fileID 覆盖）
+    IndexFile(fileID int64, fileName string) error
+    // Delete 删除某条文件名的检索索引（幂等）
+    Delete(fileID int64) error
+}
+
 // Syncer 增量同步器
 // 负责处理文件变更事件（上传、删除、移动），
 // 将操作同步到 FileRecordPublic 索引表中。
@@ -20,6 +30,8 @@ type Syncer struct {
     rootNames map[string]string
     retryBase time.Duration // 重试基期间隔
     maxRetry  int           // 最大重试次数
+
+    notifier FileIndexNotifier // 可选：检索索引变更通知
 }
 
 // NewSyncer 创建增量同步器
@@ -30,6 +42,11 @@ func NewSyncer(db *gorm.DB, rootNames map[string]string) *Syncer {
         retryBase: time.Second,
         maxRetry:  3,
     }
+}
+
+// SetFileIndexNotifier 设置检索索引变更通知器（可选）
+func (s *Syncer) SetFileIndexNotifier(n FileIndexNotifier) {
+    s.notifier = n
 }
 
 // SyncFile 上传/创建文件时同步索引
@@ -66,7 +83,10 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
         dbPath = "/" + dbPath
     }
 
-    return s.db.Transaction(func(tx *gorm.DB) error {
+    // 记录 ID（新增或更新后），事务提交后同步检索索引
+    var fileID int64
+
+    err = s.db.Transaction(func(tx *gorm.DB) error {
         // === 写入 file_records_public ===
         var record models.FileRecordPublic
         result := tx.Where("root_name = ? AND file_path = ?",
@@ -90,6 +110,7 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
                 if err := tx.Create(&rec).Error; err != nil {
                     return err
                 }
+                fileID = int64(rec.ID)
             } else {
                 return result.Error
             }
@@ -109,9 +130,24 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
             if err := tx.Model(&record).Updates(updates).Error; err != nil {
                 return err
             }
+            fileID = int64(record.ID)
         }
         return nil
     })
+    if err != nil {
+        return err
+    }
+
+    // 索引同步（幂等，按 fileID 覆盖）；未注入 notifier 时无副作用
+    if s.notifier != nil && fileID > 0 {
+        if nerr := s.notifier.IndexFile(fileID, info.Name()); nerr != nil {
+            utils.Warn("同步文件名检索索引失败",
+                utils.Int64("id", fileID),
+                utils.String("name", info.Name()),
+                utils.Err(nerr))
+        }
+    }
+    return nil
 }
 
 // RemoveFile 删除文件时软删除索引记录
@@ -135,7 +171,10 @@ func (s *Syncer) removeFileOnce(rootName, filePath string) error {
         "updated_at": now,
     }
 
-    return s.db.Transaction(func(tx *gorm.DB) error {
+    // 收集被软删除记录的 ID，事务提交后同步删除检索索引条目
+    var affectedIDs []int64
+
+    err := s.db.Transaction(func(tx *gorm.DB) error {
         // 如果是目录, 递归软删除其下所有文件
         isDir, err := s.isDirectory(rootName, dbPath)
         if err != nil {
@@ -144,19 +183,66 @@ func (s *Syncer) removeFileOnce(rootName, filePath string) error {
                 utils.String("root", rootName),
                 utils.Err(err))
         }
+
+        var rows []models.FileRecordPublic
         if isDir {
             prefix := strings.TrimSuffix(dbPath, "/") + "/"
-            return tx.Model(&models.FileRecordPublic{}).
+            if err := tx.Model(&models.FileRecordPublic{}).
                 Where("root_name = ? AND (file_path = ? OR file_path LIKE ?) AND status = ?",
                     rootName, dbPath, prefix+"%", models.FileStatusActive).
-                Updates(updates).Error
+                Find(&rows).Error; err != nil {
+                return err
+            }
+            if len(rows) > 0 {
+                ids := make([]uint, 0, len(rows))
+                for _, r := range rows {
+                    ids = append(ids, r.ID)
+                }
+                if err := tx.Model(&models.FileRecordPublic{}).
+                    Where("id IN ?", ids).
+                    Updates(updates).Error; err != nil {
+                    return err
+                }
+            }
+        } else {
+            if err := tx.Model(&models.FileRecordPublic{}).
+                Where("root_name = ? AND file_path = ? AND status = ?",
+                    rootName, dbPath, models.FileStatusActive).
+                Find(&rows).Error; err != nil {
+                return err
+            }
+            if len(rows) > 0 {
+                ids := make([]uint, 0, len(rows))
+                for _, r := range rows {
+                    ids = append(ids, r.ID)
+                }
+                if err := tx.Model(&models.FileRecordPublic{}).
+                    Where("id IN ?", ids).
+                    Updates(updates).Error; err != nil {
+                    return err
+                }
+            }
         }
 
-        return tx.Model(&models.FileRecordPublic{}).
-            Where("root_name = ? AND file_path = ? AND status = ?",
-                rootName, dbPath, models.FileStatusActive).
-            Updates(updates).Error
+        for _, r := range rows {
+            affectedIDs = append(affectedIDs, int64(r.ID))
+        }
+        return nil
     })
+    if err != nil {
+        return err
+    }
+
+    if s.notifier != nil {
+        for _, id := range affectedIDs {
+            if derr := s.notifier.Delete(id); derr != nil {
+                utils.Warn("删除文件名检索索引失败",
+                    utils.Int64("id", id),
+                    utils.Err(derr))
+            }
+        }
+    }
+    return nil
 }
 
 // MoveFile 移动/重命名文件时更新索引
@@ -179,6 +265,7 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
     }
     now := time.Now()
     moveUpdates := map[string]interface{}{
+        "file_name":      filepath.Base(strings.TrimSuffix(newDbPath, "/")),
         "file_path":      newDbPath,
         // full_path 同步更新：/rootName/newDbPath
         "full_path":      "/" + rootName + newDbPath,
@@ -186,7 +273,9 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
         "last_synced_at": now,
     }
 
-    return s.db.Transaction(func(tx *gorm.DB) error {
+    var topID int64
+
+    err := s.db.Transaction(func(tx *gorm.DB) error {
         // 查找旧记录
         var record models.FileRecordPublic
         result := tx.Where("root_name = ? AND file_path = ? AND status = ?",
@@ -197,6 +286,7 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
             }
             return result.Error
         }
+        topID = int64(record.ID)
 
         if record.IsDir {
             prefix := strings.TrimSuffix(oldDbPath, "/") + "/"
@@ -230,6 +320,22 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
         // 文件移动: 更新路径
         return tx.Model(&record).Updates(moveUpdates).Error
     })
+    if err != nil {
+        return err
+    }
+
+    // 移动/重命名后，按最新记录状态重入检索索引（以覆盖旧文件名为准）
+    if s.notifier != nil && topID > 0 {
+        var refreshed models.FileRecordPublic
+        if rerr := s.db.Where("id = ?", topID).First(&refreshed).Error; rerr == nil {
+            if ierr := s.notifier.IndexFile(topID, refreshed.FileName); ierr != nil {
+                utils.Warn("同步移动后文件名检索索引失败",
+                    utils.Int64("id", topID),
+                    utils.Err(ierr))
+            }
+        }
+    }
+    return nil
 }
 
 // withRetry 带指数退避的重试包装

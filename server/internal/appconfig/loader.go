@@ -16,11 +16,14 @@ import (
 // DefaultConfigFS 嵌入的默认配置文件
 var DefaultConfigFS embed.FS
 
+// ConfigFileName 默认配置文件名称
+const ConfigFileName = "fuzhan.yaml"
+
 // ConfigPath 配置文件路径
 var ConfigPath string
 
-// getWorkDir 获取工作目录
-func getWorkDir() string {
+// currentWorkDir 返回启动时的当前工作目录（cwd）
+func currentWorkDir() string {
     basePath, err := os.Getwd()
     if err != nil {
         fmt.Fprintf(os.Stderr, "获取当前工作目录失败: %v\n", err)
@@ -30,12 +33,71 @@ func getWorkDir() string {
     return abspath
 }
 
+// binaryWorkDir 返回二进制文件所在目录。
+// 优先使用 os.Executable 定位运行中的二进制，失败时回退到当前工作目录。
+func binaryWorkDir() string {
+    exe, err := os.Executable()
+    if err == nil {
+        dir, derr := filepath.Abs(filepath.Dir(exe))
+        if derr == nil {
+            return dir
+        }
+    }
+    return currentWorkDir()
+}
+
+// resolveDefaultConfigPath 解析未显式指定时的默认配置文件路径。
+// 查找顺序：启动目录（cwd）优先，其次二进制所在目录；
+// 两处都不存在时回退到启动目录（此时将在该目录创建默认配置）。
+func resolveDefaultConfigPath() string {
+    for _, d := range []string{currentWorkDir(), binaryWorkDir()} {
+        p := filepath.Join(d, ConfigFileName)
+        if _, err := os.Stat(p); err == nil {
+            return p
+        }
+    }
+    return filepath.Join(currentWorkDir(), ConfigFileName)
+}
+
+// applyConfiguredWorkDir 应用配置中的 work_dir。
+// 配置指定时使用它（相对路径基于当前工作目录解析）；
+// 未指定时保持默认值（配置所在目录）。
+func applyConfiguredWorkDir() {
+    cfgDir := GlobalConfig.WorkDir
+    if cfgDir == "" {
+        return
+    }
+    abs := cfgDir
+    if !filepath.IsAbs(cfgDir) {
+        cwd, err := os.Getwd()
+        if err != nil {
+            utils.Fatal("解析 work_dir 失败", utils.Err(err))
+        }
+        abs = filepath.Join(cwd, cfgDir)
+    }
+    resolved, err := filepath.Abs(abs)
+    if err != nil {
+        utils.Fatal("解析 work_dir 失败", utils.Err(err))
+    }
+    if err := os.MkdirAll(resolved, 0755); err != nil {
+        utils.Fatal("创建 work_dir 失败", utils.Err(err))
+    }
+    WorkDir = resolved
+}
+
+// createDataDir 在工作目录下创建 data 目录
+func createDataDir() {
+    if err := os.MkdirAll(GetDataDir(), 0755); err != nil {
+        utils.Fatal("创建数据目录失败", utils.Err(err))
+    }
+}
+
 // InitLogging 初始化日志系统
 func InitLogging() {
-    workDir := getWorkDir()
+    workDir := WorkDir
 
     // 使用配置中的日志设置，如果没有配置则使用默认值
-    logDir := GlobalConfig.Log.Directory
+    logDir := ExpandWorkDirPath(GlobalConfig.Log.Directory)
     if logDir == "" {
         logDir = filepath.Join(workDir, "logs")
     }
@@ -310,7 +372,7 @@ func validateConfig() {
 
 // initAppName 初始化应用名称（HTML 模板现在由路由层处理）
 func initAppName(appInfo APPConfig) {
-    appName := "轻共享"
+    appName := "浮栈"
     if name := appInfo.Name; name != "" {
         appName = name
     }
@@ -328,7 +390,12 @@ func initRootNames(isSetup bool) {
     if len(GlobalConfig.Storage.Public.RootDirs) == 0 {
         utils.Fatal("根目录配置为空", utils.String("reason", "必须配置至少一个根目录"))
     }
-    for _, rootDirConfig := range GlobalConfig.Storage.Public.RootDirs {
+    for i, rootDirConfig := range GlobalConfig.Storage.Public.RootDirs {
+        // 展开 ${work_dir} 占位符，并将展开后的绝对路径回写配置（DTO/运行时保持一致）
+        expanded := ExpandWorkDirPath(rootDirConfig.Path)
+        GlobalConfig.Storage.Public.RootDirs[i].Path = expanded
+        rootDirConfig.Path = expanded
+
         // 检查根目录是否存在
         if _, err := os.Stat(rootDirConfig.Path); os.IsNotExist(err) {
             if isSetup {
@@ -366,6 +433,10 @@ func initTempDirectories(isSetup bool) {
         return
     }
 
+    // 展开 ${work_dir} 占位符
+    GlobalConfig.Storage.Private.Path = ExpandWorkDirPath(GlobalConfig.Storage.Private.Path)
+    GlobalConfig.Storage.Temp.Path = ExpandWorkDirPath(GlobalConfig.Storage.Temp.Path)
+
     // 确保临时文件根目录存在
     if err := os.MkdirAll(GlobalConfig.Storage.Private.Path, 0755); err != nil {
         if isSetup {
@@ -402,17 +473,23 @@ func initTempDirectories(isSetup bool) {
 func DoInitWithConfig(webAssets embed.FS, configPath string) Config {
     EmbedAssets = webAssets
     DefaultConfigFS = webAssets
-    WorkDir = getWorkDir()
-
-    // 如果指定了配置文件路径，使用它；否则使用默认路径
+    // 配置文件定位：显式指定则用指定路径，否则启动目录优先、二进制所在目录次之
     if configPath != "" {
         ConfigPath = configPath
     } else {
-        ConfigPath = filepath.Join(WorkDir, "fuzhan.yaml")
+        ConfigPath = resolveDefaultConfigPath()
     }
+
+    // 默认以配置所在目录作为工作目录；
+    // 若配置内显式指定了 work_dir，applyConfiguredWorkDir 会进一步覆盖它
+    WorkDir = filepath.Dir(ConfigPath)
 
     createConfigFile()
     readConfig()
+    // 读取配置后，若配置了 work_dir 则以配置覆盖默认值
+    applyConfiguredWorkDir()
+    // 在工作目录下创建 data 目录（容纳默认 sqlite、搜索索引等数据）
+    createDataDir()
     InitLogging()
     initAppName(GlobalConfig.App)
 

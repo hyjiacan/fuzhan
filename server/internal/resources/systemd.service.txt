@@ -1,5 +1,5 @@
 [Unit]
-Description=LightShare File Sharing Service
+Description=Fuzhan File Sharing Service
 After=network.target
 
 [Service]

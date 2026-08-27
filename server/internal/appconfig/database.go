@@ -2,6 +2,9 @@ package appconfig
 
 import (
     "fmt"
+    "io"
+    "os"
+    "path/filepath"
     "strings"
     "sync/atomic"
     "time"
@@ -70,7 +73,7 @@ func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
     if cfg == nil || cfg.Driver == "" {
         cfg = &DatabaseConfig{
             Driver: "sqlite",
-            DSN:    "fuzhan.db",
+            DSN:    defaultSQLiteDSN(),
         }
     }
 
@@ -85,7 +88,7 @@ func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
     case "sqlite":
         // 使用纯 Go 驱动 (glebarez/sqlite 基于 modernc.org/sqlite)。
         // 追加 pragma 缓解并发写锁：busy_timeout 让写锁等待而非立即失败，WAL 提升读写并发
-        sqliteDSN := appendSQLitePragmas(cfg.DSN)
+        sqliteDSN := appendSQLitePragmas(normalizeSQLiteDSN(cfg.DSN))
         db, err = gorm.Open(sqlite.Open(sqliteDSN), gormConfig)
         if err != nil {
             return nil, fmt.Errorf("SQLite 连接失败: %w", err)
@@ -130,6 +133,69 @@ func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
         utils.Int("max_open_conns", pool.MaxOpenConns),
         utils.Int("conn_max_lifetime_sec", pool.ConnMaxLifetime))
     return db, nil
+}
+
+// defaultSQLiteDSN 返回默认 SQLite 数据文件路径（位于工作目录 data 子目录下）
+func defaultSQLiteDSN() string {
+    return filepath.Join(GetDataDir(), "fuzhan.db")
+}
+
+// normalizeSQLiteDSN 将历史遗留/缺省的 SQLite DSN 归一到工作目录 data 子目录。
+// 兼容旧默认值 "fuzhan.db"（位于进程当前目录），迁移到标准路径方便统一管理。
+func normalizeSQLiteDSN(dsn string) string {
+    if dsn == "" || dsn == "fuzhan.db" || dsn == "./fuzhan.db" {
+        resolved := defaultSQLiteDSN()
+        if dsn != "" {
+            utils.Warn("SQLite 数据文件从旧路径迁移到标准数据目录",
+                utils.String("from", dsn), utils.String("to", resolved))
+            migrateLegacySQLiteFile(dsn, resolved)
+        }
+        return resolved
+    }
+    return dsn
+}
+
+// migrateLegacySQLiteFile 将旧位置的 SQLite 数据文件无损复制到新位置。
+// 仅当旧文件存在且目标文件不存在时执行，避免覆盖与重复迁移。
+func migrateLegacySQLiteFile(from, to string) {
+    src, err := filepath.Abs(from)
+    if err != nil {
+        utils.Warn("解析旧 SQLite 路径失败，跳过迁移", utils.Err(err))
+        return
+    }
+    if _, err := os.Stat(src); os.IsNotExist(err) {
+        return // 旧文件本就不存在，无需迁移
+    }
+    if _, err := os.Stat(to); err == nil {
+        return // 目标已存在，跳过
+    }
+    if err := os.MkdirAll(filepath.Dir(to), 0755); err != nil {
+        utils.Warn("创建数据目录失败，跳过 SQLite 迁移", utils.Err(err))
+        return
+    }
+    in, err := os.Open(src)
+    if err != nil {
+        utils.Warn("打开旧 SQLite 文件失败，跳过迁移", utils.Err(err))
+        return
+    }
+    defer in.Close()
+    out, err := os.Create(to)
+    if err != nil {
+        utils.Warn("创建新 SQLite 文件失败，跳过迁移", utils.Err(err))
+        return
+    }
+    if _, err := io.Copy(out, in); err != nil {
+        out.Close()
+        os.Remove(to)
+        utils.Warn("复制 SQLite 数据失败，跳过迁移", utils.Err(err))
+        return
+    }
+    if err := out.Close(); err != nil {
+        utils.Warn("关闭新 SQLite 文件失败", utils.Err(err))
+        return
+    }
+    utils.Info("SQLite 数据文件迁移完成",
+        utils.String("from", src), utils.String("to", to))
 }
 
 // appendSQLitePragmas 在 SQLite DSN 上追加连接级 pragma。

@@ -23,8 +23,17 @@
         </el-breadcrumb>
         <span v-else class="breadcrumb-root">文件</span>
         <div class="header-actions">
-          <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
-            class="search-input" clearable @keydown.enter="searchFiles" />
+          <el-autocomplete ref="searchInputRef" v-model="searchQuery" :maxlength="200"
+            :fetch-suggestions="querySuggestions" :trigger-on-focus="false" placeholder="搜索文件..."
+            size="small" clearable highlight-first-item @select="onSuggestionSelect" @keydown.enter="searchFiles"
+            class="search-input">
+            <template #default="{ item }">
+              <div class="suggest-item">
+                <span class="suggest-name">{{ item.value }}</span>
+                <span v-if="item.corrected" class="suggest-tag">纠错</span>
+              </div>
+            </template>
+          </el-autocomplete>
           <el-button @click="searchFiles" size="small">
             搜索
           </el-button>
@@ -101,7 +110,7 @@ import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions } from '@/util
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 import { isPreviewable } from '@/config/preview'
-import { FileRecordApi } from '@/api'
+import { FileRecordApi, SearchApi } from '@/api'
 import { isAppInitialized, initializationComplete } from '@/main'
 
 // 上传 API
@@ -196,6 +205,40 @@ const clearSearch = () => {
   store.clearSearchState()
   store.actions.loadFileList(store.state.currentPath || '/')
   router.replace({ query: {} })
+}
+
+// 搜索框下拉推荐：自动补全 + 拼写纠错
+const querySuggestions = (queryString, cb) => {
+  const q = (queryString || '').trim()
+  if (!q) {
+    cb([])
+    return
+  }
+  // 并行拉取自动补全与纠错建议
+  Promise.all([
+    SearchApi.autocomplete(q).catch(() => ({ data: [] })),
+    SearchApi.spellcheck(q).catch(() => ({ data: [] }))
+  ]).then(([autoRes, spellRes]) => {
+    const autoNames = Array.isArray(autoRes?.data) ? autoRes.data : []
+    const spellNames = Array.isArray(spellRes?.data) ? spellRes.data : []
+    const suggestions = new Map() // value -> { value, corrected }
+    // 自动补全结果：直接作为推荐
+    for (const name of autoNames) {
+      if (!suggestions.has(name)) suggestions.set(name, { value: name, corrected: false })
+    }
+    // 纠错结果：标注为"纠错"，且避免与原查询相同、避免与自动补全重复
+    for (const name of spellNames) {
+      if (name === q || suggestions.has(name)) continue
+      suggestions.set(name, { value: name, corrected: true })
+    }
+    cb([...suggestions.values()].slice(0, 12))
+  })
+}
+
+// 选中推荐项：用该文件名发起搜索
+const onSuggestionSelect = (item) => {
+  searchQuery.value = item.value
+  searchFiles()
 }
 
 const fileList = computed(() => store.state.fileList)
@@ -844,6 +887,35 @@ const handleUploadDialogClose = () => {
         }
       }
     }
+  }
+}
+
+/* 搜索框自动补全/纠错下拉（popper 挂载于 body，需全局样式） */
+.el-autocomplete-suggestion {
+  .suggest-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .suggest-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .suggest-tag {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 500;
+    color: #fff;
+    background: #FF6600;
+    border-radius: 3px;
+    white-space: nowrap;
   }
 }
 </style>

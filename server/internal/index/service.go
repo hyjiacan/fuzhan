@@ -56,9 +56,15 @@ type TaskRecorder interface {
 
 // SetTaskService 注入任务记录服务
 func (s *Service) SetTaskService(ts TaskRecorder) {
-	s.taskService = ts
-	s.scanner.taskService = ts
-	s.hashWorker.taskService = ts
+    s.taskService = ts
+    s.scanner.taskService = ts
+    s.hashWorker.taskService = ts
+}
+
+// SetFileIndexNotifier 注入文件名检索索引变更通知器（可选）。
+// 文件增/删/移动时增量同步检索索引，保证搜索联想与拼写纠错与索引表一致。
+func (s *Service) SetFileIndexNotifier(n FileIndexNotifier) {
+    s.syncer.SetFileIndexNotifier(n)
 }
 
 

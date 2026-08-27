@@ -8,8 +8,27 @@ import (
 	"fuzhan/internal/utils"
 )
 
-// HandleInstallScript 生成 shell 脚本，封装 CLI 的访问
+// HandleInstallScript 生成安装脚本，将 fuzhan 命令行工具安装到用户 PATH
 func HandleInstallScript(w http.ResponseWriter, r *http.Request) {
+	utils.PrintRequestInfo(r)
+
+	// 获取基础URL
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	serverURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+
+	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"install.sh\"")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	script := generateInstallScript(serverURL)
+	w.Write([]byte(script))
+}
+
+// HandleFuzhanScript 生成独立的 fuzhan 命令行工具脚本
+func HandleFuzhanScript(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
 
 	// 获取基础URL
@@ -27,7 +46,56 @@ func HandleInstallScript(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(script))
 }
 
-// generateScript 生成 shell 脚本内容
+// generateInstallScript 生成安装脚本：把 fuzhan 工具脚本下载到用户 PATH 目录
+func generateInstallScript(serverURL string) string {
+	// 对 serverURL 进行 shell 安全的转义
+	escapedServer := escapeShellString(serverURL)
+
+	return fmt.Sprintf(`#!/bin/bash
+# fuzhan CLI 安装脚本
+# 服务器: %[1]s
+#
+# 用法:
+#   bash <(curl -s %[1]s/cli/install.sh)
+#   curl -s %[1]s/cli/install.sh | bash
+#   bash install.sh [自定义目录]
+
+set -e
+
+SERVER="%[1]s"
+
+if [ -n "${1}" ]; then
+    DIR="${1}"
+else
+    DIR="$HOME/.local/bin"
+    if [ ! -d "${DIR}" ]; then
+        DIR="$HOME/bin"
+    fi
+fi
+
+mkdir -p "${DIR}"
+
+echo "正在从 ${SERVER}/cli/fuzhan.sh 下载 fuzhan 命令行工具..."
+if ! curl -fsSL "${SERVER}/cli/fuzhan.sh" -o "${DIR}/fuzhan"; then
+    echo "下载失败，请检查服务器地址与网络连接。" >&2
+    exit 1
+fi
+chmod +x "${DIR}/fuzhan"
+
+case ":${PATH}:" in
+    *":${DIR}:"*) ;;
+    *)
+        echo "提示：${DIR} 不在 PATH 中，将其加入 PATH 后可直接使用 fuzhan 命令："
+        echo "  export PATH=\"${DIR}:\${PATH}\""
+        ;;
+esac
+
+echo "fuzhan 已安装到 ${DIR}"
+echo "现在可在终端中直接运行：fuzhan help"
+`, escapedServer)
+}
+
+// generateScript 生成独立的 fuzhan 命令行工具脚本内容
 func generateScript(serverURL string) string {
 	// 对 serverURL 进行 shell 安全的转义
 	escapedServer := escapeShellString(serverURL)
@@ -37,10 +105,10 @@ func generateScript(serverURL string) string {
 # 生成时间: $(date)
 # 服务器: %[1]s
 #
-# 安装:
-#   source <(curl -s %[1]s/cli/install.sh)
-# 下载:
-#   curl -o fuzhan.sh %[1]s/cli/install.sh && chmod +x fuzhan.sh && ./fuzhan.sh
+# 安装到 PATH:
+#   bash <(curl -s %[1]s/cli/install.sh)
+# 下载独立命令:
+#   curl -o fuzhan.sh %[1]s/cli/fuzhan.sh && chmod +x fuzhan.sh && ./fuzhan.sh
 
 fuzhan_SERVER="%[1]s"
 
@@ -49,12 +117,6 @@ fuzhan_COLOR_GREEN="\033[32m"
 fuzhan_COLOR_YELLOW="\033[33m"
 fuzhan_COLOR_CYAN="\033[36m"
 fuzhan_COLOR_RESET="\033[0m"
-
-# 当直接运行时，执行 fuzhan 函数后退出
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    fuzhan "$@"
-    exit $?
-fi
 
 # 使用说明
 fuzhan_help() {
@@ -66,12 +128,11 @@ fuzhan CLI - 文件管理命令行工具
 命令:
   search, s <关键词...>   搜索文件（空格分隔多个关键词，AND 逻辑）
   list, l [路径]          浏览目录
-  download, dl <路径>     下载文件（支持 --hash <hash> 按哈希下载）
+  download, dl <路径或哈希值>  下载文件到当前目录（自动识别路径或哈希）
   help, h                 显示此帮助
 
 选项:
   --url, -u               显示完整下载链接（默认只显示文件路径）
-  --hash <hash>           使用哈希值下载文件（仅 download 命令）
 
 搜索示例:
   fuzhan search document         搜索文件名包含 document 的文件
@@ -85,7 +146,7 @@ fuzhan CLI - 文件管理命令行工具
 
 下载示例:
   fuzhan download root/doc/report.pdf  下载文件到当前目录
-  fuzhan download --hash A1B2C3D4     按哈希值下载文件
+  fuzhan download A1B2C3D4             按哈希值下载文件
 
 EOF
 }
@@ -271,44 +332,22 @@ fuzhan_list() {
     done
 }
 
-# 下载文件
+# 下载文件（自动识别路径或哈希）
 fuzhan_download() {
-    local path=""
-    local hash=""
-    local hash_mode=0
-    local args=()
+    local target="${1}"
 
-    # 解析选项
-    for arg in "$@"; do
-        case "$arg" in
-            --hash) hash_mode=1 ;;
-            *) args+=("$arg") ;;
-        esac
-    done
-
-    if [ "$hash_mode" = "1" ]; then
-        hash="${args[0]}"
-        if [ -z "$hash" ]; then
-            echo "错误：哈希值不能为空" >&2
-            echo "用法: fuzhan download --hash <哈希值>" >&2
-            return 1
-        fi
-        local encoded
-        encoded="$(printf '%%s' "$hash" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
-        curl -OJ "$fuzhan_SERVER/download/$encoded"
-    else
-        path="${args[0]}"
-        if [ -z "$path" ]; then
-            echo "错误：文件路径不能为空" >&2
-            echo "用法: fuzhan download <文件路径>" >&2
-            echo "示例: fuzhan download root/doc/report.pdf" >&2
-            echo "      fuzhan download --hash A1B2C3D4" >&2
-            return 1
-        fi
-        local encoded
-        encoded="$(printf '%%s' "$path" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
-        curl -O "$fuzhan_SERVER/download/$encoded"
+    if [ -z "$target" ]; then
+        echo "错误：文件路径或哈希值不能为空" >&2
+        echo "用法: fuzhan download <文件路径或哈希值>" >&2
+        echo "示例: fuzhan download root/doc/report.pdf" >&2
+        echo "      fuzhan download A1B2C3D4" >&2
+        return 1
     fi
+
+    local encoded
+    encoded="$(printf '%%s' "$target" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
+    # -OJ 采用服务端 Content-Disposition 提供的真实文件名（哈希下载时也生效）
+    curl -OJ "$fuzhan_SERVER/download/$encoded"
 }
 
 # 主函数
@@ -341,6 +380,12 @@ fuzhan() {
             ;;
     esac
 }
+
+# 当直接执行本脚本时（./fuzhan.sh），调用主函数后退出；被 source 时仅定义函数
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    fuzhan "$@"
+    exit $?
+fi
 `, escapedServer)
 }
 

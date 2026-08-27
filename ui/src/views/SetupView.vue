@@ -7,7 +7,7 @@
             <div class="setup-header">
               <span class="setup-icon">⚙️</span>
               <div class="setup-title-group">
-                <h2 class="setup-title">{{ form.appName || '轻共享' }}</h2>
+                <h2 class="setup-title">{{ form.appName || '浮栈' }}</h2>
                 <p class="setup-subtitle">部署向导</p>
               </div>
             </div>

@@ -62,7 +62,7 @@
     </div>
 
     <!-- 移动/重命名对话框（类似 Linux mv 命令） -->
-    <el-dialog v-model="moveModalVisible" title="移动或重命名" width="620px">
+    <el-dialog v-model="moveModalVisible" title="移动或重命名" :width="moveDialogWidth">
       <el-form label-width="100px">
         <el-form-item label="文件名">
           <el-input :model-value="currentFile?.name" disabled />
@@ -158,6 +158,13 @@ const isAtRoot = computed(() => !currentPath.value)
 const moveModalVisible = ref(false)
 const targetRootName = ref('')
 const targetSubPath = ref('')
+
+// 移动/重命名弹框宽度：桌面 800px，小屏按百分比自适应
+const MOVE_DIALOG_MAX_WINDOW = 860
+const moveDialogWidth = ref('800px')
+const updateMoveDialogWidth = () => {
+  moveDialogWidth.value = window.innerWidth < MOVE_DIALOG_MAX_WINDOW ? '92%' : '800px'
+}
 
 // ============ 索引扫描 ============
 const scanning = ref(false)
@@ -721,6 +728,8 @@ watch(
 
 onMounted(() => {
   updateTableSize()
+  updateMoveDialogWidth()
+  window.addEventListener('resize', updateMoveDialogWidth)
   tableResizeObs = new ResizeObserver(updateTableSize)
   if (tableWrapRef.value) {
     tableResizeObs.observe(tableWrapRef.value)
@@ -729,6 +738,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPollProgress()
+  window.removeEventListener('resize', updateMoveDialogWidth)
   tableResizeObs?.disconnect()
 })
 </script>

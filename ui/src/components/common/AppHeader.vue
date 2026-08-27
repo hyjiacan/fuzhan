@@ -57,7 +57,7 @@
 
   <!-- 登录弹框 -->
   <el-dialog v-model="showLoginModal" title="登录" width="400px">
-    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="60px">
+    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="120px">
       <el-form-item prop="username" label="用户名">
         <el-input
           v-model="loginForm.username"
@@ -94,7 +94,7 @@
 
   <!-- 注册弹框 -->
   <el-dialog v-model="showRegisterModal" title="注册" width="400px">
-    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="60px">
+    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="120px">
       <el-form-item prop="username" label="用户名">
         <el-input
           v-model="registerForm.username"

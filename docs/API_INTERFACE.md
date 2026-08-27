@@ -1,10 +1,10 @@
-# 轻共享 API 接口文档
+# 浮栈 API 接口文档
 
 > 更新时间: 2026-07-22
 
 ## 概述
 
-本文档描述了轻共享系统的 API 接口，包括文件操作、上传下载、搜索、临时文件管理、认证（JWT/API Key/LDAP）等功能。所有接口均通过 HTTP/HTTPS 协议访问，使用 JSON 格式进行数据交换。
+本文档描述了浮栈系统的 API 接口，包括文件操作、上传下载、搜索、临时文件管理、认证（JWT/API Key/LDAP）等功能。所有接口均通过 HTTP/HTTPS 协议访问，使用 JSON 格式进行数据交换。
 
 ## 基础信息
 
@@ -226,6 +226,36 @@
 
   event: done
   data: {"total":2,"matched":2}
+  ```
+
+### 2. 搜索自动补全（Bluge 联想）
+
+- **URL**：`GET /api/v1/search-suggest`
+- **认证**：无需认证
+- **说明**：基于文件名检索索引（Bluge + gse）的前缀联想，输入时实时返回匹配的文件名
+- **请求参数**：
+  | 参数 | 类型 | 必填 | 说明 |
+  |------|------|------|------|
+  | q | string | 是 | 搜索前缀（中文需 URL 编码） |
+  | limit | int | 否 | 返回数量上限，默认 10，最大 30 |
+- **响应**：
+  ```json
+  {"success":true,"code":0,"message":"","data":["Firefox Setup 108.0.2.msi","Firefox Setup 152.0.4.exe"]}
+  ```
+
+### 3. 搜索拼写纠错
+
+- **URL**：`GET /api/v1/search-spellcheck`
+- **认证**：无需认证
+- **说明**：基于文件名检索索引（Bluge Fuzzy 查询）的拼写纠错，返回最相似的候选文件名
+- **请求参数**：
+  | 参数 | 类型 | 必填 | 说明 |
+  |------|------|------|------|
+  | q | string | 是 | 待纠错单词（中文需 URL 编码） |
+  | limit | int | 否 | 返回数量上限，默认 5，最大 10 |
+- **响应**：
+  ```json
+  {"success":true,"code":0,"message":"","data":["Firefox Setup 108.0.2.msi"]}
   ```
 
 ## 文件操作接口
@@ -561,7 +591,7 @@
     "success": true,
     "data": {
       "app": {
-        "name": "轻共享"
+        "name": "浮栈"
       },
       "temp": {
         "enabled": true
