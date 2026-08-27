@@ -69,6 +69,12 @@
     }
 
     .file-link {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       color: #444;
       text-decoration: none;
       cursor: pointer;
@@ -413,6 +419,26 @@
 }
 
 // ============================================
+// el-table-v2 flexGrow 列宽度统一
+// 组件对 flexGrow 列使用 `flex: 1 1 auto`（flex-basis:auto），长文件名
+// (nowrap) 会把该行单元格按内容宽度撑大，导致同一列各行宽度不同、且超出
+// 表头列宽。将 flex-basis 归零后，列宽由容器均匀分配，内容交由 ellipsis 截断。
+// ============================================
+.el-table-v2__header-cell[style*="flex: 1 1 auto;"],
+.el-table-v2__row-cell[style*="flex: 1 1 auto;"] {
+  flex-basis: 0 !important;
+}
+
+// 备注列：无备注时"添加备注"提示默认隐藏，仅该行 hover 时显示
+.notes-link.is-empty {
+  opacity: 0;
+  transition: opacity @transition-fast;
+}
+.el-table-v2__row:hover .notes-link.is-empty {
+  opacity: 1;
+}
+
+// ============================================
 // 表单字段提示
 // ============================================
 .field-hint {
@@ -460,5 +486,12 @@
     .el-badge__content {
       transform: translateX(50%) scale(0.85);
     }
+  }
+}
+
+// 解决 el-table-v2 的文本模糊问题
+.el-vl__wrapper.el-table-v2__body {
+  > div:first-child {
+    will-change: unset !important;
   }
 }

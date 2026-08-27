@@ -432,12 +432,11 @@ const columns = [
   },
   {
     title: '备注', key: 'notes', width: 150,
-    cellRenderer: ({ rowData: row }) => {
-      return h('span', {
-        class: `notes-cell`,
-        onClick: () => openNotesEditor(row)
-      }, row.notes || '')
-    }
+    cellRenderer: ({ rowData: row }) => h(ElButton, {
+      size: 'small', link: true,
+      class: ['notes-link', { 'is-empty': !row.notes }],
+      onClick: () => openNotesEditor(row)
+    }, () => row.notes || '添加备注')
   },
   {
     title: '依赖', key: 'deps', width: 80,
