@@ -192,6 +192,10 @@ export const FileApi = {
     return request.post('/files/move', { oldPath, newPath })
   },
 
+  deletePublic(path) {
+    return request.delete('/files/delete', { params: { path } })
+  },
+
   preview(path) {
     const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
     return request.get(`/files/preview/${encodedPath}`)
@@ -425,6 +429,11 @@ export const AdminApi = {
 
   cleanupSessions(sessionIds) {
     return request.post('/admin/sessions/cleanup', { sessionIds })
+  },
+
+  // 当前在线 IP（与登录无关，依据最近请求判定）
+  getOnlineIps() {
+    return request.get('/admin/online-ips')
   },
 
   // 文件管理

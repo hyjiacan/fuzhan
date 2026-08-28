@@ -34,6 +34,8 @@ type FileRecordBase struct {
     HashRetries  int            `gorm:"default:0" json:"hashRetries"`              // 已重试次数
     ModTime      time.Time      `gorm:"not null" json:"modTime"`
     Notes        string         `gorm:"size:2048" json:"notes"`
+    DownloadCount int64         `gorm:"not null;default:0" json:"downloadCount"` // 公共文件下载次数
+    UploaderIP   string         `gorm:"size:45" json:"uploaderIp,omitempty"`      // 上传者IP（公开文件），用于"IP一致允许覆盖/重命名/删除"
     Status       FileStatus     `gorm:"size:20;default:active" json:"status"`
     OwnerID      string         `gorm:"size:64" json:"ownerID"` // 所有者标识：public 为空，temp 为 IP，private 为用户 ID
     LastSyncedAt time.Time      `gorm:"not null" json:"lastSyncedAt"`

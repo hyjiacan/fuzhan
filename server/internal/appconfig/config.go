@@ -21,7 +21,10 @@ type FileInfo struct {
 	Quota        int64  `json:"quota,omitempty"`
 	Used         int64  `json:"used,omitempty"`
 	Xxh3Hash     string `json:"xxh3Hash,omitempty"`
-}
+        Notes        string `json:"notes,omitempty"`
+        DownloadCount int64 `json:"downloadCount,omitempty"`
+        RecordID     uint   `json:"recordId,omitempty"`
+  }
 
 // APPConfig 独立的 APP 配置结构体
 type APPConfig struct {

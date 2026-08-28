@@ -30,6 +30,7 @@ type CreateSessionReq struct {
     RootName   string
     TargetType models.TargetType
     UserID     string
+    ClientIP   string
 }
 
 // UploadChunkReq 上传分片请求
@@ -107,6 +108,7 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
         TargetPath:  req.Dir,
         TargetRoot:  req.RootName,
         UserID:      req.UserID,
+        ClientIP:    req.ClientIP,
         ChunkDir:    uploadID,
         ExpiredAt:   time.Now().Add(24 * time.Hour),
     }
@@ -294,16 +296,32 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
         return nil, fmt.Errorf("构建目标路径失败: %w", err)
     }
 
+    // 目标文件在索引表中的 file_path（带前导 /），供覆盖权限与归属写入使用
+    idxRelPath := "/" + session.FileName
+    if dp := strings.Trim(strings.TrimSuffix(session.TargetPath, "/"), "/"); dp != "" {
+        idxRelPath = "/" + dp + "/" + session.FileName
+    }
+
     if _, err := os.Stat(targetPath); err == nil {
+        // 覆盖权限：管理员放行，或（上传者IP与现有文件上传者IP一致）本人放行
+        if !allowOverwrite && session.ClientIP != "" {
+            var existing models.FileRecordPublic
+            if serr := s.db.Where("root_name = ? AND file_path = ? AND status = ?",
+                session.TargetRoot, idxRelPath, models.FileStatusActive).First(&existing).Error; serr == nil &&
+                existing.UploaderIP != "" && existing.UploaderIP == session.ClientIP {
+                allowOverwrite = true
+                utils.Info("上传者IP一致，允许覆盖", utils.String("path", targetPath))
+            }
+        }
         if !allowOverwrite {
             return nil, ErrFileExists
         }
-        // 管理员覆盖：先删除目标文件，再重命名临时文件
+        // 覆盖：先删除目标文件，再重命名临时文件
         if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
             utils.Error("覆盖文件时删除失败", utils.String("path", targetPath), utils.Err(err))
             return nil, fmt.Errorf("无法覆盖已有文件: %w", err)
         }
-        utils.Info("管理员覆盖文件", utils.String("path", targetPath))
+        utils.Info("覆盖文件", utils.String("path", targetPath))
     }
 
     if _, err := os.Stat(uploadingPath); os.IsNotExist(err) {
@@ -365,6 +383,17 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
         } else {
             // 标记为最近已同步，防止 watcher 重复处理
             s.indexSvc.MarkRecentlySynced(session.TargetRoot, relativePath)
+        }
+        // 记录公开文件的上传者IP（覆盖上传会重新绑定归属）
+        if session.ClientIP != "" {
+            if uerr := s.db.Model(&models.FileRecordPublic{}).
+                Where("root_name = ? AND file_path = ?", session.TargetRoot, idxRelPath).
+                UpdateColumn("uploader_ip", session.ClientIP).Error; uerr != nil {
+                utils.Warn("写入上传者IP失败",
+                    utils.String("root", session.TargetRoot),
+                    utils.String("path", idxRelPath),
+                    utils.Err(uerr))
+            }
         }
         // 触发哈希计算（后台执行，不阻塞）
         s.indexSvc.TriggerHash(context.Background())

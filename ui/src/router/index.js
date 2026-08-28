@@ -28,6 +28,7 @@ const AdminUploadsView = () => import(/* webpackChunkName: "views-admin-uploads"
 const AdminTasksView = () => import(/* webpackChunkName: "views-admin-tasks" */ '../views/AdminTasksView.vue')
 const AdminOpenApiView = () => import(/* webpackChunkName: "views-admin-openapi" */ '../views/AdminOpenApiView.vue')
 const AdminDuplicatesView = () => import(/* webpackChunkName: "views-admin-duplicates" */ '../views/AdminDuplicatesView.vue')
+const AdminOnlineView = () => import(/* webpackChunkName: "views-admin-online" */ '../views/AdminOnlineView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
 // 登录/注册弹框触发事件
@@ -149,6 +150,12 @@ const router = createRouter({
           path: 'records',
           name: 'admin-records',
           component: () => import('@/views/AdminRecordsView.vue')
+        },
+        {
+          path: 'online',
+          name: 'admin-online',
+          component: AdminOnlineView,
+          meta: { title: '在线IP' }
         },
         {
           path: 'users',

@@ -194,6 +194,9 @@ func main() {
     // 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
     models.EnsureFileRecordIndexes(db)
 
+    // 回填公共文件下载次数（从下载记录统计，升级/启动时执行一次）
+    services.BackfillPublicDownloadCounts(db)
+
     // 初始化日志记录器 (已在 appconfig.DoInit 中初始化)
     defer utils.Sync()
 
@@ -618,6 +621,9 @@ func main() {
                 admin.GET("/sessions", adminHandler.SessionsHandler)
                 admin.POST("/sessions/cleanup", adminHandler.CleanupSessionsHandler)
 
+                // 在线 IP 统计路由（与登录无关，依据最近请求判定在线）
+                admin.GET("/online-ips", adminHandler.OnlineIPs)
+
                 // 操作记录清空路由
                 admin.POST("/records/clear", adminHandler.ClearRecordsHandler)
 
@@ -778,15 +784,12 @@ func main() {
                 protected.GET("/auth/user", authHandler.GetCurrentUser)
                 protected.PUT("/auth/password", authHandler.ChangePassword)
 
-                // 文件管理路由
+                // 文件管理路由（公开文件：管理员，或上传者IP一致可操作）
                 files := protected.Group("/files")
                 {
-                    files.POST("/rename", func(c *gin.Context) {
-                        file.HandleRenameFile(c.Writer, c.Request)
-                    })
-                    files.POST("/move", func(c *gin.Context) {
-                        file.HandleMoveFile(c.Writer, c.Request)
-                    })
+                    files.POST("/rename", fileHandlers.RenamePublicFileHandler)
+                    files.POST("/move", fileHandlers.MoveFileHandler)
+                    files.DELETE("/delete", fileHandlers.DeleteFileHandler)
                 }
 
                 protected.GET("/get_file_info", func(c *gin.Context) {

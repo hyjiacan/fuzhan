@@ -9,6 +9,7 @@ import (
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
     "fuzhan/internal/appconfig"
+    "fuzhan/internal/constants"
     "fuzhan/internal/middleware"
     "fuzhan/internal/models"
     "fuzhan/internal/services"
@@ -47,6 +48,8 @@ type FileRecordInfo struct {
     RecordID     uint   `json:"recordId,omitempty"`
     IsDir        bool   `json:"isDir"`
     RootName     string `json:"rootName"`
+    DownloadCount int64 `json:"downloadCount"`
+    CanManage    bool   `json:"canManage"` // 当前请求者能否管理（管理员，或上传者IP一致）
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）
@@ -88,7 +91,7 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
 
     if len(parts) == 1 {
         // 列出根目录下的直接子项
-        files, err := fh.listDirectChildren(rootName, "")
+        files, err := fh.listDirectChildren(rootName, "", utils.GetClientIP(c), fh.requesterIsAdmin(c))
         if err != nil {
             utils.HandleError(c, http.StatusInternalServerError, 500, "数据库查询失败", err.Error())
             return
@@ -99,7 +102,7 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
 
     // 列出子目录下的直接子项
     prefix := parts[1]
-    files, err := fh.listDirectChildren(rootName, prefix)
+    files, err := fh.listDirectChildren(rootName, prefix, utils.GetClientIP(c), fh.requesterIsAdmin(c))
     if err != nil {
         utils.HandleError(c, http.StatusInternalServerError, 500, "数据库查询失败", err.Error())
         return
@@ -161,8 +164,8 @@ func (fh *FileHandlers) getRootNameList() []string {
 }
 
 // listDirectChildren 列出指定目录下的直接子项（文件和子目录）
-// prefix 为空时列出根级直接子项
-func (fh *FileHandlers) listDirectChildren(rootName, prefix string) ([]FileRecordInfo, error) {
+// prefix 为空时列出根级直接子项；isAdmin 为 true 时所有条目均可管理
+func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string, isAdmin bool) ([]FileRecordInfo, error) {
     query := fh.DB.Model(&models.FileRecordPublic{}).
         Where("root_name = ? AND status = ?", rootName, models.FileStatusActive)
 
@@ -185,6 +188,7 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix string) ([]FileRecor
         return nil, err
     }
 
+    // 可管理：管理员，或上传者IP与当前请求者IP一致
     result := make([]FileRecordInfo, 0, len(records))
     for _, r := range records {
         fileType := "file"
@@ -195,6 +199,8 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix string) ([]FileRecor
         if !r.ModTime.IsZero() {
             modifiedTime = r.ModTime.Format("2006-01-02T15:04:05")
         }
+        // 管理员，或上传者IP一致者可管理
+        canManage := isAdmin || (r.UploaderIP != "" && r.UploaderIP == requesterIP)
         result = append(result, FileRecordInfo{
             Name:         r.FileName,
             Type:         fileType,
@@ -208,16 +214,86 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix string) ([]FileRecor
             RecordID:     r.ID,
             IsDir:        r.IsDir,
             RootName:     r.RootName,
+            DownloadCount: r.DownloadCount,
+            CanManage:    canManage,
         })
     }
     return result, nil
 }
 
-// MoveFileHandler 移动文件处理器
+// requesterIsAdmin 判断请求者是否为管理员
+func (fh *FileHandlers) requesterIsAdmin(c *gin.Context) bool {
+    role, _ := c.Get(string(constants.ContextKeyRole))
+    return role == "admin"
+}
+
+// canManagePublic 判断请求者是否有权管理某公开文件（管理员，或上传者IP一致）
+// fullPath 为带 rootName 的完整路径，如 "documents/report.pdf"
+func (fh *FileHandlers) canManagePublic(c *gin.Context, fullPath string) bool {
+    if fh.requesterIsAdmin(c) {
+        return true
+    }
+    ip := utils.GetClientIP(c)
+    if ip == "" {
+        return false
+    }
+    rootName, relPath := splitPath(fullPath)
+    if rootName == "" {
+        return false
+    }
+    var rec models.FileRecordPublic
+    if err := fh.DB.Where("root_name = ? AND file_path = ? AND status = ?",
+        rootName, relPath, models.FileStatusActive).First(&rec).Error; err != nil {
+        return false
+    }
+    return rec.UploaderIP != "" && rec.UploaderIP == ip
+}
+
+// RenamePublicFileHandler 重命名公开文件（管理员，或上传者IP一致）
+// 兼容请求体 { oldPath, newName } 与 { path, newName }
+func (fh *FileHandlers) RenamePublicFileHandler(c *gin.Context) {
+    var req struct {
+        OldPath string `json:"oldPath"`
+        Path    string `json:"path"`
+        NewName string `json:"newName"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        utils.HandleBadRequest(c, "请求数据格式错误", err.Error())
+        return
+    }
+    oldPath := req.OldPath
+    if oldPath == "" {
+        oldPath = req.Path
+    }
+    if oldPath == "" || req.NewName == "" {
+        utils.HandleBadRequest(c, "路径和新文件名不能为空", nil)
+        return
+    }
+
+    if !fh.canManagePublic(c, oldPath) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
+        return
+    }
+
+    if err := fh.FileService.RenameFile(oldPath, req.NewName); err != nil {
+        middleware.LogOperation(c, "file.rename", oldPath+" -> "+req.NewName, err)
+        utils.HandleBadRequest(c, err.Error(), nil)
+        return
+    }
+    middleware.LogOperation(c, "file.rename", oldPath+" -> "+req.NewName, nil)
+    utils.HandleSuccess(c, http.StatusOK, "重命名成功", nil)
+}
+
+// MoveFileHandler 移动文件处理器（管理员，或上传者IP一致）
 func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
     var req models.MoveFileRequest
     if err := c.ShouldBindJSON(&req); err != nil {
         utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
+        return
+    }
+
+    if !fh.canManagePublic(c, req.OldPath) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
         return
     }
 
@@ -232,11 +308,16 @@ func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
     utils.HandleSuccess(c, http.StatusOK, "移动成功", nil)
 }
 
-// DeleteFileHandler 删除文件处理器
+// DeleteFileHandler 删除文件处理器（管理员，或上传者IP一致）
 func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
     var req models.DeleteFileRequest
     if err := c.ShouldBindQuery(&req); err != nil {
         utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
+        return
+    }
+
+    if !fh.canManagePublic(c, req.Path) {
+        utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
         return
     }
 

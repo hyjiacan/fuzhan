@@ -41,6 +41,7 @@ type UploadSession struct {
     TargetPath  string         `gorm:"size:512" json:"targetPath"` // 目标路径
     TargetRoot  string         `gorm:"size:255" json:"targetRoot"` // 目标根目录
     UserID      string         `gorm:"size:64" json:"userID"`      // 用户ID
+    ClientIP    string         `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
     ChunkDir    string         `gorm:"size:512" json:"chunkDir"`   // 分片目录
     CreatedAt   time.Time      `json:"createdAt"`
     UpdatedAt   time.Time      `json:"updatedAt"`

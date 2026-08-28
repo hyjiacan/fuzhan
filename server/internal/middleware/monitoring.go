@@ -5,8 +5,9 @@ import (
     "time"
 
     "github.com/gin-gonic/gin"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
-    "fuzhan/internal/utils"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"fuzhan/internal/online"
+	"fuzhan/internal/utils"
 )
 
 // MonitoringMiddleware 监控中间件
@@ -14,6 +15,9 @@ func MonitoringMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         start := time.Now()
         clientIP := utils.GetClientIP(c)
+
+        // 记录客户端访问（与登录无关），用于管理端"在线IP"统计
+        online.Default.Record(clientIP, c.Request.UserAgent(), time.Now())
 
         utils.AppMetrics.HTTPInFlightRequests.Inc()
         defer utils.AppMetrics.HTTPInFlightRequests.Dec()

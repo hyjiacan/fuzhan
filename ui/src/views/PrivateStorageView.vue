@@ -68,7 +68,7 @@
     </div>
 
     <!-- 上传弹窗 -->
-    <el-dialog :model-value="showUploadDialog" title="上传文件" class="upload-dialog" width="640px"
+    <el-dialog :model-value="showUploadDialog" title="上传文件" class="upload-dialog" width="800px"
       :close-on-click-modal="false" :show-close="false" @update:model-value="onUploadDialogShowChange">
       <upload-manager :upload-api="privateUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" @upload-error="onUploadError" ref="uploadManagerRef" @close="handleUploadDialogClose" />
     </el-dialog>

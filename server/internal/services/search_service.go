@@ -88,7 +88,8 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 				Where("root_name = ? AND status = 'active'", rn)
 
 			for _, kw := range keywords {
-				tx = tx.Where("file_name LIKE ?", "%"+kw+"%")
+				// 同时匹配文件名与备注，便于用备注内容检索文件
+				tx = tx.Where("(file_name LIKE ? OR notes LIKE ?)", "%"+kw+"%", "%"+kw+"%")
 			}
 
 			// 添加扩展名过滤条件
@@ -131,12 +132,16 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 					}
 
 					fileInfo := appconfig.FileInfo{
-						Name:         record.FileName,
-						Type:         fileType,
-						Path:         record.FullPath,
-						ModifiedTime: record.ModTime.Format("2006-01-02T15:04:05"),
-						Size:         record.FileSize,
-						RootName:     rn,
+						Name:          record.FileName,
+						Type:          fileType,
+						Path:          record.FullPath,
+						ModifiedTime:  record.ModTime.Format("2006-01-02T15:04:05"),
+						Size:          record.FileSize,
+						RootName:      rn,
+						Xxh3Hash:      record.Xxh3Hash,
+						Notes:         record.Notes,
+						DownloadCount: record.DownloadCount,
+						RecordID:      record.ID,
 					}
 
 					mu.Lock()
@@ -208,6 +213,16 @@ func (s *SearchService) LoadHashMap(rootName string) (map[string]string, error) 
 		hashMap[filepath.ToSlash(r.FullPath)] = r.Xxh3Hash
 	}
 	return hashMap, nil
+}
+
+// IncrementPublicDownloadCount 公共文件下载次数 +1（按完整路径定位，非阻塞返回错误）
+func (s *SearchService) IncrementPublicDownloadCount(fullPath string) error {
+	if fullPath == "" {
+		return nil
+	}
+	return s.db.Model(&models.FileRecordPublic{}).
+		Where("full_path = ? AND status = ? AND is_dir = ?", fullPath, models.FileStatusActive, false).
+		UpdateColumn("download_count", gorm.Expr("download_count + 1")).Error
 }
 
 // FindFilePathByHash 根据 xxh3 哈希值查找文件路径

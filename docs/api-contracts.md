@@ -94,9 +94,9 @@ Content-Type: application/json
 | GET | `/api/v1/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 无 |
 | GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 无 |
 | GET | `/api/v1/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 无 |
-| POST | `/api/v1/files/rename` | `file.Handler.RenameFileHandler` | 重命名文件 | JWT |
-| POST | `/api/v1/files/move` | `file.Handler.MoveFileHandler` | 移动文件 | JWT |
-| DELETE | `/api/v1/files` | `file.Handler.DeleteFileHandler` | 删除文件 | JWT |
+| POST | `/api/v1/files/rename` | `file.FileHandlers.RenamePublicFileHandler` | 重命名文件 | JWT（上传者IP一致或管理员） |
+| POST | `/api/v1/files/move` | `file.FileHandlers.MoveFileHandler` | 移动文件 | JWT（上传者IP一致或管理员） |
+| DELETE | `/api/v1/files/delete` | `file.FileHandlers.DeleteFileHandler` | 删除文件 | JWT（上传者IP一致或管理员） |
 
 ### 目录列表
 
@@ -114,7 +114,9 @@ GET /api/v1/files/list?path=rootName/subdir
         "path": "rootName/subdir/文件名.txt",
         "type": "file",
         "size": 1024,
-        "modifiedTime": "2026-07-22T10:00:00Z"
+        "modifiedTime": "2026-07-22T10:00:00Z",
+        "downloadCount": 12,
+        "canManage": true
       },
       {
         "name": "子目录",
@@ -350,6 +352,38 @@ Content-Type: application/json
 |----------|------|---------|----------|
 | GET | `/api/v1/admin/url-tasks` | `admin.URLDownloadHandler.ListURLTasks` | 任务列表 |
 | DELETE | `/api/v1/admin/url-tasks/:id` | `admin.URLDownloadHandler.DeleteURLTask` | 删除任务 |
+
+### 在线 IP 统计
+
+| HTTP方法 | 路由 | Handler | 功能描述 |
+|----------|------|---------|----------|
+| GET | `/api/v1/admin/online-ips` | `admin.Handler.OnlineIPs` | 当前在线 IP 列表（含在线时长） |
+
+**说明：** 这里的"在线"与登录状态无关，仅依据最近是否有请求判定。只要某个客户端 IP 在空闲超时（默认 180 秒）内发出过任一元请求即视为在线，距上次请求超过该时长自动离线；超过 24 小时未活动的记录会被清理。
+
+**响应数据：**
+```json
+{
+  "success": true,
+  "message": "",
+  "data": {
+    "online": [
+      {
+        "ip": "192.168.1.100",
+        "firstSeen": "2026-08-28T09:00:00+08:00",
+        "lastSeen": "2026-08-28T09:05:00+08:00",
+        "onlineSeconds": 300,
+        "requestCount": 42,
+        "userAgent": "Mozilla/5.0 ..."
+      }
+    ],
+    "idleTimeoutSeconds": 180,
+    "serverTime": "2026-08-28T09:05:00+08:00"
+  }
+}
+```
+
+> 说明：判断在线时并不校验请求是否【成功】或【已登录】——任何被监控中间件记录的请求都会更新该 IP 的最近活动时间，因此查看本页的管理员自身 IP 通常也会出现在列表中。
 
 ### 数据迁移
 

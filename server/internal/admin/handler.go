@@ -7,12 +7,14 @@ import (
     "path/filepath"
     "strconv"
     "strings"
+    "time"
 
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
     "fuzhan/internal/appconfig"
     "fuzhan/internal/constants"
     "fuzhan/internal/middleware"
+    "fuzhan/internal/online"
     "fuzhan/pkg/response"
     "fuzhan/internal/repositories"
     "fuzhan/internal/services"
@@ -31,6 +33,17 @@ func NewHandler(adminService *services.AdminService, db *gorm.DB) *Handler {
         adminService: adminService,
         db:           db,
     }
+}
+
+// OnlineIPs 获取当前在线 IP 列表（依据最近请求判定，与登录无关）
+func (h *Handler) OnlineIPs(c *gin.Context) {
+	now := time.Now()
+	entries := online.Default.Snapshot(now)
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{
+		"online":                 entries,
+		"idleTimeoutSeconds":     int(online.IdleTimeout.Seconds()),
+		"serverTime":             now.Format(time.RFC3339),
+	})
 }
 
 // UsersHandler 处理获取用户列表

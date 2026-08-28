@@ -49,11 +49,13 @@
       <div ref="tableWrapRef" class="table-v2-wrap">
         <el-table-v2
           :columns="columns"
-          :data="fileList"
+          :data="sortedFileList"
           :width="tableWidth"
           :height="tableHeight"
           :row-height="32"
           row-key="path"
+          :sort-state="sortState"
+          @column-sort="onColumnSort"
         />
       </div>
     </div>
@@ -70,8 +72,42 @@
       </template>
     </el-dialog>
 
+    <!-- 重命名弹窗 -->
+    <el-dialog v-model="renameDialogVisible" title="重命名文件" width="420px">
+      <el-input v-model="renameInput" maxlength="255" @keyup.enter="confirmRename" placeholder="输入新文件名" />
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="renameDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="renaming" @click="confirmRename">确定</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 移动弹窗（目标路径可含新文件名） -->
+    <el-dialog v-model="moveDialogVisible" title="移动文件" width="560px">
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item label="文件名">
+          <el-input :model-value="moveTargetRow?.name" disabled />
+        </el-form-item>
+        <el-form-item label="当前位置">
+          <el-input :model-value="moveTargetRow?.path" disabled />
+        </el-form-item>
+        <el-form-item label="目标路径">
+          <el-input v-model="moveTargetPath" :maxlength="1024" @keyup.enter="confirmMove"
+            placeholder="例如 rootName/新目录/新文件名.pdf" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="moveDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="moving" @click="confirmMove">确定</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 上传弹窗（关闭保护：由 UploadManager 的 close 事件控制） -->
-    <el-dialog v-model="uploadDialogVisible" title="上传文件" class="upload-dialog" width="600px"
+    <el-dialog v-model="uploadDialogVisible" title="上传文件" class="upload-dialog" width="800px"
+      top="10vh"
       :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
       <upload-manager ref="uploadManagerRef" :upload-api="uploadApi" @upload-start="onUploadStart"
         @upload-success="onUploadSuccess" @upload-error="onUploadError" @upload-change="uploadQueueCount = $event"
@@ -101,12 +137,12 @@
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox, ElButton } from 'element-plus'
+import { ElMessage, ElMessageBox, ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
-import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions } from '@/utils'
+import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions, compareFileNames } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 import { isPreviewable } from '@/config/preview'
@@ -175,6 +211,110 @@ const saveNotes = async () => {
     savingNotes.value = false
   }
 }
+// 重命名/删除（仅上传者IP一致或管理员可操作）
+const renameDialogVisible = ref(false)
+const renameInput = ref('')
+const renameTargetRow = ref(null)
+const renaming = ref(false)
+
+const openRename = (row) => {
+  renameTargetRow.value = row
+  renameInput.value = row.name
+  renameDialogVisible.value = true
+}
+
+const reloadAfterManage = () => {
+  store.actions.loadFileList(store.state.currentPath || '/')
+}
+
+const confirmRename = async () => {
+  const row = renameTargetRow.value
+  const newName = renameInput.value.trim()
+  if (!row || !newName) {
+    ElMessage.warning('文件名不能为空')
+    return
+  }
+  if (newName === row.name) {
+    renameDialogVisible.value = false
+    return
+  }
+  renaming.value = true
+  try {
+    const res = await FileRecordApi.rename(row.path, newName)
+    if (res.success) {
+      ElMessage.success('重命名成功')
+      renameDialogVisible.value = false
+      reloadAfterManage()
+    } else {
+      ElMessage.error(res.message || '重命名失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '重命名失败'))
+  } finally {
+    renaming.value = false
+  }
+}
+
+const confirmDelete = (row) => {
+  ElMessageBox.confirm(`确定删除「${row.name}」吗？此操作不可恢复。`, '删除确认', {
+    confirmButtonText: '确认删除',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      const res = await FileRecordApi.deletePublic(row.path)
+      if (res.success) {
+        ElMessage.success('删除成功')
+        reloadAfterManage()
+      } else {
+        ElMessage.error(res.message || '删除失败')
+      }
+    } catch (e) {
+      ElMessage.error(formatErrorMessage(e, '删除失败'))
+    }
+  }).catch(() => {})
+}
+
+// 移动文件（目标路径可含新文件名，实现移动+重命名）
+const moveDialogVisible = ref(false)
+const moveTargetRow = ref(null)
+const moveTargetPath = ref('')
+const moving = ref(false)
+
+const openMove = (row) => {
+  moveTargetRow.value = row
+  moveTargetPath.value = row.path
+  moveDialogVisible.value = true
+}
+
+const confirmMove = async () => {
+  const row = moveTargetRow.value
+  const target = moveTargetPath.value.trim()
+  if (!row || !target) {
+    ElMessage.warning('目标路径不能为空')
+    return
+  }
+  if (target === row.path) {
+    moveDialogVisible.value = false
+    return
+  }
+  moving.value = true
+  try {
+    const res = await FileRecordApi.move(row.path, target)
+    if (res.success) {
+      ElMessage.success('移动成功')
+      moveDialogVisible.value = false
+      reloadAfterManage()
+    } else {
+      ElMessage.error(res.message || '移动失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '移动失败'))
+  } finally {
+    moving.value = false
+  }
+}
+
 const uploadDialogVisible = ref(false)
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
@@ -254,6 +394,52 @@ const latestVersionPaths = computed(() => {
 })
 
 const isDir = (row) => row.type === 'dir' || row.type === 'directory'
+
+// ============ 界面排序（不涉及后台）============
+// 默认按名称升序；支持按路径(文件名)、修改时间、下载次数排序
+const sortState = ref({ key: 'name', order: 'asc' })
+
+const onColumnSort = (state) => {
+  if (state && state.key) {
+    sortState.value = { key: state.key, order: state.order }
+  }
+}
+
+const sortedFileList = computed(() => {
+  const list = [...fileList.value]
+  const { key, order } = sortState.value
+
+  const dirFirst = (a, b) => {
+    const aDir = isDir(a)
+    const bDir = isDir(b)
+    if (aDir !== bDir) return aDir ? -1 : 1
+    return 0
+  }
+
+  let cmp
+  if (key === 'modifiedTime') {
+    cmp = (a, b) => {
+      const ta = String(a.modifiedTime || '')
+      const tb = String(b.modifiedTime || '')
+      if (ta < tb) return -1
+      if (ta > tb) return 1
+      return 0
+    }
+  } else if (key === 'downloadCount') {
+    cmp = (a, b) => (a.downloadCount || 0) - (b.downloadCount || 0)
+  } else {
+    // 默认为路径/文件名排序，保持"英文在前、中文按拼音"规则
+    cmp = (a, b) => compareFileNames(a.name, b.name)
+  }
+
+  list.sort((a, b) => {
+    const d = dirFirst(a, b)
+    if (d !== 0) return d
+    const r = cmp(a, b)
+    return order === 'desc' ? -r : r
+  })
+  return list
+})
 
 // HTML 转义函数
 const escapeHtml = (str) => {
@@ -367,6 +553,8 @@ const columns = [
     key: 'name',
     minWidth: 240,
     flexGrow: 1,
+    sortable: true,
+    sortBy: 'name',
     cellRenderer: ({ rowData: row }) => {
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
       const isLatest = latestVersionPaths.value.has(row.path)
@@ -463,7 +651,7 @@ const columns = [
     cellRenderer: ({ rowData: row }) => formatSize(row.size)
   },
   {
-    title: '修改时间', key: 'modifiedTime', width: 200,
+    title: '修改时间', key: 'modifiedTime', width: 200, sortable: true, sortBy: 'modifiedTime',
     cellRenderer: ({ rowData: row }) => {
       const text = TimeUtils.formatDateTime(row.modifiedTime)
       if (TimeUtils.isRecent24h(row.modifiedTime)) {
@@ -471,6 +659,10 @@ const columns = [
       }
       return text
     }
+  },
+  {
+    title: '下载次数', key: 'downloadCount', width: 110, sortable: true, sortBy: 'downloadCount',
+    cellRenderer: ({ rowData: row }) => row.downloadCount || 0
   },
   {
     title: '备注', key: 'notes', width: 150,
@@ -481,11 +673,30 @@ const columns = [
     }, () => row.notes || '添加备注')
   },
   {
-    title: '依赖', key: 'deps', width: 80,
-    cellRenderer: ({ rowData: row }) => isDir(row) ? null : h(ElButton, {
-      size: 'small', link: true,
-      onClick: () => openDepTree(row)
-    }, () => '依赖')
+    title: '操作', key: 'actions', width: 150,
+    cellRenderer: ({ rowData: row }) => {
+      // 目录：不显示管理操作（依赖与移动/重命名/删除均针对文件）
+      if (isDir(row)) return null
+      // 无管理权限的文件：仅提供"依赖"入口
+      if (!row.canManage) {
+        return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) }, () => '依赖')
+      }
+      // 有管理权限：默认按钮为"依赖"，下拉含移动/重命名/删除
+      return h(ElDropdown, {
+        splitButton: true,
+        type: 'primary',
+        size: 'small',
+        trigger: 'click',
+        onClick: () => openDepTree(row)
+      }, {
+        default: () => '依赖',
+        dropdown: () => h(ElDropdownMenu, {}, [
+          h(ElDropdownItem, { onClick: () => openMove(row) }, () => '移动'),
+          h(ElDropdownItem, { onClick: () => openRename(row) }, () => '重命名'),
+          h(ElDropdownItem, { divided: true, onClick: () => confirmDelete(row) }, () => '删除')
+        ])
+      })
+    }
   }
 ]
 
@@ -850,12 +1061,6 @@ const handleUploadDialogClose = () => {
 .icon-filetype {
   color: #888;
 }
-
-.action-buttons {
-  display: flex;
-  gap: 4px;
-}
-
 
 .dialog-footer {
   display: flex;

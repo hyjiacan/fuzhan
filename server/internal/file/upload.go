@@ -160,10 +160,24 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
     if targetExists {
         role, _ := c.Get(string(constants.ContextKeyRole))
         if role != "admin" {
-            utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
-            return
+            // 非管理员：仅当上传者IP与现有文件的上传者IP一致时允许覆盖
+            clientIP := utils.GetClientIP(c)
+            indexFilePath := "/" + req.Filename
+            if cleanDir := strings.Trim(strings.TrimSuffix(req.Dir, "/"), "/"); cleanDir != "" {
+                indexFilePath = "/" + cleanDir + "/" + req.Filename
+            }
+            if clientIP == "" || h.indexSvc == nil {
+                utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
+                return
+            }
+            rec, lookupErr := h.indexSvc.FindRecordByPath(req.Filename, req.RootName, indexFilePath)
+            if lookupErr != nil || rec == nil || rec.UploaderIP == "" || rec.UploaderIP != clientIP {
+                utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
+                return
+            }
+            // 上传者IP一致，允许覆盖
         }
-        // admin 允许覆盖，通过 overwriteRequired 标记告知前端
+        // 覆盖，通过 overwriteRequired 标记告知前端
     }
 
     session, err := h.service.CreateSession(&services.CreateSessionReq{
@@ -173,6 +187,7 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
         RootName:   req.RootName,
         TargetType: req.TargetType,
         UserID:     utils.GetClientIP(c),
+        ClientIP:   utils.GetClientIP(c),
     })
     if err != nil {
         utils.HandleBadRequest(c, err.Error(), nil)
@@ -1313,6 +1328,17 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 			utils.Warn("URL下载后同步索引失败", utils.String("root", sessionTargetRoot), utils.String("path", relativePath), utils.Err(err))
 		} else {
 			h.indexSvc.MarkRecentlySynced(sessionTargetRoot, relativePath)
+		}
+		// 记录上传者IP（用于"IP一致允许覆盖/重命名/删除"）
+		if clientIP != "" {
+			if uerr := h.db.Model(&models.FileRecordPublic{}).
+				Where("root_name = ? AND file_path = ?", sessionTargetRoot, "/"+strings.TrimPrefix(relativePath, "/")).
+				UpdateColumn("uploader_ip", clientIP).Error; uerr != nil {
+				utils.Warn("URL下载写入上传者IP失败",
+					utils.String("root", sessionTargetRoot),
+					utils.String("path", relativePath),
+					utils.Err(uerr))
+			}
 		}
 		// 触发哈希计算（后台执行，不阻塞）
 		h.indexSvc.TriggerHash(context.Background())

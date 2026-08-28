@@ -81,7 +81,7 @@
     </div>
 
     <!-- 上传弹窗 -->
-    <el-dialog :model-value="showUploadDialog" title="上传临时文件" class="upload-dialog" width="640px"
+    <el-dialog :model-value="showUploadDialog" title="上传临时文件" class="upload-dialog" width="800px"
       :close-on-click-modal="false" :show-close="false" @update:model-value="onUploadDialogShowChange">
       <upload-manager :upload-api="tempUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" ref="uploadManagerRef" @close="handleUploadDialogClose" :delete-on-download="deleteOnDownload" />
       <template #footer>

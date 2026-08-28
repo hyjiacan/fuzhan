@@ -151,7 +151,7 @@
 
 | 页面 | 路由 | 主要组件 | 功能描述 |
 |------|------|----------|----------|
-| HomeView | `/files`, `/files/:path*` | el-button, el-table-v2, el-breadcrumb, el-dialog, el-input | 首页文件浏览，含搜索、上传、面包屑导航、文件预览 |
+| HomeView | `/files`, `/files/:path*` | el-button, el-table-v2, el-breadcrumb, el-dialog, el-input | 首页文件浏览，含搜索、上传、面包屑导航、文件预览；对 `canManage` 为真的文件（管理员或上传者IP一致）显示重命名/删除操作 |
 | SetupView | `/setup` | el-steps, el-form, el-input, el-input-number, el-radio-group | 首次运行配置向导，分步完成基本配置 |
 | TempView | `/temp` | el-table-v2, el-tag, el-dialog, el-input | 临时文件管理，基于IP的访问码分享系统 |
 | PrivateStorageView | `/private` | el-table-v2, el-tag, el-dialog, el-progress | 私有存储管理，需登录，上传/删除/分享文件 |
@@ -167,6 +167,7 @@
 | AdminRecordsView | `/admin/records` | el-table-v2, el-button | 记录管理，查看系统操作记录 |
 | AdminDuplicatesView | `/admin/duplicates` | el-table-v2, el-tag | 重复文件管理，检测与清理重复文件 |
 | AdminApiKeyView / AdminOpenApiView | `/admin/openapi` | el-form, el-input, el-table-v2 | OpenAPI 与 API Key 管理 |
+| AdminOnlineView | `/admin/online` | el-table-v2, el-alert, el-button | 在线 IP 统计，展示当前在线 IP 及在线时长，自动刷新 |
 
 ---
 
@@ -182,7 +183,7 @@
 | ConfigApi | 配置相关 | get, save, reload |
 | FileApi | 文件操作 | list, recent, rename, move, preview, previewChunk, delete |
 | UploadApi | 上传相关 | session, chunk, finalize, urlUpload, urlFileInfo |
-| AdminApi | 管理功能 | users, sessions, files, urlTasks, tls |
+| AdminApi | 管理功能 | users, sessions, files, urlTasks, tls, onlineIps |
 | PrivateApi | 私有存储 | files, quota, session, chunk |
 | TempApi | 临时文件 | list, upload, download, session, extend |
 | SetupApi | 初始化 | status, save, validateDir, networkInterfaces, defaultConfig |
@@ -282,6 +283,7 @@
 | `/admin/files/:pathMatch(.*)*` | AdminFilesView | requiresAuth, requiresAdmin | 子路径 |
 | `/admin/zombie` | AdminZombieView | requiresAuth, requiresAdmin, navName | 僵尸文件 |
 | `/admin/url-tasks` | AdminURLTaskView | requiresAuth, requiresAdmin, navName | URL下载任务 |
+| `/admin/online` | AdminOnlineView | requiresAuth, requiresAdmin, navName | 在线IP |
 | `/:pathMatch(.*)*` | - | - | 默认重定向到 /files |
 
 ### 路由模式

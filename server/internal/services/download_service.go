@@ -138,6 +138,14 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	// 判定是否为预览请求
 	isPreview := r.URL.Query().Get("preview") == "true"
+
+	// 公共文件下载次数累加（真实下载时，不含预览）
+	if !isPreview && r.Method == http.MethodGet && ds.searchService != nil {
+		if ierr := ds.searchService.IncrementPublicDownloadCount(fullPath); ierr != nil {
+			utils.Warn("公共文件下载次数更新失败", utils.String("path", fullPath), utils.Err(ierr))
+		}
+	}
+
 	if !isPreview {
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
 		safeFilename := url.QueryEscape(filepath.Base(targetPath))
@@ -235,6 +243,13 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			ClientIP:  utils.GetRealIP(r),
 			CreatedAt: time.Now(),
 		})
+	}
+
+	// 公共文件下载次数累加（真实下载时，不含预览）
+	if record && r.Method == http.MethodGet && r.URL.Query().Get("preview") != "true" && ds.searchService != nil {
+		if ierr := ds.searchService.IncrementPublicDownloadCount("/" + rootName + "/" + strings.TrimPrefix(subPath, "/")); ierr != nil {
+			utils.Warn("公共文件下载次数更新失败", utils.String("path", subPath), utils.Err(ierr))
+		}
 	}
 
 	// 判定是否为预览请求

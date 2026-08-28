@@ -26,7 +26,7 @@
       <!-- 上传方式：左侧 tabs 切换 -->
       <el-tabs v-model="form.uploadMethod" tab-position="left" class="upload-method-tabs">
         <el-tab-pane name="local" label="上传本地文件">
-          <el-form-item label="选择文件:">
+          <el-form-item label-width="0">
             <!-- Drop zone with button -->
             <div
               ref="dropZoneRef"
@@ -358,7 +358,7 @@
           <el-input
             v-model="textContent"
             type="textarea"
-            :rows="15"
+            :rows="10"
             placeholder="在此输入文件内容..."
             style="font-family: monospace; line-height: 1.6; font-size: 13px;"
           />
@@ -2024,6 +2024,9 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
 <style lang="less">
 .upload-manager {
+  height: 65vh;
+  overflow: auto;
+
   .drop-zone {
     margin-top: 12px;
     padding: 24px;
@@ -2229,6 +2232,10 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
     :deep(.el-tabs__nav) {
       width: 120px;
+    }
+
+    :deep(.el-tabs__header) {
+      height: 100%;
     }
 
     :deep(.el-tabs__content) {

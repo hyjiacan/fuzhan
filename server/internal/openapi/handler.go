@@ -271,7 +271,13 @@ func (h *Handler) DownloadFile(c *gin.Context) {
         return r
     }, record.FileName)
     c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, cleanName, safeFilename))
-    c.File(fullPath)
+
+	// 公共文件下载次数累加
+	h.db.Model(&models.FileRecordPublic{}).
+		Where("full_path = ?", record.FullPath).
+		UpdateColumn("download_count", gorm.Expr("download_count + 1"))
+
+	c.File(fullPath)
 }
 
 // ==================== FR-3.5: 重复文件查询 API ====================
