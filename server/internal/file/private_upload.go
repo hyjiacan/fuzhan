@@ -107,10 +107,9 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
     }
 
     var req struct {
-        Filename   string `json:"filename" binding:"required"`
-        FileSize   int64  `json:"fileSize" binding:"required,min=1"`
-        ExpireDays int    `json:"expireDays"`
-            Dir        string `json:"dir"`
+        Filename string `json:"filename" binding:"required"`
+        FileSize int64  `json:"fileSize" binding:"required,min=1"`
+        Dir      string `json:"dir"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
         utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
@@ -152,11 +151,6 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
     }
     uploadID := fmt.Sprintf("pv_%s_%d", shortID, time.Now().UnixNano())
 
-    expireDays := req.ExpireDays
-    if expireDays <= 0 {
-        expireDays = appconfig.GlobalConfig.Storage.Private.DefaultExpireDays
-    }
-
     session := &models.UploadSession{
         FileName:    req.Filename,
         FileSize:    req.FileSize,
@@ -168,7 +162,7 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
         TargetRoot:  userID,
         UserID:      userID,
         ChunkDir:    uploadID,
-        ExpiredAt:   time.Now().AddDate(0, 0, expireDays),
+        ExpiredAt:   time.Now().Add(24 * time.Hour), // 上传分片会话有效期固定 24 小时
     }
 
     if err := h.getSessionRepo().Create(session); err != nil {
@@ -449,7 +443,6 @@ func (h *PrivateUploadHandler) FinalizeSession(c *gin.Context) {
         FileSize:   session.FileSize,
         Owner:      userID,
         Code:       shareCode,
-        ExpireTime: session.ExpiredAt,
     }
     SavePrivateFileMetadata(fileDir, meta)
 

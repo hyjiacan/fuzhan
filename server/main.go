@@ -273,7 +273,6 @@ func main() {
     downloadService := serviceDeps.DownloadService
     searchService := serviceDeps.SearchService
     authService := serviceDeps.AuthService
-    privateStorageService := services.NewPrivateStorageService(fileService)
 
     // LDAP 认证服务（v3 Phase 2）
     ldapService := auth.NewLDAPService(db, &auth.LDAPConfig{
@@ -1042,52 +1041,38 @@ func main() {
     }
 
     runCleanupWorker := func(ctx context.Context) {
-        // 启动时立即执行一次清理（统一在 worker 内处理，不使用独立 goroutine）
-        utils.Info("[启动] 执行初始清理任务")
-        if err := uploadSessionHandler.CleanupExpiredSessions(); err != nil {
-            utils.Warn("初始清理过期会话失败", utils.Err(err))
-        }
-        tempHandler.CleanupTempSessions()
-        tempHandler.CleanupExpiredFiles()
+        // 执行一次临时存储清理（上传会话、临时上传分片会话、过期临时文件），并写入任务记录
+        runCleanupOnce := func(trigger string) {
+            task, err := taskService.CreateTask("cleanup", "临时存储清理")
+            if err != nil {
+                utils.Warn("创建临时存储清理任务失败", utils.Err(err))
+            } else {
+                _ = taskService.StartTask(task.ID)
+            }
 
-        // 定时清理
-        ticker := time.NewTicker(5 * time.Minute)
-        defer ticker.Stop()
-        for {
-            select {
-            case <-ticker.C:
-                if err := uploadSessionHandler.CleanupExpiredSessions(); err != nil {
-                    utils.Warn("清理过期会话失败", utils.Err(err))
-                }
-                tempHandler.CleanupTempSessions()
-                tempHandler.CleanupExpiredFiles()
-            case <-ctx.Done():
-                return
+            utils.Info("开始临时存储清理", utils.String("trigger", trigger))
+            if err := uploadSessionHandler.CleanupExpiredSessions(); err != nil {
+                utils.Warn("清理过期上传会话失败", utils.Err(err))
+            }
+            tempHandler.CleanupTempSessions()
+            tempHandler.CleanupExpiredFiles()
+            utils.Info("临时存储清理完成", utils.String("trigger", trigger))
+
+            if task != nil {
+                _ = taskService.CompleteTask(task.ID)
             }
         }
-    }
 
-    runPrivateCleanupWorker := func(ctx context.Context) {
-        // 快照配置，避免与 SaveConfig 并发读写 GlobalConfig（通过 GetConfig 安全复制）
-        privateCfg := appconfig.GetConfig().Storage.Private
-        if !privateCfg.Enabled {
-            utils.Info("私有存储功能未启用")
-            <-ctx.Done()
-            return
-        }
-        timer := time.NewTimer(5 * time.Second)
-        select {
-        case <-timer.C:
-        case <-ctx.Done():
-            timer.Stop()
-            return
-        }
+        // 启动时立即执行一次清理
+        runCleanupOnce("启动")
+
+        // 定时清理：每 1 小时一次
         ticker := time.NewTicker(1 * time.Hour)
         defer ticker.Stop()
         for {
             select {
             case <-ticker.C:
-                privateStorageService.CleanUpExpiredFiles(privateCfg)
+                runCleanupOnce("定时")
             case <-ctx.Done():
                 return
             }
@@ -1413,7 +1398,6 @@ func main() {
         workerStart(wm, "http", runHTTPServer)
         workerStart(wm, "ftp", func(ctx context.Context) { runFTPWorker(ctx, ftpHandler) })
         workerStart(wm, "cleanup", runCleanupWorker)
-        workerStart(wm, "private-cleanup", runPrivateCleanupWorker)
         workerStart(wm, "index-scan", runIndexScanWorker)
         workerStart(wm, "scan-timer", runScanTimerWorker)
         workerStart(wm, "consistency-check", runConsistencyCheckWorker)

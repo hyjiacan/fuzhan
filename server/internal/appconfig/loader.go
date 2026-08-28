@@ -255,7 +255,6 @@ func readConfig() {
         },
         GlobalQuota:       globalQuota,
         PerUserQuota:      perUserQuota,
-        DefaultExpireDays: tempConfig.Storage.Private.DefaultExpireDays,
     }
 
 	// 解析上传配置
@@ -349,10 +348,6 @@ func validateConfig() {
         utils.Info("配置: 公共目录上传已关闭")
     }
     // 配额为 0 表示无限制
-    if GlobalConfig.Storage.Private.DefaultExpireDays < 0 {
-        utils.Fatal("配置错误: storage.private.default_expire_days 不能为负数",
-            utils.String("file", ConfigPath))
-    }
     if GlobalConfig.Storage.Temp.DefaultExpireDays < 0 {
         utils.Fatal("配置错误: storage.temp.default_expire_days 不能为负数",
             utils.String("file", ConfigPath))

@@ -102,31 +102,12 @@ func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
         return
     }
 
-    // 计算过期时间（默认7天）
-    expireTime := time.Now().Add(7 * 24 * time.Hour)
-    expireDateStr := c.PostForm("expireDate")
-    if expireDateStr == "never" {
-        expireTime = time.Time{}
-    } else if expireDateStr != "" {
-        parsedTime, err := time.Parse("2006-01-02", expireDateStr)
-        if err != nil {
-            utils.HandleBadRequest(c, "过期日期格式错误", nil)
-            return
-        }
-        expireTime = time.Date(parsedTime.Year(), parsedTime.Month(), parsedTime.Day(), 23, 59, 59, 0, time.Local)
-        if expireTime.Before(time.Now()) {
-            utils.HandleBadRequest(c, "过期日期不能是过去的日期", nil)
-            return
-        }
-    }
-
     meta := &PrivateFileMeta{
         Filename:   handler.Filename,
         UploadTime: time.Now(),
         FileSize:   fileSize,
         Owner:      userID,
         Code:       code,
-        ExpireTime: expireTime,
     }
 
     if err := SavePrivateFileMetadata(fileDir, meta); err != nil {
@@ -251,11 +232,6 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
         fileDir, entryMeta, findErr := FindPrivateFileByCode(configPkg.GlobalConfig.Storage.Private.Path, entry.Name(), code)
         if findErr != nil {
             continue
-        }
-
-        if !entryMeta.ExpireTime.IsZero() && time.Now().After(entryMeta.ExpireTime) {
-            utils.HandleErrorCompat(c, http.StatusGone, "文件已过期", nil)
-            return
         }
 
         meta = entryMeta

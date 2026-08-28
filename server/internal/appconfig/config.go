@@ -118,7 +118,6 @@ type PrivateStorageConfigWithStringQuota struct {
     Enabled           bool                            `yaml:"enabled"`
     Path              string                          `yaml:"path"`
     Quota             PrivateQuotaConfigWithString    `yaml:"quota,omitempty"`
-    DefaultExpireDays int                             `yaml:"default_expire_days"`
 }
 
 // PrivateStorageConfig 独立的临时文件配置结构体
@@ -127,8 +126,7 @@ type PrivateStorageConfig struct {
     Path              string              `yaml:"path"`
     Quota             PrivateQuotaConfig  `yaml:"quota,omitempty"`
     GlobalQuota       int64               `yaml:"-"` // 为了向后兼容，通过Quota.GlobalQuota访问
-    PerUserQuota      int64               `yaml:"-"` // 为了向后兼容，通过Quota.PerUserQuota访问
-    DefaultExpireDays int                 `yaml:"default_expire_days"` // 默认过期天数
+    PerUserQuota      int64               `yaml:"-"`
 }
 
 // TempConfig 临时文件配置（基于IP）

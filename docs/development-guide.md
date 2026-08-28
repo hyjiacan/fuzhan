@@ -296,7 +296,7 @@ storage:
     quota:
       global: "100G"    # 全局配额
       per_user: "10G"   # 单用户配额
-    default_expire_days: 365
+    # 私有文件永久保存，无过期概念（仅临时文件有过期时间）
 
   # 临时文件
   temp:

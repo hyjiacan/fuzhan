@@ -11,7 +11,6 @@ import (
     "time"
 
     configPkg "fuzhan/internal/appconfig"
-    "fuzhan/internal/utils"
 )
 
 // PrivateFileMeta 私有文件元数据
@@ -21,7 +20,6 @@ type PrivateFileMeta struct {
     FileSize   int64     `json:"fileSize"`
     Owner      string    `json:"owner"`
     Code       string    `json:"code"`
-    ExpireTime time.Time `json:"expireTime"`
 }
 
 // GenerateShareCode 生成8位分享码
@@ -98,9 +96,6 @@ func FindPrivateFileByCode(basePath, userID, code string) (string, *PrivateFileM
                 if loadErr != nil {
                     return nil
                 }
-                if !meta.ExpireTime.IsZero() && time.Now().After(meta.ExpireTime) {
-                    return nil
-                }
                 foundDir = fileDir
                 foundMeta = meta
                 return filepath.SkipAll // 找到后停止遍历
@@ -148,9 +143,7 @@ func ListPrivateDirectory(basePath, userID, dirPath string) (files []PrivateFile
             // 包含 meta.json → 文件条目
             meta, loadErr := LoadPrivateFileMetadata(entryPath)
             if loadErr == nil {
-                if meta.ExpireTime.IsZero() || time.Now().Before(meta.ExpireTime) {
-                    files = append(files, *meta)
-                }
+                files = append(files, *meta)
             }
         } else if os.IsNotExist(statErr) {
             // 不含 meta.json → 子目录条目
@@ -177,53 +170,4 @@ func GetUserUsedQuota(_ string, userID string) int64 {
         return 0
     }
     return total
-}
-
-// CleanUpExpiredPrivateFiles 清理过期文件（支持嵌套目录）
-func CleanUpExpiredPrivateFiles() {
-    if !configPkg.GlobalConfig.Storage.Private.Enabled {
-        return
-    }
-
-    usersDir := filepath.Join(configPkg.GlobalConfig.Storage.Private.Path, "users")
-    if _, err := os.Stat(usersDir); os.IsNotExist(err) {
-        return
-    }
-
-    entries, err := os.ReadDir(usersDir)
-    if err != nil {
-        utils.Error("读取用户目录失败", utils.Err(err))
-        return
-    }
-
-    var deleted int
-    for _, userEntry := range entries {
-        if !userEntry.IsDir() {
-            continue
-        }
-
-        userDir := filepath.Join(usersDir, userEntry.Name())
-        filepath.Walk(userDir, func(path string, info os.FileInfo, err error) error {
-            if err != nil {
-                return nil
-            }
-            if !info.IsDir() && strings.EqualFold(info.Name(), "meta.json") {
-                fileDir := filepath.Dir(path)
-                meta, loadErr := LoadPrivateFileMetadata(fileDir)
-                if loadErr != nil {
-                    return nil
-                }
-                if !meta.ExpireTime.IsZero() && time.Now().After(meta.ExpireTime) {
-                    os.RemoveAll(fileDir)
-                    deleted++
-                    utils.Info("已删除过期文件", utils.String("filename", meta.Filename))
-                }
-            }
-            return nil
-        })
-    }
-
-    if deleted > 0 {
-        utils.Info("清理过期文件", utils.Int("count", deleted))
-    }
 }

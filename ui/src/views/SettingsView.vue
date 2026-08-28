@@ -353,9 +353,9 @@
       <!-- 数据库 -->
       <el-tab-pane name="database" label="数据库">
         <el-card>
-          <el-alert type="info" :show-icon="false" :closable="false">
-            <template #title>关于数据库迁移</template>
-            <div>切换数据库类型或地址时，请使用 <code>dbswitch</code> 等外部迁移工具完成数据搬运，本站不提供内置迁移。</div>
+          <el-alert type="warning" :show-icon="false" :closable="false" class="db-migration-alert">
+            <template #title>切换数据库配置需手动迁移数据</template>
+            <div>修改数据库类型或地址后，若要保留已有数据，请使用 <code>dbswitch</code> 等外部迁移工具手动迁移数据，本站不提供内置迁移。配置保存后需重启服务方可生效。</div>
           </el-alert>
 
           <el-divider />

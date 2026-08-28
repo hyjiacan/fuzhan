@@ -1283,7 +1283,7 @@ const uploadSingleFile = async (queueItem) => {
   // Step 1: Create upload session (或跳过如果已存在)
   const uploadId = savedUploadId || await (async () => {
     const createSessionBody = isPrivate
-      ? { filename: name, fileSize: size, expireDays: form.expireDays || 7, dir: itemUploadDir || '' }
+      ? { filename: name, fileSize: size, dir: itemUploadDir || '' }
       : needsRootSelection.value
         ? { filename: name, fileSize: size, dir: itemUploadDir || '/', rootName: itemRootName || '_apps', targetType: 'local' }
         : { filename: name, fileSize: size, dir: itemUploadDir || '', deleteOnDownload: props.deleteOnDownload }
