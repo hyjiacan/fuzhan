@@ -2,7 +2,6 @@ package appconfig
 
 import (
     "embed"
-    "os"
     "path/filepath"
     "strings"
     "sync"
@@ -384,7 +383,6 @@ var (
     WorkDir      string
     UserHtmlTemplate string
     RootNames    map[string]string = map[string]string{}
-    LogFile      *os.File
 )
 
 // LockConfig 获取写锁，用于修改 GlobalConfig 时保护并发访问

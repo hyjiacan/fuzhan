@@ -11,6 +11,11 @@ import (
     "fuzhan/internal/utils"
 )
 
+// handleLoginBlocked 输出爆破防护拦截结果
+func handleLoginBlocked(c *gin.Context) {
+    response.HandleError(c, http.StatusTooManyRequests, response.CodeBadRequest, "尝试过于频繁，请稍后再试", nil)
+}
+
 // Handler 认证处理器
 type Handler struct {
     authService *services.AuthService
@@ -57,15 +62,22 @@ func (h *Handler) Register(c *gin.Context) {
         response.HandleBadRequest(c, "请求数据格式错误", err.Error())
         return
     }
+    if isLoginLocked(utils.GetClientIP(c)) {
+        middleware.LogOperation(c, "auth.register", req.Username, nil)
+        handleLoginBlocked(c)
+        return
+    }
     resp, err := h.authService.Register(&services.RegisterRequest{
         Username: req.Username,
         Password: req.Password,
     })
     if err != nil {
+        registerLoginFailure(utils.GetClientIP(c))
         middleware.LogOperation(c, "auth.register", req.Username, err)
         response.HandleBadRequest(c, err.Error(), nil)
         return
     }
+    resetLoginFailures(utils.GetClientIP(c))
     middleware.LogOperation(c, "auth.register", req.Username, nil)
     response.HandleSuccess(c, http.StatusCreated, "注册成功", AuthResponse{
         Token: resp.Token, UUID: resp.UUID, Username: resp.Username, ExpiresIn: 86400,
@@ -79,15 +91,22 @@ func (h *Handler) Login(c *gin.Context) {
         response.HandleBadRequest(c, "请求数据格式错误", err.Error())
         return
     }
+    if isLoginLocked(utils.GetClientIP(c)) {
+        middleware.LogOperation(c, "auth.login", req.Username, nil)
+        handleLoginBlocked(c)
+        return
+    }
     resp, err := h.authService.Login(&services.LoginRequest{
         Username: req.Username,
         Password: req.Password,
     })
     if err != nil {
+        registerLoginFailure(utils.GetClientIP(c))
         middleware.LogOperation(c, "auth.login", req.Username, err)
         response.HandleUnauthorized(c, err.Error())
         return
     }
+    resetLoginFailures(utils.GetClientIP(c))
     middleware.LogOperation(c, "auth.login", req.Username, nil)
     response.HandleSuccess(c, http.StatusOK, "登录成功", AuthResponse{
         Token: resp.Token, UUID: resp.UUID, Username: resp.Username, ExpiresIn: 86400,

@@ -188,7 +188,6 @@ const searchResultCount = ref(-1)
 const searchTime = ref(0)
 const searchStartTime = ref(0)
 
-let searchTimer = null
 const searchFiles = () => {
   searchResultCount.value = -1
   if (!searchQuery.value.trim()) {

@@ -16,6 +16,7 @@ import (
     "fuzhan/pkg/response"
     "fuzhan/internal/repositories"
     "fuzhan/internal/services"
+    "fuzhan/internal/utils"
 )
 
 // Handler 管理员处理器
@@ -40,7 +41,8 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 
     result, err := h.adminService.ListUsers(page, pageSize, query)
     if err != nil {
-        response.HandleInternalServerError(c, err.Error())
+        utils.Error("获取用户列表失败", utils.String("query", query), utils.Err(err))
+        response.HandleInternalServerError(c, "获取用户列表失败")
         return
     }
 
@@ -154,7 +156,8 @@ func (h *Handler) SessionsHandler(c *gin.Context) {
 
     result, err := h.adminService.ListSessions(page, pageSize)
     if err != nil {
-        response.HandleInternalServerError(c, err.Error())
+        utils.Error("获取会话列表失败", utils.Err(err))
+        response.HandleInternalServerError(c, "获取会话列表失败")
         return
     }
 
@@ -301,11 +304,12 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 
 	repo := repositories.NewRecordRepository(h.db)
 	count, err := repo.DeleteByAction(req.Action)
-	if err != nil {
-		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
-		response.HandleInternalServerError(c, "清空记录失败: "+err.Error())
-		return
-	}
+    if err != nil {
+        middleware.LogOperation(c, "admin.records.clear", req.Action, err)
+        utils.Error("清空操作记录失败", utils.String("action", req.Action), utils.Err(err))
+        response.HandleInternalServerError(c, "清空记录失败")
+        return
+    }
 
 	middleware.LogOperation(c, "admin.records.clear", req.Action, nil)
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{

@@ -118,7 +118,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	info, err := os.Stat(targetPath)
 	if err != nil || info.IsDir() {
 		utils.Warn("指定文件不存在", utils.String("path", targetPath))
-		utils.EncodeResponse(w, nil, "指定的文件不存在: "+targetPath, http.StatusBadRequest)
+		utils.EncodeResponse(w, nil, "指定的文件不存在", http.StatusBadRequest)
 		return
 	}
 
@@ -219,7 +219,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	info, err := os.Stat(targetPath)
 	if err != nil || info.IsDir() {
 		utils.Warn("指定路径不存在", utils.String("path", targetPath))
-		utils.EncodeResponse(w, nil, "指定的文件不存在: "+targetPath, http.StatusBadRequest)
+		utils.EncodeResponse(w, nil, "指定的文件不存在", http.StatusBadRequest)
 		return
 	}
 

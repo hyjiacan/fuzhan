@@ -101,6 +101,9 @@ const mutations = {
   },
 
   setFileList(files) {
+    if (!Array.isArray(files)) {
+      files = []
+    }
     // 排序：文件夹在前，文件在后，按名称排序（英文在中文前）
     state.fileList = files.sort((a, b) => {
       const aIsDir = a.type === 'dir' || a.type === 'directory'

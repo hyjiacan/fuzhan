@@ -21,7 +21,7 @@
             :data="hotDownloads"
             :width="tableWidth"
             :height="tableHeight"
-            row-key="fileName"
+            :row-key="(row) => row.fullPath || row.fileName || row.id || row.storageKey"
           :row-height="32" />
         </div>
         <div v-if="hotDownloads.length > 0" class="pagination-wrapper">

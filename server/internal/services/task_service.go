@@ -44,33 +44,43 @@ func (s *TaskService) UpdateTaskProgress(id uint, progress int, doneItems, total
 	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(updates).Error
 }
 
-// CompleteTask 完成任务
+// CompleteTask 完成任务（仅允许从 running/pending 转移，防止覆盖已取消/已完成的任务）
 func (s *TaskService) CompleteTask(id uint) error {
 	now := time.Now()
-	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return s.db.Model(&models.TaskRecord{}).
+		Where("id = ? AND status IN ?", id, []string{
+			string(models.TaskStatusPending),
+			string(models.TaskStatusRunning),
+		}).Updates(map[string]interface{}{
 		"status":   string(models.TaskStatusCompleted),
 		"progress": 100,
 		"ended_at": &now,
 	}).Error
 }
 
-// FailTask 标记任务失败
+// FailTask 标记任务失败（仅允许从 running/pending 转移）
 func (s *TaskService) FailTask(id uint, errMsg string) error {
 	now := time.Now()
-	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return s.db.Model(&models.TaskRecord{}).
+		Where("id = ? AND status IN ?", id, []string{
+			string(models.TaskStatusPending),
+			string(models.TaskStatusRunning),
+		}).Updates(map[string]interface{}{
 		"status":        string(models.TaskStatusFailed),
 		"error_message": errMsg,
 		"ended_at":      &now,
 	}).Error
 }
 
-// StartTask 标记任务开始运行
+// StartTask 标记任务开始运行（仅允许从 pending 转移）
 func (s *TaskService) StartTask(id uint) error {
 	now := time.Now()
-	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":     string(models.TaskStatusRunning),
-		"started_at": &now,
-	}).Error
+	return s.db.Model(&models.TaskRecord{}).
+		Where("id = ? AND status = ?", id, string(models.TaskStatusPending)).
+		Updates(map[string]interface{}{
+			"status":     string(models.TaskStatusRunning),
+			"started_at": &now,
+		}).Error
 }
 
 // GetActiveTasks 获取所有活跃任务（运行中或待处理）
@@ -117,10 +127,14 @@ func (s *TaskService) GetTaskHistory(taskType string, page, pageSize int) ([]mod
 	return tasks, total, err
 }
 
-// CancelTask 取消任务
+// CancelTask 取消任务（仅允许从 pending/running 转移，不允许覆盖已终态任务）
 func (s *TaskService) CancelTask(id uint) error {
 	now := time.Now()
-	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return s.db.Model(&models.TaskRecord{}).
+		Where("id = ? AND status IN ?", id, []string{
+			string(models.TaskStatusPending),
+			string(models.TaskStatusRunning),
+		}).Updates(map[string]interface{}{
 		"status":   string(models.TaskStatusCancelled),
 		"ended_at": &now,
 	}).Error
