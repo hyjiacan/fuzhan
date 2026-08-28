@@ -14,6 +14,7 @@ import (
     "context"
     "fmt"
     "os"
+    "strconv"
     "strings"
     "sync"
 
@@ -223,6 +224,67 @@ func (s *SearchIndex) Delete(fileID int64) error {
         return fmt.Errorf("删除索引失败: %w", err)
     }
     return nil
+}
+
+// DeleteBatch 批量删除多个 fileID 的文档，供对齐/清理场景使用。
+func (s *SearchIndex) DeleteBatch(fileIDs []int64) error {
+    if len(fileIDs) == 0 {
+        return nil
+    }
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    if s.writer == nil {
+        return nil
+    }
+    b := bluge.NewBatch()
+    for _, id := range fileIDs {
+        b.Delete(bluge.Identifier(fmt.Sprintf("%d", id)))
+    }
+    if err := s.writer.Batch(b); err != nil {
+        return fmt.Errorf("批量删除索引失败: %w", err)
+    }
+    return nil
+}
+
+// AllFileIDs 枚举当前索引中全部文档的 fileID（用于与索引表对齐，判定缺失/孤儿）。
+func (s *SearchIndex) AllFileIDs() ([]int64, error) {
+    if s.writer == nil {
+        return nil, nil
+    }
+    reader, err := s.writer.Reader()
+    if err != nil {
+        return nil, fmt.Errorf("打开读端失败: %w", err)
+    }
+    defer reader.Close()
+
+    // 用 MatchAll 查询命中全部文档，再回读存储的 _id 字段
+    req := bluge.NewTopNSearch(1<<20, bluge.NewMatchAllQuery())
+    dmi, err := reader.Search(context.Background(), req)
+    if err != nil {
+        return nil, fmt.Errorf("遍历索引文档失败: %w", err)
+    }
+
+    var ids []int64
+    for {
+        match, err := dmi.Next()
+        if err != nil {
+            return nil, fmt.Errorf("遍历索引 ID 失败: %w", err)
+        }
+        if match == nil {
+            break
+        }
+        _ = match.VisitStoredFields(func(fieldName string, value []byte) bool {
+            if fieldName == "_id" {
+                if id, perr := strconv.ParseInt(string(value), 10, 64); perr == nil {
+                    ids = append(ids, id)
+                }
+                return false
+            }
+            return true
+        })
+    }
+    return ids, nil
 }
 
 // AutoComplete 自动补全：基于前缀查询。

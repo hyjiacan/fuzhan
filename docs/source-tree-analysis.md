@@ -86,7 +86,6 @@ fuzhan/                              # 项目根目录
 │   │   ├── models/                      # 数据模型层（GORM）
 │   │   │   ├── user.go                  # User 模型
 │   │   │   ├── file.go                  # 文件相关模型
-│   │   │   ├── migration.go             # 数据库迁移模型
 │   │   │   ├── temp_file.go             # TempFile 模型
 │   │   │   ├── upload.go                # UploadSession, UploadedChunk, UploadRecord
 │   │   │   ├── url_download_task.go     # URLDownloadTask 模型
@@ -135,32 +134,7 @@ fuzhan/                              # 项目根目录
 │   │   │   ├── prealloc_linux.go        # 文件预分配（Linux）
 │   │   │   └── prealloc_windows.go      # 文件预分配（Windows）
 │   │   │
-│   │   │   └── migration/               # 数据库迁移服务（跨 DB 引擎）
-│   │   │       ├── migration_service.go # 迁移编排
-│   │   │       ├── backup_service.go    # 备份/恢复
-│   │   │       ├── exporter.go          # 数据导出
-│   │   │       ├── importer.go          # 数据导入
-│   │   │       ├── sqlite_migrator.go   # SQLite 迁移器
-│   │   │       ├── mysql_migrator.go    # MySQL 迁移器
-│   │   │       ├── postgres_migrator.go # PostgreSQL 迁移器
-│   │   │       ├── progress.go          # 进度跟踪
-│   │   │       ├── stages.go            # 迁移阶段定义
-│   │   │       ├── ddl_parser.go        # DDL 解析
-│   │   │       ├── type_mapper.go       # 类型映射
-│   │   │       ├── transformer.go       # 数据转换
-│   │   │       ├── index_converter.go   # 索引转换
-│   │   │       ├── foreignkey_handler.go# 外键处理
-│   │   │       ├── lock.go              # 迁移锁
-│   │   │       ├── event_emitter.go     # 事件发射器（SSE 进度推送）
-│   │   │       ├── recovery.go          # 恢复逻辑
-│   │   │       ├── rollback.go          # 回滚逻辑
-│   │   │       ├── rollback_test.go
-│   │   │       ├── recovery_test.go
-│   │   │       ├── migration_service_test.go
-│   │   │       ├── dependencies.go      # 表依赖分析
-│   │   │       ├── errors.go            # 错误定义
-│   │   │       ├── utils.go             # 工具函数
-│   │   │       └── *_test.go            # 各模块测试
+│   │   │   └── (services 其余包)
 │   │   │
 │   │   ├── setup/                       # 初始化向导
 │   │   │   └── handler.go
@@ -223,7 +197,6 @@ fuzhan/                              # 项目根目录
 │   │   │   │   └── UploadManager.vue    # 上传管理
 │   │   │   ├── settings/                # 设置组件
 │   │   │   ├── setup/                   # 初始化组件
-│   │   │   ├── migration/               # 数据库迁移组件
 │   │   │   ├── Toast.vue                # 通知提示
 │   │   │   └── ToastContainer.vue       # 通知容器
 │   │   │
@@ -300,7 +273,7 @@ fuzhan/                              # 项目根目录
 |------|------|
 | `auth/` | 用户注册、登录、Token 刷新、API Key、LDAP、RBAC |
 | `file/` | 文件列表、重命名、移动、删除、下载、搜索、预览、上传 |
-| `admin/` | 用户 CRUD、会话管理、数据库迁移、备份管理、TLS 证书 |
+| `admin/` | 用户 CRUD、会话管理、TLS 证书 |
 | `temp/` | 临时文件管理（IP 配额、分片上传） |
 | `cli/` | CLI 命令 HTTP 接口 |
 | `config/` | 系统配置获取与更新 |
@@ -326,7 +299,6 @@ fuzhan/                              # 项目根目录
 | `upload_utils.go` | 上传工具函数 |
 | `admin_service.go` | 用户管理、会话列表/清理 |
 | `temp_file_service.go` | 临时文件 CRUD、IP 配额管理 |
-| `migration/` | 跨数据库引擎迁移（SQLite↔MySQL↔PostgreSQL） |
 
 ### server/internal/models/ - 数据模型层
 
@@ -340,8 +312,6 @@ fuzhan/                              # 项目根目录
 | `URLDownloadTask` | URL 下载任务（URL/状态/存储类型/是否支持断点续传） |
 | `Notification` | 通知（用户ID/任务ID/消息/是否已读） |
 | `ApiKey` | API Key（名称/密钥/过期时间/IP 限制） |
-| `MigrationStatus` | 数据库迁移状态 |
-| `MigrationTableProgress` | 迁移表级进度 |
 
 ### ui/src/views/ - 页面组件
 
@@ -425,7 +395,6 @@ ui/src/main.js
 | `server/internal/appconfig/config.go` | 完整配置结构体（多个子配置块） |
 | `server/internal/utils/logger.go` | Zap + lumberjack 日志，支持轮转压缩 |
 | `server/internal/middleware/auth.go` | JWT 中间件（Required/Optional/Admin），含用户禁用检查 |
-| `server/internal/services/migration/` | 跨数据库迁移引擎 |
 | `ui/src/api/index.js` | Axios 客户端，API 模块封装 |
 | `ui/src/store/index.js` | 响应式状态管理（reactive + readonly） |
 | `ui/src/router/index.js` | Vue Router Hash 模式，含登录弹框事件 |

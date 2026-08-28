@@ -32,12 +32,12 @@
 - 内置 FTP/FTPS 服务器
 - WebDAV 服务器（支持外部应用访问）
 - 文件预览（文本分块/图片/PDF）
-- 管理员后台（用户管理、文件管理、监控、数据库迁移）
+- 管理员后台（用户管理、文件管理、监控）
 - JWT 认证 + 自动 token 刷新 + 用户禁用检查
 - API Key 认证（外部集成）
 - LDAP 认证（企业目录）
 - RBAC 权限控制
-- 数据库迁移引擎（SQLite ↔ MySQL ↔ PostgreSQL 互迁，含备份/恢复）
+- 数据迁移说明（SQLite ↔ MySQL ↔ PostgreSQL 使用外部工具如 dbswitch）
 - OpenAPI 文档
 - Prometheus 监控指标
 - 系统监控（存储/访问/关键词/热门排名）
@@ -101,7 +101,7 @@
 │  ┌─────────────────────────────────────┐│
 │  │         Services (业务逻辑)          ││
 │  │  auth, file, search, cleanup,       ││
-│  │  upload, admin, monitor, migration  ││
+│  │  upload, admin, monitor  ││
 │  └─────────────────────────────────────┘│
 │         │                │              │
 │         ▼                ▼              │
@@ -214,7 +214,6 @@ fuzhan/
 │   │   │   ├── temp_file.go  # TempFile
 │   │   │   ├── upload.go     # UploadSession, UploadedChunk, UploadRecord
 │   │   │   ├── file.go       # 文件相关
-│   │   │   ├── migration.go  # MigrationStatus, MigrationTableProgress
 │   │   │   ├── url_download_task.go # URLDownloadTask
 │   │   │   ├── api_key.go    # ApiKey
 │   │   │   └── notification.go
@@ -255,17 +254,7 @@ fuzhan/
 │   │   │   ├── upload_utils.go
 │   │   │   ├── disk_space_*.go  # 平台磁盘空间
 │   │   │   ├── prealloc_*.go    # 文件预分配
-│   │   │   └── migration/       # 数据库迁移引擎
-│   │   │       ├── migrator.go
-│   │   │       ├── sqlite_migrator.go
-│   │   │       ├── mysql_migrator.go
-│   │   │       ├── postgres_migrator.go
-│   │   │       ├── backup_service.go
-│   │   │       ├── exporter.go
-│   │   │       ├── importer.go
-│   │   │       ├── transformer.go
-│   │   │       ├── ddl_parser.go
-│   │   │       └── ... (30+ 文件)
+│   │   │   └── (services 其余包)
 │   │   │
 │   │   ├── setup/            # 初始化向导
 │   │   │   └── handler.go
@@ -310,7 +299,6 @@ fuzhan/
     │   │   ├── upload/       # 上传组件
     │   │   ├── settings/     # 设置组件
     │   │   ├── setup/        # 初始化组件
-    │   │   └── migration/    # 迁移组件
     │   ├── views/            # 页面 (13+)
     │   ├── router/index.js   # 路由
     │   ├── store/index.js    # 状态管理
@@ -399,14 +387,9 @@ sessionId   chunkIndex   merge files
 - PDF 内联预览
 - 可配置允许的 MIME 和扩展名
 
-### 9. 数据库迁移
+### 9. 数据迁移说明
 
-- 跨数据库引擎迁移（SQLite↔MySQL↔PostgreSQL）
-- 完整备份/恢复（含加密备份文件）
-- DDL 解析与类型映射
-- SSE 进度推送
-- 迁移锁防止并发
-- 自动恢复与回滚
+> 浮栈**不内置**跨数据库引擎的数据迁移/备份/恢复能力。若需在不同引擎之间迁移数据（如 SQLite → MySQL / PostgreSQL），请使用成熟的外部工具，例如 [dbswitch](https://github.com/light-art/dbswitch)。迁移完成后在配置中更新 `database.driver` 与 `database.dsn` 指向新库即可。
 
 ### 10. 系统监控
 
@@ -511,29 +494,9 @@ POST /uploads/url (创建下载任务)
  └─→ 每 10s 后续轮询
 ```
 
-### 数据库迁移流程
+### 数据迁移流程
 
-```
-管理员发起迁移
-     │
-     ▼
-POST /admin/database/migrate (目标: mysql/postgres)
-     │
-     ▼
-迁移服务:
- ├─→ 创建备份（SQLite 全量导出）
- ├─→ DDL 解析 + 类型映射
- ├─→ 逐表迁移（SSE 推送进度）
- ├─→ 外键处理 + 索引重建
- └─→ 迁移锁释放
-     │
-     ▼
-GET /admin/database/status (进度查询)
-     │
-     ▼
-完成后可回滚:
- POST /admin/database/rollback
-```
+> 浮栈不内置跨引擎迁移。如需在 SQLite ↔ MySQL ↔ PostgreSQL 之间迁移，推荐使用外部工具 [dbswitch](https://github.com/light-art/dbswitch) 导出并导入数据，然后在配置（`fuzhan.yaml`）中更新 `database.driver` 与 `database.dsn` 指向新库后重启服务。
 
 ---
 

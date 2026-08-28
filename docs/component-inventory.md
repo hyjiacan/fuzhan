@@ -144,7 +144,6 @@
 |------|------|
 | `settings/` | 系统设置相关组件 |
 | `setup/` | 初始化向导相关组件 |
-| `migration/` | 数据库迁移控制组件 |
 
 ---
 
@@ -189,7 +188,6 @@
 | SetupApi | 初始化 | status, save, validateDir, networkInterfaces, defaultConfig |
 | SystemApi | 系统 | getOptions, health, ready |
 | MonitorApi | 监控 | storage, access, keywords, rankings, hotDownloads |
-| DatabaseApi | 数据库迁移 | status, test, migrate, cancel, resume, restart, rollback |
 | NotificationApi | 通知 | getNotifications, markAsRead, mergeAnonymous |
 
 ### Axios 配置

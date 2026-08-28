@@ -1290,6 +1290,7 @@ const uploadSingleFile = async (queueItem) => {
 
     const response = await request.post(createSessionUrl, createSessionBody, {
       baseURL: '',
+      skipSuccessToast: true,
       headers: { 'Content-Type': 'application/json' }
     })
 
@@ -1475,7 +1476,7 @@ const uploadSingleFile = async (queueItem) => {
     formData.append('chunk', chunk)
     formData.append('checksum', checksum)
 
-    const data = await request.post(getApiUrl('uploadChunk'), formData, { baseURL: '' })
+    const data = await request.post(getApiUrl('uploadChunk'), formData, { baseURL: '', skipSuccessToast: true })
     if (!data.success) {
       throw new Error(data.message || `分片 ${index} 上传失败`)
     }
@@ -1506,6 +1507,7 @@ const uploadSingleFile = async (queueItem) => {
   const finalizeUrl = getApiUrl('finalize')
   const finalizeData = await request.post(finalizeUrl, { uploadId }, {
     baseURL: '',
+    skipSuccessToast: true,
     headers: { 'Content-Type': 'application/json' }
   })
 

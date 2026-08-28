@@ -94,10 +94,10 @@ func (h *RecentHandler) GetRecentCarousel(c *gin.Context) {
 
     // 统一回填 fullPath
     for i := range records {
-        if records[i].FullPath == "" && records[i].RootName != "" {
-            records[i].FullPath = records[i].RootName + records[i].FilePath
-        }
-    }
+		if records[i].FullPath == "" && records[i].RootName != "" {
+			records[i].FullPath = "/" + records[i].RootName + "/" + strings.TrimPrefix(records[i].FilePath, "/")
+		}
+	}
 
     utils.HandleSuccess(c, http.StatusOK, "", records)
 }

@@ -53,11 +53,11 @@
 
 - [架构文档](./architecture.md) — 系统架构、技术栈、核心模块、部署方案
 - [源码目录分析](./source-tree-analysis.md) — 目录结构详解、入口点、关键文件说明
-- [数据模型文档](./data-models.md) — 7 个数据库模型定义（含 URLDownloadTask、MigrationStatus）
+- [数据模型文档](./data-models.md) — 数据库模型定义（含 URLDownloadTask）
 
 ### API 与数据
 
-- [API 接口文档](./api-contracts.md) — 所有 API 端点详解（含通知、数据库迁移、备份、API Key 管理）
+- [API 接口文档](./api-contracts.md) — 所有 API 端点详解（含通知、API Key 管理）
 
 ### 前端
 
@@ -68,6 +68,7 @@
 - [用户手册](./user-guide.md) — 安装部署、功能使用、常见问题
 - [开发指南](./development-guide.md) — 环境配置、开发命令、构建部署、测试
 - [FTP/WebDAV 使用指南](./FTP_WEBDAV_GUIDE.md) — FTP 和 WebDAV 配置和使用
+- [系统配置与资源规划](./系统配置与资源规划.md) — 不同功能、不同文件规模下的 CPU/内存/磁盘/数据库要求
 
 ---
 

@@ -129,6 +129,11 @@ func (fs *MultiRootFs) resolvePrivatePath(rest string) (string, error) {
 // resolvePath converts a virtual path to a real filesystem path.
 func (fs *MultiRootFs) resolvePath(virtualPath string) (string, error) {
     cleaned := cleanFtpPath(virtualPath)
+    // 拒绝反斜杠分隔符：FTP 虚拟路径统一使用 "/" 作为分隔符，反斜杠在 Windows 上会被
+    // filepath.Join 当作路径分隔符处理，可借此进行目录遍历逃逸（如 "private/..\..\evil"）。
+    if strings.Contains(cleaned, `\`) {
+        return "", os.ErrPermission
+    }
     if strings.HasPrefix(cleaned, "..") || path.IsAbs(cleaned) {
         return "", os.ErrPermission
     }

@@ -42,7 +42,7 @@
           <el-table-column label="已运行" width="100">
             <template #default="{ row }">{{ row.startedAt ? formatDuration(row.startedAt, new Date().toISOString()) : '-' }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" width="240" prop="errorMessage" show-overflow-tooltip>
+          <el-table-column label="错误信息" width="240" prop="errorMessage">
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
               <span v-else>-</span>
@@ -112,7 +112,7 @@
           <el-table-column label="耗时" width="90">
             <template #default="{ row }">{{ formatDuration(row.startedAt, row.endedAt) }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" width="240" prop="errorMessage" show-overflow-tooltip>
+          <el-table-column label="错误信息" width="240" prop="errorMessage">
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
               <span v-else>-</span>

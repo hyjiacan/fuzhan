@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/syncthing/notify"
@@ -33,7 +34,7 @@ type Watcher struct {
 	// 监听通道和停止信号
 	events chan notify.EventInfo
 	stopCh chan struct{}
-	running bool
+	running atomic.Bool
 
 	// 最近同步检查回调（由 index.Service 注入，用于检测文件是否刚被上传写入索引）
 	// 返回 true 表示文件最近已同步，watcher 应跳过处理
@@ -70,13 +71,13 @@ func NewWatcher(syncer *Syncer, rootNames map[string]string) *Watcher {
 
 // Start 启动文件监听器
 func (w *Watcher) Start() error {
-	if w.running {
+	if w.running.Load() {
 		utils.Warn("文件监听器已在运行，跳过重复启动")
 		return nil
 	}
 
 	w.stopCh = make(chan struct{})
-	w.running = true
+	w.running.Store(true)
 
 	// 共享监听事件通道
 	w.events = make(chan notify.EventInfo, 1024)
@@ -107,10 +108,10 @@ func (w *Watcher) Start() error {
 
 // Stop 停止文件监听器
 func (w *Watcher) Stop() {
-	if !w.running {
+	if !w.running.Load() {
 		return
 	}
-	w.running = false
+	w.running.Store(false)
 
 	// notify.Stop 接受通道作为参数，会移除所有与该通道关联的 watch
 	notify.Stop(w.events)
@@ -240,7 +241,7 @@ func (w *Watcher) handleCreateOrWrite(pe *pendingEvent) {
 	if currentSize != pe.lastSize {
 		pe.lastSize = currentSize
 		pe.retries++
-		if pe.retries > maxRetries || !w.running {
+		if pe.retries > maxRetries || !w.running.Load() {
 			// 超过重试上限或 watcher 已停止，强制同步
 			w.removePending(pe.rootName, pe.relPath)
 		} else {
@@ -369,5 +370,5 @@ func (w *Watcher) SetDebounceWindow(d time.Duration) {
 
 // IsRunning 返回监听器是否在运行
 func (w *Watcher) IsRunning() bool {
-	return w.running
+	return w.running.Load()
 }

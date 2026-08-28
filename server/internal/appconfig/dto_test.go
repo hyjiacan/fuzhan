@@ -116,12 +116,12 @@ func TestToDTO_RoundTrip(t *testing.T) {
         t.Fatalf("len(AllowedExtensions) = %d, want 3", len(dto.AllowedExtensions))
     }
 
-    // Verify private storage (maps to Temp in DTO)
-    if !dto.Temp.Enabled || dto.Temp.Path != "/data/private" {
-        t.Errorf("Temp (private) = %+v", dto.Temp)
+    // Verify private storage (maps to PrivateFiles in DTO)
+    if !dto.PrivateFiles.Enabled || dto.PrivateFiles.Path != "/data/private" {
+        t.Errorf("PrivateFiles (private) = %+v", dto.PrivateFiles)
     }
-    if dto.Temp.QuotaGlobal != 10737418240 || dto.Temp.QuotaPerUser != 1073741824 {
-        t.Errorf("Temp (private) quota = global:%d, user:%d", dto.Temp.QuotaGlobal, dto.Temp.QuotaPerUser)
+    if dto.PrivateFiles.QuotaGlobal != 10737418240 || dto.PrivateFiles.QuotaPerUser != 1073741824 {
+        t.Errorf("PrivateFiles (private) quota = global:%d, user:%d", dto.PrivateFiles.QuotaGlobal, dto.PrivateFiles.QuotaPerUser)
     }
 
     // Verify temp files

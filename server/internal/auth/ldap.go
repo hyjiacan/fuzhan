@@ -19,16 +19,17 @@ import (
 
 // LDAPConfig LDAP 认证配置
 type LDAPConfig struct {
-    Enabled       bool   `yaml:"enabled"`
-    Host          string `yaml:"host"`
-    Port          int    `yaml:"port"`
-    UseSSL        bool   `yaml:"use_ssl"`
-    BaseDN        string `yaml:"base_dn"`
-    BindDN        string `yaml:"bind_dn"`
-    BindPassword  string `yaml:"bind_password"`
-    UserFilter    string `yaml:"user_filter"`
-    SyncInterval  int    `yaml:"sync_interval"`
-    AutoCreateUser bool  `yaml:"auto_create_user"`
+    Enabled           bool   `yaml:"enabled"`
+    Host              string `yaml:"host"`
+    Port              int    `yaml:"port"`
+    UseSSL            bool   `yaml:"use_ssl"`
+    BaseDN            string `yaml:"base_dn"`
+    BindDN            string `yaml:"bind_dn"`
+    BindPassword      string `yaml:"bind_password"`
+    UserFilter        string `yaml:"user_filter"`
+    SyncInterval      int    `yaml:"sync_interval"`
+    AutoCreateUser    bool   `yaml:"auto_create_user"`
+    InsecureSkipVerify bool  `yaml:"insecure_skip_verify"`
 }
 
 // LDAPService LDAP 认证服务
@@ -114,12 +115,18 @@ func (s *LDAPService) ldapBind(bindDN, password string) (map[string]string, erro
     var conn net.Conn
     var err error
 
+    // 统一构造 TLS 配置：默认校验证书与主机名（防中间人），
+    // 仅当显式配置 insecure_skip_verify=true 时跳过（自签名/测试环境）。
+    newTLSConfig := func() *tls.Config {
+        t := &tls.Config{ServerName: cfg.Host}
+        t.InsecureSkipVerify = cfg.InsecureSkipVerify
+        return t
+    }
+
     dialer := &net.Dialer{Timeout: 10 * time.Second}
 
     if cfg.UseSSL {
-        conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{
-            InsecureSkipVerify: true,
-        })
+        conn, err = tls.DialWithDialer(dialer, "tcp", addr, newTLSConfig())
     } else {
         conn, err = dialer.Dial("tcp", addr)
     }
@@ -280,10 +287,15 @@ func (s *LDAPService) TestConnection() error {
     var conn net.Conn
     var err error
 
+    // 见 ldapBind：默认校验证书与主机名，仅按配置跳过
+    newTLSConfig := func() *tls.Config {
+        t := &tls.Config{ServerName: cfg.Host}
+        t.InsecureSkipVerify = cfg.InsecureSkipVerify
+        return t
+    }
+
     if cfg.UseSSL {
-        conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{
-            InsecureSkipVerify: true,
-        })
+        conn, err = tls.DialWithDialer(dialer, "tcp", addr, newTLSConfig())
     } else {
         conn, err = dialer.Dial("tcp", addr)
     }

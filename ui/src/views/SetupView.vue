@@ -160,22 +160,6 @@
                     <code>CREATE DATABASE fuzhan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;</code>
                   </div>
                 </el-form-item>
-
-                <!-- 测试连接按钮 -->
-                <el-form-item>
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-button
-                      :loading="testingDb"
-                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
-                      @click="testDbConnection"
-                    >
-                      {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                    </el-button>
-                    <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
-                      {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
-                    </span>
-                  </div>
-                </el-form-item>
               </template>
 
               <!-- PostgreSQL 配置 -->
@@ -213,22 +197,6 @@
                   <div class="field-hint">
                     需提前创建数据库：<br>
                     <code>CREATE DATABASE fuzhan;</code>
-                  </div>
-                </el-form-item>
-
-                <!-- 测试连接按钮 -->
-                <el-form-item>
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-button
-                      :loading="testingDb"
-                      :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
-                      @click="testDbConnection"
-                    >
-                      {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                    </el-button>
-                    <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
-                      {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
-                    </span>
                   </div>
                 </el-form-item>
               </template>
@@ -332,9 +300,8 @@
 import { ref, reactive, h, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { SetupApi, DatabaseApi, SystemApi } from '@/api'
+import { SetupApi, SystemApi } from '@/api'
 import { NumberUtils } from '@/utils'
-import { formatErrorMessage } from '@/utils/error'
 
 const router = useRouter()
 const message = ElMessage
@@ -364,68 +331,12 @@ const FolderIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
   h('path', { d: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z' })
 ])
 
-// 构建 MySQL DSN
-const buildMysqlDsn = () => {
-  const passwordPart = form.mysqlPassword ? `${form.mysqlPassword}@` : '@'
-  return `${form.mysqlUser}:${passwordPart}tcp(${form.mysqlHost}:${form.mysqlPort})/${form.mysqlDatabase}`
-}
-
-// 构建 PostgreSQL DSN
-const buildPostgresDsn = () => {
-  const parts = [
-    `host=${form.postgresHost}`,
-    `port=${form.postgresPort}`,
-    `user=${form.postgresUser}`,
-    `dbname=${form.postgresDatabase}`
-  ]
-  if (form.postgresPassword) {
-    parts.push(`password=${form.postgresPassword}`)
-  }
-  return parts.join(' ')
-}
-
-// 测试数据库连接
-const testDbConnection = async () => {
-  testingDb.value = true
-  dbTestResult.value = null
-
-  let dsn = form.dsn
-  let driver = form.dbDriver
-
-  if (form.dbDriver === 'mysql') {
-    dsn = buildMysqlDsn()
-  } else if (form.dbDriver === 'postgres') {
-    dsn = buildPostgresDsn()
-  }
-
-  try {
-    const result = await DatabaseApi.testConnection({ driver, dsn })
-    if (result.data?.connected) {
-      dbTestResult.value = { success: true, info: result.data }
-      message.success('连接成功')
-    } else {
-      dbTestResult.value = {
-        success: false,
-        error: result.data?.errorInfo?.message || '连接失败'
-      }
-      message.error(result.data?.errorInfo?.message || '连接失败')
-    }
-  } catch (err) {
-    dbTestResult.value = { success: false, error: formatErrorMessage(err, '连接失败') }
-    message.error(formatErrorMessage(err, '连接测试失败'))
-  } finally {
-    testingDb.value = false
-  }
-}
-
 // State
 const submitting = ref(false)
 const errorMessage = ref('')
 const ipOptions = ref([])
 const certFileList = ref([])
 const keyFileList = ref([])
-const testingDb = ref(false)
-const dbTestResult = ref(null)
 const initialHost = ref('0.0.0.0')
 const initialPort = ref(8888)
 
@@ -891,19 +802,6 @@ onMounted(async () => {
 .setup-footer {
   display: flex;
   justify-content: center;
-}
-
-.test-result {
-  margin-left: 12px;
-  font-size: 14px;
-
-  &.success {
-    color: #52c41a;
-  }
-
-  &.error {
-    color: #ff4d4f;
-  }
 }
 
 @media @tablet {

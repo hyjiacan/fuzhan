@@ -93,7 +93,8 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
         return nil, err
     }
 
-    totalChunks := int((req.FileSize + s.chunkSize - 1) / s.chunkSize)
+    // 溢出安全: req.FileSize>0 已校验, 用 (FileSize-1)/chunkSize+1 求向上取整, 避免 FileSize+chunkSize-1 整数溢出
+    totalChunks := int((req.FileSize-1)/s.chunkSize + 1)
     uploadID := uuid.New().String()
 
     session := &models.UploadSession{

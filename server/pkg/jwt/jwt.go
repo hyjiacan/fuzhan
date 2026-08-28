@@ -156,8 +156,12 @@ func ParseJWT(tokenString string) (*Claims, error) {
 func parseWithKey(tokenString string, secret []byte) (*Claims, error) {
     claims := &Claims{}
     token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+        // 固定仅接受 HS256 签名算法，防止 alg 混淆（none/其它算法）伪造令牌
+        if token.Method != jwt.SigningMethodHS256 {
+            return nil, errors.New("不支持的 JWT 签名算法")
+        }
         return secret, nil
-    })
+    }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
     if err != nil {
         return nil, err
     }

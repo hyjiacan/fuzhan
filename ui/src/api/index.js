@@ -1,5 +1,7 @@
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 import { createErrorFromResponse, createNetworkError } from '../utils/error.js'
+import { beginRequest, endRequest } from '../utils/requestLoading.js'
 
 const API_BASE = '/api/v1'
 
@@ -8,6 +10,25 @@ const request = axios.create({
   baseURL: API_BASE,
   timeout: 30000
 })
+
+// 写入类请求的 success 反馈（去重，避免与组件内已有的同文案提示重复）
+const MUTATING_METHODS = ['post', 'put', 'patch', 'delete']
+let lastSuccessMsg = ''
+let lastSuccessTime = 0
+
+// 提示写入类操作成功。忽略无 message 的响应；短时间内的相同文案只提示一次。
+function notifyWriteSuccess(method, config, response) {
+  if (!MUTATING_METHODS.includes((method || '').toLowerCase())) return
+  if (config && config.skipSuccessToast) return
+  if (!response || response.success !== true) return
+  const msg = response.message
+  if (!msg) return
+  const now = Date.now()
+  if (msg === lastSuccessMsg && now - lastSuccessTime < 1600) return
+  lastSuccessMsg = msg
+  lastSuccessTime = now
+  ElMessage.success(msg)
+}
 
 // 导出 request 实例供需要动态 URL 的组件使用（如 UploadManager）
 export { request }
@@ -35,6 +56,7 @@ function getAnonymousId() {
 // 请求拦截器：添加认证信息和匿名标识
 request.interceptors.request.use(
   config => {
+    beginRequest()
     const token = localStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
@@ -43,20 +65,27 @@ request.interceptors.request.use(
     config.headers['X-Anonymous-ID'] = getAnonymousId()
     return config
   },
-  error => Promise.reject(error)
+  error => {
+    endRequest()
+    return Promise.reject(error)
+  }
 )
 
 // 响应拦截器：处理错误
 request.interceptors.response.use(
   response => {
+    endRequest()
     // 检查响应头中是否有刷新后的 token
     const refreshedToken = response.headers['x-refreshed-token']
     if (refreshedToken) {
       localStorage.setItem('token', refreshedToken)
     }
+    // 写入类操作成功时给出反馈
+    notifyWriteSuccess(response.config?.method, response.config, response.data)
     return response.data
   },
   error => {
+    endRequest()
     // 区分网络错误和业务错误
     let appError
     if (error.response) {
@@ -661,106 +690,6 @@ export const MonitorApi = {
   }
 }
 
-// ========== 数据库迁移 API ==========
-export const DatabaseApi = {
-  // 测试数据库连接
-  testConnection(data) {
-    return request.post('/admin/database/test-connection', data)
-  },
-
-  // 检查迁移可行性
-  migrationCheck(data) {
-    return request.post('/admin/database/migration-check', data)
-  },
-
-  // 获取迁移状态
-  getStatus() {
-    return request.get('/admin/database/status')
-  },
-
-  // 取消迁移
-  cancel() {
-    return request.post('/admin/database/cancel')
-  },
-
-  // 获取备份列表
-  getBackups() {
-    return request.get('/admin/database/backups')
-  },
-
-  // 创建备份
-  createBackup(description) {
-    return request.post('/admin/database/backups', { description })
-  },
-
-  // 恢复备份
-  restoreBackup(backupId) {
-    return request.post('/admin/database/backups/restore', { backupId })
-  },
-
-  // 删除备份
-  deleteBackup(id) {
-    return request.delete(`/admin/database/backups/${id}`)
-  },
-
-  // 继续迁移
-  resumeMigration(migrationId) {
-    return request.post('/admin/database/resume', { migrationId })
-  },
-
-  // 重新迁移
-  restartMigration(migrationId) {
-    return request.post('/admin/database/restart', { migrationId })
-  },
-
-  // 回滚迁移
-  rollbackMigration(migrationId) {
-    return request.post('/admin/database/rollback', { migrationId })
-  },
-
-  // 开始迁移 (返回 SSE)
-  startMigration(config) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/v1/admin/database/migrate', true)
-      xhr.setRequestHeader('Content-Type', 'application/json')
-
-      // 添加认证
-      const token = localStorage.getItem('token')
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      }
-
-      const events = []
-      xhr.onprogress = (e) => {
-        if (e.lengthComputable) {
-          // SSE 数据
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(events)
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText)
-            reject(new Error(err.message || '迁移失败'))
-          } catch {
-            reject(new Error(`迁移失败: ${xhr.status}`))
-          }
-        }
-      }
-
-      xhr.onerror = () => {
-        reject(new Error('网络错误'))
-      }
-
-      xhr.send(JSON.stringify(config))
-      return xhr
-    })
-  }
-}
-
 // ========== 通知 API ==========
 export const NotificationApi = {
   getNotifications() {
@@ -810,7 +739,6 @@ export default {
   SetupApi,
   SystemApi,
   MonitorApi,
-  DatabaseApi,
   NotificationApi,
   ApiKeyApi
 }

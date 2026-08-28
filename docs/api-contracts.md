@@ -14,7 +14,7 @@
 - [私有存储](#私有存储)
 - [通知系统](#通知系统)
 - [管理员接口](#管理员接口)
-- [数据库迁移](#数据库迁移)
+- [数据迁移](#数据迁移)
 - [系统配置](#系统配置)
 - [健康检查与监控](#健康检查与监控)
 - [CLI 接口](#cli-接口)
@@ -351,26 +351,9 @@ Content-Type: application/json
 | GET | `/api/v1/admin/url-tasks` | `admin.URLDownloadHandler.ListURLTasks` | 任务列表 |
 | DELETE | `/api/v1/admin/url-tasks/:id` | `admin.URLDownloadHandler.DeleteURLTask` | 删除任务 |
 
-### 数据库迁移
+### 数据迁移
 
-| HTTP方法 | 路由 | Handler | 功能描述 |
-|----------|------|---------|----------|
-| GET | `/api/v1/admin/database/status` | `admin.Handler.GetMigrationStatus` | 获取迁移状态 |
-| POST | `/api/v1/admin/database/test` | `admin.Handler.TestDatabaseConnection` | 测试数据库连接 |
-| POST | `/api/v1/admin/database/migrate` | `admin.Handler.StartMigration` | 开始迁移 | -> SSE |
-| POST | `/api/v1/admin/database/cancel` | `admin.Handler.CancelMigration` | 取消迁移 |
-| POST | `/api/v1/admin/database/resume` | `admin.Handler.ResumeMigration` | 恢复迁移 |
-| POST | `/api/v1/admin/database/restart` | `admin.Handler.RestartMigration` | 重启迁移 |
-| POST | `/api/v1/admin/database/rollback` | `admin.Handler.RollbackMigration` | 回滚迁移 |
-
-### 备份管理
-
-| HTTP方法 | 路由 | Handler | 功能描述 |
-|----------|------|---------|----------|
-| GET | `/api/v1/admin/backups` | `admin.Handler.ListBackups` | 备份列表 |
-| POST | `/api/v1/admin/backups` | `admin.Handler.CreateBackup` | 创建备份 |
-| POST | `/api/v1/admin/backups/:id/restore` | `admin.Handler.RestoreBackup` | 恢复备份 |
-| DELETE | `/api/v1/admin/backups/:id` | `admin.Handler.DeleteBackup` | 删除备份 |
+> 本接口文档无内置数据库迁移/备份接口。浮栈不提供跨引擎数据迁移能力，如需在 SQLite ↔ MySQL ↔ PostgreSQL 之间迁移，请使用外部工具（如 [dbswitch](https://github.com/light-art/dbswitch)）后更新配置中的 `database.driver` / `database.dsn`。
 
 ### TLS 证书
 

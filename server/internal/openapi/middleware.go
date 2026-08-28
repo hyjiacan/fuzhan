@@ -9,6 +9,7 @@ import (
 
     "github.com/gin-gonic/gin"
     "fuzhan/pkg/response"
+    "fuzhan/internal/utils"
 )
 
 // FeatureGateMiddleware 功能开关中间件
@@ -73,7 +74,10 @@ func IPAccessMiddleware(cfg *IPAccessConfig) gin.HandlerFunc {
     }
 
     return func(c *gin.Context) {
-        clientIP := net.ParseIP(c.ClientIP())
+        // 使用 utils.GetRealIP 获取客户端 IP：当 TrustProxy 配置为 false 时，
+        // 严格取 RemoteAddr，避免攻击者伪造 X-Forwarded-For/X-Real-IP 绕过 IP 白名单。
+        // gin 的 c.ClientIP() 默认信任所有代理，直接使用存在白名单绕过风险。
+        clientIP := net.ParseIP(utils.GetRealIP(c.Request))
         if clientIP == nil {
             response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden, "无法解析客户端 IP")
             c.Abort()
@@ -179,6 +183,13 @@ func (rl *RateLimiter) UpdateConfig(cfg *RateLimitConfig) {
     rl.config = cfg
 }
 
+// configSnapshot 在锁保护下读取当前限流配置引用
+func (rl *RateLimiter) configSnapshot() *RateLimitConfig {
+    rl.mu.RLock()
+    defer rl.mu.RUnlock()
+    return rl.config
+}
+
 // GetBucket 获取或创建 IP 对应的令牌桶
 func (rl *RateLimiter) GetBucket(ip string) *TokenBucket {
     rl.mu.RLock()
@@ -207,21 +218,24 @@ func (rl *RateLimiter) GetBucket(ip string) *TokenBucket {
 // RateLimitMiddleware 频率限制中间件
 func RateLimitMiddleware(rl *RateLimiter) gin.HandlerFunc {
     return func(c *gin.Context) {
-        if !rl.config.Enabled {
+        // 通过锁安全读取配置，避免与 UpdateConfig 并发写入产生数据竞态
+        cfg := rl.configSnapshot()
+        if cfg == nil || !cfg.Enabled {
             c.Next()
             return
         }
 
-        clientIP := c.ClientIP()
+        // 使用 utils.GetRealIP 获取客户端 IP，防止伪造代理头绕过限流
+        clientIP := utils.GetRealIP(c.Request)
         bucket := rl.GetBucket(clientIP)
 
         if !bucket.Allow() {
-            retryAfterSec := int(60.0 / float64(rl.config.RequestsPerMinute))
+            retryAfterSec := int(60.0 / float64(cfg.RequestsPerMinute))
             if retryAfterSec < 1 {
                 retryAfterSec = 1
             }
             c.Header("Retry-After", fmt.Sprintf("%d", retryAfterSec))
-            c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", rl.config.RequestsPerMinute))
+            c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", cfg.RequestsPerMinute))
             response.HandleCustomError(c, http.StatusTooManyRequests, 4001, "请求过于频繁，请稍后再试")
             c.Abort()
             return
@@ -337,7 +351,7 @@ func CallStatMiddleware(stat *APICallStat) gin.HandlerFunc {
         duration := time.Since(start).Milliseconds()
         stat.Record(CallRecord{
             Timestamp:  start,
-            IP:         c.ClientIP(),
+            IP:         utils.GetRealIP(c.Request),
             Endpoint:   c.Request.URL.Path,
             Method:     c.Request.Method,
             StatusCode: c.Writer.Status(),

@@ -15,6 +15,22 @@ import (
     "fuzhan/pkg/response"
 )
 
+// escapeLike 转义 LIKE 通配符（% _ 及转义符自身），须配合 SQL 的 ESCAPE '\' 使用，
+// 避免用户输入中的 %/_ 被当作通配符而放大匹配范围。
+func escapeLike(s string) string {
+    if !strings.ContainsAny(s, `\%_`) {
+        return s
+    }
+    var b strings.Builder
+    for _, r := range s {
+        if r == '\\' || r == '%' || r == '_' {
+            b.WriteByte('\\')
+        }
+        b.WriteRune(r)
+    }
+    return b.String()
+}
+
 // Handler Open API 处理器
 type Handler struct {
     db        *gorm.DB
@@ -82,8 +98,8 @@ func (h *Handler) ListFiles(c *gin.Context) {
             if subPath == "/" {
                 dbQuery = dbQuery.Where("root_name = ?", rootName)
             } else {
-                dbQuery = dbQuery.Where("root_name = ? AND (file_path = ? OR file_path LIKE ?)",
-                    rootName, subPath, subPath+"/%")
+                dbQuery = dbQuery.Where("root_name = ? AND (file_path = ? OR file_path LIKE ? ESCAPE '\\')",
+                    rootName, subPath, escapeLike(subPath)+"/%")
             }
         }
     } else {
@@ -160,7 +176,8 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 
     dbQuery := h.db.Model(&models.FileRecordPublic{}).
         Where("status = ?", models.FileStatusActive).
-        Where("(file_name LIKE ? OR notes LIKE ?)", "%"+query.Query+"%", "%"+query.Query+"%")
+        Where("(file_name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')",
+            "%"+escapeLike(query.Query)+"%", "%"+escapeLike(query.Query)+"%")
 
     if query.Root != "" {
         dbQuery = dbQuery.Where("root_name = ?", query.Root)
@@ -245,7 +262,15 @@ func (h *Handler) DownloadFile(c *gin.Context) {
     fullPath := filepath.Join(rootPath, record.FilePath)
     // RFC 5987 文件名编码，兼容非 ASCII 字符
     safeFilename := url.QueryEscape(record.FileName)
-    c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, record.FileName, safeFilename))
+    // 清洗 filename="..." 内的引号/反斜杠/控制字符，防 CRLF 注入或畸形响应头。
+    // 现代浏览器优先使用已编码的 filename*，此值仅作降级。
+    cleanName := strings.Map(func(r rune) rune {
+        if r == '"' || r == '\\' || r == '\r' || r == '\n' {
+            return '_'
+        }
+        return r
+    }, record.FileName)
+    c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, cleanName, safeFilename))
     c.File(fullPath)
 }
 
@@ -256,6 +281,17 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
     minSize, _ := strconv.ParseInt(c.DefaultQuery("minSize", "0"), 10, 64)
     page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
     pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+    // 对分页参数做边界约束，避免传超大 pageSize 造成资源占用（与其他 openapi 接口保持一致）
+    if minSize < 0 {
+        minSize = 0
+    }
+    if page < 1 {
+        page = 1
+    }
+    if pageSize < 1 || pageSize > 100 {
+        pageSize = 50
+    }
 
     query := index.DuplicateQuery{
         MinSize:  minSize,

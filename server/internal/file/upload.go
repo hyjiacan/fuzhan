@@ -627,7 +627,8 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
             FileName:    filename,
             FileSize:    fileSize,
             ChunkSize:   h.chunkSize,
-            TotalChunks: int((fileSize + h.chunkSize - 1) / h.chunkSize),
+            // 溢出安全: fileSize>0 已校验, 用 (fileSize-1)/chunkSize+1 求向上取整, 避免 fileSize+chunkSize-1 整数溢出为负数
+            TotalChunks: int((fileSize - 1) / h.chunkSize + 1),
             Status:      models.UploadStatusInProgress,
             TargetType:  targetType,
             TargetPath:  req.Dir,

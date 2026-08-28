@@ -144,8 +144,13 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
     }
 
 
-    totalChunks := int((req.FileSize + h.chunkSize - 1) / h.chunkSize)
-    uploadID := fmt.Sprintf("pv_%s_%d", userID[:8], time.Now().UnixNano())
+    totalChunks := int((req.FileSize - 1)/h.chunkSize + 1)
+    // 防御: userID 为短字符串时避免切片越界 panic（userID 通常为 UUID，但仍需兜底）
+    shortID := userID
+    if len(shortID) > 8 {
+        shortID = shortID[:8]
+    }
+    uploadID := fmt.Sprintf("pv_%s_%d", shortID, time.Now().UnixNano())
 
     expireDays := req.ExpireDays
     if expireDays <= 0 {

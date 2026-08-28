@@ -17,6 +17,7 @@ import (
     "time"
 
     "github.com/gin-gonic/gin"
+    "github.com/robfig/cron/v3"
     "golang.org/x/crypto/bcrypt"
     "fuzhan/internal/appconfig"
     "fuzhan/internal/middleware"
@@ -38,7 +39,6 @@ import (
     "fuzhan/internal/models"
     "fuzhan/pkg/jwt"
     "fuzhan/internal/services"
-    "fuzhan/internal/services/migration"
     "fuzhan/internal/utils"
     "fuzhan/internal/utils/service"
 )
@@ -189,7 +189,7 @@ func main() {
     })
 
     // 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-    db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.MigrationStatus{}, &models.MigrationTableProgress{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{})
+    db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{})
 
     // 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
     models.EnsureFileRecordIndexes(db)
@@ -287,6 +287,7 @@ func main() {
         UserFilter:     cfg.Auth.LDAP.UserFilter,
         SyncInterval:   cfg.Auth.LDAP.SyncInterval,
         AutoCreateUser: cfg.Auth.LDAP.AutoCreateUser,
+        InsecureSkipVerify: cfg.Auth.LDAP.InsecureSkipVerify,
     })
 
     // 将 LDAP 服务注入到 AuthService
@@ -322,13 +323,8 @@ func main() {
     uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService, taskService)
     privateUploadHandler := file.NewPrivateUploadHandler(uploadSessionSvc, db, chunkSize, cfg.Storage.Private.Path, indexService)
     privateStorageHandler := file.NewPrivateStorageHandlers()
-    // 初始化迁移服务
-    backupDir := "./backups"
-    migrationService := migration.NewMigrationService(db, backupDir)
-    recoveryService := migration.NewRecoveryService(db, migrationService)
-    rollbackService := migration.NewRollbackService(db)
     adminService := services.NewAdminService(db)
-    adminHandler := admin.NewHandler(adminService, db, recoveryService, rollbackService)
+    adminHandler := admin.NewHandler(adminService, db)
     notificationHandler := notification.NewHandler(db)
     adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
     taskHandler := admin.NewTaskHandler(taskService)
@@ -645,25 +641,6 @@ func main() {
                 admin.GET("/tasks/history", taskHandler.GetTaskHistory)
                 admin.GET("/tasks/:id", taskHandler.GetTask)
                 admin.POST("/tasks/:id/cancel", taskHandler.CancelTask)
-
-                // 数据库迁移路由
-                dbMigration := admin.Group("/database")
-                {
-                    dbMigration.POST("/test-connection", adminHandler.TestConnection)
-                    dbMigration.POST("/migration-check", adminHandler.MigrationCheck)
-                    dbMigration.POST("/migrate", adminHandler.StartMigration)
-                    dbMigration.GET("/status", adminHandler.GetMigrationStatus)
-                    dbMigration.POST("/cancel", adminHandler.CancelMigration)
-                    dbMigration.POST("/resume", adminHandler.ResumeMigration)
-                    dbMigration.POST("/restart", adminHandler.RestartMigration)
-                    dbMigration.POST("/rollback", adminHandler.RollbackMigration)
-
-                    // 备份相关路由
-                    dbMigration.GET("/backups", adminHandler.ListBackups)
-                    dbMigration.POST("/backups", adminHandler.CreateBackup)
-                    dbMigration.POST("/backups/restore", adminHandler.RestoreBackup)
-                    dbMigration.DELETE("/backups/:id", adminHandler.DeleteBackup)
-                }
 
                 // API Key 管理路由（v3 Phase 2）
                 apiKeyRoutes := admin.Group("/api-keys")
@@ -1253,10 +1230,120 @@ func main() {
         }
     }
 
-    // 当前数据库配置快照（用于热切换检测）
-    initCfg := appconfig.GetConfig()
-    currentDbDriver := initCfg.Database.Driver
-    currentDbDSN := initCfg.Database.DSN
+    runSearchReconcileWorker := func(ctx context.Context) {
+        // 等待初始扫描完成后再启动检索索引对齐（依赖索引表已就绪）
+        pollTicker := time.NewTicker(5 * time.Second)
+        defer pollTicker.Stop()
+
+        for {
+            progress := indexService.GetScanProgress()
+            if progress.Status == index.ScanStatusIdle ||
+                progress.Status == index.ScanStatusCompleted ||
+                progress.Status == index.ScanStatusFailed {
+                break
+            }
+            select {
+            case <-pollTicker.C:
+                continue
+            case <-ctx.Done():
+                return
+            }
+        }
+
+        // 检索索引未打开时跳过（启动时初始化失败）
+        if idxSearch == nil {
+            utils.Info("检索索引未可用，检索索引对齐任务不启动")
+            <-ctx.Done()
+            return
+        }
+
+        // 执行一次检索索引对齐（默认每天 05:00，与定时扫描错开，可在设置页配置）
+        getReconcileCron := func() string {
+            expr := appconfig.GlobalConfig.Index.SearchReconcileCronExpression
+            if expr == "" {
+                return "0 5 * * *"
+            }
+            return expr
+        }
+
+        runReconcileOnce := func(trigger string) {
+            // 全量扫描进行中时跳过，避免与扫描写盘竞争
+            if p := indexService.GetScanProgress(); p.Status == index.ScanStatusRunning {
+                utils.Info("检索索引对齐跳过: 全量扫描进行中")
+                return
+            }
+            task, err := taskService.CreateTask("search_reconcile", "检索索引对齐")
+            if err != nil {
+                utils.Warn("创建检索索引对齐任务失败", utils.Err(err))
+                return
+            }
+            if err := taskService.StartTask(task.ID); err != nil {
+                utils.Warn("启动检索索引对齐任务失败", utils.Err(err))
+            }
+            utils.Info("开始检索索引对齐", utils.String("trigger", trigger))
+            res, rerr := idxSearch.ReconcileIndex(db, func(done, total int64) {
+                p := 0
+                if total > 0 {
+                    p = int(done * 100 / total)
+                }
+                _ = taskService.UpdateTaskProgress(task.ID, p, done, total)
+            })
+            if rerr != nil {
+                _ = taskService.FailTask(task.ID, rerr.Error())
+                utils.Error("检索索引对齐失败", utils.Err(rerr))
+                return
+            }
+            _ = taskService.CompleteTask(task.ID)
+            utils.Info("检索索引对齐完成",
+                utils.Int64("indexed_total", res.IndexedTotal),
+                utils.Int64("missing_indexed", res.MissingIndexed),
+                utils.Int64("orphans_removed", res.OrphansRemoved))
+        }
+
+        // 定时循环（配置变更会触发 worker 热重启，从而重新读取 cron）
+        parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+        cronExpr := getReconcileCron()
+        schedule, err := parser.Parse(cronExpr)
+        if err != nil {
+            utils.Warn("检索索引对齐 cron 表达式无效，使用默认值",
+                utils.String("cron", cronExpr), utils.Err(err))
+            cronExpr = "0 5 * * *"
+            schedule, _ = parser.Parse(cronExpr)
+        }
+        nextTime := schedule.Next(time.Now())
+        utils.Info("检索索引对齐下次执行时间",
+            utils.String("cron", cronExpr),
+            utils.String("next", nextTime.Format("2006-01-02 15:04:05")))
+
+        for {
+            select {
+            case <-ctx.Done():
+                utils.Info("检索索引对齐 worker 已停止")
+                return
+            default:
+            }
+            if !time.Now().Before(nextTime) {
+                runReconcileOnce(cronExpr)
+                nextTime = schedule.Next(time.Now())
+                utils.Info("检索索引对齐下次执行时间",
+                    utils.String("next", nextTime.Format("2006-01-02 15:04:05")))
+            }
+            waitDuration := time.Until(nextTime)
+            if waitDuration < 0 {
+                waitDuration = 0
+            }
+            timer := time.NewTimer(min(waitDuration, 30*time.Second))
+            select {
+            case <-ctx.Done():
+                timer.Stop()
+                utils.Info("检索索引对齐 worker 已停止")
+                return
+            case <-timer.C:
+            }
+        }
+    }
+    currentDbDriver := cfg.Database.Driver
+    currentDbDSN := cfg.Database.DSN
 
     // 数据库热切换
     hotSwapDB := func() {
@@ -1269,8 +1356,8 @@ func main() {
 		_, err := appconfig.InitDBWithAutoMigrate(
 			&dbCfg,
 			&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{},
-			&models.User{}, &models.TempFile{}, &models.MigrationStatus{},
-			&models.MigrationTableProgress{}, &models.URLDownloadTask{},
+			&models.User{}, &models.TempFile{},
+			&models.URLDownloadTask{},
 			&models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{},
 			&temph.TempUploadSession{}, &temph.ChunkUploadRecord{},
             &models.FileDependency{},
@@ -1330,6 +1417,7 @@ func main() {
         workerStart(wm, "index-scan", runIndexScanWorker)
         workerStart(wm, "scan-timer", runScanTimerWorker)
         workerStart(wm, "consistency-check", runConsistencyCheckWorker)
+        workerStart(wm, "search-reconcile", runSearchReconcileWorker)
 
         // ===== 启动完成 =====
         utils.Info("========================================")

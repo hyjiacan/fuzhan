@@ -211,6 +211,9 @@ type IndexConfig struct {
     ScanStartDelaySeconds int `yaml:"scan_start_delay_seconds"`
     // ScanCronExpression 定时全量扫描的 cron 表达式，默认 "0 1 * * *"（每天凌晨 1:00）
     ScanCronExpression string `yaml:"scan_cron_expression,omitempty"`
+    // SearchReconcileCronExpression 检索索引对齐任务的 cron 表达式，
+    // 默认 "0 5 * * *"（每天凌晨 5:00，与定时扫描错开）。为空使用默认值。
+    SearchReconcileCronExpression string `yaml:"search_reconcile_cron_expression,omitempty"`
 }
 
 // AuthConfig 认证配置
@@ -231,16 +234,19 @@ type OpenAPIConfig struct {
 
 // LDAPClientConfig LDAP 客户端配置
 type LDAPClientConfig struct {
-    Enabled        bool   `yaml:"enabled"`
-    Host           string `yaml:"host"`
-    Port           int    `yaml:"port"`
-    UseSSL         bool   `yaml:"use_ssl"`
-    BaseDN         string `yaml:"base_dn"`
-    BindDN         string `yaml:"bind_dn"`
-    BindPassword   string `yaml:"bind_password"`
-    UserFilter     string `yaml:"user_filter"`
-    SyncInterval   int    `yaml:"sync_interval"`
-    AutoCreateUser bool   `yaml:"auto_create_user"`
+    Enabled           bool   `yaml:"enabled"`
+    Host              string `yaml:"host"`
+    Port              int    `yaml:"port"`
+    UseSSL            bool   `yaml:"use_ssl"`
+    BaseDN            string `yaml:"base_dn"`
+    BindDN            string `yaml:"bind_dn"`
+    BindPassword      string `yaml:"bind_password"`
+    UserFilter        string `yaml:"user_filter"`
+    SyncInterval      int    `yaml:"sync_interval"`
+    AutoCreateUser    bool   `yaml:"auto_create_user"`
+    // InsecureSkipVerify 是否跳过 LDAPS 证书校验（默认 false，安全）
+    // 仅测试环境或使用自签名证书时可设为 true
+    InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 // SecurityConfig 安全配置

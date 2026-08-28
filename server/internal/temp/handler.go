@@ -73,6 +73,24 @@ func (h *Handler) getClientIP(c *gin.Context) string {
     return utils.GetClientIP(c)
 }
 
+// isPathWithinRoot 判断 target 是否在 root 目录范围内（按边界校验，而非字符串前缀）。
+// 用于临时文件/分片上传目录的越权防护，避免前缀相同但实际越界（如 /data/temp 与 /data/temp_other）的情况。
+func isPathWithinRoot(root, target string) bool {
+	absRoot, err1 := filepath.Abs(root)
+	absTarget, err2 := filepath.Abs(target)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRoot, absTarget)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // hexCodePattern 8位十六进制访问码正则
 var hexCodePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}$`)
 
@@ -414,9 +432,8 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
     // 验证 Dir 路径安全性
     if req.Dir != "" {
         cleanDir := filepath.Clean(req.Dir)
-        absTarget, _ := filepath.Abs(filepath.Join(h.config.Path, cleanDir))
-        absRoot, _ := filepath.Abs(h.config.Path)
-        if !strings.HasPrefix(absTarget, absRoot) {
+        target := filepath.Join(h.config.Path, cleanDir)
+        if !isPathWithinRoot(h.config.Path, target) {
             utils.HandleBadRequest(c, "不允许的路径", nil)
             return
         }
@@ -606,11 +623,13 @@ func (h *Handler) UploadTempChunkHandler(c *gin.Context) {
         return
     }
 
-    // 更新已上传大小
+    // 原子递增已上传大小（分片可能并发上传，读改写会丢更新）
+    if err := h.db.Model(&TempUploadSession{}).
+        Where("id = ?", session.ID).
+        UpdateColumn("uploaded_size", gorm.Expr("uploaded_size + ?", chunkSize)).Error; err != nil {
+        utils.Warn("更新上传大小失败", utils.Err(err))
+    }
     session.UploadedSize += chunkSize
-    if err := h.db.Model(&session).Update("uploaded_size", session.UploadedSize).Error; err != nil {
-            utils.Warn("更新上传大小失败", utils.Err(err))
-        }
 
     utils.HandleSuccess(c, http.StatusOK, "", gin.H{
         "chunkIndex":  chunkIndex,
@@ -766,9 +785,7 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
     if session.Dir != "" && session.Dir != "/" {
         targetDir = filepath.Join(targetDir, session.Dir)
         // 验证路径不越权
-        absTarget, _ := filepath.Abs(targetDir)
-        absRoot, _ := filepath.Abs(h.config.Path)
-        if !strings.HasPrefix(absTarget, absRoot) {
+        if !isPathWithinRoot(h.config.Path, targetDir) {
             utils.HandleBadRequest(c, "不允许的路径", nil)
             return
         }

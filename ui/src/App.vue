@@ -2,6 +2,7 @@
   <el-config-provider :locale="zhCn">
     <AppShell />
     <ToastContainer />
+    <GlobalLoadingBar />
   </el-config-provider>
 </template>
 
@@ -11,6 +12,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@/styles/global.less'
 import AppShell from '@/components/common/AppShell.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
+import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue'
 import store from '@/store'
 import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'

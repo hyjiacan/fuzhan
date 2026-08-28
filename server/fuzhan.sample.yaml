@@ -66,6 +66,10 @@ server:
 # 1. SQLite（默认）: driver 留空，dsn 设置为数据库文件路径
 # 2. MySQL: driver 设为 "mysql"，dsn 设置为 MySQL 连接字符串
 # 3. PostgreSQL: driver 设为 "postgres"，dsn 设置为 PostgreSQL 连接字符串
+#
+# 注意：本程序不内置数据库结构/数据迁移功能。若需在不同数据库引擎之间
+# 迁移数据（如 SQLite -> MySQL/PostgreSQL），请使用成熟的外部迁移工具，
+# 例如 dbswitch（https://github.com/light-art/dbswitch）。
 database:
   driver: ""     # 数据库驱动: mysql, postgres (为空则使用 SQLite)
   dsn: ""        # 数据库连接字符串

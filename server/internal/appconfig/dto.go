@@ -13,7 +13,7 @@ type ConfigDTO struct {
     Database          DatabaseConfigDTO   `json:"database"`
     RootDirs          []RootDirConfig     `json:"rootDirs"`
     AllowedExtensions []string            `json:"allowedExtensions"`
-    Temp              PrivateConfigDTO    `json:"temp"`
+    PrivateFiles      PrivateConfigDTO    `json:"privateFiles"`
     TempFiles         TempFilesConfigDTO  `json:"tempFiles"`
     Upload            UploadConfigDTO     `json:"upload"`
     Preview           PreviewConfigDTO    `json:"preview"`
@@ -135,7 +135,8 @@ type WebDAVConfigResp struct {
 
 // IndexConfigDTO 文件索引配置 DTO
 type IndexConfigDTO struct {
-	ScanCronExpression string `json:"scanCronExpression"`
+        ScanCronExpression          string `json:"scanCronExpression"`
+        SearchReconcileCronExpression string `json:"searchReconcileCronExpression"`
 }
 
 // ParseOrDefault 解析配额字符串，失败时返回默认值
@@ -207,12 +208,6 @@ func (c *Config) ToDTO() ConfigDTO {
         },
         RootDirs: rootDirs,
         AllowedExtensions: c.Storage.AllowedExtensions,
-        Temp: PrivateConfigDTO{
-            Enabled:      c.Storage.Private.Enabled,
-            Path:         c.Storage.Private.Path,
-            QuotaGlobal:  c.Storage.Private.Quota.GlobalQuota,
-            QuotaPerUser: c.Storage.Private.Quota.PerUserQuota,
-        },
         TempFiles: TempFilesConfigDTO{
             Enabled:           c.Storage.Temp.Enabled,
             Path:              c.Storage.Temp.Path,
@@ -220,6 +215,12 @@ func (c *Config) ToDTO() ConfigDTO {
             QuotaPerIP:        parseOrDefault(c.Storage.Temp.Quota.PerIP, 0),
             DefaultExpireDays: c.Storage.Temp.DefaultExpireDays,
             DeleteOnDownload:  c.Storage.Temp.DeleteOnDownload,
+        },
+        PrivateFiles: PrivateConfigDTO{
+            Enabled:      c.Storage.Private.Enabled,
+            Path:         c.Storage.Private.Path,
+            QuotaGlobal:  c.Storage.Private.Quota.GlobalQuota,
+            QuotaPerUser: c.Storage.Private.Quota.PerUserQuota,
         },
         Upload: UploadConfigDTO{
             ChunkSize:   c.Upload.ChunkSize,
@@ -244,7 +245,8 @@ func (c *Config) ToDTO() ConfigDTO {
             RequestsPerMinute:  c.OpenAPI.RequestsPerMinute,
         },
         Index: IndexConfigDTO{
-            ScanCronExpression: c.Index.ScanCronExpression,
+            ScanCronExpression:          c.Index.ScanCronExpression,
+            SearchReconcileCronExpression: c.Index.SearchReconcileCronExpression,
         },
     }
 }
@@ -290,11 +292,11 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 
     cfg.Storage.AllowedExtensions = dto.AllowedExtensions
 
-    // 私有存储（字段名 temp 对应私有存储）
-    cfg.Storage.Private.Enabled = dto.Temp.Enabled
-    cfg.Storage.Private.Path = dto.Temp.Path
-    cfg.Storage.Private.Quota.GlobalQuota = dto.Temp.QuotaGlobal
-    cfg.Storage.Private.Quota.PerUserQuota = dto.Temp.QuotaPerUser
+    // 私有存储（前端字段名 privateFiles）
+    cfg.Storage.Private.Enabled = dto.PrivateFiles.Enabled
+    cfg.Storage.Private.Path = dto.PrivateFiles.Path
+    cfg.Storage.Private.Quota.GlobalQuota = dto.PrivateFiles.QuotaGlobal
+    cfg.Storage.Private.Quota.PerUserQuota = dto.PrivateFiles.QuotaPerUser
 
     // 临时文件
     cfg.Storage.Temp.Enabled = dto.TempFiles.Enabled
@@ -326,7 +328,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
     }
 
     // 索引配置
-	cfg.Index.ScanCronExpression = dto.Index.ScanCronExpression
+      cfg.Index.ScanCronExpression = dto.Index.ScanCronExpression
+      cfg.Index.SearchReconcileCronExpression = dto.Index.SearchReconcileCronExpression
 
     return cfg
 }

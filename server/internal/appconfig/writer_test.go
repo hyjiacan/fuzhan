@@ -1,7 +1,10 @@
 package appconfig
 
 import (
+    "os"
     "testing"
+
+    "gopkg.in/yaml.v3"
 )
 
 func TestToYamlKey(t *testing.T) {
@@ -65,4 +68,40 @@ func TestParseYamlPath(t *testing.T) {
             }
         }
     }
+}
+
+// TestSaveConfigEmptySequence 验证空序列（如清空允许扩展名）能正确写回配置文件
+func TestSaveConfigEmptySequence(t *testing.T) {
+	dir := t.TempDir()
+	configPath := dir + "/fuzhan.yaml"
+	orig := "storage:\n  allowed_extensions:\n    - .jpg\n    - .png\n"
+	if err := os.WriteFile(configPath, []byte(orig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	updates := NewConfigUpdates()
+	updates.Add("storage.allowed_extensions", []interface{}{})
+
+	if err := updates.Apply(configPath); err != nil {
+		t.Fatalf("Apply 失败: %v", err)
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("读取结果失败: %v", err)
+	}
+	t.Logf("写入结果:\n%s", string(content))
+
+	// 重新解析，确认 allowed_extensions 为空序列
+	var doc struct {
+		Storage struct {
+			AllowedExtensions []string `yaml:"allowed_extensions"`
+		} `yaml:"storage"`
+	}
+	if err := yaml.Unmarshal(content, &doc); err != nil {
+		t.Fatalf("解析结果失败: %v", err)
+	}
+	if doc.Storage.AllowedExtensions != nil && len(doc.Storage.AllowedExtensions) != 0 {
+		t.Errorf("AllowedExtensions 应为空，实为 %v", doc.Storage.AllowedExtensions)
+	}
 }

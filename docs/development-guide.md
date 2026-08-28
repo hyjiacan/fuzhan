@@ -73,7 +73,6 @@ fuzhan/
 │   │   ├── repositories/   # 数据访问层
 │   │   ├── router/         # 路由配置
 │   │   ├── services/       # 业务服务
-│   │   │   └── migration/  # 数据库迁移
 │   │   ├── setup/          # 初始化向导
 │   │   └── temp/           # 临时文件
 │   │
@@ -568,4 +567,3 @@ yarn install
 | `./private_files/` | 私有文件存储 |
 | `./logs/` | 日志文件 |
 | `./fuzhan.db` | SQLite 数据库 |
-| `./backups/` | 数据库备份文件（迁移时使用） |

@@ -293,6 +293,10 @@
                   <el-input v-model="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
                   <div class="field-hint">Cron 表达式，默认 <code>0 1 * * *</code>（每天凌晨 1:00）</div>
                 </el-form-item>
+                <el-form-item label="检索索引对齐间隔">
+                  <el-input v-model="settings.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨5点）" />
+                  <div class="field-hint">定时校正检索索引与文件表对齐，默认 <code>0 5 * * *</code>（每天凌晨 5:00，与定时扫描错开）</div>
+                </el-form-item>
               </el-form>
             </el-card>
           </el-col>
@@ -349,14 +353,9 @@
       <!-- 数据库 -->
       <el-tab-pane name="database" label="数据库">
         <el-card>
-          <el-alert type="info" :show-icon="false" :closable="false" class="migration-hint">
-            <template #title><span class="migration-title">数据迁移说明</span></template>
-            <ul class="migration-list">
-              <li>修改数据库类型（如 SQLite → MySQL）或目标地址时会触发数据迁移</li>
-              <li>迁移过程中原数据库保持不变，可随时回滚</li>
-              <li>迁移完成后配置即时生效</li>
-              <li><strong>风险提示</strong>：迁移存在一定风险，建议提前备份重要数据</li>
-            </ul>
+          <el-alert type="info" :show-icon="false" :closable="false">
+            <template #title>关于数据库迁移</template>
+            <div>切换数据库类型或地址时，请使用 <code>dbswitch</code> 等外部迁移工具完成数据搬运，本站不提供内置迁移。</div>
           </el-alert>
 
           <el-divider />
@@ -396,18 +395,6 @@
               <el-form-item label="数据库名" prop="database.mysqlDatabase">
                 <el-input v-model="settings.database.mysqlDatabase" :maxlength="64" placeholder="fuzhan" />
               </el-form-item>
-              <el-form-item>
-                <el-button
-                  :loading="testingDb"
-                  :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
-                  @click="testDbConnection"
-                >
-                  {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                </el-button>
-                <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
-                  {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
-                </span>
-              </el-form-item>
             </template>
 
             <template v-if="settings.database.driver === 'postgres'">
@@ -425,18 +412,6 @@
               </el-form-item>
               <el-form-item label="数据库名" prop="database.postgresDatabase">
                 <el-input v-model="settings.database.postgresDatabase" :maxlength="64" placeholder="fuzhan" />
-              </el-form-item>
-              <el-form-item>
-                <el-button
-                  :loading="testingDb"
-                  :type="dbTestResult?.success === true ? 'success' : dbTestResult?.success === false ? 'danger' : ''"
-                  @click="testDbConnection"
-                >
-                  {{ testingDb ? '测试中...' : dbTestResult ? (dbTestResult.success ? '重新测试' : '重试') : '测试连接' }}
-                </el-button>
-                <span v-if="dbTestResult" class="test-result" :class="dbTestResult.success ? 'success' : 'error'">
-                  {{ dbTestResult.success ? '连接成功' : dbTestResult.error }}
-                </span>
               </el-form-item>
             </template>
           </el-form>
@@ -507,13 +482,6 @@
         <el-button type="primary" :loading="saving" @click="saveSettings">保存配置</el-button>
       </div>
     </div>
-
-    <!-- 数据库迁移向导 -->
-    <MigrationWizard
-      v-model:show="showMigrationWizard"
-      :initial-type="settings.database.driver"
-      :initial-config="settings.database"
-    />
   </div>
 </template>
 
@@ -522,9 +490,8 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { NumberUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
-import { ConfigApi, DatabaseApi, SetupApi, SystemApi } from '@/api'
+import { ConfigApi, SetupApi, SystemApi } from '@/api'
 import store from '@/store'
-import MigrationWizard from '@/components/settings/migration/MigrationWizard.vue'
 
 const message = ElMessage
 const dialog = {
@@ -537,16 +504,10 @@ const dialog = {
 }
 const saving = ref(false)
 const activeTab = ref('basic')
-const showMigrationWizard = ref(false)
 const formRef = ref(null)
 
-// 保存原始配置用于检测变更
-const originalConfig = ref(null)
+// 保存原始服务器配置用于变更检测
 const originalServerConfig = ref(null)
-
-// 测试连接状态
-const testingDb = ref(false)
-const dbTestResult = ref(null)
 
 // 校验规则
 const rules = {
@@ -814,44 +775,10 @@ const settings = reactive({
     requestsPerMinute: 60
   },
   scanCronExpression: '0 1 * * *',
+  searchReconcileCronExpression: '0 5 * * *',
 })
 
 const formatSize = (bytes) => NumberUtils.formatFileSize(bytes)
-
-// 测试数据库连接
-const testDbConnection = async () => {
-  testingDb.value = true
-  dbTestResult.value = null
-
-  let dsn = settings.database.dsn
-  if (settings.database.driver === 'mysql') {
-    dsn = buildMysqlDsn()
-  } else if (settings.database.driver === 'postgres') {
-    dsn = buildPostgresDsn()
-  }
-
-  try {
-    const result = await DatabaseApi.testConnection({
-      driver: settings.database.driver,
-      dsn
-    })
-    if (result.data?.connected) {
-      dbTestResult.value = { success: true, info: result.data }
-      message.success('连接成功')
-    } else {
-      dbTestResult.value = {
-        success: false,
-        error: result.data?.errorInfo?.message || '连接失败'
-      }
-      message.error(result.data?.errorInfo?.message || '连接失败')
-    }
-  } catch (err) {
-    dbTestResult.value = { success: false, error: formatErrorMessage(err, '连接失败') }
-    message.error(formatErrorMessage(err, '连接测试失败'))
-  } finally {
-    testingDb.value = false
-  }
-}
 
 const addDir = () => {
   settings.rootDirs.push({ path: '', name: '' })
@@ -988,9 +915,9 @@ const loadSettings = async () => {
 
       // 文件索引配置
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
+      settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
 
-      // 保存原始数据库配置用于变更检测
-      originalConfig.value = { ...settings.database }
+      // 保存原始服务器配置用于变更检测
       originalServerConfig.value = {
         host: settings.server.host,
         httpPort: settings.server.http.port
@@ -1000,31 +927,6 @@ const loadSettings = async () => {
     console.error('加载设置失败', e)
     message.error('加载设置失败')
   }
-}
-
-// 检测数据库配置是否有变更
-const detectDatabaseChange = () => {
-  if (!originalConfig.value) return false
-  const orig = originalConfig.value
-  const curr = settings.database
-
-  if (orig.driver !== curr.driver) return true
-  if (curr.driver === 'sqlite' && orig.dsn !== curr.dsn) return true
-  if (curr.driver === 'mysql') {
-    if (orig.mysqlHost !== curr.mysqlHost) return true
-    if (orig.mysqlPort !== curr.mysqlPort) return true
-    if (orig.mysqlUser !== curr.mysqlUser) return true
-    if (orig.mysqlPassword !== curr.mysqlPassword) return true
-    if (orig.mysqlDatabase !== curr.mysqlDatabase) return true
-  }
-  if (curr.driver === 'postgres') {
-    if (orig.postgresHost !== curr.postgresHost) return true
-    if (orig.postgresPort !== curr.postgresPort) return true
-    if (orig.postgresUser !== curr.postgresUser) return true
-    if (orig.postgresPassword !== curr.postgresPassword) return true
-    if (orig.postgresDatabase !== curr.postgresDatabase) return true
-  }
-  return false
 }
 
 // 等待服务就绪后导航
@@ -1106,6 +1008,7 @@ const doSaveSettings = async () => {
       },
       index: {
         scanCronExpression: settings.scanCronExpression,
+        searchReconcileCronExpression: settings.searchReconcileCronExpression,
       }
     }
 
@@ -1159,24 +1062,9 @@ const doSaveSettings = async () => {
   }
 }
 
-// 保存配置入口（检测数据库变更）
+// 保存配置入口
 const saveSettings = () => {
-  if (detectDatabaseChange()) {
-    dialog.warning({
-      title: '数据库配置已变更',
-      content: '检测到数据库配置已修改，是否需要迁移数据到新数据库？\n\n• 迁移数据：将原数据库迁移到新配置（推荐）\n• 仅保存配置：直接保存配置，不迁移数据（需要手动迁移）\n• 取消：不保存任何更改',
-      positiveText: '迁移数据',
-      negativeText: '仅保存配置',
-      onPositiveClick: () => {
-        showMigrationWizard.value = true
-      },
-      onNegativeClick: () => {
-        doSaveSettings()
-      }
-    })
-  } else {
-    doSaveSettings()
-  }
+  doSaveSettings()
 }
 
 onMounted(() => {
@@ -1249,39 +1137,6 @@ onMounted(() => {
   .field-hint {
     color: #999;
     font-size: 12px;
-  }
-
-  .migration-hint {
-    margin-bottom: 0;
-
-    .migration-title {
-      font-weight: 600;
-      color: var(--primary-color);
-    }
-
-    .migration-list {
-      margin: 8px 0 0 0;
-      padding-left: 20px;
-      color: var(--text-color-secondary);
-
-      li {
-        margin-bottom: 4px;
-        line-height: 1.6;
-      }
-    }
-  }
-
-  .test-result {
-    margin-left: 12px;
-    font-size: 14px;
-
-    &.success {
-      color: #52c41a;
-    }
-
-    &.error {
-      color: #ff4d4f;
-    }
   }
 }
 

@@ -55,17 +55,17 @@ func (hh *HealthHandler) Health(c *gin.Context) {
         if err != nil {
             checks["database"] = CheckResult{Status: "error", Message: "获取数据库连接失败"}
             overallStatus = "unhealthy"
-            utils.AppLogger().Error("health check: 获取数据库连接失败", zap.Error(err))
+            utils.AppLogger().Error("健康检查: 获取数据库连接失败", zap.Error(err))
         } else if err := sqlDB.Ping(); err != nil {
             checks["database"] = CheckResult{Status: "error", Message: "数据库连接失败"}
             overallStatus = "unhealthy"
-            utils.AppLogger().Error("health check: 数据库Ping失败", zap.Error(err))
+            utils.AppLogger().Error("健康检查: 数据库Ping失败", zap.Error(err))
         } else {
             checks["database"] = CheckResult{Status: "ok"}
         }
     } else {
         checks["database"] = CheckResult{Status: "skipped", Message: "数据库未初始化"}
-        utils.AppLogger().Warn("health check: 数据库未初始化")
+        utils.AppLogger().Warn("健康检查: 数据库未初始化")
     }
 
     // 检查存储目录
@@ -79,7 +79,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
                     Status:  "error",
                     Message: "目录不存在: " + dirPath,
                 })
-                utils.AppLogger().Error("health check: 存储目录不存在",
+                utils.AppLogger().Error("健康检查: 存储目录不存在",
                     zap.String("path", dirPath),
                 )
             } else {
@@ -87,7 +87,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
                     Status:  "error",
                     Message: "无权限访问: " + dirPath,
                 })
-                utils.AppLogger().Error("health check: 存储目录无权限访问",
+                utils.AppLogger().Error("健康检查: 存储目录无权限访问",
                     zap.String("path", dirPath),
                     zap.Error(err),
                 )
@@ -100,7 +100,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
                 Status:  "error",
                 Message: "不是目录: " + dirPath,
             })
-            utils.AppLogger().Error("health check: 存储路径不是目录",
+            utils.AppLogger().Error("健康检查: 存储路径不是目录",
                 zap.String("path", dirPath),
             )
             if overallStatus == "healthy" {
@@ -111,7 +111,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
                 Status:  "ok",
                 Message: dirPath,
             })
-            utils.AppLogger().Debug("health check: 存储目录正常",
+            utils.AppLogger().Debug("健康检查: 存储目录正常",
                 zap.String("path", dirPath),
             )
         }

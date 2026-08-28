@@ -19,8 +19,7 @@
 9. **WebDAV 服务器**：支持外部应用通过 WebDAV 协议访问
 10. **多种认证**：JWT、API Key、LDAP
 11. **RBAC 权限控制**：细粒度的权限管理
-12. **数据库迁移**：支持 SQLite/MySQL/PostgreSQL 互迁
-13. **基本安全机制**：包含路径遍历保护、文件类型过滤、多种认证
+12. **基本安全机制**：包含路径遍历保护、文件类型过滤、多种认证
 
 ## 系统架构
 
@@ -69,7 +68,6 @@
 │   │   │   ├── auth_service.go
 │   │   │   ├── file_service.go
 │   │   │   ├── search_service.go
-│   │   │   └── migration/         # 数据库迁移
 │   │   ├── setup/                 # 初始化向导
 │   │   └── temp/                  # 临时文件
 │   ├── pkg/                       # 公共包

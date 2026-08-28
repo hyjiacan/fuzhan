@@ -13,8 +13,6 @@
 - [UploadRecord 上传记录模型](#uploadrecord-上传记录模型)
 - [URLDownloadTask URL下载任务模型](#urldownloadtask-url下载任务模型)
 - [Notification 通知模型](#notification-通知模型)
-- [MigrationStatus 迁移状态模型](#migrationstatus-迁移状态模型)
-- [MigrationTableProgress 迁移表进度模型](#migrationtableprogress-迁移表进度模型)
 - [关联关系图](#关联关系图)
 - [数据库支持](#数据库支持)
 - [自动迁移](#自动迁移)
@@ -228,50 +226,6 @@
 
 ---
 
-## MigrationStatus 迁移状态模型
-
-- **表名**: `migration_statuses`
-- **说明**: 数据库迁移状态跟踪
-
-| 字段名 | 类型 | 约束 | 说明 |
-|--------|------|------|------|
-| ID | uint | primaryKey | 自增主键 |
-| Status | string(50) | not null | 迁移状态 |
-| SourceDriver | string(50) | not null | 源数据库驱动 |
-| TargetDriver | string(50) | not null | 目标数据库驱动 |
-| TotalTables | int | default: 0 | 总表数 |
-| CompletedTables | int | default: 0 | 已完成表数 |
-| TotalRows | int64 | default: 0 | 总行数 |
-| MigratedRows | int64 | default: 0 | 已迁移行数 |
-| StartedAt | time.Time | - | 开始时间 |
-| CompletedAt | time.Time | - | 完成时间 |
-| ErrorMessage | string(1024) | - | 错误信息 |
-| CreatedAt | time.Time | - | 创建时间 |
-| UpdatedAt | time.Time | - | 更新时间 |
-
----
-
-## MigrationTableProgress 迁移表进度模型
-
-- **表名**: `migration_table_progresses`
-- **说明**: 迁移表级进度
-
-| 字段名 | 类型 | 约束 | 说明 |
-|--------|------|------|------|
-| ID | uint | primaryKey | 自增主键 |
-| MigrationID | uint | index, not null | 关联迁移ID |
-| TableName | string(255) | not null | 表名 |
-| Status | string(50) | not null | 表状态 |
-| TotalRows | int64 | default: 0 | 总行数 |
-| MigratedRows | int64 | default: 0 | 已迁移行数 |
-| ErrorMessage | string(1024) | - | 错误信息 |
-| StartedAt | time.Time | - | 开始时间 |
-| CompletedAt | time.Time | - | 完成时间 |
-| CreatedAt | time.Time | - | 创建时间 |
-| UpdatedAt | time.Time | - | 更新时间 |
-
----
-
 ## 关联关系图
 
 ```
@@ -289,14 +243,6 @@
 └─────────────────────┘              └─────────────────────┘
         │
         │ TaskID 关联
-        ▼
-
-┌─────────────────────┐     1:N      ┌─────────────────────────┐
-│  MigrationStatus    │──────────────│ MigrationTableProgress  │
-│ (migration_statuses)│              │(migration_table_progress)│
-└─────────────────────┘              └─────────────────────────┘
-        │
-        │ MigrationID 关联
         ▼
 
 独立表（无外键关联）:
@@ -318,6 +264,8 @@
 
 GORM 自动处理数据库适配，所有模型定义兼容以上三种数据库。
 
+> 注意：本程序不内置跨数据库引擎的数据迁移能力。需在引擎之间迁移时请使用外部工具（如 [dbswitch](https://github.com/light-art/dbswitch)）。
+
 ---
 
 ## 自动迁移
@@ -336,7 +284,4 @@ db.AutoMigrate(
 
 // 运行时创建临时文件分片表
 tempHandler.InitTempSessionTable()
-
-// 数据库迁移服务表
-// 由 services/migration 包动态管理
 ```
