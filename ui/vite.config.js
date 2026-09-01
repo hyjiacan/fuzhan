@@ -80,7 +80,7 @@ export default defineConfig({
         target: 'http://localhost:8888',
         changeOrigin: true
       },
-      '/cli': {
+      '/download': {
         target: 'http://localhost:8888',
         changeOrigin: true
       }

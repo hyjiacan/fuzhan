@@ -1,6 +1,27 @@
 <template>
-  <div class="upload-manager">
-    <el-form :model="form" label-width="120px">
+  <el-dialog
+    :model-value="modelValue"
+    :title="title"
+    :class="['upload-dialog', maximized ? 'upload-dialog--maximized' : '']"
+    width="800px"
+    top="10vh"
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
+    :show-close="false"
+    :before-close="requestClose"
+    append-to-body
+  >
+    <template #header="{ titleId, titleClass }">
+      <div class="upload-dialog-header">
+        <span :id="titleId" :class="titleClass" class="upload-dialog-title">{{ title }}</span>
+        <el-button link circle :title="maximized ? '还原' : '放大'" class="upload-maximize-btn" @click="toggleMaximize">
+          <el-icon :size="14"><component :is="maximized ? RestoreIcon : MaximizeIcon" /></el-icon>
+        </el-button>
+      </div>
+    </template>
+
+    <div class="upload-manager">
+      <el-form :model="form" label-width="120px">
       <!-- 共享目录和上传目录合并为一行 -->
       <el-form-item label="上传目录:" v-if="needsRootSelection">
         <div style="display: flex; gap: 8px; width: 100%;">
@@ -289,6 +310,20 @@
         </el-tab-pane>
 
         <el-tab-pane name="clipboard" label="从剪贴板粘贴">
+          <!-- 剪贴板读取操作（从 footer 移入对应 tab-pane） -->
+          <div v-if="!clipboardRead" style="margin-bottom: 8px;">
+            <el-button @click="readClipboard" :loading="clipboardReading" type="primary" plain size="small">
+              读取剪贴板
+            </el-button>
+          </div>
+          <div v-else style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <el-tag type="success" size="small">已读取</el-tag>
+            <el-button size="small" link @click="clearClipboard">重新读取</el-button>
+            <el-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
+              确认选择
+            </el-button>
+          </div>
+
           <!-- 未读取 -->
           <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
             仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
@@ -384,62 +419,51 @@
         </el-tab-pane>
       </el-tabs>
     </el-form>
-
-    <!-- 底部：左侧为剪贴板操作按钮 + 上传提示，右侧为操作按钮 -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
-      <div class="upload-footer-left">
-        <template v-if="form.uploadMethod === 'clipboard'">
-          <div v-if="!clipboardRead">
-            <el-button @click="readClipboard" :loading="clipboardReading" type="primary" plain size="small">
-              读取剪贴板
-            </el-button>
-          </div>
-          <div v-else style="display: flex; gap: 8px; align-items: center;">
-            <el-tag type="success" size="small">已读取</el-tag>
-            <el-button size="small" link @click="clearClipboard">重新读取</el-button>
-            <el-button v-if="!clipboardTypeConfirmed" size="small" type="primary" @click="applyClipboardSelection" :disabled="!clipboardSelectedType">
-              确认选择
-            </el-button>
-          </div>
-        </template>
-        <el-alert v-if="uploadMessage" :type="uploadMessageType" :title="uploadMessage" :closable="false" class="upload-footer-message" />
-      </div>
-
-      <!-- 右侧：操作按钮 -->
-      <div style="display: flex; gap: 12px;">
-        <template v-if="form.uploadMethod === 'clipboard'">
-          <el-button
-            type="primary"
-            @click="uploadClipboard"
-            :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
-            :loading="uploading"
-          >
-            开始上传
-          </el-button>
-        </template>
-        <template v-else-if="form.uploadMethod === 'text'">
-          <el-button
-            type="primary"
-            @click="saveTextFile"
-            :disabled="!textFilename.trim()"
-          >
-            保存并上传
-          </el-button>
-        </template>
-        <template v-else>
-          <el-button
-            type="primary"
-            @click="handleFooterClick"
-            :disabled="!canStartUpload"
-            :loading="uploading"
-          >
-            开始上传
-          </el-button>
-        </template>
-        <el-button @click="emit('close')">关闭</el-button>
-      </div>
     </div>
-  </div>
+
+    <template #footer>
+      <div class="upload-dialog-footer">
+        <div class="upload-footer-left">
+          <el-checkbox v-if="isTempUpload" v-model="deleteOnDownloadModel">下载后自动删除</el-checkbox>
+          <el-alert v-if="uploadMessage" :type="uploadMessageType" :title="uploadMessage" :closable="false" class="upload-footer-message" />
+        </div>
+
+        <!-- 右侧：操作按钮 -->
+        <div class="upload-footer-actions">
+          <template v-if="form.uploadMethod === 'clipboard'">
+            <el-button
+              type="primary"
+              @click="uploadClipboard"
+              :disabled="!clipboardRead || !clipboardTypeConfirmed || !clipboardFilename.trim()"
+              :loading="uploading"
+            >
+              开始上传
+            </el-button>
+          </template>
+          <template v-else-if="form.uploadMethod === 'text'">
+            <el-button
+              type="primary"
+              @click="saveTextFile"
+              :disabled="!textFilename.trim()"
+            >
+              保存并上传
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button
+              type="primary"
+              @click="handleFooterClick"
+              :disabled="!canStartUpload"
+              :loading="uploading"
+            >
+              开始上传
+            </el-button>
+          </template>
+          <el-button @click="requestClose">关闭</el-button>
+        </div>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 
@@ -465,13 +489,21 @@ const props = defineProps({
   deleteOnDownload: {
     type: Boolean,
     default: false
+  },
+  modelValue: {
+    type: Boolean,
+    default: false
+  },
+  title: {
+    type: String,
+    default: '上传文件'
   }
 })
 
 // API 配置（从 props 获取）
 const api = computed(() => props.uploadApi)
 
-const emit = defineEmits(['upload-success', 'upload-error', 'upload-start', 'upload-change', 'close', 'start-upload'])
+const emit = defineEmits(['upload-success', 'upload-error', 'upload-start', 'upload-change', 'close', 'start-upload', 'update:modelValue', 'update:deleteOnDownload'])
 const message = ElMessage
 const dialog = {
   warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
@@ -494,6 +526,12 @@ const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 ])
 const DocumentIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 40, height: 40 }, [
   h('path', { d: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z' })
+])
+const MaximizeIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 14, height: 14 }, [
+  h('path', { d: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z' })
+])
+const RestoreIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 14, height: 14 }, [
+  h('path', { d: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z' })
 ])
 
 // State
@@ -876,6 +914,24 @@ const needsRootSelection = computed(() => {
   return url && !url.includes('/temp/') && !url.includes('/private/')
 })
 
+// 是否为临时文件上传（决定是否显示"下载后自动删除"勾选）
+const isTempUpload = computed(() => {
+  const url = getApiUrl('createSession')
+  return url && url.includes('/temp/')
+})
+
+// "下载后自动删除"勾选（支持父级 v-model:delete-on-download）
+const deleteOnDownloadModel = computed({
+  get: () => props.deleteOnDownload,
+  set: (val) => emit('update:deleteOnDownload', val)
+})
+
+// 弹窗放大/还原（撑满窗口）
+const maximized = ref(false)
+const toggleMaximize = () => {
+  maximized.value = !maximized.value
+}
+
 // 能否开始上传：local 模式看队列，url 模式看 canUrlUpload
 const canStartUpload = computed(() => {
   if (form.uploadMethod === 'url') {
@@ -1011,6 +1067,29 @@ const hasActiveUploads = computed(() =>
 const hasUrlUploading = computed(() =>
   urlUploadState.value.status === 'uploading'
 )
+
+// 关闭保护：有活跃上传时需确认；URL 下载在后台继续执行
+const requestClose = () => {
+  if (hasActiveUploads.value) {
+    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
+      confirmButtonText: '确认关闭',
+      cancelButtonText: '继续上传',
+      type: 'warning'
+    }).then(() => {
+      emit('update:modelValue', false)
+      emit('close')
+    }).catch(() => {
+      // 不关闭，保持打开
+    })
+  } else if (hasUrlUploading.value) {
+    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
+    emit('update:modelValue', false)
+    emit('close')
+  } else {
+    emit('update:modelValue', false)
+    emit('close')
+  }
+}
 
 // Queue item ID counter
 let queueIdCounter = 0
@@ -2257,6 +2336,62 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     min-width: 0;
     padding: 6px 12px;
     font-size: 12px;
+  }
+}
+
+// ============ 上传弹窗（dialog 集成于组件内，append-to-body 全局作用） ============
+.upload-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 4px;
+}
+
+.upload-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.upload-maximize-btn {
+  color: #666;
+
+  &:hover {
+    color: #FF6600;
+  }
+}
+
+.upload-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upload-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.upload-dialog--maximized {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+
+  .el-dialog__body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .upload-manager {
+    height: 100%;
   }
 }
 </style>

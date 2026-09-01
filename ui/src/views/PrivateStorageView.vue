@@ -67,11 +67,9 @@
       </div>
     </div>
 
-    <!-- 上传弹窗 -->
-    <el-dialog :model-value="showUploadDialog" title="上传文件" class="upload-dialog" width="800px"
-      :close-on-click-modal="false" :show-close="false" @update:model-value="onUploadDialogShowChange">
-      <upload-manager :upload-api="privateUploadApi" :default-dir="currentDir" @upload-success="onUploadSuccess" @upload-error="onUploadError" ref="uploadManagerRef" @close="handleUploadDialogClose" />
-    </el-dialog>
+    <!-- 上传弹窗（dialog 集成在 UploadManager 组件内） -->
+    <upload-manager v-model="showUploadDialog" title="上传文件" :upload-api="privateUploadApi" :default-dir="currentDir"
+      @upload-success="onUploadSuccess" @upload-error="onUploadError" />
 
     <!-- 预览弹窗 -->
     <el-dialog v-model="previewDialogVisible" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
@@ -123,7 +121,6 @@ const showUploadDialog = ref(false)
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
 const previewFileData = ref({})
-const uploadManagerRef = ref(null)
 const uploadQueueCount = ref(0)
 const searchQuery = ref('')
 const searchInputRef = ref(null)
@@ -242,6 +239,7 @@ const goUp = () => {
 }
 
 // Methods
+// 上传弹框关闭保护已内聚到 UploadManager 组件内部（before-close 处理）
 const onUploadSuccess = () => {
   ElMessage.success('上传成功')
   showUploadDialog.value = false
@@ -250,31 +248,6 @@ const onUploadSuccess = () => {
 
 const onUploadError = (error) => {
   ElMessage.error(formatErrorMessage(error, '上传失败'))
-}
-
-// 上传弹框关闭保护
-const handleUploadDialogClose = () => {
-  const mgr = uploadManagerRef.value
-  if (mgr?.hasActiveUploads) {
-    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
-      confirmButtonText: '确认关闭',
-      cancelButtonText: '继续上传',
-      type: 'warning'
-    }).then(() => {
-      showUploadDialog.value = false
-    }).catch(() => {})
-  } else if (mgr?.hasUrlUploading) {
-    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
-    showUploadDialog.value = false
-  } else {
-    showUploadDialog.value = false
-  }
-}
-
-const onUploadDialogShowChange = (show) => {
-  if (!show) {
-    handleUploadDialogClose()
-  }
 }
 
 // 预览文件

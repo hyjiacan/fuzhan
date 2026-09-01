@@ -105,14 +105,9 @@
       </template>
     </el-dialog>
 
-    <!-- 上传弹窗（关闭保护：由 UploadManager 的 close 事件控制） -->
-    <el-dialog v-model="uploadDialogVisible" title="上传文件" class="upload-dialog" width="800px"
-      top="10vh"
-      :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
-      <upload-manager ref="uploadManagerRef" :upload-api="uploadApi" @upload-start="onUploadStart"
-        @upload-success="onUploadSuccess" @upload-error="onUploadError" @upload-change="uploadQueueCount = $event"
-        @close="handleUploadDialogClose" />
-    </el-dialog>
+    <!-- 上传弹窗（dialog 集成在 UploadManager 组件内） -->
+    <upload-manager v-model="uploadDialogVisible" :upload-api="uploadApi" title="上传文件"
+      @upload-success="onUploadSuccess" @upload-error="onUploadError" />
 
     <!-- 文件预览弹窗 -->
     <el-dialog
@@ -319,8 +314,6 @@ const uploadDialogVisible = ref(false)
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
 const previewFileData = ref({})
-const uploadManagerRef = ref(null)
-const uploadQueueCount = ref(0)
 const depTreeDialogRef = ref(null)
 const searchQuery = ref('')
 const searchInputRef = ref(null)
@@ -397,17 +390,23 @@ const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 
 // ============ 界面排序（不涉及后台）============
 // 默认按名称升序；支持按路径(文件名)、修改时间、下载次数排序
-const sortState = ref({ key: 'name', order: 'asc' })
+// 注意：el-table-v2 的 sort-state 要求为 { [columnKey]: 'asc'|'desc' } 映射形式，
+// 而非 { key, order }；否则表头不显示排序指示且首次点击 order 为 undefined
+const sortState = ref({ name: 'asc' })
 
 const onColumnSort = (state) => {
   if (state && state.key) {
-    sortState.value = { key: state.key, order: state.order }
+    // 首次点击未排序列时，el-table-v2 传来的 order 为 undefined，归一化为 asc
+    const order = state.order === 'asc' || state.order === 'desc' ? state.order : 'asc'
+    sortState.value = { [state.key]: order }
   }
 }
 
 const sortedFileList = computed(() => {
   const list = [...fileList.value]
-  const { key, order } = sortState.value
+  const entry = Object.entries(sortState.value)[0]
+  const key = entry ? entry[0] : 'name'
+  const order = entry ? entry[1] : 'asc'
 
   const dirFirst = (a, b) => {
     const aDir = isDir(a)
@@ -590,7 +589,10 @@ const columns = [
               if (isPreview) {
                 e.preventDefault()
                 previewFile(row)
+                return
               }
+              // 非预览：允许默认下载行为，稍后刷新列表更新下载次数
+              refreshAfterDownload()
             }
           }, [
             highlightKeyword(fileName),
@@ -634,7 +636,9 @@ const columns = [
                 if (isPreview) {
                   e.preventDefault()
                   previewFile(row)
+                  return
                 }
+                refreshAfterDownload()
               }
             }, highlightKeyword(fileName))
         ])
@@ -662,15 +666,16 @@ const columns = [
   },
   {
     title: '下载次数', key: 'downloadCount', width: 110, sortable: true, sortBy: 'downloadCount',
-    cellRenderer: ({ rowData: row }) => row.downloadCount || 0
+    cellRenderer: ({ rowData: row }) => isDir(row) ? '' : ((row.downloadCount || 0) > 0 ? row.downloadCount : '-')
   },
   {
     title: '备注', key: 'notes', width: 150,
     cellRenderer: ({ rowData: row }) => h(ElButton, {
       size: 'small', link: true,
       class: ['notes-link', { 'is-empty': !row.notes }],
+      title: row.notes || '',
       onClick: () => openNotesEditor(row)
-    }, () => row.notes || '添加备注')
+    }, () => h('span', { class: 'notes-text' }, row.notes || '添加备注'))
   },
   {
     title: '操作', key: 'actions', width: 150,
@@ -734,7 +739,23 @@ const downloadFile = (file) => {
   if (file?.path) {
     const fullPath = file.path
     window.open(`/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
+    refreshAfterDownload()
   }
+}
+
+// 下载后刷新文件列表，让下载次数列更新（搜索模式重新搜索）
+let downloadRefreshTimer = null
+const refreshAfterDownload = () => {
+  clearTimeout(downloadRefreshTimer)
+  downloadRefreshTimer = setTimeout(() => {
+    if (isSearching.value || searchCompleted.value) {
+      if (searchQuery.value.trim()) {
+        store.actions.searchFiles(searchQuery.value)
+      }
+    } else {
+      store.actions.loadFileList(store.state.currentPath || '/')
+    }
+  }, 500)
 }
 
 // 打开依赖树
@@ -756,10 +777,6 @@ const openDepTree = (row) => {
 
 const onUploadSuccess = () => {
   store.actions.loadFileList(store.state.currentPath || '/')
-}
-
-const onUploadError = (error) => {
-  console.error('Upload error:', error)
 }
 
 // Lifecycle
@@ -817,6 +834,7 @@ const handleKeydown = (e) => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   tableResizeObs?.disconnect()
+  clearTimeout(downloadRefreshTimer)
 })
 
 // 监听路由参数变化
@@ -831,32 +849,6 @@ watch(
     }
   }
 )
-
-const onUploadStart = () => {
-  // 上传开始
-}
-
-// 上传弹框关闭保护
-const handleUploadDialogClose = () => {
-  const mgr = uploadManagerRef.value
-  if (mgr?.hasActiveUploads) {
-    // 本地文件正在上传，需要确认
-    ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
-      confirmButtonText: '确认关闭',
-      cancelButtonText: '继续上传',
-      type: 'warning'
-    }).then(() => {
-      uploadDialogVisible.value = false
-    }).catch(() => {
-      // 不关闭，保持打开
-    })
-    return
-  } else if (mgr?.hasUrlUploading) {
-    // URL 上传在后台执行，仅提示
-    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
-  }
-  uploadDialogVisible.value = false
-}
 </script>
 
 <style lang="less" scoped>

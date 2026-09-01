@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ func isHashPath(path string) bool {
 
 // DownloadService 下载服务
 type DownloadService struct {
-	recordRepo  RecordRepository
+	recordRepo    RecordRepository
 	searchService *SearchService
 }
 
@@ -71,6 +72,39 @@ func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchServ
 		recordRepo:    repo,
 		searchService: searchService,
 	}
+}
+
+// isNewDownloadRequest 判断请求是否代表一次新的下载（而非续传/分段延续）：
+// - 不带 Range 头的完整请求（浏览器普通下载、curl/wget 等）
+// - 带 Range 头但起始偏移为 0 的请求（Chrome 并行下载、aria2/IDM 等多连接下载器的首段）
+// 带 Range 且起始偏移 > 0 的请求是断点续传或分段延续，不计入下载次数
+func isNewDownloadRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader == "" {
+		return true
+	}
+	// 解析 Range: bytes=<start>-<end>，仅当起始偏移为 0 时视为新下载
+	spec := strings.TrimPrefix(rangeHeader, "bytes=")
+	if spec == rangeHeader {
+		return false
+	}
+	if idx := strings.Index(spec, ","); idx >= 0 {
+		spec = spec[:idx]
+	}
+	startStr, _, _ := strings.Cut(spec, "-")
+	startStr = strings.TrimSpace(startStr)
+	if startStr == "" {
+		// 形如 bytes=-500 表示取末尾 500 字节，不是新下载
+		return false
+	}
+	start, err := strconv.ParseInt(startStr, 10, 64)
+	if err != nil {
+		return false
+	}
+	return start == 0
 }
 
 // DownloadByHash 根据 xxh3 哈希下载文件
@@ -139,8 +173,8 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	// 判定是否为预览请求
 	isPreview := r.URL.Query().Get("preview") == "true"
 
-	// 公共文件下载次数累加（真实下载时，不含预览）
-	if !isPreview && r.Method == http.MethodGet && ds.searchService != nil {
+	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）
+	if !isPreview && ds.searchService != nil && isNewDownloadRequest(r) {
 		if ierr := ds.searchService.IncrementPublicDownloadCount(fullPath); ierr != nil {
 			utils.Warn("公共文件下载次数更新失败", utils.String("path", fullPath), utils.Err(ierr))
 		}
@@ -245,8 +279,8 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		})
 	}
 
-	// 公共文件下载次数累加（真实下载时，不含预览）
-	if record && r.Method == http.MethodGet && r.URL.Query().Get("preview") != "true" && ds.searchService != nil {
+	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）
+	if record && r.URL.Query().Get("preview") != "true" && ds.searchService != nil && isNewDownloadRequest(r) {
 		if ierr := ds.searchService.IncrementPublicDownloadCount("/" + rootName + "/" + strings.TrimPrefix(subPath, "/")); ierr != nil {
 			utils.Warn("公共文件下载次数更新失败", utils.String("path", subPath), utils.Err(ierr))
 		}

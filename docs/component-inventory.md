@@ -94,19 +94,27 @@
 
 #### UploadManager 上传管理组件
 
+弹窗（el-dialog）已内聚到组件内部，调用方通过 `v-model` 控制显隐，无需再包一层 dialog；header 提供放大/还原按钮（撑满窗口），footer 渲染底部操作。
+
 | 属性 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `uploadApi` | Object | 是 | 上传API地址配置 |
+| `modelValue` | Boolean | 是 | 弹窗显隐（v-model） |
+| `uploadApi` | Object | 是 | 上传API地址配置（type 必须为 chunked） |
+| `title` | String | 否 | 弹窗标题，默认「上传文件」 |
+| `defaultDir` | String | 否 | 默认上传目录 |
+| `deleteOnDownload` | Boolean | 否 | 临时文件「下载后自动删除」勾选（支持 v-model:delete-on-download 双向同步） |
 
 | 事件 | 参数 | 说明 |
 |------|------|------|
+| `update:modelValue` | boolean | 弹窗显隐变化 |
+| `update:deleteOnDownload` | boolean | 「下载后自动删除」变化 |
 | `upload-success` | response | 上传成功 |
 | `upload-error` | error | 上传失败 |
 | `upload-start` | file | 开始上传 |
 | `upload-change` | progress | 上传进度变化 |
 | `close` | - | 关闭上传面板 |
 
-**功能**: 文件上传管理，支持本地/URL上传、拖放、分片上传、队列管理、断点续传
+**功能**: 文件上传管理，支持本地/URL/剪贴板/新建文本四种方式（左侧 tabs 切换）、拖放、分片上传、队列管理、断点续传；「读取剪贴板」按钮位于剪贴板 tab-pane 内；弹窗关闭保护（有上传任务时二次确认）由组件内部处理
 
 ---
 
