@@ -9,11 +9,9 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-ego/gse v1.0.2
 	github.com/go-playground/validator/v10 v10.27.0
-	github.com/go-sql-driver/mysql v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/jlaffaye/ftp v0.2.1
-	github.com/lib/pq v1.12.3
 	github.com/prometheus/client_golang v1.19.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/afero v1.15.0
@@ -57,6 +55,7 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
@@ -99,3 +98,6 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.53.0 // indirect
 )
+
+// 本地裁剪的 gse：移除未使用的日文/IDF 词典嵌入，减小二进制体积
+replace github.com/go-ego/gse => ./third_party/gse

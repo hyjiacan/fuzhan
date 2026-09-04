@@ -64,11 +64,7 @@
     <template #footer>
       <div style="display: flex; justify-content: space-between;">
         <el-button size="small" @click="handleDownloadAll" :disabled="!treeData.length && !rootNode?.downloadURL">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
+          <el-icon :size="14"><Download /></el-icon>
           <span style="margin-left: 4px;">下载全部</span>
         </el-button>
         <el-button @click="visible = false">关闭</el-button>
@@ -80,6 +76,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download } from '@element-plus/icons-vue'
 import { DependencyApi, IndexApi } from '@/api'
 
 const STORAGE_KEY = 'fuzhan_download_all_dont_remind'

@@ -25,7 +25,7 @@
         <div class="header-actions">
           <el-autocomplete ref="searchInputRef" v-model="searchQuery" :maxlength="200"
             :fetch-suggestions="querySuggestions" :trigger-on-focus="false" placeholder="搜索文件..."
-            size="small" clearable highlight-first-item @select="onSuggestionSelect" @keydown.enter="searchFiles"
+            clearable @select="onSuggestionSelect" @keydown.enter="searchFiles"
             class="search-input">
             <template #default="{ item }">
               <div class="suggest-item">
@@ -34,10 +34,10 @@
               </div>
             </template>
           </el-autocomplete>
-          <el-button @click="searchFiles" size="small">
+          <el-button @click="searchFiles">
             搜索
           </el-button>
-          <el-button @click="showUploadDialog" type="primary" size="small">
+          <el-button @click="showUploadDialog" type="primary">
             上传
           </el-button>
         </div>

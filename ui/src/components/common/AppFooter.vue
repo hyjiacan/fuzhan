@@ -98,11 +98,7 @@
 			<el-dialog v-model="showAbout" title="关于" width="560px">
 					<div class="about-content">
 						<div class="about-logo">
-							<el-icon size="48" color="#18a058">
-								<svg viewBox="0 0 24 24" fill="currentColor">
-									<path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
-								</svg>
-							</el-icon>
+							<img src="/assets/icons/logo.svg" class="about-logo-img" alt="logo" />
 						</div>
 						<h3 class="about-title">浮栈 (Fuzhan)</h3>
 						<p class="about-tagline">一座文件客栈，纳四方文件，可暂歇，可长驻</p>
@@ -373,6 +369,11 @@ onMounted(() => {
 
 			.about-logo {
 				margin-bottom: 12px;
+			}
+
+			.about-logo-img {
+				width: 56px;
+				height: 56px;
 			}
 
 			.about-title {
