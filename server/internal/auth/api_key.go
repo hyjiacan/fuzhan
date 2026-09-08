@@ -51,7 +51,7 @@ func (s *ApiKeyService) CreateApiKey(req CreateApiKeyRequest) (*CreateApiKeyResp
 		return nil, fmt.Errorf("创建 API Key 失败: %w", err)
 	}
 
-	now := time.Now()
+	now := utils.Now()
 	var expiresAt *time.Time
 	if req.ExpiresIn > 0 {
 		t := now.Add(time.Duration(req.ExpiresIn) * time.Second)
@@ -111,7 +111,7 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 	}
 
 	// 检查是否过期
-	if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
+	if key.ExpiresAt != nil && key.ExpiresAt.Before(utils.Now()) {
 		utils.Warn("API Key 认证失败: Key 已过期", utils.String("key_id", keyID), zap.Time("expired_at", *key.ExpiresAt))
 		return 0, "", fmt.Errorf("API Key 已过期")
 	}
@@ -126,7 +126,7 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 	go func(kid uint, kID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		now := time.Now()
+		now := utils.Now()
 		if err := s.db.WithContext(ctx).Model(&models.ApiKey{}).Where("id = ?", kid).
 			Update("last_used_at", &now).Error; err != nil {
 			utils.Warn("更新 API Key 最后使用时间失败", utils.String("key_id", kID), utils.Err(err))

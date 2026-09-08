@@ -166,7 +166,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 			FileSize:  info.Size(),
 			RootName:  rootName,
 			ClientIP:  utils.GetRealIP(r),
-			CreatedAt: time.Now(),
+			CreatedAt: utils.Now(),
 		})
 	}
 
@@ -275,7 +275,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			FileSize:  info.Size(),
 			RootName:  rootName,
 			ClientIP:  utils.GetRealIP(r),
-			CreatedAt: time.Now(),
+			CreatedAt: utils.Now(),
 		})
 	}
 

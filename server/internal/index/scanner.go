@@ -109,7 +109,7 @@ type rootScanResult struct {
 
 // runScan 执行实际扫描流程
 func (s *Scanner) runScan(ctx context.Context, trigger string) {
-	startTime := time.Now()
+	startTime := utils.Now()
 	scanRecord := s.createScanRecord()
 
 	// 创建任务记录（供任务管理页面展示）
@@ -124,7 +124,7 @@ func (s *Scanner) runScan(ctx context.Context, trigger string) {
 	// 先统计文件数（可能耗时，每10秒报告进度）
 	utils.Info("全量扫描开始: 正在统计文件总数...")
 	var totalFiles int64
-	countStart := time.Now()
+	countStart := utils.Now()
 	countDone := make(chan struct{}, 1)
 	go func() {
 		for _, rootPath := range s.rootNames {
@@ -266,7 +266,7 @@ func buildScanDetails(scanned int64, rootResults []models.ScanRootResult) string
 func (s *Scanner) createScanRecord() *models.ScanRecord {
 	record := &models.ScanRecord{
 		Status:    models.ScanRecordStatusRunning,
-		StartedAt: time.Now(),
+		StartedAt: utils.Now(),
 	}
 	if err := s.db.Create(record).Error; err != nil {
 		utils.Warn("创建扫描记录失败", utils.Err(err))
@@ -276,7 +276,7 @@ func (s *Scanner) createScanRecord() *models.ScanRecord {
 
 // updateScanRecord 更新扫描记录字段
 func (s *Scanner) updateScanRecord(id uint, fields map[string]interface{}) {
-	fields["updated_at"] = time.Now()
+	fields["updated_at"] = utils.Now()
 	if err := s.db.Model(&models.ScanRecord{}).Where("id = ?", id).Updates(fields).Error; err != nil {
 		utils.Warn("更新扫描记录失败",
 			utils.Int("record_id", int(id)),
@@ -286,7 +286,7 @@ func (s *Scanner) updateScanRecord(id uint, fields map[string]interface{}) {
 
 // finalizeScanRecord 完成扫描记录（设置状态、结束时间、结果）
 func (s *Scanner) finalizeScanRecord(id uint, status models.ScanRecordStatus, errMsg string, rootResults []models.ScanRootResult) {
-	now := time.Now()
+	now := utils.Now()
 	fields := map[string]interface{}{
 		"status":     status,
 		"ended_at":   now,
@@ -414,7 +414,7 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		// 新增记录（hash 留空，由 HashWorker 后续处理）
 		added++
 
-		now := time.Now()
+		now := utils.Now()
 		rec := models.FileRecordPublic{
 			FileRecordBase: models.FileRecordBase{
 				FileName:     info.Name(),
@@ -471,7 +471,7 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		for _, id := range existing {
 			idsToDelete = append(idsToDelete, id)
 		}
-		now := time.Now()
+		now := utils.Now()
 		release := lockWrite()
 		if err := s.db.Model(&models.FileRecordPublic{}).
 			Where("id IN ?", idsToDelete).
@@ -504,7 +504,7 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 // runTempScan 扫描临时文件，写入 file_records_temp
 func (s *Scanner) runTempScan(ctx context.Context) {
 	progress := s.getOrCreateProgress(ScanScopeTemp)
-	startTime := time.Now()
+	startTime := utils.Now()
 
 	var tempFiles []models.TempFile
 	if err := s.db.Find(&tempFiles).Error; err != nil {
@@ -524,7 +524,7 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 		return
 	}
 
-	now := time.Now()
+	now := utils.Now()
 	var batch []models.FileRecordTemp
 
 	// 每10秒报告进度
@@ -600,7 +600,7 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 // runPrivateScan 扫描私有文件，写入 file_records_private
 func (s *Scanner) runPrivateScan(ctx context.Context) {
 	progress := s.getOrCreateProgress(ScanScopePrivate)
-	startTime := time.Now()
+	startTime := utils.Now()
 
 	if s.privatePath == "" {
 		progress.SetError("私有文件路径未配置")
@@ -638,7 +638,7 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 	}
 
 	progress.SetTotalFiles(totalFiles)
-	now := time.Now()
+	now := utils.Now()
 	var batch []models.FileRecordPrivate
 	var scanned int64
 
@@ -759,7 +759,7 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 // countFiles 统计目录下文件数（用于进度估算）
 func countFiles(rootPath string) (int64, error) {
 	var count int64
-	countStart := time.Now()
+	countStart := utils.Now()
 	countTicker := time.NewTicker(10 * time.Second)
 	defer countTicker.Stop()
 

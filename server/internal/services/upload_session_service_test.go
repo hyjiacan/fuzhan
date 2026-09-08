@@ -392,7 +392,7 @@ func TestCleanupExpired(t *testing.T) {
 	session := createTestSession(t, svc, cleanup, "cleanup_test.txt", 1024)
 
 	svc.db.Model(&models.UploadSession{}).Where("id = ?", session.ID).Updates(map[string]interface{}{
-		"expired_at": time.Now().Add(-1 * time.Hour),
+		"expired_at": time.Now().UTC().Add(-time.Hour),
 		"status":     models.UploadStatusInProgress,
 	})
 
@@ -431,7 +431,7 @@ func TestUploadChunk_ExpiredByTime(t *testing.T) {
 	appconfig.RootNames["test-root"] = cleanup
 	session := createTestSession(t, svc, cleanup, "expired_by_time.txt", 1024)
 
-	svc.db.Model(&models.UploadSession{}).Where("id = ?", session.ID).Update("expired_at", time.Now().Add(-1*time.Hour))
+	svc.db.Model(&models.UploadSession{}).Where("id = ?", session.ID).Update("expired_at", time.Now().UTC().Add(-time.Hour))
 
 	err := svc.UploadChunk(&UploadChunkReq{
 		UploadID:   session.ID,

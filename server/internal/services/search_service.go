@@ -72,7 +72,7 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 		utils.Int("roots", len(rootNameSet)),
 		utils.String("extFilter", extFilter))
 
-	startTime := time.Now()
+	startTime := utils.Now()
 	const maxResults = 1000
 	var results []appconfig.FileInfo
 	var mu sync.Mutex

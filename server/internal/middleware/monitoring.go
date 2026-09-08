@@ -34,13 +34,13 @@ func isNonActivityRequest(method, path string) bool {
 // MonitoringMiddleware 监控中间件
 func MonitoringMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
+		start := utils.Now()
 		clientIP := utils.GetClientIP(c)
 
 		// 记录客户端访问（与登录无关），用于管理端"在线IP"统计
 		// 状态/轮询类请求不计入，避免后台轮询将客户端 IP 误判为持续在线
 		if !isNonActivityRequest(c.Request.Method, c.FullPath()) {
-			online.Default.Record(clientIP, c.Request.UserAgent(), time.Now())
+			online.Default.Record(clientIP, c.Request.UserAgent(), utils.Now())
 		}
 
 		utils.AppMetrics.HTTPInFlightRequests.Inc()

@@ -110,7 +110,7 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
 		UserID:      req.UserID,
 		ClientIP:    req.ClientIP,
 		ChunkDir:    uploadID,
-		ExpiredAt:   time.Now().Add(24 * time.Hour),
+		ExpiredAt:   utils.Now().Add(24 * time.Hour),
 	}
 
 	if err := s.sessionRepo.Create(session); err != nil {
@@ -137,7 +137,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 		return fmt.Errorf("会话状态不允许上传")
 	}
 
-	if session.ExpiredAt.Before(time.Now()) {
+	if session.ExpiredAt.Before(utils.Now()) {
 		_ = s.sessionRepo.UpdateStatus(session.ID, models.UploadStatusExpired)
 		return fmt.Errorf("会话已过期")
 	}
@@ -214,7 +214,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 			}
 		}
 		// 自动刷新过期时间
-		if err := tx.Model(&models.UploadSession{}).Where("id = ?", session.ID).Update("expired_at", time.Now().Add(24*time.Hour)).Error; err != nil {
+		if err := tx.Model(&models.UploadSession{}).Where("id = ?", session.ID).Update("expired_at", utils.Now().Add(24*time.Hour)).Error; err != nil {
 			return fmt.Errorf("刷新过期时间失败: %w", err)
 		}
 		// 记录分片
@@ -248,7 +248,7 @@ func (s *UploadSessionService) GetStatus(uploadID uint) (*UploadStatus, error) {
 	}
 
 	expired := session.Status == models.UploadStatusExpired ||
-		(session.ExpiredAt.Before(time.Now()) && session.Status != models.UploadStatusCompleted)
+		(session.ExpiredAt.Before(utils.Now()) && session.Status != models.UploadStatusCompleted)
 
 	return &UploadStatus{
 		ID:              session.ID,
@@ -363,7 +363,7 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		ClientIP:   session.UserID,
 		UserID:     session.UserID,
 		UploadType: session.TargetType,
-		UploadTime: time.Now(),
+		UploadTime: utils.Now(),
 	}
 	if err := s.recordRepo.Create(record); err != nil {
 		return nil, fmt.Errorf("创建上传记录失败: %w", err)
@@ -416,7 +416,7 @@ func (s *UploadSessionService) Resume(uploadID uint) (*UploadStatus, error) {
 		return nil, fmt.Errorf("会话已完成或已取消，无法续传")
 	}
 
-	session.ExpiredAt = time.Now().Add(24 * time.Hour)
+	session.ExpiredAt = utils.Now().Add(24 * time.Hour)
 	session.Status = models.UploadStatusInProgress
 	if err := s.sessionRepo.Update(session); err != nil {
 		return nil, fmt.Errorf("续传失败: %w", err)
@@ -521,7 +521,7 @@ func (s *UploadSessionService) ListTempByUser(clientIP string, page, pageSize in
 // CleanupExpired 清理过期会话
 func (s *UploadSessionService) CleanupExpired() (int, error) {
 	var sessions []models.UploadSession
-	now := time.Now()
+	now := utils.Now()
 
 	if err := s.db.Where("`status` IN ? AND expired_at < ?",
 		[]models.UploadStatus{

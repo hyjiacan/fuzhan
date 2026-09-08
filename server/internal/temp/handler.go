@@ -231,7 +231,7 @@ func (h *Handler) InfoHandler(c *gin.Context) {
 		return
 	}
 
-	if time.Now().After(tempFile.ExpiredAt) {
+	if utils.Now().After(tempFile.ExpiredAt) {
 		utils.HandleErrorCompat(c, http.StatusGone, "文件已过期", nil)
 		return
 	}
@@ -342,7 +342,7 @@ func (h *Handler) CleanupTempSessions() int {
 
 	// 查找过期的会话
 	var sessions []TempUploadSession
-	if err := h.db.Where("expired_at < ?", time.Now()).Find(&sessions).Error; err != nil {
+	if err := h.db.Where("expired_at < ?", utils.Now()).Find(&sessions).Error; err != nil {
 		utils.Error("查询过期临时上传会话失败", utils.Err(err))
 		return 0
 	}
@@ -442,7 +442,7 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 	}
 	// 计算过期时间
 	expireDays := h.config.DefaultExpireDays
-	expiredAt := time.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
+	expiredAt := utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
 
 	// 创建会话记录
 	session := &TempUploadSession{
@@ -666,7 +666,7 @@ func (h *Handler) ResumeTempSessionHandler(c *gin.Context) {
 
 	// 重置过期时间
 	expireDays := h.config.DefaultExpireDays
-	session.ExpiredAt = time.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
+	session.ExpiredAt = utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
 	if err := h.db.Model(&session).Update("expired_at", session.ExpiredAt).Error; err != nil {
 		utils.Warn("更新会话过期时间失败", utils.Err(err))
 	}
@@ -835,7 +835,7 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 	}
 
 	// 同步到临时文件索引表
-	now := time.Now()
+	now := utils.Now()
 	tempRecord := models.FileRecordTemp{
 		FileRecordBase: models.FileRecordBase{
 			FileName:     session.Filename,

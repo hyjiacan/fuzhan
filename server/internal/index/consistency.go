@@ -31,7 +31,7 @@ func NewConsistencyChecker(db *gorm.DB, rootNames map[string]string) *Consistenc
 
 // RunCheck 执行一次一致性校验
 func (c *ConsistencyChecker) RunCheck(ctx context.Context) (*ConsistencyReport, error) {
-	startTime := time.Now()
+	startTime := utils.Now()
 	utils.Info("一致性校验开始")
 
 	report := &ConsistencyReport{
@@ -191,7 +191,7 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 
 // fixMissingInDB 修复文件系统存在但索引缺失的情况
 func (c *ConsistencyChecker) fixMissingInDB(rootName, relPath string, info os.FileInfo) {
-	now := time.Now()
+	now := utils.Now()
 	rec := models.FileRecordPublic{
 		FileRecordBase: models.FileRecordBase{
 			FileName:     info.Name(),
@@ -219,7 +219,7 @@ func (c *ConsistencyChecker) fixMissingInDB(rootName, relPath string, info os.Fi
 
 // fixMissingInFS 修复 DB 存在但文件系统已删除的情况
 func (c *ConsistencyChecker) fixMissingInFS(rec models.FileRecordPublic) {
-	now := time.Now()
+	now := utils.Now()
 	if err := c.db.Model(&rec).Updates(map[string]interface{}{
 		"status":     models.FileStatusDeleted,
 		"updated_at": now,
@@ -236,7 +236,7 @@ func (c *ConsistencyChecker) fixMissingInFS(rec models.FileRecordPublic) {
 
 // fixMismatched 修复属性不匹配的记录（不计算 hash，由 HashWorker 处理）
 func (c *ConsistencyChecker) fixMismatched(rootName, relPath string, info os.FileInfo) {
-	now := time.Now()
+	now := utils.Now()
 	if err := c.db.Model(&models.FileRecordPublic{}).
 		Where("root_name = ? AND file_path = ?", rootName, relPath).
 		Updates(map[string]interface{}{

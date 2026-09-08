@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"fuzhan/internal/utils"
 	"time"
 
 	"fuzhan/internal/models"
@@ -44,7 +45,7 @@ func (r *SessionRepository) UpdateStatus(id uint, status models.UploadStatus) er
 
 // RefreshExpiredAt 刷新会话过期时间（有交互则延期24小时）
 func (r *SessionRepository) RefreshExpiredAt(id uint) error {
-	newExpiredAt := time.Now().Add(24 * time.Hour)
+	newExpiredAt := utils.Now().Add(24 * time.Hour)
 	return r.db.Model(&models.UploadSession{}).Where("id = ?", id).Update("expired_at", newExpiredAt).Error
 }
 

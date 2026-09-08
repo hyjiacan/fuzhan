@@ -156,8 +156,9 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 	result := make([]HotDownloadStat, 0, len(downloadCounts))
 	for _, d := range downloadCounts {
 		var uploadTime time.Time
-		if len(d.UploadTime) >= 19 {
-			if t, err := time.Parse("2006-01-02 15:04:05", d.UploadTime[:19]); err == nil {
+		if d.UploadTime != "" {
+			// 解析完整时间文本，保留时区偏移（created_at 统一按 UTC 存储）
+			if t, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", d.UploadTime); err == nil {
 				uploadTime = t
 			}
 		}
@@ -339,8 +340,8 @@ func (s *MonitorService) GetAccessStats() (*AccessStats, error) {
 	var uploadCount int64
 	s.db.Model(&models.OperationRecord{}).Count(&uploadCount)
 
-	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
+	sevenDaysAgo := utils.Now().AddDate(0, 0, -7)
+	fiveMinutesAgo := utils.Now().Add(-5 * time.Minute)
 
 	// 活跃用户数（过去7天有操作的非管理员用户）
 	var activeUsers int64

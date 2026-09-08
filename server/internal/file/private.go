@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	configPkg "fuzhan/internal/appconfig"
 	constantsPkg "fuzhan/internal/constants"
@@ -104,7 +103,7 @@ func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
 
 	meta := &PrivateFileMeta{
 		Filename:   handler.Filename,
-		UploadTime: time.Now(),
+		UploadTime: utils.Now(),
 		FileSize:   fileSize,
 		Owner:      userID,
 		Code:       code,

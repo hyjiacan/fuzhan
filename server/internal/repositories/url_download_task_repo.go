@@ -1,7 +1,7 @@
 package repositories
 
 import (
-	"time"
+	"fuzhan/internal/utils"
 
 	"fuzhan/internal/models"
 
@@ -42,7 +42,7 @@ func (r *URLDownloadTaskRepository) UpdateStatus(id string, status models.URLDow
 		updates["error_message"] = errorMsg
 	}
 	if status == models.URLDownloadStatusCompleted || status == models.URLDownloadStatusFailed || status == models.URLDownloadStatusCancelled {
-		now := time.Now()
+		now := utils.Now()
 		updates["completed_at"] = &now
 	}
 	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).Updates(updates).Error

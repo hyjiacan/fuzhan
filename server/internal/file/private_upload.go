@@ -148,7 +148,7 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 	if len(shortID) > 8 {
 		shortID = shortID[:8]
 	}
-	uploadID := fmt.Sprintf("pv_%s_%d", shortID, time.Now().UnixNano())
+	uploadID := fmt.Sprintf("pv_%s_%d", shortID, utils.Now().UnixNano())
 
 	session := &models.UploadSession{
 		FileName:    req.Filename,
@@ -161,7 +161,7 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 		TargetRoot:  userID,
 		UserID:      userID,
 		ChunkDir:    uploadID,
-		ExpiredAt:   time.Now().Add(24 * time.Hour), // 上传分片会话有效期固定 24 小时
+		ExpiredAt:   utils.Now().Add(24 * time.Hour), // 上传分片会话有效期固定 24 小时
 	}
 
 	if err := h.getSessionRepo().Create(session); err != nil {
@@ -192,7 +192,7 @@ func (h *PrivateUploadHandler) GetSession(c *gin.Context) {
 	}
 
 	uploadedIndexes, _ := h.getChunkRepo().GetUploadedIndexes(session.ID)
-	expired := session.ExpiredAt.Before(time.Now()) && session.Status != models.UploadStatusCompleted
+	expired := session.ExpiredAt.Before(utils.Now()) && session.Status != models.UploadStatusCompleted
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"session": gin.H{
@@ -227,7 +227,7 @@ func (h *PrivateUploadHandler) ResumeSession(c *gin.Context) {
 		return
 	}
 
-	session.ExpiredAt = time.Now().Add(24 * time.Hour)
+	session.ExpiredAt = utils.Now().Add(24 * time.Hour)
 	session.Status = models.UploadStatusInProgress
 	if err := h.getSessionRepo().Update(session); err != nil {
 		utils.Error("更新会话状态失败", utils.Err(err))
@@ -298,7 +298,7 @@ func (h *PrivateUploadHandler) UploadChunk(c *gin.Context) {
 		return
 	}
 
-	if session.ExpiredAt.Before(time.Now()) {
+	if session.ExpiredAt.Before(utils.Now()) {
 		h.getSessionRepo().UpdateStatus(session.ID, models.UploadStatusExpired)
 		utils.HandleBadRequest(c, "会话已过期", nil)
 		return
@@ -438,7 +438,7 @@ func (h *PrivateUploadHandler) FinalizeSession(c *gin.Context) {
 
 	meta := &PrivateFileMeta{
 		Filename:   session.FileName,
-		UploadTime: time.Now(),
+		UploadTime: utils.Now(),
 		FileSize:   session.FileSize,
 		Owner:      userID,
 		Code:       shareCode,
@@ -454,10 +454,10 @@ func (h *PrivateUploadHandler) FinalizeSession(c *gin.Context) {
 			FullPath:     "private/" + shareCode,
 			FileSize:     session.FileSize,
 			IsDir:        false,
-			ModTime:      time.Now(),
+			ModTime:      utils.Now(),
 			Status:       models.FileStatusActive,
 			OwnerID:      userID,
-			LastSyncedAt: time.Now(),
+			LastSyncedAt: utils.Now(),
 		},
 	}).Error; err != nil {
 		utils.Warn("同步私有文件索引失败", utils.String("file", session.FileName), utils.Err(err))

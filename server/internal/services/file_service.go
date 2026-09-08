@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/utils"
@@ -30,7 +29,7 @@ func (fs *FileService) AddUploadRecord(ipAddress string, filename string, filePa
 
 	record := appconfig.UploadRecord{
 		IPAddress:  ipAddress,
-		UploadTime: time.Now(),
+		UploadTime: utils.Now(),
 		Filename:   filename,
 		FilePath:   filePath,
 	}

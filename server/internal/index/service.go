@@ -110,7 +110,7 @@ func (s *Service) StartScanByScope(scope ScanScope, trigger string) error {
 				if progress.Status == ScanStatusCompleted {
 					s.hashWorker.Trigger(context.Background())
 					s.mu.Lock()
-					s.lastScanEnd = time.Now()
+					s.lastScanEnd = utils.Now()
 					s.currentScope = ""
 					s.mu.Unlock()
 					utils.Info("手动扫描完成",
@@ -627,7 +627,7 @@ func (s *Service) runScanTimer(schedule cron.Schedule, cronExpr string) {
 		utils.String("next", nextTime.Format("2006-01-02 15:04:05")))
 
 	for {
-		now := time.Now()
+		now := utils.Now()
 		if !now.Before(nextTime) {
 			// 执行定时扫描
 			utils.Info("定时扫描触发",
@@ -750,7 +750,7 @@ func (s *Service) runScheduledScan() {
 	}
 
 	s.mu.Lock()
-	s.lastScanEnd = time.Now()
+	s.lastScanEnd = utils.Now()
 	s.currentScope = ""
 	s.mu.Unlock()
 
@@ -816,7 +816,7 @@ func copyTimePtr(t *time.Time) *time.Time {
 func (s *Service) MarkRecentlySynced(rootName, relPath string) {
 	key := rootName + ":" + relPath
 	s.recentlyMu.Lock()
-	s.recentlySynced[key] = time.Now()
+	s.recentlySynced[key] = utils.Now()
 	s.recentlyMu.Unlock()
 }
 
@@ -840,7 +840,7 @@ func (s *Service) cleanupRecentlySynced() {
 		select {
 		case <-ticker.C:
 			s.recentlyMu.Lock()
-			now := time.Now()
+			now := utils.Now()
 			for key, t := range s.recentlySynced {
 				if now.Sub(t) > 30*time.Second {
 					delete(s.recentlySynced, key)

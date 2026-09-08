@@ -91,7 +91,7 @@ func (s *TempFileService) generateFilePath(code string) string {
 func (s *TempFileService) GetQuotaUsage(ip string) (int64, error) {
 	var total int64
 	err := s.db.Model(&models.TempFile{}).
-		Where("client_ip = ? AND expired_at > ?", ip, time.Now()).
+		Where("client_ip = ? AND expired_at > ?", ip, utils.Now()).
 		Select("COALESCE(SUM(file_size), 0)").
 		Scan(&total).Error
 	return total, err
@@ -141,7 +141,7 @@ func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir 
 	if expireDays <= 0 {
 		expireDays = 7
 	}
-	expiredAt := time.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
+	expiredAt := utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
 
 	// 校验目录参数
 	cleanDir := ""
@@ -171,7 +171,7 @@ func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir 
 	}
 
 	// 同步到临时文件索引表
-	now := time.Now()
+	now := utils.Now()
 	tempRecord := models.FileRecordTemp{
 		FileRecordBase: models.FileRecordBase{
 			FileName:     filename,
@@ -206,14 +206,14 @@ func (s *TempFileService) List(ip string, downloadCode string, dirPath string) (
 	var subdirs []string
 
 	if downloadCode != "" {
-		err := s.db.Where("code = ? AND expired_at > ?", downloadCode, time.Now()).
+		err := s.db.Where("code = ? AND expired_at > ?", downloadCode, utils.Now()).
 			Order("created_at DESC").
 			Find(&files).Error
 		if err != nil {
 			return nil, fmt.Errorf("查询文件列表失败: %w", err)
 		}
 	} else {
-		query := s.db.Where("client_ip = ? AND expired_at > ?", ip, time.Now())
+		query := s.db.Where("client_ip = ? AND expired_at > ?", ip, utils.Now())
 		if dirPath == "" || dirPath == "/" {
 			query = query.Where("(dir = ? OR dir IS NULL)", "")
 		} else {
@@ -274,7 +274,7 @@ func (s *TempFileService) DownloadFile(code string) (*models.TempFile, error) {
 		return nil, err
 	}
 
-	if time.Now().After(tempFile.ExpiredAt) {
+	if utils.Now().After(tempFile.ExpiredAt) {
 		return nil, fmt.Errorf("文件已过期")
 	}
 
@@ -318,7 +318,7 @@ func (s *TempFileService) Delete(code string, ip string) error {
 // CleanupExpired 清理过期文件
 func (s *TempFileService) CleanupExpired() (int, error) {
 	var files []models.TempFile
-	if err := s.db.Where("expired_at < ? AND downloaded = ?", time.Now(), false).Find(&files).Error; err != nil {
+	if err := s.db.Where("expired_at < ? AND downloaded = ?", utils.Now(), false).Find(&files).Error; err != nil {
 		return 0, fmt.Errorf("查询过期文件失败: %w", err)
 	}
 
@@ -341,12 +341,12 @@ func (s *TempFileService) listSubdirs(clientIP, parentDir string) []string {
 	var allDirs []string
 	if parentDir == "" || parentDir == "/" {
 		s.db.Model(&models.TempFile{}).
-			Where("client_ip = ? AND expired_at > ? AND dir != '' AND dir IS NOT NULL", clientIP, time.Now()).
+			Where("client_ip = ? AND expired_at > ? AND dir != '' AND dir IS NOT NULL", clientIP, utils.Now()).
 			Pluck("DISTINCT dir", &allDirs)
 	} else {
 		escapedDir := strings.ReplaceAll(strings.ReplaceAll(parentDir, "%", "\\%"), "_", "\\_")
 		s.db.Model(&models.TempFile{}).
-			Where("client_ip = ? AND expired_at > ? AND dir LIKE ? ESCAPE '\\'", clientIP, time.Now(), escapedDir+"/%").
+			Where("client_ip = ? AND expired_at > ? AND dir LIKE ? ESCAPE '\\'", clientIP, utils.Now(), escapedDir+"/%").
 			Pluck("DISTINCT dir", &allDirs)
 	}
 

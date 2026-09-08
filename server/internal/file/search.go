@@ -80,7 +80,7 @@ func (sh *SearchHandlers) searchFiles(c *gin.Context, record bool) {
 			Action:      "search",
 			SearchQuery: query,
 			ClientIP:    utils.GetRealIP(c.Request),
-			CreatedAt:   time.Now(),
+			CreatedAt:   utils.Now(),
 		})
 	}
 

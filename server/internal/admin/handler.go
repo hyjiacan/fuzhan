@@ -37,7 +37,7 @@ func NewHandler(adminService *services.AdminService, db *gorm.DB) *Handler {
 
 // OnlineIPs 获取当前在线 IP 列表（依据最近请求判定，与登录无关）
 func (h *Handler) OnlineIPs(c *gin.Context) {
-	now := time.Now()
+	now := utils.Now()
 	entries := online.Default.Snapshot(now)
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"online":             entries,

@@ -24,7 +24,7 @@ const (
 // 不直接产生日志，由 Handler 调用 LogOperation 触发
 func AuditMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
+		start := utils.Now()
 		clientIP := utils.GetClientIP(c)
 
 		c.Set(auditKeyStartTime, start)

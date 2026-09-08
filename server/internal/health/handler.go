@@ -136,7 +136,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 		GoVersion:  runtime.Version(),
 		Goroutines: runtime.NumGoroutine(),
 		Checks:     checks,
-		Timestamp:  time.Now().Format(time.RFC3339),
+		Timestamp:  utils.Now().Format(time.RFC3339),
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "服务运行正常", resp)

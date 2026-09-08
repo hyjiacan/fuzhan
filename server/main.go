@@ -430,7 +430,7 @@ func main() {
 					ClientIP:   clientIP,
 					UserID:     userUUID,
 					Action:     action,
-					UploadTime: time.Now(),
+					UploadTime: utils.Now(),
 				}); err != nil {
 					utils.Debug("FTP操作记录失败",
 						utils.String("action", action),

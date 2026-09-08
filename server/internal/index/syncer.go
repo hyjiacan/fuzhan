@@ -73,7 +73,7 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
 		return fmt.Errorf("获取文件信息失败: %w", err)
 	}
 
-	now := time.Now()
+	now := utils.Now()
 	modTime := info.ModTime()
 
 	// 标准化路径分隔符
@@ -165,7 +165,7 @@ func (s *Syncer) removeFileOnce(rootName, filePath string) error {
 	if !strings.HasPrefix(dbPath, "/") {
 		dbPath = "/" + dbPath
 	}
-	now := time.Now()
+	now := utils.Now()
 	updates := map[string]interface{}{
 		"status":     models.FileStatusDeleted,
 		"updated_at": now,
@@ -263,7 +263,7 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
 	if !strings.HasPrefix(newDbPath, "/") {
 		newDbPath = "/" + newDbPath
 	}
-	now := time.Now()
+	now := utils.Now()
 	moveUpdates := map[string]interface{}{
 		"file_name": filepath.Base(strings.TrimSuffix(newDbPath, "/")),
 		"file_path": newDbPath,

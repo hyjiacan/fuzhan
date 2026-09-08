@@ -135,7 +135,7 @@ func (s *LDAPService) ldapBind(bindDN, password string) (map[string]string, erro
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(15 * time.Second))
+	conn.SetDeadline(utils.Now().Add(15 * time.Second))
 
 	if err := s.sendBindRequest(conn, bindDN, password); err != nil {
 		return nil, err

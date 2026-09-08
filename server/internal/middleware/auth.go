@@ -44,7 +44,7 @@ func (dc *disabledCache) isDisabled(uuid string) (bool, bool) {
 	dc.mu.RLock()
 	expire, ok := dc.entries[uuid]
 	dc.mu.RUnlock()
-	if !ok || time.Now().After(expire) {
+	if !ok || utils.Now().After(expire) {
 		return false, false
 	}
 	return true, true // 已缓存为禁用状态
@@ -52,7 +52,7 @@ func (dc *disabledCache) isDisabled(uuid string) (bool, bool) {
 
 func (dc *disabledCache) setDisabled(uuid string) {
 	dc.mu.Lock()
-	dc.entries[uuid] = time.Now().Add(disabledCacheTTL)
+	dc.entries[uuid] = utils.Now().Add(disabledCacheTTL)
 	dc.mu.Unlock()
 }
 
@@ -60,7 +60,7 @@ func (dc *disabledCache) setDisabled(uuid string) {
 func (dc *disabledCache) cleanExpired() {
 	dc.mu.Lock()
 	defer dc.mu.Unlock()
-	now := time.Now()
+	now := utils.Now()
 	for uuid, expire := range dc.entries {
 		if now.After(expire) {
 			delete(dc.entries, uuid)
@@ -300,7 +300,7 @@ func generateSecureRequestID() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		// 熵源不可用，回退到纳秒时间戳 + 自增计数器
 		requestIDCounter++
-		timestamp := uint64(time.Now().UnixNano())
+		timestamp := uint64(utils.Now().UnixNano())
 		binary.BigEndian.PutUint64(b[0:8], timestamp)
 		binary.BigEndian.PutUint64(b[8:16], requestIDCounter)
 		utils.Warn("crypto/rand.Read 失败，使用回退方案生成 RequestID", utils.Err(err))

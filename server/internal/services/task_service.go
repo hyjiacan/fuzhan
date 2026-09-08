@@ -1,7 +1,7 @@
 package services
 
 import (
-	"time"
+	"fuzhan/internal/utils"
 
 	"fuzhan/internal/models"
 
@@ -29,7 +29,7 @@ const (
 
 // CreateTask 创建任务记录
 func (s *TaskService) CreateTask(taskType, taskName, trigger string) (*models.TaskRecord, error) {
-	now := time.Now()
+	now := utils.Now()
 	task := &models.TaskRecord{
 		TaskType:  taskType,
 		TaskName:  taskName,
@@ -64,7 +64,7 @@ func (s *TaskService) UpdateTaskProgress(id uint, progress int, doneItems, total
 
 // CompleteTask 完成任务（仅允许从 running/pending 转移，防止覆盖已取消/已完成的任务）
 func (s *TaskService) CompleteTask(id uint) error {
-	now := time.Now()
+	now := utils.Now()
 	return s.db.Model(&models.TaskRecord{}).
 		Where("id = ? AND status IN ?", id, []string{
 			string(models.TaskStatusPending),
@@ -78,7 +78,7 @@ func (s *TaskService) CompleteTask(id uint) error {
 
 // FailTask 标记任务失败（仅允许从 running/pending 转移）
 func (s *TaskService) FailTask(id uint, errMsg string) error {
-	now := time.Now()
+	now := utils.Now()
 	return s.db.Model(&models.TaskRecord{}).
 		Where("id = ? AND status IN ?", id, []string{
 			string(models.TaskStatusPending),
@@ -92,7 +92,7 @@ func (s *TaskService) FailTask(id uint, errMsg string) error {
 
 // StartTask 标记任务开始运行（仅允许从 pending 转移）
 func (s *TaskService) StartTask(id uint) error {
-	now := time.Now()
+	now := utils.Now()
 	return s.db.Model(&models.TaskRecord{}).
 		Where("id = ? AND status = ?", id, string(models.TaskStatusPending)).
 		Updates(map[string]interface{}{
@@ -147,7 +147,7 @@ func (s *TaskService) GetTaskHistory(taskType string, page, pageSize int) ([]mod
 
 // CancelTask 取消任务（仅允许从 pending/running 转移，不允许覆盖已终态任务）
 func (s *TaskService) CancelTask(id uint) error {
-	now := time.Now()
+	now := utils.Now()
 	return s.db.Model(&models.TaskRecord{}).
 		Where("id = ? AND status IN ?", id, []string{
 			string(models.TaskStatusPending),

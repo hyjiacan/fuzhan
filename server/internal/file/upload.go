@@ -649,7 +649,7 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 			TargetPath:  req.Dir,
 			TargetRoot:  req.RootName,
 			UserID:      clientIP,
-			ExpiredAt:   time.Now().Add(24 * time.Hour),
+			ExpiredAt:   utils.Now().Add(24 * time.Hour),
 		}
 
 		targetPath, uploadingPath, err = h.buildTargetPath(session)
@@ -1258,7 +1258,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 			FilePath:  tempFilePath,
 			ClientIP:  clientIP,
 			Dir:       sessionTargetPath,
-			ExpiredAt: time.Now().Add(time.Duration(expireDays) * 24 * time.Hour),
+			ExpiredAt: utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour),
 		}
 
 		if err := h.db.Create(tempFile).Error; err != nil {
@@ -1271,7 +1271,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 
 		// 同步到临时文件索引表
 		if h.indexSvc != nil {
-			now := time.Now()
+			now := utils.Now()
 			tempRecord := models.FileRecordTemp{
 				FileRecordBase: models.FileRecordBase{
 					FileName:     filename,
@@ -1317,7 +1317,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 		ClientIP:   clientIP,
 		UserID:     clientIP,
 		UploadType: sessionTargetType,
-		UploadTime: time.Now(),
+		UploadTime: utils.Now(),
 	}
 	if err := h.recordRepo.Create(record); err != nil {
 		utils.Error("创建上传记录失败", utils.Err(err))
