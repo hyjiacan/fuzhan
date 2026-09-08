@@ -4,18 +4,18 @@ package constants
 type ContextKey string
 
 const (
-    // ContextKeyUsername 用户名上下文键
-    ContextKeyUsername ContextKey = "username"
+	// ContextKeyUsername 用户名上下文键
+	ContextKeyUsername ContextKey = "username"
 
-    // ContextKeyRole 用户角色上下文键
-    ContextKeyRole ContextKey = "role"
+	// ContextKeyRole 用户角色上下文键
+	ContextKeyRole ContextKey = "role"
 
-    // ContextKeyRequestID 请求ID上下文键
-    ContextKeyRequestID ContextKey = "requestID"
+	// ContextKeyRequestID 请求ID上下文键
+	ContextKeyRequestID ContextKey = "requestID"
 
-    // ContextKeyUserID 用户ID上下文键
-    ContextKeyUserID ContextKey = "userID"
+	// ContextKeyUserID 用户ID上下文键
+	ContextKeyUserID ContextKey = "userID"
 
-    // ContextKeyUserUUID 用户UUID上下文键
-    ContextKeyUserUUID ContextKey = "userUUID"
+	// ContextKeyUserUUID 用户UUID上下文键
+	ContextKeyUserUUID ContextKey = "userUUID"
 )

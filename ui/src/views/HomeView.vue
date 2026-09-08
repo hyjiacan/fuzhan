@@ -594,10 +594,7 @@ const columns = [
               // 非预览：允许默认下载行为，稍后刷新列表更新下载次数
               refreshAfterDownload()
             }
-          }, [
-            highlightKeyword(fileName),
-            isLatest ? h('span', { class: 'latest-version-tag' }, '最新') : null
-          ])
+          }, highlightKeyword(fileName))
       ]
 
       // 搜索结果模式（显示完整路径）
@@ -1033,20 +1030,8 @@ watch(
   }
 
   .file-link.latest-version {
+    color: #2e8b57;
     font-weight: 700;
-  }
-
-  .latest-version-tag {
-    flex-shrink: 0;
-    margin-left: 4px;
-    padding: 0 6px;
-    font-size: 11px;
-    line-height: 18px;
-    font-weight: 500;
-    color: #fff;
-    background: #FF6600;
-    border-radius: 3px;
-    white-space: nowrap;
   }
 }
 

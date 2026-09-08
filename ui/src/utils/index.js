@@ -135,15 +135,23 @@ export const compareFileNames = (a, b) => {
 }
 
 // ========== 版本标记分析 ==========
-// 提取"程序基名"：剥离文件名尾部的版本/数字段（支持多段版本号）
+// 提取"程序基名"：剥离文件名中的版本/数字段
+// 尾部版本（支持多段版本号）+ 中部点分版本号
 // 例：app_v1.2.3.exe → app；report(1).pdf → report；app-2.zip → app；backup-20240101.zip → backup
+// pandoc-3.11-windows-x86_64.zip 与 pandoc-3.8.2.1-... 归并为同一基名 pandoc-windows-x86_64
 const VERSION_SEGMENT_RE = /(?:[_\-.[\]()]*)(?:v?\d+(?:\.\d+)*)(?:[_\-.[\]()]*)$/i
+// 中部点分版本号（如 pandoc-3.11-… 的 3.11）；要求带点，避免误剥 x86_64 / office2021 这类裸数字
+const MID_VERSION_RE = /(?:[_\-.[\]()]*)(?:v?\d+\.\d+(?:\.\d+)*)(?:[_\-.[\]()]*)/g
 
 export const extractBaseName = (filename) => {
   const name = String(filename || '')
   const dotIdx = name.lastIndexOf('.')
   const stem = dotIdx > 0 ? name.slice(0, dotIdx) : name
-  const base = stem.replace(VERSION_SEGMENT_RE, '')
+  const base = stem
+    .replace(VERSION_SEGMENT_RE, '')
+    .replace(MID_VERSION_RE, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
   return (base.trim() || name).toLowerCase()
 }
 

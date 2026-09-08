@@ -546,7 +546,7 @@ Monitoring → SecurityHeaders → CORS → RequestID → Recovery
 
 - URL 上传验证源 IP
 - 支持 CIDR 网段白名单
-- 禁用时仅允许公网地址
+- 未配置白名单（留空）时表示不限制，允许所有 IP
 
 ---
 

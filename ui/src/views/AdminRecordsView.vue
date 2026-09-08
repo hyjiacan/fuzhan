@@ -196,8 +196,8 @@ const uploadColumns = [
     cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '上传时间', key: 'uploadTime', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
+  { title: '上传时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
   }
 ]
 
@@ -215,8 +215,8 @@ const downloadColumns = [
 const searchColumns = [
   { title: '搜索关键词', key: 'searchQuery', minWidth: 200, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.searchQuery) },
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '搜索时间', key: 'uploadTime', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
+  { title: '搜索时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
   }
 ]
 
@@ -311,6 +311,9 @@ watch(activeTab, () => {
 @import '@/styles/variables.less';
 
 .admin-records {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   padding: @container-padding;
   animation: slideUp 0.4s ease-out;
 
@@ -320,6 +323,7 @@ watch(activeTab, () => {
     justify-content: space-between;
     margin-bottom: 16px;
     gap: 16px;
+    flex-shrink: 0;
 
     .header-left {
       h2 {
@@ -344,15 +348,43 @@ watch(activeTab, () => {
   }
 
   .records-tabs {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    // el-tabs 内部结构拉伸，使 body 高度撑满容器
+    :deep(.el-tabs__header) {
+      flex-shrink: 0;
+      margin-bottom: 8px;
+    }
+
+    :deep(.el-tabs__content) {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    :deep(.el-tab-pane) {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
     .table-v2-wrap {
-      height: 420px;
-      margin-bottom: 16px;
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      background: #fff;
+      border-radius: @content-radius;
+      box-shadow: @shadow-sm;
+      overflow: hidden;
     }
 
     .pagination-wrap {
+      flex-shrink: 0;
       display: flex;
       justify-content: center;
-      padding: 8px 0 16px;
+      padding: 8px 0 0;
     }
   }
 }

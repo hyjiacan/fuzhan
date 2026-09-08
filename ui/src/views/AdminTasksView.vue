@@ -22,6 +22,9 @@
               <el-tag size="small" :type="statusTag(row).type">{{ statusTag(row).label }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="触发原因" width="110">
+            <template #default="{ row }">{{ triggerLabel(row.trigger) }}</template>
+          </el-table-column>
           <el-table-column label="进度" width="220">
             <template #default="{ row }">
               <div style="display: flex; align-items: center; gap: 8px;">
@@ -45,6 +48,12 @@
           <el-table-column label="错误信息" width="240" prop="errorMessage">
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="明细" prop="details" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.details">{{ row.details }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
@@ -93,6 +102,9 @@
               <el-tag size="small" :type="statusTag(row).type">{{ statusTag(row).label }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="触发原因" width="110">
+            <template #default="{ row }">{{ triggerLabel(row.trigger) }}</template>
+          </el-table-column>
           <el-table-column label="进度" width="180">
             <template #default="{ row }">
               <el-progress
@@ -115,6 +127,12 @@
           <el-table-column label="错误信息" width="240" prop="errorMessage">
             <template #default="{ row }">
               <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="明细" prop="details" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.details">{{ row.details }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
@@ -213,6 +231,20 @@ const statusTypeMap = {
 const statusTag = (row) => {
   const info = statusTypeMap[row.status] || { type: 'default', text: row.status }
   return { label: info.text, type: naiveToElTag(info.type) }
+}
+
+// 触发原因编码 -> 中文标签
+const triggerLabels = {
+  timer: '定时器',
+  startup: '启动',
+  manual: '用户手动',
+  user: '用户操作',
+  auto: '自动',
+}
+
+const triggerLabel = (code) => {
+  if (!code) return '-'
+  return triggerLabels[code] || code
 }
 
 const loadActiveTasks = async () => {

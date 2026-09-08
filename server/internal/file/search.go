@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
+	"github.com/gin-gonic/gin"
 )
 
 // recordSearch 安全记录搜索操作（带超时保护）

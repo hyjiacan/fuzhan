@@ -16,3 +16,11 @@ ui/test-results/
 docs/.archive/
 node_modules/
 .yarn/
+
+# 本地诊断/临时脚本（不入库）
+check_*.py
+dl_exe_urllib.py
+dl_test.py
+list_check.py
+query_dl.py
+wait_index.py

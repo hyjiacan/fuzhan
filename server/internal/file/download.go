@@ -1,20 +1,20 @@
 package file
 
 import (
-	"github.com/gin-gonic/gin"
 	"fuzhan/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 // DownloadHandlers 下载相关处理器
 type DownloadHandlers struct {
-    DownloadService *services.DownloadService
+	DownloadService *services.DownloadService
 }
 
 // NewDownloadHandlers 创建下载处理器实例
 func NewDownloadHandlers(downloadService *services.DownloadService) *DownloadHandlers {
-    return &DownloadHandlers{
-        DownloadService: downloadService,
-    }
+	return &DownloadHandlers{
+		DownloadService: downloadService,
+	}
 }
 
 // DownloadFile 下载文件

@@ -74,7 +74,7 @@ const formatTime = (iso) => {
 const columns = [
   {
     title: 'IP 地址', key: 'ip', width: 200,
-    cellRenderer: ({ rowData: row }) => h('span', { class: 'ip-cell' }, row.ip)
+    cellRenderer: ({ rowData: row }) => h('span', { style: 'font-family: monospace; font-weight: 500;' }, row.ip)
   },
   {
     title: '在线时长', key: 'onlineSeconds', width: 140,
@@ -96,7 +96,10 @@ const columns = [
   },
   {
     title: 'User-Agent', key: 'userAgent', width: 320,
-    cellRenderer: ({ rowData: row }) => h('span', { class: 'ua-cell', title: row.userAgent || '' }, row.userAgent || '-')
+    cellRenderer: ({ rowData: row }) => h('span', {
+      style: 'display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+      title: row.userAgent || ''
+    }, row.userAgent || '-')
   }
 ]
 
@@ -215,17 +218,5 @@ onUnmounted(() => {
     overflow: hidden;
     position: relative;
   }
-}
-
-.ip-cell {
-  font-family: monospace;
-  font-weight: 500;
-}
-
-.ua-cell {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

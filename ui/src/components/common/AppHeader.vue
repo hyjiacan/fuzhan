@@ -421,23 +421,23 @@ export default {
   flex-shrink: 0;
 
   .app-logo {
-	    width: 32px;
-	    height: 32px;
-	    transition: transform 0.2s ease;
+      width: 32px;
+      height: 32px;
+      transition: transform 0.2s ease;
 
-	    &:hover {
-	      animation: logoFloat 0.6s ease-in-out infinite alternate;
-	    }
-	  }
+      &:hover {
+        animation: logoFloat 0.6s ease-in-out infinite alternate;
+      }
+    }
 
-	  @keyframes logoFloat {
-	    from {
-	      transform: translateY(0);
-	    }
-	    to {
-	      transform: translateY(-6px);
-	    }
-	  }
+    @keyframes logoFloat {
+      from {
+        transform: translateY(0);
+      }
+      to {
+        transform: translateY(-6px);
+      }
+    }
 
   .app-name {
     font-size: @font-size-xl;

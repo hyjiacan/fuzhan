@@ -52,12 +52,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { IndexApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
 const props = defineProps({
-  // 是否自动轮询（仅 HomeView 等需要显示状态的页面）
+  // 是否在挂载时加载一次扫描状态（底部扫描时间不做自动轮询）
   autoPoll: {
     type: Boolean,
     default: true
@@ -76,8 +76,6 @@ const status = ref({
   scanCronExpression: '',
 })
 
-let pollTimer = null
-
 const fetchStatus = async () => {
   try {
     const res = await IndexApi.getScanStatus()
@@ -92,16 +90,9 @@ const fetchStatus = async () => {
 const formatTime = (t) => TimeUtils.formatDateTime(t)
 
 onMounted(() => {
+  // 底部扫描时间不需要自动轮询更新，仅在进入页面时加载一次
   if (props.autoPoll) {
     fetchStatus()
-    pollTimer = setInterval(fetchStatus, 10000) // 每 10 秒轮询
-  }
-})
-
-onUnmounted(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
   }
 })
 </script>

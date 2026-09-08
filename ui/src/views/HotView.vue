@@ -176,7 +176,8 @@ const downloadColumns = [
   {
     title: '下载次数',
     key: 'count',
-    width: 90
+    width: 90,
+    cellRenderer: ({ rowData: row }) => row.count || 0
   }
 ]
 

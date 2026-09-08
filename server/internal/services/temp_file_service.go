@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeebo/xxh3"
-	"gorm.io/gorm"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
+	"github.com/zeebo/xxh3"
+	"gorm.io/gorm"
 )
 
 // TempFileResult 临时文件上传结果
@@ -291,8 +291,8 @@ func (s *TempFileService) MarkDownloaded(tempFile *models.TempFile, deleteOnDown
 	autoDelete := tempFile.DeleteOnDownload || deleteOnDownload
 	if autoDelete {
 		s.db.Model(tempFile).Updates(map[string]interface{}{
-			"downloaded":      true,
-			"download_count":  tempFile.DownloadCount + 1,
+			"downloaded":     true,
+			"download_count": tempFile.DownloadCount + 1,
 		})
 		os.Remove(tempFile.FilePath)
 	} else {

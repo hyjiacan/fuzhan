@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# 本地诊断/测试工件（不入库）
+/console-check/
+/playwright-report/
+/dl_*.cjs
+/dl_click_test.js
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

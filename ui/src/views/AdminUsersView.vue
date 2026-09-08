@@ -139,7 +139,8 @@ const columns = [
   {
     title: '用户ID',
     key: 'uuid',
-    width: 250
+    width: 250,
+    cellRenderer: ({ rowData: row }) => row.uuid || '-'
   },
   {
     title: '注册时间',

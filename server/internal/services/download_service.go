@@ -12,8 +12,8 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
-	"fuzhan/pkg/pathutils"
 	"fuzhan/internal/utils"
+	"fuzhan/pkg/pathutils"
 )
 
 // recordDownload 安全记录下载操作（带超时保护）

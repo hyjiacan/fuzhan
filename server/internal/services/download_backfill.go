@@ -19,14 +19,14 @@ func BackfillPublicDownloadCounts(db *gorm.DB) {
 	}
 
 	const stmt = `UPDATE file_records_public
-		SET download_count = (
-			SELECT COUNT(*)
-			FROM operation_records
-			WHERE operation_records.full_path = file_records_public.full_path
-			  AND operation_records.action IN (?, ?)
-			  AND operation_records.deleted_at IS NULL
-		)
-		WHERE status = ? AND is_dir = ? AND download_count = 0`
+        SET download_count = (
+            SELECT COUNT(*)
+            FROM operation_records
+            WHERE operation_records.full_path = file_records_public.full_path
+              AND operation_records.action IN (?, ?)
+              AND operation_records.deleted_at IS NULL
+        )
+        WHERE status = ? AND is_dir = ? AND download_count = 0`
 
 	result := db.Exec(stmt, "download", "download-by-hash", models.FileStatusActive, false)
 	if result.Error != nil {

@@ -396,7 +396,7 @@ func TestCleanupExpired(t *testing.T) {
 		"status":     models.UploadStatusInProgress,
 	})
 
-	err := svc.CleanupExpired()
+	_, err := svc.CleanupExpired()
 	if err != nil {
 		t.Fatalf("CleanupExpired failed: %v", err)
 	}

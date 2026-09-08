@@ -32,8 +32,8 @@ type Watcher struct {
 	ignorePatterns []string
 
 	// 监听通道和停止信号
-	events chan notify.EventInfo
-	stopCh chan struct{}
+	events  chan notify.EventInfo
+	stopCh  chan struct{}
 	running atomic.Bool
 
 	// 最近同步检查回调（由 index.Service 注入，用于检测文件是否刚被上传写入索引）
@@ -43,12 +43,12 @@ type Watcher struct {
 
 // pendingEvent 待处理的文件事件
 type pendingEvent struct {
-	path      string    // 文件完整路径
-	rootName  string    // 所属根目录
-	relPath   string    // 相对路径
-	lastSize  int64     // 上次检查的文件大小
-	retries   int       // 重试次数，防止文件持续写入导致无限循环
-	timerBox  *time.Timer
+	path     string // 文件完整路径
+	rootName string // 所属根目录
+	relPath  string // 相对路径
+	lastSize int64  // 上次检查的文件大小
+	retries  int    // 重试次数，防止文件持续写入导致无限循环
+	timerBox *time.Timer
 }
 
 // NewWatcher 创建文件监听器
@@ -61,9 +61,9 @@ func NewWatcher(syncer *Syncer, rootNames map[string]string) *Watcher {
 		sizeStableWait: 2 * time.Second, // 文件大小稳定等待
 		sizeCheckWait:  2 * time.Second, // 大小检查间隔
 		ignorePatterns: []string{
-			".git", ".svn", ".hg",           // VCS
-			"node_modules", "__pycache__",   // 依赖/缓存
-			"Thumbs.db", ".DS_Store",        // 系统文件
+			".git", ".svn", ".hg", // VCS
+			"node_modules", "__pycache__", // 依赖/缓存
+			"Thumbs.db", ".DS_Store", // 系统文件
 			"desktop.ini",
 		},
 	}
@@ -172,14 +172,14 @@ func (w *Watcher) processEvents(events chan notify.EventInfo) {
 					utils.String("path", relPath),
 					utils.String("root", rootName))
 
-		default:
-			// Create / Write: 进入消抖池等待文件稳定
-			// 如果是新建目录，自动添加递归监听（Linux inotify 不会自动递归监听新目录）
-			if event&notify.Create != 0 {
-				w.watchNewDirIfNeeded(path)
-			}
+			default:
+				// Create / Write: 进入消抖池等待文件稳定
+				// 如果是新建目录，自动添加递归监听（Linux inotify 不会自动递归监听新目录）
+				if event&notify.Create != 0 {
+					w.watchNewDirIfNeeded(path)
+				}
 
-			w.pendingMu.Lock()
+				w.pendingMu.Lock()
 				key := rootName + ":" + relPath
 				if existing, ok := w.pending[key]; ok {
 					// 已有待处理事件，重置定时器

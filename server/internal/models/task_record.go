@@ -26,19 +26,23 @@ const (
 
 // TaskRecord 任务记录
 type TaskRecord struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	TaskType     string     `gorm:"size:50;not null;index" json:"taskType"`
-	TaskName     string     `gorm:"size:255;not null" json:"taskName"`
-	Status       string     `gorm:"size:20;not null;default:pending;index" json:"status"`
-	Progress     int        `gorm:"default:0" json:"progress"`
-	TotalItems   int64      `gorm:"default:0" json:"totalItems"`
-	DoneItems    int64      `gorm:"default:0" json:"doneItems"`
-	ErrorMessage string     `gorm:"type:text" json:"errorMessage"`
-	Metadata     string     `gorm:"type:text" json:"metadata"` // JSON 格式的附加信息
-	StartedAt    *time.Time `json:"startedAt"`
-	EndedAt      *time.Time `json:"endedAt"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	TaskType     string `gorm:"size:50;not null;index" json:"taskType"`
+	TaskName     string `gorm:"size:255;not null" json:"taskName"`
+	Status       string `gorm:"size:20;not null;default:pending;index" json:"status"`
+	Progress     int    `gorm:"default:0" json:"progress"`
+	TotalItems   int64  `gorm:"default:0" json:"totalItems"`
+	DoneItems    int64  `gorm:"default:0" json:"doneItems"`
+	ErrorMessage string `gorm:"type:text" json:"errorMessage"`
+	Metadata     string `gorm:"type:text" json:"metadata"` // JSON 格式的附加信息
+	// Trigger 任务触发原因（如 timer/startup/manual/user/auto）
+	Trigger string `gorm:"size:50" json:"trigger"`
+	// Details 任务明细（可读文本，如扫描/哈希/清理统计）
+	Details   string     `gorm:"type:text" json:"details"`
+	StartedAt *time.Time `json:"startedAt"`
+	EndedAt   *time.Time `json:"endedAt"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 // TableName 指定表名
@@ -57,6 +61,8 @@ type TaskRecordResponse struct {
 	DoneItems    int64      `json:"doneItems"`
 	ErrorMessage string     `json:"errorMessage"`
 	Metadata     string     `json:"metadata"`
+	Trigger      string     `json:"trigger"`
+	Details      string     `json:"details"`
 	StartedAt    *time.Time `json:"startedAt"`
 	EndedAt      *time.Time `json:"endedAt"`
 	CreatedAt    time.Time  `json:"createdAt"`
@@ -75,6 +81,8 @@ func (t *TaskRecord) ToResponse() TaskRecordResponse {
 		DoneItems:    t.DoneItems,
 		ErrorMessage: t.ErrorMessage,
 		Metadata:     t.Metadata,
+		Trigger:      t.Trigger,
+		Details:      t.Details,
 		StartedAt:    t.StartedAt,
 		EndedAt:      t.EndedAt,
 		CreatedAt:    t.CreatedAt,

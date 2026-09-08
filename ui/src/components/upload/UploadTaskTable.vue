@@ -64,7 +64,6 @@ const props = defineProps({
 const loading = ref(false)
 const tasks = ref([])
 const pagination = ref({ page: 1, pageSize: 50, showSizePicker: true, pageSizes: [20, 50, 100] })
-let pollTimer = null
 
 const statusMap = {
   'in_progress': { type: 'info', text: '上传中' },
@@ -157,15 +156,39 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+  scheduleNextPoll()
 }
 
-onMounted(() => {
-  loadData()
-  pollTimer = setInterval(loadData, 2000)
+// 是否有进行中的任务（上传/下载中、等待中）
+function hasActiveTasks(list) {
+  return list.some(row => ['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status))
+}
+
+const POLL_INTERVAL = 60000 // 有进行中任务时 1 分钟轮询一次
+
+let pollTimer = null
+function stopPolling() {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+}
+
+// 仅当存在进行中的任务时，才安排下一次轮询；空闲时停止发请求
+function scheduleNextPoll() {
+  stopPolling()
+  if (!hasActiveTasks(tasks.value)) return
+  pollTimer = setTimeout(async () => {
+    await loadData()
+  }, POLL_INTERVAL)
+}
+
+onMounted(async () => {
+  await loadData()
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  stopPolling()
 })
 </script>
 

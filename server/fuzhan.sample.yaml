@@ -142,8 +142,8 @@ upload:
   max_file_size: 16G            # 单文件大小限制 (0 表示无限制，支持 1G, 10G 等格式)
   # URL 上传配置（从远程 URL 下载文件到服务器）及 SSRF 安全防护
   url_upload:
-    enabled: false              # 是否启用 URL 上传功能
-    allowed_ip_ranges: []       # 允许的 IP 网段 (CIDR 格式)，为空时只允许公网 IP（SSRF 防护）
+    enabled: false              # 是否启用 URL 上传的 SSRF 安全限制（默认 false 不限制）
+    allowed_ip_ranges: []       # 允许的 IP 网段 (CIDR 格式)，为空表示不限制（允许所有 IP）
     insecure_skip_verify: false # 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false 即验证证书）
 
 # ----------------------------------------

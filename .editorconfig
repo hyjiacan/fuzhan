@@ -1,0 +1,21 @@
+# 缩进规范：Go 代码遵循 gofmt 官方 tab 缩进；其余代码使用空格
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+tab_width = 4
+
+[*.py]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false

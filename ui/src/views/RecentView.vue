@@ -14,6 +14,7 @@
 
       <!-- 最近上传 -->
       <el-card class="recent-card">
+        <template #header>最近上传</template>
         <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
             row-key="id" :row-height="32" />
@@ -29,6 +30,7 @@
 
       <!-- 最近下载 -->
       <el-card class="recent-card">
+        <template #header>最近下载</template>
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
             row-key="id" :row-height="32" />
@@ -238,31 +240,12 @@ const loadRecentKeywords = async () => {
   }
 }
 
-// 对记录去重：优先按 id 去重，id 相同保留第一个；
-// 若 id 不同但文件路径+文件名相同，也视为重复
-const deduplicateRecords = (records) => {
-  const seenById = new Set()
-  const seenByFile = new Set()
-  return records.filter(rec => {
-    // 按 id 去重
-    if (rec.id != null) {
-      if (seenById.has(rec.id)) return false
-      seenById.add(rec.id)
-    }
-    // 按文件身份去重（路径+文件名）
-    const fileKey = [rec.rootName || '', rec.path || '', rec.fileName || ''].join('|')
-    if (seenByFile.has(fileKey)) return false
-    seenByFile.add(fileKey)
-    return true
-  })
-}
-
 // 加载最近上传
 const loadUploads = async () => {
   try {
     const data = await FileApi.recent(uploadPage.value, uploadPageSize.value, 'upload')
     if (data.success && data.data) {
-      uploads.value = deduplicateRecords(data.data.records || [])
+      uploads.value = data.data.records || []
       uploadTotal.value = data.data.total || 0
     }
   } catch (error) {
@@ -277,7 +260,7 @@ const loadDownloads = async () => {
   try {
     const data = await FileApi.recent(downloadPage.value, downloadPageSize.value, 'download')
     if (data.success && data.data) {
-      downloads.value = deduplicateRecords(data.data.records || [])
+      downloads.value = data.data.records || []
       downloadTotal.value = data.data.total || 0
     }
   } catch (error) {

@@ -18,12 +18,22 @@ func NewTaskService(db *gorm.DB) *TaskService {
 	return &TaskService{db: db}
 }
 
+// 任务触发原因
+const (
+	TriggerTimer   = "timer"   // 定时器触发
+	TriggerStartup = "startup" // 启动时触发
+	TriggerManual  = "manual"  // 用户手动触发
+	TriggerUser    = "user"    // 用户操作（如上传/URL下载）
+	TriggerAuto    = "auto"    // 系统自动触发
+)
+
 // CreateTask 创建任务记录
-func (s *TaskService) CreateTask(taskType, taskName string) (*models.TaskRecord, error) {
+func (s *TaskService) CreateTask(taskType, taskName, trigger string) (*models.TaskRecord, error) {
 	now := time.Now()
 	task := &models.TaskRecord{
 		TaskType:  taskType,
 		TaskName:  taskName,
+		Trigger:   trigger,
 		Status:    string(models.TaskStatusPending),
 		Progress:  0,
 		StartedAt: &now,
@@ -34,11 +44,19 @@ func (s *TaskService) CreateTask(taskType, taskName string) (*models.TaskRecord,
 	return task, nil
 }
 
+// UpdateTaskDetails 更新任务明细（可读文本，完成任务前调用）
+func (s *TaskService) UpdateTaskDetails(id uint, details string) error {
+	if details == "" || s.db == nil {
+		return nil
+	}
+	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Update("details", details).Error
+}
+
 // UpdateTaskProgress 更新任务进度
 func (s *TaskService) UpdateTaskProgress(id uint, progress int, doneItems, totalItems int64) error {
 	updates := map[string]interface{}{
-		"progress":   progress,
-		"done_items": doneItems,
+		"progress":    progress,
+		"done_items":  doneItems,
 		"total_items": totalItems,
 	}
 	return s.db.Model(&models.TaskRecord{}).Where("id = ?", id).Updates(updates).Error

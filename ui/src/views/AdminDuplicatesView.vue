@@ -20,11 +20,23 @@
           v-for="(group, idx) in duplicateGroups"
           :key="group.xxh3Hash"
           :name="group.xxh3Hash"
-          :title="`#${idx + 1}  ${group.xxh3Hash.substring(0, 16)}...  (${group.fileCount} 个文件, ${formatSizeDup(group.totalSize)})`"
+          :title="groupTitle(group, idx)"
         >
           <!-- 表内嵌于可折叠面板中，容器高度动态变化，虚拟滚动(el-table-v2)难以稳定测量高度，故采用普通 el-table 实现 -->
           <el-table :data="group.files" size="small" stripe :border="false">
-            <el-table-column label="文件路径" prop="fullPath" min-width="120" show-overflow-tooltip />
+            <el-table-column label="文件路径" min-width="260">
+              <template #default="{ row }">
+                <div class="dup-path-cell">
+                  <template v-for="(d, dirIdx) in parseDupPath(row.fullPath).dirs" :key="'d' + dirIdx">
+                    <a class="path-segment" @click.prevent="goToDir(d.path)">{{ d.name }}</a>
+                    <span class="path-sep">/</span>
+                  </template>
+                  <span class="dup-file-name" :title="parseDupPath(row.fullPath).fileName">
+                    {{ parseDupPath(row.fullPath).fileName }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="大小" width="100">
               <template #default="{ row }">{{ formatSizeDup(row.fileSize) }}</template>
             </el-table-column>
@@ -48,11 +60,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { IndexApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
+
+const router = useRouter()
 
 const duplicateGroups = ref([])
 const dupLoading = ref(false)
@@ -62,6 +77,36 @@ const dupPageSize = 20
 const openGroups = ref([])
 
 const formatSizeDup = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
+
+// 对路径的每段分别编码，避免斜杠被编码（与 HomeView 导航一致）
+const encodePath = (path) => {
+  return path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
+}
+
+// 跳转到文件页面的对应目录（/rootName/...）
+const goToDir = (dirPath) => {
+  router.push('/files/' + encodePath(dirPath))
+}
+
+// 把完整路径拆分为目录段（含可跳转路径）与文件名
+const parseDupPath = (fullPath) => {
+  const parts = String(fullPath || '').split('/').filter(Boolean)
+  const fileName = parts[parts.length - 1] || ''
+  const dirs = parts.slice(0, -1).map((name, idx) => ({
+    name,
+    path: '/' + parts.slice(0, idx + 1).join('/')
+  }))
+  return { dirs, fileName }
+}
+
+// 分组标题：文件名相同则追加文件名，不同则提示有 x 个文件名
+const groupTitle = (group, idx) => {
+  const base = `#${idx + 1}  ${group.xxh3Hash.substring(0, 16)}...  (${group.fileCount} 个文件, ${formatSizeDup(group.totalSize)})`
+  const nameSet = new Set((group.files || []).map(f => f.fileName).filter(Boolean))
+  if (nameSet.size === 1) return `${base} · ${[...nameSet][0]}`
+  if (nameSet.size > 1) return `${base} · 有 ${nameSet.size} 个文件名`
+  return base
+}
 
 async function loadDuplicates() {
   dupLoading.value = true
@@ -90,7 +135,13 @@ async function handleKeepDuplicate(row) {
     await ElMessageBox.confirm(
       `确认保留 "${row.fileName}"，并删除其他同哈希的重复文件吗？此操作将删除磁盘文件且不可恢复。`,
       '确认保留',
-      { confirmButtonText: '确认保留', cancelButtonText: '取消', type: 'warning' }
+      {
+        confirmButtonText: '确认保留',
+        cancelButtonText: '取消',
+        type: 'warning',
+        appendTo: document.body,
+        customClass: 'dup-keep-confirm'
+      }
     )
   } catch {
     return
@@ -157,6 +208,36 @@ onMounted(() => {
       box-shadow: @shadow-md;
     }
   }
+
+  .dup-path-cell {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow: hidden;
+
+    .path-segment {
+      color: @primary-color;
+      cursor: pointer;
+      white-space: nowrap;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    .path-sep {
+      margin: 0 2px;
+      color: @text-color-placeholder;
+    }
+
+    .dup-file-name {
+      margin-left: 2px;
+      color: @text-color;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
 }
 
 @media @tablet {
@@ -168,6 +249,17 @@ onMounted(() => {
 @media @mobile {
   .admin-duplicates {
     padding: 8px;
+  }
+}
+</style>
+
+<!-- 保留确认弹框通过 appendTo: body 挂载到 body，需全局样式保证居中且内容清晰 -->
+<style>
+.dup-keep-confirm {
+  .el-message-box__message {
+    word-break: break-word;
+    line-height: 1.6;
+    color: #303133;
   }
 }
 </style>

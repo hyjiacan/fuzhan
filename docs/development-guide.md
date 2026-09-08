@@ -322,7 +322,7 @@ upload:
   max_file_size: 17179869184 # 16GB 最大文件
   url_upload:
     enabled: false
-    allowed_ip_ranges: []   # CIDR 格式
+    allowed_ip_ranges: []   # CIDR 网段，留空表示不限制（允许所有 IP）
 
 # 预览配置
 preview:
@@ -509,7 +509,7 @@ yarn test
 
 ### Go 代码规范
 
-- 使用 `gofmt` 格式化（但仓库文件使用空格缩进，需运行 `gofmt -w -tabs=false`）
+- 使用 `gofmt -w` 格式化（Go 语言官方约定 tab 缩进，提交前校验 `gofmt -l` 应为空）
 - 遵循 `Effective Go` 规范
 - 错误处理: `if err != nil { return err }`
 - import 分组：标准库 / 第三方 / 本地包（`fuzhan/` 前缀）
