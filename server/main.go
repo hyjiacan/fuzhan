@@ -626,8 +626,9 @@ func main() {
 				// 在线 IP 统计路由（与登录无关，依据最近请求判定在线）
 				admin.GET("/online-ips", adminHandler.OnlineIPs)
 
-				// 操作记录清空路由
+				// 操作记录清空/删除路由
 				admin.POST("/records/clear", adminHandler.ClearRecordsHandler)
+				admin.POST("/records/delete", adminHandler.DeleteRecordHandler)
 
 				// TLS 证书上传路由
 				admin.POST("/upload-cert", adminHandler.UploadCertHandler)

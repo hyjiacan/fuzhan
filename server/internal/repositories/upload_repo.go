@@ -305,15 +305,19 @@ func (r *RecordRepository) ListRecentAll(limit int, action string) ([]models.Ope
 // 返回记录列表和总记录数
 // 去重维度：已建立身份关联的记录（file_record_id > 0）按 file_id 分组，仅保留最新一条，
 // 即使移动/重命名后历史快照路径不同也不会重复；未关联的记录（历史数据/临时等）回退到
-// 根目录+路径+文件名分组。去重在 SQL 层完成，避免分页重复。
+// 根目录+路径+文件名分组；search 记录按关键词分组。去重在 SQL 层完成，避免分页重复。
 func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action string) ([]models.OperationRecord, int64, error) {
 	offset := (page - 1) * pageSize
 
-	// 分组键：已关联的记录按 file_id，未关联的按路径快照
-	const dedupGroupKey = `(CASE WHEN file_record_id > 0
+	// 分组键：search 记录不关联文件身份，按关键词去重（相同关键词只保留最新一次）；
+	// 其他记录（upload/download）已关联的按 file_id，未关联的按路径快照
+	dedupGroupKey := `(CASE WHEN file_record_id > 0
 		THEN 'f' || CAST(file_record_id AS TEXT)
 		ELSE 'p' || COALESCE(root_name,'') || COALESCE(file_path,'') || COALESCE(file_name,'')
 		END)`
+	if action == "search" {
+		dedupGroupKey = `COALESCE(search_query, '')`
+	}
 
 	// 总数为去重后的不同文件数（GORM 的 Distinct().Count() 会被降级为 COUNT(*)，
 	// 因此用子查询统计 DISTINCT 行数）
@@ -373,6 +377,40 @@ func (r *RecordRepository) GetRecentSearches(limit int) ([]models.OperationRecor
 	var records []models.OperationRecord
 	err := r.db.Where("`action` = ? AND search_query IS NOT NULL AND search_query != ''", "search").Order("created_at DESC").Limit(limit).Find(&records).Error
 	return records, err
+}
+
+// DeleteByIDAndAction 按 ID 且限定操作类型删除单条操作记录
+// 返回删除的记录数（0 表示记录不存在或类型不匹配）
+func (r *RecordRepository) DeleteByIDAndAction(id uint, action string) (int64, error) {
+	result := r.db.Where("id = ? AND `action` = ?", id, action).Delete(&models.OperationRecord{})
+	return result.RowsAffected, result.Error
+}
+
+// DeleteByFile 文件/目录删除时级联清理对应的上传/下载操作记录。
+// rootName: 根目录名；relPath: 相对路径（以 / 开头）；isDir: 是否为目录；
+// recordIDs: 被删除的索引记录 ID（覆盖移动/重命名后保留旧路径快照的记录）。
+func (r *RecordRepository) DeleteByFile(rootName, relPath string, isDir bool, recordIDs []uint) (int64, error) {
+	q := r.db.Model(&models.OperationRecord{}).
+		Where("`action` IN ?", []string{"upload", "download", "download-by-hash"})
+	if isDir {
+		prefix := "/" + rootName + "/" + strings.Trim(relPath, "/") + "/"
+		if len(recordIDs) > 0 {
+			q = q.Where(r.db.Where("file_record_id IN ?", recordIDs).
+				Or(r.db.Where("file_record_id = 0 AND root_name = ? AND full_path LIKE ?", rootName, prefix)))
+		} else {
+			q = q.Where("root_name = ? AND full_path LIKE ?", rootName, prefix)
+		}
+	} else {
+		full := "/" + rootName + "/" + strings.TrimPrefix(relPath, "/")
+		if len(recordIDs) > 0 {
+			q = q.Where(r.db.Where("file_record_id IN ?", recordIDs).
+				Or(r.db.Where("file_record_id = 0 AND root_name = ? AND full_path = ?", rootName, full)))
+		} else {
+			q = q.Where("root_name = ? AND full_path = ?", rootName, full)
+		}
+	}
+	result := q.Delete(&models.OperationRecord{})
+	return result.RowsAffected, result.Error
 }
 
 // DeleteByAction 删除指定操作类型的所有记录

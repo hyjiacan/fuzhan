@@ -328,3 +328,47 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 		"count":  count,
 	})
 }
+
+// DeleteRecordHandler 删除单条操作记录（管理员）
+func (h *Handler) DeleteRecordHandler(c *gin.Context) {
+	var req struct {
+		ID     uint   `json:"id" binding:"required"`
+		Action string `json:"action" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), err)
+		response.HandleBadRequest(c, "请提供记录ID和记录类型 (search/upload/download)", nil)
+		return
+	}
+
+	validActions := map[string]bool{
+		"search":   true,
+		"upload":   true,
+		"download": true,
+	}
+	if !validActions[req.Action] {
+		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), fmt.Errorf("invalid action"))
+		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download", nil)
+		return
+	}
+
+	repo := repositories.NewRecordRepository(h.db)
+	count, err := repo.DeleteByIDAndAction(req.ID, req.Action)
+	if err != nil {
+		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), err)
+		utils.Error("删除操作记录失败", utils.Int64("id", int64(req.ID)), utils.String("action", req.Action), utils.Err(err))
+		response.HandleInternalServerError(c, "删除记录失败")
+		return
+	}
+	if count == 0 {
+		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), fmt.Errorf("record not found"))
+		response.HandleBadRequest(c, "记录不存在或类型不匹配", nil)
+		return
+	}
+
+	middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), nil)
+	response.HandleSuccess(c, http.StatusOK, "删除成功", gin.H{
+		"id":     req.ID,
+		"action": req.Action,
+	})
+}

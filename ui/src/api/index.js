@@ -491,6 +491,11 @@ export const AdminApi = {
   // 清空操作记录
   clearRecords(action) {
     return request.post('/admin/records/clear', { action })
+  },
+
+  // 删除单条操作记录
+  deleteRecord(id, action) {
+    return request.post('/admin/records/delete', { id, action })
   }
 }
 

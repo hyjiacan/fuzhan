@@ -24,6 +24,8 @@ type AuditStore interface {
 	// AttachCurrentPaths 将操作记录路径替换为对应文件的当前路径（跟随移动/重命名）
 	AttachCurrentPaths(records []models.OperationRecord) []models.OperationRecord
 	Delete(id uint) error
+	DeleteByIDAndAction(id uint, action string) (int64, error)
+	DeleteByFile(rootName, relPath string, isDir bool, recordIDs []uint) (int64, error)
 	GetAll() ([]models.OperationRecord, error)
 	GetRecent(limit int) ([]models.OperationRecord, error)
 	GetRecentSearches(limit int) ([]models.OperationRecord, error)

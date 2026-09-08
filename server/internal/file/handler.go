@@ -392,13 +392,30 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 				utils.String("path", relPath),
 				utils.Err(queryErr))
 		} else {
+			// 收集被删除的索引记录 ID，用于级联清理操作记录（覆盖移动/重命名后的旧路径快照）
+			recordIDs := make([]uint, 0, len(records))
 			for _, rec := range records {
+				recordIDs = append(recordIDs, rec.ID)
 				if err := fh.BaseHandler.IndexSvc.DeleteRecord(rec.ID); err != nil {
 					utils.Warn("硬删除索引记录失败",
 						utils.Int("id", int(rec.ID)),
 						utils.String("root", rootName),
 						utils.String("path", relPath),
 						utils.Err(err))
+				}
+			}
+			// 级联删除对应的上传/下载操作记录（保留查询优化为当前路径匹配）
+			if fh.BaseHandler.RecordRepo != nil {
+				if cnt, err := fh.BaseHandler.RecordRepo.DeleteByFile(rootName, relPath, isDir, recordIDs); err != nil {
+					utils.Warn("删除文件对应操作记录失败",
+						utils.String("root", rootName),
+						utils.String("path", relPath),
+						utils.Err(err))
+				} else if cnt > 0 {
+					utils.Info("已清理文件删除后的操作记录",
+						utils.String("root", rootName),
+						utils.String("path", relPath),
+						utils.Int64("count", cnt))
 				}
 			}
 		}

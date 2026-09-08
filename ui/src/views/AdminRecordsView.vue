@@ -115,7 +115,7 @@
 
 <script setup>
 import { ref, h, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElButton } from 'element-plus'
 import { FileApi, AdminApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
 
@@ -142,6 +142,9 @@ const searchPage = ref(1)
 
 // 清空
 const clearingRecord = ref(null)
+
+// 单条删除
+const deletingRecordId = ref(null)
 
 // ============ 图标 ============
 
@@ -190,6 +193,27 @@ const formatTypeText = (text) => h('div', { class: 'file-name-cell', title: text
   h('span', { class: 'file-link' }, text || '-')
 ])
 
+// 每条记录的操作列（单条删除）
+const deleteRecordColumn = (action) => ({
+  title: '操作',
+  key: 'actions',
+  dataKey: 'id',
+  width: 76,
+  fixed: 'right',
+  align: 'center',
+  cellRenderer: ({ rowData: row }) => {
+    if (row.id === undefined || row.id === null) return null
+    return h(ElButton, {
+      type: 'danger',
+      link: true,
+      size: 'small',
+      loading: deletingRecordId.value === row.id,
+      disabled: deletingRecordId.value !== null && deletingRecordId.value !== row.id,
+      onClick: () => handleDeleteRecord(row, action)
+    }, { default: () => '删除' })
+  }
+})
+
 const uploadColumns = [
   { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.fullPath) },
   { title: '大小', key: 'fileSize', width: 100,
@@ -198,7 +222,8 @@ const uploadColumns = [
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '上传时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
-  }
+  },
+  deleteRecordColumn('upload')
 ]
 
 const downloadColumns = [
@@ -209,7 +234,8 @@ const downloadColumns = [
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '下载时间', key: 'uploadTime', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
-  }
+  },
+  deleteRecordColumn('download')
 ]
 
 const searchColumns = [
@@ -217,7 +243,8 @@ const searchColumns = [
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '搜索时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
     cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
-  }
+  },
+  deleteRecordColumn('search')
 ]
 
 // ============ 数据加载 ============
@@ -259,6 +286,31 @@ const loadRecords = async (action) => {
 const handleTabChange = (tab) => {
   activeTab.value = tab
   loadRecords(tab)
+}
+
+// ============ 单条删除 ============
+
+const handleDeleteRecord = async (row, action) => {
+  const actionLabels = { search: '搜索', upload: '上传', download: '下载' }
+  const label = actionLabels[action] || action
+  if (!window.confirm(`确定要删除该条${label}记录吗？此操作不可恢复。`)) {
+    return
+  }
+
+  deletingRecordId.value = row.id
+  try {
+    const res = await AdminApi.deleteRecord(row.id, action)
+    if (res.success) {
+      ElMessage.success('记录已删除')
+      loadRecords(action)
+    } else {
+      ElMessage.error('删除失败：' + (res.message || '未知错误'))
+    }
+  } catch (e) {
+    ElMessage.error('删除失败：' + e.message)
+  } finally {
+    deletingRecordId.value = null
+  }
 }
 
 // ============ 清空记录 ============
