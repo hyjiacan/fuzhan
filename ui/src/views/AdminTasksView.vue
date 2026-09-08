@@ -97,7 +97,7 @@
               <el-tag size="small" :type="taskTypeTag(row).type">{{ taskTypeTag(row).label }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="90">
+          <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag size="small" :type="statusTag(row).type">{{ statusTag(row).label }}</el-tag>
             </template>
