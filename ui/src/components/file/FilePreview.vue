@@ -288,20 +288,14 @@ watch(() => props.file, () => {
     }
   }
 }
-.preview-maximized .el-card__body {
-  display: flex;
-  flex-direction: column;
+.preview-maximized .el-textarea {
+  flex: 1;
   min-height: 0;
+  height: 100%;
 
-  .el-textarea {
-    flex: 1;
+  .el-textarea__inner {
+    height: 100% !important;
     min-height: 0;
-    height: 100%;
-
-    .el-textarea__inner {
-      height: 100% !important;
-      min-height: 0;
-    }
   }
 }
 

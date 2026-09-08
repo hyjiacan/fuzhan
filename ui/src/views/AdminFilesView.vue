@@ -986,18 +986,4 @@ onUnmounted(() => {
     padding: 8px;
   }
 }
-
-.preview-maximized :deep(.el-dialog) {
-  height: 100vh;
-  max-height: 100vh;
-  max-width: 100vw;
-  margin: 0;
-  top: 0;
-}
-.preview-maximized :deep(.el-dialog__body) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
 </style>

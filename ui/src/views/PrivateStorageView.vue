@@ -593,10 +593,4 @@ onUnmounted(() => {
     }
   }
 }
-
-.preview-maximized :deep(.el-dialog__body) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
 </style>

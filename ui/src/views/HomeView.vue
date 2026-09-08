@@ -1039,12 +1039,6 @@ watch(
   justify-content: flex-end;
   gap: 12px;
 }
-
-.preview-maximized :deep(.n-card-content) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
 </style>
 <style lang="less">
 // 依据基名判定"最新版本"的文件使用绿色加粗标识。

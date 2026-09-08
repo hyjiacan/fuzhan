@@ -405,6 +405,32 @@
   max-height: 90vh;
 }
 
+// 文件预览弹框「最大化」——统一全屏实现
+// 该 class 通过 :class 直接绑定在 el-dialog 根元素上，故用可命中自身的选择器。
+.el-overlay-dialog:has(> .preview-maximized) {
+  padding: 0;
+}
+.preview-maximized {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+.preview-maximized .el-dialog__header,
+.preview-maximized .el-dialog__footer {
+  flex: none;
+}
+.preview-maximized .el-dialog__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 // ============================================
 // 过渡动画
 // ============================================
