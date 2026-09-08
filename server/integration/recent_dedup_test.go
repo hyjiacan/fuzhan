@@ -33,6 +33,18 @@ func TestListRecentAllPaginated_Dedup(t *testing.T) {
 		}
 	}
 
+	// 插入对应的公共文件索引记录（active），使"文件存在"过滤放行
+	indexFiles := []models.FileRecordPublic{
+		{FileRecordBase: models.FileRecordBase{RootName: "rootA", FilePath: "/b/报告.pdf", FileName: "报告.pdf", FileSize: 1, ModTime: uploadTime, LastSyncedAt: now}},
+		{FileRecordBase: models.FileRecordBase{RootName: "rootA", FilePath: "/c/data.csv", FileName: "data.csv", FileSize: 1, ModTime: uploadTime, LastSyncedAt: now}},
+		{FileRecordBase: models.FileRecordBase{RootName: "rootB", FilePath: "/plan.txt", FileName: "plan.txt", FileSize: 1, ModTime: uploadTime, LastSyncedAt: now}},
+	}
+	for i := range indexFiles {
+		if err := db.Create(&indexFiles[i]).Error; err != nil {
+			t.Fatalf("创建文件索引失败: %v", err)
+		}
+	}
+
 	// 上传：应去重为 3 条不同文件
 	got, total, err := repo.ListRecentAllPaginated(1, 10, "upload")
 	if err != nil {
@@ -73,5 +85,51 @@ func TestListRecentAllPaginated_Dedup(t *testing.T) {
 	}
 	if totalDl != 1 || len(gotDl) != 1 {
 		t.Errorf("expected download total=1 len=1, got total=%d len=%d", totalDl, len(gotDl))
+	}
+}
+
+// TestListRecentAllPaginated_DeletedFileExcluded 验证已删除文件不再出现在最近列表：
+// 索引表记录被软删除（status=deleted）或已不存在（硬删除）时，对应操作记录被过滤。
+func TestListRecentAllPaginated_DeletedFileExcluded(t *testing.T) {
+	db := getTestDB(t)
+	repo := repositories.NewRecordRepository(db)
+	now := time.Now()
+
+	ops := []models.OperationRecord{
+		{Action: "upload", RootName: "rootX", FilePath: "a/exist.txt", FileName: "exist.txt", CreatedAt: now},
+		{Action: "upload", RootName: "rootX", FilePath: "a/gone.txt", FileName: "gone.txt", CreatedAt: now.Add(-time.Hour)},
+		{Action: "upload", RootName: "rootX", FilePath: "a/missing.txt", FileName: "missing.txt", CreatedAt: now.Add(-2 * time.Hour)},
+	}
+	for _, rec := range ops {
+		if err := repo.Create(&rec); err != nil {
+			t.Fatalf("创建记录失败: %v", err)
+		}
+	}
+
+	indexFiles := []models.FileRecordPublic{
+		// exist.txt：active，应显示
+		{FileRecordBase: models.FileRecordBase{RootName: "rootX", FilePath: "/a/exist.txt", FileName: "exist.txt", FileSize: 1, ModTime: now, LastSyncedAt: now}},
+		// gone.txt：软删除，应过滤
+		{FileRecordBase: models.FileRecordBase{RootName: "rootX", FilePath: "/a/gone.txt", FileName: "gone.txt", FileSize: 1, ModTime: now, LastSyncedAt: now, Status: models.FileStatusDeleted}},
+		// missing.txt：不再插入索引记录，模拟硬删除
+	}
+	for i := range indexFiles {
+		if err := db.Create(&indexFiles[i]).Error; err != nil {
+			t.Fatalf("创建文件索引失败: %v", err)
+		}
+	}
+
+	got, total, err := repo.ListRecentAllPaginated(1, 10, "upload")
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total=1 (仅保留仍存在的文件), got %d", total)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(got))
+	}
+	if got[0].FileName != "exist.txt" {
+		t.Errorf("期望仅返回 exist.txt，实际 %s", got[0].FileName)
 	}
 }

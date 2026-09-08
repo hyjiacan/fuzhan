@@ -1028,11 +1028,6 @@ watch(
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .file-link.latest-version {
-    color: #2e8b57;
-    font-weight: 700;
-  }
 }
 
 .icon-filetype {
@@ -1052,6 +1047,14 @@ watch(
 }
 </style>
 <style lang="less">
+// 依据基名判定"最新版本"的文件使用绿色加粗标识。
+// 该样式必须放在非 scoped 区块：el-table-v2 的列渲染通过 h() 动态创建节点，
+// 不携带组件的 data-v 属性，scoped 选择器无法命中。
+.file-link.latest-version {
+  color: #2e8b57;
+  font-weight: 700;
+}
+
 .notes-cell {
   cursor: pointer;
   color: #666;

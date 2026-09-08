@@ -25,7 +25,7 @@ func getTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("创建测试数据库失败: %v", err)
 	}
 	// 自动迁移表结构
-	if err := db.AutoMigrate(&models.OperationRecord{}); err != nil {
+	if err := db.AutoMigrate(&models.OperationRecord{}, &models.FileRecordPublic{}); err != nil {
 		t.Fatalf("迁移数据库失败: %v", err)
 	}
 	return db

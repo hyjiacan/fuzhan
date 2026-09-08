@@ -8,6 +8,32 @@ import (
 	"gorm.io/gorm"
 )
 
+// ApplyExistingFileFilter 为 operation_records 查询追加"文件仍然存在"过滤：
+// 公共文件（upload_type 为 regular 或空）的上传/下载记录，仅当索引表
+// file_records_public 中仍存在对应的 active 记录时返回（文件被删除后不再出现
+// 于最近上传/下载/热门下载等页面）；search 记录与 temp/private 记录不过滤，
+// 分别由各自页面独立管理。
+func ApplyExistingFileFilter(q *gorm.DB) *gorm.DB {
+	return q.Where(`(
+		operation_records.action = 'search'
+		OR operation_records.upload_type NOT IN ('regular', '')
+		OR EXISTS (
+			SELECT 1 FROM file_records_public frp
+			WHERE frp.root_name = operation_records.root_name
+			  AND frp.status = 'active'
+			  AND frp.deleted_at IS NULL
+			  AND (
+				(operation_records.full_path IS NOT NULL AND operation_records.full_path != ''
+					AND (frp.full_path = operation_records.full_path
+						 OR frp.full_path = ('/' || operation_records.full_path)))
+				OR (operation_records.full_path IS NULL OR operation_records.full_path = ''
+					AND frp.file_name = operation_records.file_name
+					AND TRIM(frp.file_path, '/') = TRIM(operation_records.file_path, '/'))
+			  )
+		)
+	)`)
+}
+
 // SessionRepository 会话仓库
 type SessionRepository struct {
 	db *gorm.DB
@@ -186,6 +212,7 @@ func (r *RecordRepository) ListRecentAll(limit int, action string) ([]models.Ope
 	if action != "" {
 		query = query.Where("`action` = ?", action)
 	}
+	query = ApplyExistingFileFilter(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
 	return records, err
 }
@@ -202,6 +229,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	if action != "" {
 		distinctSub = distinctSub.Where("`action` = ?", action)
 	}
+	distinctSub = ApplyExistingFileFilter(distinctSub)
 	var total int64
 	if err := r.db.Table("(?) AS d", distinctSub.Distinct()).Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -214,6 +242,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	if action != "" {
 		rowsQuery = rowsQuery.Where("`action` = ?", action)
 	}
+	rowsQuery = ApplyExistingFileFilter(rowsQuery)
 
 	var records []models.OperationRecord
 	err := r.db.Table("(?) AS t", rowsQuery).
@@ -239,7 +268,9 @@ func (r *RecordRepository) GetAll() ([]models.OperationRecord, error) {
 // GetRecent 获取最近的记录（不限IP）
 func (r *RecordRepository) GetRecent(limit int) ([]models.OperationRecord, error) {
 	var records []models.OperationRecord
-	err := r.db.Where("`action` IN ?", []string{"upload", "download"}).Order("created_at DESC").Limit(limit).Find(&records).Error
+	query := r.db.Where("`action` IN ?", []string{"upload", "download"})
+	query = ApplyExistingFileFilter(query)
+	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
 	return records, err
 }
 

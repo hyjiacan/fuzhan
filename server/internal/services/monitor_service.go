@@ -124,9 +124,11 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 		Count      int
 	}
 	var downloadCounts []fileDownloadCount
-	if err := s.db.Model(&models.OperationRecord{}).
+	hotQuery := s.db.Model(&models.OperationRecord{}).
 		Select("file_name, file_path, full_path, root_name, file_size, MAX(created_at) as upload_time, COUNT(*) as count").
-		Where("action = ?", "download").
+		Where("action = ?", "download")
+	hotQuery = repositories.ApplyExistingFileFilter(hotQuery)
+	if err := hotQuery.
 		Group("file_name, file_path, full_path, root_name, file_size").
 		Order("count DESC").
 		Find(&downloadCounts).Error; err != nil {
@@ -135,17 +137,21 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 
 	// 统计总分组数
 	var total int64
-	subQuery := s.db.Model(&models.OperationRecord{}).
-		Select("1").
-		Where("action = ?", "download").
-		Group("file_name, file_path, full_path, root_name, file_size")
+	totalQuery := repositories.ApplyExistingFileFilter(
+		s.db.Model(&models.OperationRecord{}).
+			Select("1").
+			Where("action = ?", "download"),
+	)
+	subQuery := totalQuery.Group("file_name, file_path, full_path, root_name, file_size")
 	s.db.Table("(?) AS grouped", subQuery).Count(&total)
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	if err := s.db.Model(&models.OperationRecord{}).
+	pagedQuery := s.db.Model(&models.OperationRecord{}).
 		Select("file_name, file_path, full_path, root_name, file_size, MAX(created_at) as upload_time, COUNT(*) as count").
-		Where("action = ?", "download").
+		Where("action = ?", "download")
+	pagedQuery = repositories.ApplyExistingFileFilter(pagedQuery)
+	if err := pagedQuery.
 		Group("file_name, file_path, full_path, root_name, file_size").
 		Order("count DESC").
 		Limit(pageSize).Offset(offset).

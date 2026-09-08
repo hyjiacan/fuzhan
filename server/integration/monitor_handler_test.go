@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/monitor"
@@ -25,7 +26,7 @@ func getMonitorTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("创建测试数据库失败: %v", err)
 	}
-	if err := db.AutoMigrate(&models.OperationRecord{}); err != nil {
+	if err := db.AutoMigrate(&models.OperationRecord{}, &models.FileRecordPublic{}); err != nil {
 		t.Fatalf("迁移数据库失败: %v", err)
 	}
 	return db
@@ -301,14 +302,24 @@ func TestMonitorHandler_Rankings(t *testing.T) {
 func TestMonitorHandler_Rankings_WithRecords(t *testing.T) {
 	db := getMonitorTestDB(t)
 
-	// 添加上传和下载记录
+	// 添加上传和下载记录（RootName/FilePath 需与下方索引匹配，避免被"文件存在"过滤排除）
 	records := []models.OperationRecord{
-		{Action: "upload", FileName: "test1.txt"},
-		{Action: "download", FileName: "test2.txt"},
-		{Action: "upload", FileName: "test3.txt"},
+		{Action: "upload", RootName: "root", FilePath: "test1.txt", FileName: "test1.txt"},
+		{Action: "download", RootName: "root", FilePath: "test2.txt", FileName: "test2.txt"},
+		{Action: "upload", RootName: "root", FilePath: "test3.txt", FileName: "test3.txt"},
 	}
 	for i := range records {
 		db.Create(&records[i])
+	}
+
+	// 对应用户文件索引需存在，否则会被"文件存在"过滤排除
+	indexFiles := []models.FileRecordPublic{
+		{FileRecordBase: models.FileRecordBase{RootName: "root", FilePath: "/test1.txt", FileName: "test1.txt", FileSize: 1, LastSyncedAt: time.Now()}},
+		{FileRecordBase: models.FileRecordBase{RootName: "root", FilePath: "/test2.txt", FileName: "test2.txt", FileSize: 1, LastSyncedAt: time.Now()}},
+		{FileRecordBase: models.FileRecordBase{RootName: "root", FilePath: "/test3.txt", FileName: "test3.txt", FileSize: 1, LastSyncedAt: time.Now()}},
+	}
+	for _, f := range indexFiles {
+		db.Create(&f)
 	}
 
 	recordRepo := repositories.NewRecordRepository(db)
