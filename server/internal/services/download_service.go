@@ -74,6 +74,19 @@ func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchServ
 	}
 }
 
+// attachFileID 为操作记录关联公共文件索引 ID，移动/重命名后仍可通过身份反查当前路径
+func (ds *DownloadService) attachFileID(rec *models.OperationRecord, rootName, fullPath string) {
+	if ds.searchService == nil {
+		return
+	}
+	fid, err := ds.searchService.GetPublicFileIDByPath(rootName, fullPath)
+	if err != nil {
+		utils.Warn("下载记录关联文件ID失败", utils.String("fullPath", fullPath), utils.Err(err))
+		return
+	}
+	rec.FileRecordID = fid
+}
+
 // isNewDownloadRequest 判断请求是否代表一次新的下载（而非续传/分段延续）：
 // - 不带 Range 头的完整请求（浏览器普通下载、curl/wget 等）
 // - 带 Range 头但起始偏移为 0 的请求（Chrome 并行下载、aria2/IDM 等多连接下载器的首段）
@@ -158,7 +171,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	// 记录下载操作（非阻塞，仅记录 GET 请求）
 	if ds.recordRepo != nil && r.Method == http.MethodGet {
-		recordDownload(ds.recordRepo, &models.OperationRecord{
+		rec := &models.OperationRecord{
 			Action:    "download-by-hash",
 			FileName:  filepath.Base(targetPath),
 			FilePath:  filepath.Dir(fullPath),
@@ -167,7 +180,9 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 			RootName:  rootName,
 			ClientIP:  utils.GetRealIP(r),
 			CreatedAt: utils.Now(),
-		})
+		}
+		ds.attachFileID(rec, rootName, rec.FullPath)
+		recordDownload(ds.recordRepo, rec)
 	}
 
 	// 判定是否为预览请求
@@ -267,7 +282,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 记录下载操作（非阻塞，仅记录 GET 请求）
 	if record && ds.recordRepo != nil && r.Method == http.MethodGet {
-		recordDownload(ds.recordRepo, &models.OperationRecord{
+		rec := &models.OperationRecord{
 			Action:    "download",
 			FileName:  filepath.Base(targetPath),
 			FilePath:  subPath,
@@ -276,7 +291,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			RootName:  rootName,
 			ClientIP:  utils.GetRealIP(r),
 			CreatedAt: utils.Now(),
-		})
+		}
+		ds.attachFileID(rec, rootName, rec.FullPath)
+		recordDownload(ds.recordRepo, rec)
 	}
 
 	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）

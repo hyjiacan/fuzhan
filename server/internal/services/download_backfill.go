@@ -35,3 +35,53 @@ func BackfillPublicDownloadCounts(db *gorm.DB) {
 	}
 	utils.Info("公共文件下载次数回填完成", utils.Int64("affected", result.RowsAffected))
 }
+
+// BackfillFileRecordIDs 回填历史操作记录的 file_record_id：按路径反查公共文件索引记录 ID。
+// 仅处理未关联（file_record_id=0）且为文件操作（upload/download/download-by-hash）的记录，
+// 分批执行避免一次性大事务锁表。移动/重命名前的历史数据由此建立身份关联，
+// 使最近/热门列表能在文件移动后仍定位到当前路径。
+func BackfillFileRecordIDs(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if !db.Migrator().HasTable(&models.OperationRecord{}) || !db.Migrator().HasTable(&models.FileRecordPublic{}) {
+		return
+	}
+
+	const batchSize = 500
+	var affected int64
+	for {
+		result := db.Exec(`UPDATE operation_records
+			SET file_record_id = (
+				SELECT MIN(frp.id) FROM file_records_public frp
+				WHERE frp.status = ? AND frp.deleted_at IS NULL
+				  AND frp.root_name = operation_records.root_name
+				  AND (frp.full_path = operation_records.full_path
+				       OR frp.full_path = ('/' || operation_records.full_path))
+			)
+			WHERE operation_records.file_record_id = 0
+			  AND operation_records.action IN (?, ?, ?)
+			  AND operation_records.deleted_at IS NULL
+			  AND EXISTS (
+			  	SELECT 1 FROM file_records_public frp2
+			  	WHERE frp2.status = ? AND frp2.deleted_at IS NULL
+			  	  AND frp2.root_name = operation_records.root_name
+			  	  AND (frp2.full_path = operation_records.full_path
+			  	       OR frp2.full_path = ('/' || operation_records.full_path))
+			  )
+			LIMIT ?`,
+			models.FileStatusActive,
+			"upload", "download", "download-by-hash",
+			models.FileStatusActive, batchSize)
+		if result.Error != nil {
+			utils.Warn("回填操作记录 file_record_id 失败", utils.Err(result.Error))
+			return
+		}
+		n := result.RowsAffected
+		affected += n
+		if n < batchSize {
+			break
+		}
+	}
+	utils.Info("操作记录 file_record_id 回填完成", utils.Int64("affected", affected))
+}

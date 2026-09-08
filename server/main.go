@@ -196,6 +196,8 @@ func main() {
 
 	// 回填公共文件下载次数（从下载记录统计，升级/启动时执行一次）
 	services.BackfillPublicDownloadCounts(db)
+	// 回填历史操作记录的 file_record_id（建立身份关联，移动/重命名后不丢）
+	services.BackfillFileRecordIDs(db)
 
 	// 初始化日志记录器 (已在 appconfig.DoInit 中初始化)
 	defer utils.Sync()

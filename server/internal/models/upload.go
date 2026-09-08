@@ -72,21 +72,23 @@ func (UploadedChunk) TableName() string {
 
 // OperationRecord 操作记录
 type OperationRecord struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	FileName    string         `gorm:"size:255;not null" json:"fileName"` // 文件名
-	FileSize    int64          `gorm:"not null" json:"fileSize"`          // 文件大小
-	FilePath    string         `gorm:"size:512;not null" json:"path"`     // 相对于根目录的文件路径
-	FullPath    string         `gorm:"size:1024" json:"fullPath"`         // 完整路径 rootName/filePath
-	RootName    string         `gorm:"size:64;not null" json:"rootName"`  // 根目录名称
-	FileType    string         `gorm:"size:50" json:"fileType"`           // 文件类型
-	ClientIP    string         `gorm:"size:45;index" json:"clientIP"`     // 客户端IP
-	UserID      string         `gorm:"size:64;index" json:"userID"`       // 用户ID
-	UploadType  TargetType     `gorm:"size:20;not null;default:regular" json:"uploadType"`
-	Action      string         `gorm:"size:20;default:upload;index" json:"action"` // 操作类型: upload, download, search
-	SearchQuery string         `gorm:"size:255;index" json:"searchQuery"`          // 搜索关键词
-	UploadTime  time.Time      `gorm:"not null;index" json:"uploadTime"`           // 上传时间
-	CreatedAt   time.Time      `gorm:"index" json:"createdAt"`                     // 创建时间（用于统计查询）
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	FileName string `gorm:"size:255;not null" json:"fileName"` // 文件名
+	FileSize int64  `gorm:"not null" json:"fileSize"`          // 文件大小
+	FilePath string `gorm:"size:512;not null" json:"path"`     // 相对于根目录的文件路径
+	FullPath string `gorm:"size:1024" json:"fullPath"`         // 完整路径 rootName/filePath
+	RootName string `gorm:"size:64;not null" json:"rootName"`  // 根目录名称
+	FileType string `gorm:"size:50" json:"fileType"`           // 文件类型
+	// FileRecordID 关联的公共文件索引记录 ID，用于移动/重命名后身份关联
+	FileRecordID uint           `gorm:"index" json:"fileRecordId"`     // 公共文件索引记录 ID（0 表示未关联/历史数据）
+	ClientIP     string         `gorm:"size:45;index" json:"clientIP"` // 客户端IP
+	UserID       string         `gorm:"size:64;index" json:"userID"`   // 用户ID
+	UploadType   TargetType     `gorm:"size:20;not null;default:regular" json:"uploadType"`
+	Action       string         `gorm:"size:20;default:upload;index" json:"action"` // 操作类型: upload, download, search
+	SearchQuery  string         `gorm:"size:255;index" json:"searchQuery"`          // 搜索关键词
+	UploadTime   time.Time      `gorm:"not null;index" json:"uploadTime"`           // 上传时间
+	CreatedAt    time.Time      `gorm:"index" json:"createdAt"`                     // 创建时间（用于统计查询）
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
 }
 
 // TableName 指定表名

@@ -1329,6 +1329,14 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 			utils.Warn("URL下载后同步索引失败", utils.String("root", sessionTargetRoot), utils.String("path", relativePath), utils.Err(err))
 		} else {
 			h.indexSvc.MarkRecentlySynced(sessionTargetRoot, relativePath)
+			// 关联公共文件索引记录 ID（身份标识），移动/重命名后依然有效
+			if record.ID > 0 {
+				if fid, rerr := h.recordRepo.ResolvePublicFileID(sessionTargetRoot, record.FullPath); rerr == nil && fid > 0 {
+					if uerr := h.recordRepo.UpdateFileRecordID(record.ID, fid); uerr != nil {
+						utils.Warn("上传记录关联索引ID失败", utils.Int64("record", int64(record.ID)), utils.Err(uerr))
+					}
+				}
+			}
 		}
 		// 记录上传者IP（用于"IP一致允许覆盖/重命名/删除"）
 		if clientIP != "" {

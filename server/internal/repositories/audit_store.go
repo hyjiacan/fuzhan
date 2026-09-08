@@ -17,6 +17,12 @@ type AuditStore interface {
 	ListRecent(clientIP string, limit int) ([]models.OperationRecord, error)
 	ListRecentAll(limit int, action string) ([]models.OperationRecord, error)
 	ListRecentAllPaginated(page, pageSize int, action string) ([]models.OperationRecord, int64, error)
+	// ResolvePublicFileID 按路径反查公共文件索引记录 ID（文件身份标识）
+	ResolvePublicFileID(rootName, fullPath string) (uint, error)
+	// UpdateFileRecordID 更新操作记录关联的文件索引记录 ID
+	UpdateFileRecordID(recordID, fileRecordID uint) error
+	// AttachCurrentPaths 将操作记录路径替换为对应文件的当前路径（跟随移动/重命名）
+	AttachCurrentPaths(records []models.OperationRecord) []models.OperationRecord
 	Delete(id uint) error
 	GetAll() ([]models.OperationRecord, error)
 	GetRecent(limit int) ([]models.OperationRecord, error)

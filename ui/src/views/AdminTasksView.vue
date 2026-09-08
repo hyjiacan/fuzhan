@@ -212,7 +212,8 @@ const taskTypeLabels = {
   hash: { label: '哈希计算', type: 'warning' },
   consistency_check: { label: '一致性检查', type: 'success' },
   cleanup: { label: '清理任务', type: 'default' },
-  url_download: { label: 'URL 下载', type: 'primary' }
+  url_download: { label: 'URL 下载', type: 'primary' },
+  search_reconcile: { label: '检索索引对齐', type: 'info' }
 }
 
 const taskTypeTag = (row) => {

@@ -25,6 +25,32 @@ func NewSearchService(db *gorm.DB) *SearchService {
 	return &SearchService{db: db}
 }
 
+// GetPublicFileIDByPath 按路径反查公共文件索引记录 ID（active），用于下载记录
+// 建立与文件的身份关联（file_record_id），移动/重命名后依然有效。
+func (s *SearchService) GetPublicFileIDByPath(rootName, fullPath string) (uint, error) {
+	if s.db == nil || rootName == "" || fullPath == "" {
+		return 0, nil
+	}
+	var candidates []string
+	if strings.HasPrefix(fullPath, "/") {
+		candidates = []string{fullPath, strings.TrimPrefix(fullPath, "/")}
+	} else {
+		candidates = []string{fullPath, "/" + fullPath}
+	}
+	var ids []uint
+	err := s.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND status = ? AND deleted_at IS NULL", rootName, models.FileStatusActive).
+		Where("full_path IN ?", candidates).
+		Order("id ASC").Limit(1).Pluck("id", &ids).Error
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	return ids[0], nil
+}
+
 // SearchFiles 同步搜索文件，一次性返回所有结果（不再使用 SSE 流式）。
 // 支持使用空格分隔多个关键词（AND 逻辑），最后一个关键词可使用 .xxx 指定扩展名。
 func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.DirectoryConfig, timeout time.Duration) ([]appconfig.FileInfo, error) {

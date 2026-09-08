@@ -383,6 +383,14 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		} else {
 			// 标记为最近已同步，防止 watcher 重复处理
 			s.indexSvc.MarkRecentlySynced(session.TargetRoot, relativePath)
+			// 关联公共文件索引记录 ID（身份标识），移动/重命名后依然有效
+			if record.ID > 0 {
+				if fid, rerr := s.recordRepo.ResolvePublicFileID(session.TargetRoot, record.FullPath); rerr == nil && fid > 0 {
+					if uerr := s.recordRepo.UpdateFileRecordID(record.ID, fid); uerr != nil {
+						utils.Warn("上传记录关联索引ID失败", utils.Int64("record", int64(record.ID)), utils.Err(uerr))
+					}
+				}
+			}
 		}
 		// 记录公开文件的上传者IP（覆盖上传会重新绑定归属）
 		if session.ClientIP != "" {

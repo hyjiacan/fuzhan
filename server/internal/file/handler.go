@@ -3,6 +3,7 @@ package file
 import (
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +30,30 @@ func NewFileHandlers(baseHandler *BaseHandler, fileService *services.FileService
 		BaseHandler: baseHandler,
 		FileService: fileService,
 		DB:          db,
+	}
+}
+
+// syncIndexMove 移动/重命名成功后同步索引表。同根目录内通过 MoveFile 复用原
+// 记录 ID（保证操作记录的 file_record_id 身份关联不因移动失效）；跨根目录则
+// 旧位置软删 + 新位置重新建索引。
+func (fh *FileHandlers) syncIndexMove(oldRoot, oldRel, newRoot, newRel string) {
+	if fh.BaseHandler == nil || fh.BaseHandler.IndexSvc == nil {
+		return
+	}
+	isvc := fh.BaseHandler.IndexSvc
+	if oldRoot == newRoot {
+		if err := isvc.MoveFile(oldRoot, oldRel, newRel); err != nil {
+			utils.Warn("移动文件后同步索引失败",
+				utils.String("from", oldRoot+"/"+oldRel),
+				utils.String("to", newRoot+"/"+newRel), utils.Err(err))
+		}
+		return
+	}
+	if err := isvc.RemoveFile(oldRoot, oldRel); err != nil {
+		utils.Warn("跨根移动软删旧索引失败", utils.String("path", oldRoot+"/"+oldRel), utils.Err(err))
+	}
+	if err := isvc.SyncFile(newRoot, newRel); err != nil {
+		utils.Warn("跨根移动重建索引失败", utils.String("path", newRoot+"/"+newRel), utils.Err(err))
 	}
 }
 
@@ -281,6 +306,9 @@ func (fh *FileHandlers) RenamePublicFileHandler(c *gin.Context) {
 		return
 	}
 	middleware.LogOperation(c, "file.rename", oldPath+" -> "+req.NewName, nil)
+	if rootName, rel := splitPath(oldPath); rootName != "" {
+		fh.syncIndexMove(rootName, rel, rootName, path.Join(path.Dir(rel), req.NewName))
+	}
 	utils.HandleSuccess(c, http.StatusOK, "重命名成功", nil)
 }
 
@@ -305,6 +333,11 @@ func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
 	}
 
 	middleware.LogOperation(c, "file.move", req.OldPath+" -> "+req.NewPath, nil)
+	if oldRoot, oldRel := splitPath(req.OldPath); oldRoot != "" {
+		if newRoot, newRel := splitPath(req.NewPath); newRoot != "" {
+			fh.syncIndexMove(oldRoot, oldRel, newRoot, newRel)
+		}
+	}
 	utils.HandleSuccess(c, http.StatusOK, "移动成功", nil)
 }
 

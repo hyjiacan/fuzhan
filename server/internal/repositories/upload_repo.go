@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"strings"
+
 	"fuzhan/internal/utils"
 	"time"
 
@@ -19,16 +21,21 @@ func ApplyExistingFileFilter(q *gorm.DB) *gorm.DB {
 		OR operation_records.upload_type NOT IN ('regular', '')
 		OR EXISTS (
 			SELECT 1 FROM file_records_public frp
-			WHERE frp.root_name = operation_records.root_name
-			  AND frp.status = 'active'
+			WHERE frp.status = 'active'
 			  AND frp.deleted_at IS NULL
 			  AND (
-				(operation_records.full_path IS NOT NULL AND operation_records.full_path != ''
-					AND (frp.full_path = operation_records.full_path
-						 OR frp.full_path = ('/' || operation_records.full_path)))
-				OR (operation_records.full_path IS NULL OR operation_records.full_path = ''
-					AND frp.file_name = operation_records.file_name
-					AND TRIM(frp.file_path, '/') = TRIM(operation_records.file_path, '/'))
+				-- 优先按文件身份(file_record_id)关联：移动/重命名后 ID 不变
+				(operation_records.file_record_id > 0 AND frp.id = operation_records.file_record_id)
+				OR (operation_records.file_record_id = 0
+					AND frp.root_name = operation_records.root_name
+					AND (
+						(operation_records.full_path IS NOT NULL AND operation_records.full_path != ''
+							AND (frp.full_path = operation_records.full_path
+								 OR frp.full_path = ('/' || operation_records.full_path)))
+						OR (operation_records.full_path IS NULL OR operation_records.full_path = ''
+							AND frp.file_name = operation_records.file_name
+							AND TRIM(frp.file_path, '/') = TRIM(operation_records.file_path, '/'))
+					))
 			  )
 		)
 	)`)
@@ -161,6 +168,79 @@ func (r *RecordRepository) Create(record *models.OperationRecord) error {
 	return r.db.Create(record).Error
 }
 
+// ResolvePublicFileID 按路径反查公共文件索引记录 ID（仅 active）。
+// fullPath 允许带或不带前导斜杠，两种格式都能命中。
+func (r *RecordRepository) ResolvePublicFileID(rootName, fullPath string) (uint, error) {
+	if rootName == "" || fullPath == "" {
+		return 0, nil
+	}
+	// 兼容历史记录 full_path 有无前缀两种写法
+	var candidates []string
+	if strings.HasPrefix(fullPath, "/") {
+		candidates = []string{fullPath, strings.TrimPrefix(fullPath, "/")}
+	} else {
+		candidates = []string{fullPath, "/" + fullPath}
+	}
+	var ids []uint
+	err := r.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND status = ? AND deleted_at IS NULL", rootName, models.FileStatusActive).
+		Where("full_path IN ?", candidates).
+		Order("id ASC").Limit(1).Pluck("id", &ids).Error
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	return ids[0], nil
+}
+
+// UpdateFileRecordID 更新操作记录关联的文件索引记录 ID
+func (r *RecordRepository) UpdateFileRecordID(recordID, fileRecordID uint) error {
+	return r.db.Model(&models.OperationRecord{}).Where("id = ?", recordID).
+		Update("file_record_id", fileRecordID).Error
+}
+
+// AttachCurrentPaths 将操作记录中的路径替换为对应文件索引记录的当前路径。
+// 文件移动/重命名后 file_record_id 不变，据此可取得最新位置。
+func (r *RecordRepository) AttachCurrentPaths(records []models.OperationRecord) []models.OperationRecord {
+	if len(records) == 0 {
+		return records
+	}
+	var ids []uint
+	for i := range records {
+		if records[i].FileRecordID > 0 {
+			ids = append(ids, records[i].FileRecordID)
+		}
+	}
+	if len(ids) == 0 {
+		return records
+	}
+	var fres []models.FileRecordPublic
+	if err := r.db.Where("id IN ? AND status = ? AND deleted_at IS NULL", ids, models.FileStatusActive).
+		Find(&fres).Error; err != nil {
+		return records
+	}
+	byID := make(map[uint]models.FileRecordPublic, len(fres))
+	for _, f := range fres {
+		byID[f.ID] = f
+	}
+	for i := range records {
+		f, ok := byID[records[i].FileRecordID]
+		if !ok {
+			continue
+		}
+		records[i].FileName = f.FileName
+		records[i].FilePath = f.FilePath
+		records[i].FullPath = f.FullPath
+		records[i].RootName = f.RootName
+		if f.FileSize > 0 {
+			records[i].FileSize = f.FileSize
+		}
+	}
+	return records
+}
+
 // GetByID 根据ID获取记录
 func (r *RecordRepository) GetByID(id uint) (*models.OperationRecord, error) {
 	var record models.OperationRecord
@@ -200,7 +280,10 @@ func (r *RecordRepository) ListByIP(clientIP string, page, pageSize int) ([]mode
 // ListRecent 获取最近的记录
 func (r *RecordRepository) ListRecent(clientIP string, limit int) ([]models.OperationRecord, error) {
 	var records []models.OperationRecord
-	err := r.db.Where("client_ip = ?", clientIP).Order("created_at DESC").Limit(limit).Find(&records).Error
+	query := r.db.Where("client_ip = ?", clientIP)
+	query = ApplyExistingFileFilter(query)
+	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
+	records = r.AttachCurrentPaths(records)
 	return records, err
 }
 
@@ -214,18 +297,27 @@ func (r *RecordRepository) ListRecentAll(limit int, action string) ([]models.Ope
 	}
 	query = ApplyExistingFileFilter(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
+	records = r.AttachCurrentPaths(records)
 	return records, err
 }
 
 // ListRecentAllPaginated 获取最近的记录（分页版，不限IP）
 // 返回记录列表和总记录数
-// 相同文件（根目录+路径+文件名）只保留最近一条记录，去重在 SQL 层完成，避免分页重复
+// 去重维度：已建立身份关联的记录（file_record_id > 0）按 file_id 分组，仅保留最新一条，
+// 即使移动/重命名后历史快照路径不同也不会重复；未关联的记录（历史数据/临时等）回退到
+// 根目录+路径+文件名分组。去重在 SQL 层完成，避免分页重复。
 func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action string) ([]models.OperationRecord, int64, error) {
 	offset := (page - 1) * pageSize
 
+	// 分组键：已关联的记录按 file_id，未关联的按路径快照
+	const dedupGroupKey = `(CASE WHEN file_record_id > 0
+		THEN 'f' || CAST(file_record_id AS TEXT)
+		ELSE 'p' || COALESCE(root_name,'') || COALESCE(file_path,'') || COALESCE(file_name,'')
+		END)`
+
 	// 总数为去重后的不同文件数（GORM 的 Distinct().Count() 会被降级为 COUNT(*)，
 	// 因此用子查询统计 DISTINCT 行数）
-	distinctSub := r.db.Table("operation_records").Select("root_name, file_path, file_name")
+	distinctSub := r.db.Table("operation_records").Select(dedupGroupKey)
 	if action != "" {
 		distinctSub = distinctSub.Where("`action` = ?", action)
 	}
@@ -237,7 +329,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 
 	// 利用窗口函数在每个文件分组内取最新一条记录
 	rowsQuery := r.db.Model(&models.OperationRecord{}).Select(
-		"*, ROW_NUMBER() OVER (PARTITION BY root_name, file_path, file_name ORDER BY created_at DESC, id DESC) AS __rn",
+		"*, ROW_NUMBER() OVER (PARTITION BY " + dedupGroupKey + " ORDER BY created_at DESC, id DESC) AS __rn",
 	)
 	if action != "" {
 		rowsQuery = rowsQuery.Where("`action` = ?", action)
@@ -250,6 +342,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 		Order("created_at DESC, id DESC").
 		Offset(offset).Limit(pageSize).
 		Find(&records).Error
+	records = r.AttachCurrentPaths(records)
 	return records, total, err
 }
 
@@ -271,6 +364,7 @@ func (r *RecordRepository) GetRecent(limit int) ([]models.OperationRecord, error
 	query := r.db.Where("`action` IN ?", []string{"upload", "download"})
 	query = ApplyExistingFileFilter(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
+	records = r.AttachCurrentPaths(records)
 	return records, err
 }
 

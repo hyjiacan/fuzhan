@@ -133,3 +133,66 @@ func TestListRecentAllPaginated_DeletedFileExcluded(t *testing.T) {
 		t.Errorf("期望仅返回 exist.txt，实际 %s", got[0].FileName)
 	}
 }
+
+// TestListRecentAllPaginated_DedupByFileID 验证按 file_id 身份去重：
+// 同一文件移动/重命名后，历史操作记录的路径快照不同，但 file_record_id 相同，
+// 去重后仅保留最新一条，并经 AttachCurrentPaths 显示文件当前路径。
+func TestListRecentAllPaginated_DedupByFileID(t *testing.T) {
+	db := getTestDB(t)
+	repo := repositories.NewRecordRepository(db)
+	now := time.Now()
+
+	// 两个不同的文件索引记录（active），其当前路径分别为新位置
+	movedIndex := models.FileRecordPublic{FileRecordBase: models.FileRecordBase{
+		RootName: "rootZ", FilePath: "/moved/report.pdf", FileName: "report.pdf",
+		FileSize: 2, ModTime: now, LastSyncedAt: now}}
+	otherIndex := models.FileRecordPublic{FileRecordBase: models.FileRecordBase{
+		RootName: "rootZ", FilePath: "/b/other.txt", FileName: "other.txt",
+		FileSize: 1, ModTime: now, LastSyncedAt: now}}
+	if err := db.Create(&movedIndex).Error; err != nil {
+		t.Fatalf("创建 movedIndex 失败: %v", err)
+	}
+	if err := db.Create(&otherIndex).Error; err != nil {
+		t.Fatalf("创建 otherIndex 失败: %v", err)
+	}
+
+	ops := []models.OperationRecord{
+		// 同一 file 的两条历史记录：旧路径快照 + 新路径快照，file_record_id 相同
+		{Action: "upload", RootName: "rootZ", FilePath: "old/a.pdf", FileName: "a.pdf", FileRecordID: movedIndex.ID, CreatedAt: now.Add(-3 * time.Hour)},
+		{Action: "upload", RootName: "rootZ", FilePath: "moved/report.pdf", FileName: "report.pdf", FileRecordID: movedIndex.ID, CreatedAt: now.Add(-time.Hour)},
+		// 另一个文件的记录
+		{Action: "upload", RootName: "rootZ", FilePath: "b/other.txt", FileName: "other.txt", FileRecordID: otherIndex.ID, CreatedAt: now},
+	}
+	for _, rec := range ops {
+		if err := repo.Create(&rec); err != nil {
+			t.Fatalf("创建记录失败: %v", err)
+		}
+	}
+
+	got, total, err := repo.ListRecentAllPaginated(1, 10, "upload")
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("expected total=2 (同一 file_id 合并为一条), got %d", total)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(got))
+	}
+	// 最新的一条是 other.txt；moved 文件合并为一条
+	foundMoved := false
+	for _, r := range got {
+		if r.FileRecordID == movedIndex.ID {
+			foundMoved = true
+			if r.FileName != "report.pdf" {
+				t.Errorf("合并后应按当前索引显示 report.pdf，实际 %s", r.FileName)
+			}
+			if r.FilePath != "/moved/report.pdf" {
+				t.Errorf("合并后应显示当前路径 /moved/report.pdf，实际 %s", r.FilePath)
+			}
+		}
+	}
+	if !foundMoved {
+		t.Error("缺少 file_id=移动到新位置 的记录")
+	}
+}
