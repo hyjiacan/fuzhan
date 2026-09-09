@@ -202,7 +202,20 @@ type Config struct {
 	Security SecurityConfig  `yaml:"security"`
 	Auth     AuthConfig      `yaml:"auth"`
 	OpenAPI  OpenAPIConfig   `yaml:"open_api"`
-	Index    IndexConfig     `yaml:"index"` // 文件索引配置
+	Index    IndexConfig     `yaml:"index"`    // 文件索引配置
+	Resource ResourceConfig  `yaml:"resource"` // 服务器资源监控配置
+}
+
+// ResourceConfig 服务器资源监控配置
+type ResourceConfig struct {
+	// Enabled 是否启用资源监控（未配置为启动时仅日志提示功能未启用）
+	Enabled bool `yaml:"enabled"`
+	// SamplingInterval 内存实时采样间隔（秒），默认 5。实时曲线按此频率刷新，不落库。
+	SamplingInterval int `yaml:"sampling_interval,omitempty"`
+	// CollectInterval 历史数据采集间隔（秒），默认 60（每分钟一条），落库并用于历史曲线。
+	CollectInterval int `yaml:"collect_interval,omitempty"`
+	// RetentionDays 历史数据保留天数，默认 7，超出部分定期清理。
+	RetentionDays int `yaml:"retention_days,omitempty"`
 }
 
 // IndexConfig 文件索引配置

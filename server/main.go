@@ -31,6 +31,7 @@ import (
 	"fuzhan/internal/monitor"
 	"fuzhan/internal/notification"
 	"fuzhan/internal/openapi"
+	"fuzhan/internal/resource"
 	"fuzhan/internal/search"
 	"fuzhan/internal/services"
 	"fuzhan/internal/setup"
@@ -41,6 +42,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 //go:embed web/index.html web/scalar.html all:web/assets fuzhan.sample.yaml
@@ -189,7 +191,7 @@ func main() {
 	})
 
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{})
+	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{})
 
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
@@ -402,6 +404,10 @@ func main() {
 	// 系统监测处理器 (无需认证)
 	monitorService := services.NewMonitorService(recordRepo, db)
 	monitorHandler := monitor.NewHandler(monitorService)
+
+	// 服务器资源监控（需管理员认证；worker 在下方启动）
+	resourceCollector := resource.NewCollector(func() *gorm.DB { return appconfig.GetDB() })
+	resourceHandler := resource.NewHandler(resourceCollector)
 
 	// 预览处理器 (无需认证)
 	previewHandler := file.NewPreviewHandler(baseHandler)
@@ -680,6 +686,13 @@ func main() {
 
 				// Open API 调用统计（v3 Phase 3）
 				admin.GET("/open-api/stats", openAPIStatsHandler.GetStats)
+
+				// 服务器资源监控
+				resourceRoutes := admin.Group("/resource")
+				{
+					resourceRoutes.GET("/snapshot", resourceHandler.Snapshot)
+					resourceRoutes.GET("/history", resourceHandler.History)
+				}
 			}
 
 			// 配置引导路由（无需认证）
@@ -1364,6 +1377,7 @@ func main() {
 			&models.ApiKey{},
 			&models.OAuthClient{},
 			&models.AuthRecord{},
+			&models.ResourceMetric{},
 		)
 		if err != nil {
 			utils.Error("数据库切换失败，保留原连接", utils.Err(err))
@@ -1417,6 +1431,7 @@ func main() {
 		workerStart(wm, "scan-timer", runScanTimerWorker)
 		workerStart(wm, "consistency-check", runConsistencyCheckWorker)
 		workerStart(wm, "search-reconcile", runSearchReconcileWorker)
+		workerStart(wm, "resource-monitor", func(ctx context.Context) { resourceCollector.Run(ctx) })
 
 		// ===== 启动完成 =====
 		utils.Info("========================================")

@@ -32,7 +32,7 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
-  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor
+  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -47,6 +47,7 @@ const menuOptions = [
   { label: '重复文件', key: '/admin/duplicates', icon: CopyDocument },
   { label: '记录管理', key: '/admin/records', icon: Clock },
   { label: '在线IP', key: '/admin/online', icon: Monitor },
+  { label: '资源监控', key: '/admin/resource', icon: Odometer },
   { label: '用户管理', key: '/admin/users', icon: User },
   { label: 'OpenAPI', key: '/admin/openapi', icon: Key },
   { label: '设置', key: '/admin/settings', icon: Setting }

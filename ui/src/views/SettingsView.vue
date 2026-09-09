@@ -474,6 +474,44 @@
           </el-col>
         </el-row>
       </el-tab-pane>
+
+      <!-- 资源监控 -->
+      <el-tab-pane name="resource" label="资源监控">
+        <el-row :gutter="16">
+          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
+            <el-card>
+              <template #header><span>服务器资源监控配置</span></template>
+              <el-form label-width="120px">
+                <el-form-item label="启用监控">
+                  <el-switch v-model="settings.resource.enabled" />
+                  <div class="field-hint">开启后在管理「资源监控」页展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO</div>
+                </el-form-item>
+                <el-form-item label="实时采样间隔">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <el-input-number v-model="settings.resource.samplingInterval" :min="1" :max="60" />
+                    <span>秒</span>
+                  </div>
+                  <div class="field-hint">实时曲线按此频率在内存采样刷新（不落库）</div>
+                </el-form-item>
+                <el-form-item label="历史采集间隔">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <el-input-number v-model="settings.resource.collectInterval" :min="10" :max="3600" />
+                    <span>秒</span>
+                  </div>
+                  <div class="field-hint">历史数据按此间隔落库，默认 60 秒（每分钟一条）</div>
+                </el-form-item>
+                <el-form-item label="历史保留天数">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <el-input-number v-model="settings.resource.retentionDays" :min="1" :max="365" />
+                    <span>天</span>
+                  </div>
+                  <div class="field-hint">超出保留期的历史数据将被定期清理，默认 7 天</div>
+                </el-form-item>
+              </el-form>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
     </el-tabs>
 
     <div class="actions-bar">
@@ -776,6 +814,12 @@ const settings = reactive({
   },
   scanCronExpression: '0 1 * * *',
   searchReconcileCronExpression: '0 5 * * *',
+  resource: {
+    enabled: false,
+    samplingInterval: 5,
+    collectInterval: 60,
+    retentionDays: 7
+  },
 })
 
 const formatSize = (bytes) => NumberUtils.formatFileSize(bytes)
@@ -917,6 +961,14 @@ const loadSettings = async () => {
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
       settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
 
+      // 资源监控配置
+      settings.resource = {
+        enabled: cfg.resource?.enabled ?? false,
+        samplingInterval: cfg.resource?.samplingInterval || 5,
+        collectInterval: cfg.resource?.collectInterval || 60,
+        retentionDays: cfg.resource?.retentionDays || 7
+      }
+
       // 保存原始服务器配置用于变更检测
       originalServerConfig.value = {
         host: settings.server.host,
@@ -1009,6 +1061,12 @@ const doSaveSettings = async () => {
       index: {
         scanCronExpression: settings.scanCronExpression,
         searchReconcileCronExpression: settings.searchReconcileCronExpression,
+      },
+      resource: {
+        enabled: settings.resource.enabled,
+        samplingInterval: settings.resource.samplingInterval,
+        collectInterval: settings.resource.collectInterval,
+        retentionDays: settings.resource.retentionDays
       }
     }
 

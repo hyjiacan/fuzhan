@@ -855,6 +855,11 @@ const onUploadSuccess = () => {
   store.actions.loadFileList(store.state.currentPath || '/')
 }
 
+const onUploadError = () => {
+  // 上传失败时同样刷新列表（可能产生了部分文件）；逐项错误已由上传组件内部展示
+  store.actions.loadFileList(store.state.currentPath || '/')
+}
+
 // Lifecycle
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)

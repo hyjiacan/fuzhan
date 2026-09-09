@@ -204,3 +204,15 @@ log:
 index:
   scan_start_delay_seconds: 10  # 启动时扫描延迟（秒）
   scan_cron_expression: "0 1 * * *"  # 定时全量扫描 cron 表达式，默认每天凌晨 1:00
+
+# ----------------------------------------
+# 服务器资源监控配置
+# ----------------------------------------
+# 在管理模块中展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 的实时与历史曲线。
+# 实时曲线按 sampling_interval 秒在内存采样（不落库）；历史数据按 collect_interval 秒落库（默认每分钟一条）。
+# 历史数据保留 retention_days 天，超出部分定期清理。
+resource:
+  enabled: true                 # 是否启用资源监控（默认 false，需手动开启）
+  sampling_interval: 5          # 内存实时采样间隔（秒），默认 5
+  collect_interval: 60          # 历史数据采集间隔（秒），默认 60（每分钟一条）
+  retention_days: 7             # 历史数据保留天数，默认 7

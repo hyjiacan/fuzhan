@@ -19,6 +19,7 @@ type ConfigDTO struct {
 	Preview           PreviewConfigDTO   `json:"preview"`
 	OpenApi           *OpenApiConfigDTO  `json:"openApi"`
 	Index             IndexConfigDTO     `json:"index"`
+	Resource          ResourceConfigDTO  `json:"resource"`
 }
 
 type OpenApiConfigDTO struct {
@@ -139,6 +140,14 @@ type IndexConfigDTO struct {
 	SearchReconcileCronExpression string `json:"searchReconcileCronExpression"`
 }
 
+// ResourceConfigDTO 服务器资源监控配置 DTO
+type ResourceConfigDTO struct {
+	Enabled          bool `json:"enabled"`
+	SamplingInterval int  `json:"samplingInterval"`
+	CollectInterval  int  `json:"collectInterval"`
+	RetentionDays    int  `json:"retentionDays"`
+}
+
 // ParseOrDefault 解析配额字符串，失败时返回默认值
 func parseOrDefault(s string, defaultVal int64) int64 {
 	if s == "" {
@@ -248,6 +257,12 @@ func (c *Config) ToDTO() ConfigDTO {
 			ScanCronExpression:            c.Index.ScanCronExpression,
 			SearchReconcileCronExpression: c.Index.SearchReconcileCronExpression,
 		},
+		Resource: ResourceConfigDTO{
+			Enabled:          c.Resource.Enabled,
+			SamplingInterval: c.Resource.SamplingInterval,
+			CollectInterval:  c.Resource.CollectInterval,
+			RetentionDays:    c.Resource.RetentionDays,
+		},
 	}
 }
 
@@ -330,6 +345,12 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	// 索引配置
 	cfg.Index.ScanCronExpression = dto.Index.ScanCronExpression
 	cfg.Index.SearchReconcileCronExpression = dto.Index.SearchReconcileCronExpression
+
+	// 资源监控配置
+	cfg.Resource.Enabled = dto.Resource.Enabled
+	cfg.Resource.SamplingInterval = dto.Resource.SamplingInterval
+	cfg.Resource.CollectInterval = dto.Resource.CollectInterval
+	cfg.Resource.RetentionDays = dto.Resource.RetentionDays
 
 	return cfg
 }

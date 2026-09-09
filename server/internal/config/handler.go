@@ -178,18 +178,19 @@ func (h *Handler) GetConfig(c *gin.Context) {
 // SaveConfigRequest 保存配置请求
 // 字段名与前端设置页提交内容严格一致，避免保存时覆盖未提交的配置项。
 type SaveConfigRequest struct {
-	App               AppConfig                `json:"app"`
-	Account           AccountResponse          `json:"account"`
-	Server            ServerResponse           `json:"server"`
-	Database          DatabaseConfig           `json:"database"`
-	RootDirs          []RootDirInput           `json:"rootDirs"`
-	AllowedExtensions []string                 `json:"allowedExtensions"`
-	PrivateFiles      PrivateFilesConfig       `json:"privateFiles"`
-	TempFiles         TempFilesConfig          `json:"tempFiles"`
-	Upload            UploadConfig             `json:"upload"`
-	Preview           PreviewConfig            `json:"preview"`
-	OpenApi           *OpenApiConfig           `json:"openApi"`
-	Index             appconfig.IndexConfigDTO `json:"index"`
+	App               AppConfig                   `json:"app"`
+	Account           AccountResponse             `json:"account"`
+	Server            ServerResponse              `json:"server"`
+	Database          DatabaseConfig              `json:"database"`
+	RootDirs          []RootDirInput              `json:"rootDirs"`
+	AllowedExtensions []string                    `json:"allowedExtensions"`
+	PrivateFiles      PrivateFilesConfig          `json:"privateFiles"`
+	TempFiles         TempFilesConfig             `json:"tempFiles"`
+	Upload            UploadConfig                `json:"upload"`
+	Preview           PreviewConfig               `json:"preview"`
+	OpenApi           *OpenApiConfig              `json:"openApi"`
+	Index             appconfig.IndexConfigDTO    `json:"index"`
+	Resource          appconfig.ResourceConfigDTO `json:"resource"`
 }
 
 type OpenApiConfig struct {
@@ -447,6 +448,25 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// —— 检索索引对齐任务 cron ——
 		appconfig.GlobalConfig.Index.SearchReconcileCronExpression = req.Index.SearchReconcileCronExpression
 		updates.Add("index.search_reconcile_cron_expression", req.Index.SearchReconcileCronExpression)
+	}
+
+	// —— 服务器资源监控 ——
+	if present("resource") {
+		appconfig.GlobalConfig.Resource.Enabled = req.Resource.Enabled
+		updates.Add("resource.enabled", req.Resource.Enabled)
+		// 未配置（<=0）时保持默认值，不写入 0/负值
+		if req.Resource.SamplingInterval > 0 {
+			appconfig.GlobalConfig.Resource.SamplingInterval = req.Resource.SamplingInterval
+			updates.Add("resource.sampling_interval", req.Resource.SamplingInterval)
+		}
+		if req.Resource.CollectInterval > 0 {
+			appconfig.GlobalConfig.Resource.CollectInterval = req.Resource.CollectInterval
+			updates.Add("resource.collect_interval", req.Resource.CollectInterval)
+		}
+		if req.Resource.RetentionDays > 0 {
+			appconfig.GlobalConfig.Resource.RetentionDays = req.Resource.RetentionDays
+			updates.Add("resource.retention_days", req.Resource.RetentionDays)
+		}
 	}
 
 	// 私有/临时文件存储目录创建

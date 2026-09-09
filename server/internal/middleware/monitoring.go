@@ -25,7 +25,9 @@ func isNonActivityRequest(method, path string) bool {
 		strings.HasSuffix(path, "/online-ips"),
 		strings.HasSuffix(path, "/tasks"),
 		strings.HasSuffix(path, "/tasks/history"),
-		strings.HasSuffix(path, "/monitor/recent"):
+		strings.HasSuffix(path, "/monitor/recent"),
+		strings.HasSuffix(path, "/resource/snapshot"),
+		strings.HasSuffix(path, "/resource/history"):
 		return true
 	}
 	return false

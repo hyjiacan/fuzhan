@@ -7,7 +7,7 @@
 
     <!-- 统计卡片 -->
         <el-row :gutter="16" class="stat-grid">
-          <el-col :span="4">
+          <el-col :span="6">
             <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <el-icon :size="32"><component :is="StorageIcon" /></el-icon>
@@ -18,7 +18,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="4">
+          <el-col :span="6">
             <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <el-icon :size="32"><component :is="FileIcon" /></el-icon>
@@ -29,18 +29,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="4">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <el-icon :size="32"><component :is="FileIcon" /></el-icon>
-                <div class="stat-info">
-                  <div class="stat-value">{{ formatSize(indexStats.totalSize) }}</div>
-                  <div class="stat-label">总大小</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-          <el-col :span="4">
+          <el-col :span="6">
             <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <el-icon :size="32"><component :is="DuplicateIcon" /></el-icon>
@@ -51,7 +40,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="4">
+          <el-col :span="6">
             <el-card class="stat-card" shadow="never">
               <div class="stat-content">
                 <el-icon :size="32"><component :is="AccessIcon" /></el-icon>
@@ -62,45 +51,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="4">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <el-icon :size="32"><component :is="GlobeIcon" /></el-icon>
-                <div class="stat-info">
-                  <div class="stat-value">{{ openApiStats.todayCalls }}</div>
-                  <div class="stat-label">API 调用(今日)</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
         </el-row>
-
-        <!-- 系统信息：运行状态 + 版本 -->
-        <div class="system-info-row" v-if="systemInfoLoaded">
-          <el-card class="chart-card system-info-card" shadow="never">
-            <template #header>系统信息</template>
-            <el-descriptions :column="4" size="small">
-              <el-descriptions-item label="服务状态">
-                <el-tag :type="healthStatus === 'healthy' ? 'success' : 'danger'" size="small">
-                  {{ healthStatus === 'healthy' ? '正常运行' : '异常' }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="应用名称">
-                {{ systemConfig.appName || '-' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="版本号">
-                {{ systemConfig.version || '-' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="组件状态">
-                <el-space size="small">
-                  <el-tag v-for="check in healthChecks" :key="check.name" :type="check.status === 'ok' ? 'success' : 'danger'" size="small">
-                    {{ check.label }}: {{ check.status === 'ok' ? '正常' : '异常' }}
-                  </el-tag>
-                </el-space>
-              </el-descriptions-item>
-            </el-descriptions>
-          </el-card>
-        </div>
 
         <!-- 下方：左侧存储区域 / 右侧文件区域 -->
         <div class="dashboard-bottom">
@@ -200,8 +151,7 @@
 import { ref, reactive, h, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
-import { AdminApi, MonitorApi, SystemApi, IndexApi } from '@/api'
-import store from '@/store'
+import { AdminApi, MonitorApi, IndexApi } from '@/api'
 
 // ============ 概览部分 ============
 
@@ -243,22 +193,6 @@ const indexStats = ref({
   duplicateGroups: 0
 })
 
-// OpenAPI 统计
-const openApiStats = ref({
-  todayCalls: 0,
-  weekCalls: 0,
-  totalCalls: 0
-})
-
-// ============ 系统信息 ============
-const systemInfoLoaded = ref(false)
-const healthStatus = ref('healthy')
-const healthChecks = ref([])
-const systemConfig = ref({
-  appName: '',
-  version: '1.0.0'
-})
-
 // ============ Icons ============
 const UserIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' })
@@ -271,9 +205,6 @@ const StorageIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBo
 ])
 const AccessIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' })
-])
-const GlobeIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
-  h('path', { d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z' })
 ])
 const DuplicateIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z' })
@@ -308,14 +239,13 @@ const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
 const loadStats = async () => {
   try {
-    const [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData, openApiData] = await Promise.all([
+    const [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData] = await Promise.all([
       AdminApi.getUsers().catch((e) => { console.error('获取用户数据失败:', e); return { success: false } }),
       MonitorApi.getStorage().catch((e) => { console.error('获取存储数据失败:', e); return { success: false } }),
       MonitorApi.getAccess().catch((e) => { console.error('获取访问数据失败:', e); return { success: false } }),
       MonitorApi.getKeywords(30).catch((e) => { console.error('获取关键词数据失败:', e); return { success: false } }),
       MonitorApi.getRankings(30).catch((e) => { console.error('获取排行数据失败:', e); return { success: false } }),
-      IndexApi.getStats().catch((e) => { console.error('获取索引统计失败:', e); return { success: false } }),
-      SystemApi.getOpenAPIStats().catch((e) => { console.error('获取OpenAPI统计失败:', e); return { success: false } })
+      IndexApi.getStats().catch((e) => { console.error('获取索引统计失败:', e); return { success: false } })
     ])
 
     const failedCount = [usersData, storageData, accessData, keywordsData, rankingsData, indexStatsData]
@@ -362,45 +292,9 @@ const loadStats = async () => {
     if (indexStatsData.success) {
       indexStats.value = indexStatsData.data || { totalFiles: 0, totalSize: 0, duplicateGroups: 0 }
     }
-
-    if (openApiData.success) {
-      openApiStats.value = openApiData.data || { todayCalls: 0, weekCalls: 0, totalCalls: 0 }
-    }
   } catch (e) {
     console.error('获取统计数据失败', e)
   }
-}
-
-// ============ 系统信息加载 ============
-
-const loadSystemInfo = async () => {
-  try {
-    const [healthRes] = await Promise.all([
-      SystemApi.health().catch((e) => { console.error('获取系统信息失败:', e); return { success: false } })
-    ])
-    if (healthRes.success && healthRes.data) {
-      healthStatus.value = healthRes.data.status || 'healthy'
-      const checks = healthRes.data.checks || {}
-      healthChecks.value = Object.entries(checks).map(([name, info]) => ({
-        name,
-        label: getCheckLabel(name),
-        status: info.status || 'unknown',
-        message: info.message || ''
-      }))
-    }
-    systemConfig.value = {
-      appName: store.state.config.appName || '',
-      version: store.state.config.version || '1.0.0'
-    }
-    systemInfoLoaded.value = true
-  } catch (e) {
-    console.error('加载系统信息失败', e)
-  }
-}
-
-const getCheckLabel = (name) => {
-  const labels = { database: '数据库', storage: '存储', cache: '缓存', network: '网络' }
-  return labels[name] || name
 }
 
 // ============ 僵尸文件数据加载 ============
@@ -446,7 +340,6 @@ const zombieCleanSession = (session) => {
 
 onMounted(() => {
   loadStats()
-  loadSystemInfo()
 })
 </script>
 
@@ -744,17 +637,6 @@ onMounted(() => {
       color: @text-color-placeholder;
       font-size: @font-size-xs;
     }
-  }
-}
-
-/* 系统信息栏 */
-.system-info-row {
-  margin-bottom: 16px;
-}
-
-.system-info-card {
-  :deep(.el-descriptions) {
-    padding: 4px 0;
   }
 }
 

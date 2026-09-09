@@ -166,6 +166,17 @@ export const ConfigApi = {
   }
 }
 
+// ========== 服务器资源监控 API ==========
+export const ResourceApi = {
+  snapshot() {
+    return request.get('/admin/resource/snapshot')
+  },
+
+  history(scope, range) {
+    return request.get('/admin/resource/history', { params: { scope, range } })
+  }
+}
+
 // ========== 文件 API ==========
 export const FileApi = {
   list(path = '') {
