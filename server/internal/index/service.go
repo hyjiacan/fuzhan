@@ -172,7 +172,14 @@ func (s *Service) RemoveFile(rootName, filePath string) error {
 
 // MoveFile 移动文件索引
 func (s *Service) MoveFile(rootName, oldPath, newPath string) error {
-	return s.syncer.MoveFile(rootName, oldPath, newPath)
+	err := s.syncer.MoveFile(rootName, oldPath, newPath)
+	// 移动后标记新旧路径为最近已同步，避免文件监听器对移动产生的
+	// Create/Remove 事件二次处理后造成索引记录丢失或重建（30 秒自动过期）
+	if oldPath != newPath {
+		s.MarkRecentlySynced(rootName, oldPath)
+		s.MarkRecentlySynced(rootName, newPath)
+	}
+	return err
 }
 
 // ListRecords 分页查询文件记录

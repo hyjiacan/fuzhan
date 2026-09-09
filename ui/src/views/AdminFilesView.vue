@@ -572,7 +572,13 @@ const loadCurrentDir = async () => {
 const openMoveModal = (file) => {
   currentFile.value = file
   targetRootName.value = file.rootName || ''
-  targetSubPath.value = file.path || ''
+  // 预填相对根目录的路径（去除 rootName 前缀），避免与 handleMove 拼接时出现重复嵌套
+  let rel = file.path || ''
+  const prefix = '/' + (file.rootName || '')
+  if (rel.startsWith(prefix + '/')) {
+    rel = rel.slice(prefix.length + 1)
+  }
+  targetSubPath.value = rel
   moveModalVisible.value = true
 }
 

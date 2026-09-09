@@ -264,11 +264,15 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
 		newDbPath = "/" + newDbPath
 	}
 	now := utils.Now()
+	// 移动后同时恢复 status/deleted_at，覆盖 watcher 已先软删旧记录（"复活"）的情况；
+	// 对原本 active 的记录无副作用。
 	moveUpdates := map[string]interface{}{
 		"file_name": filepath.Base(strings.TrimSuffix(newDbPath, "/")),
 		"file_path": newDbPath,
 		// full_path 同步更新：/rootName/newDbPath
 		"full_path":      "/" + rootName + newDbPath,
+		"status":         models.FileStatusActive,
+		"deleted_at":     nil,
 		"updated_at":     now,
 		"last_synced_at": now,
 	}
@@ -276,14 +280,23 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
 	var topID int64
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// 查找旧记录
+		// 查找旧记录（优先 active）
 		var record models.FileRecordPublic
 		result := tx.Where("root_name = ? AND file_path = ? AND status = ?",
 			rootName, oldDbPath, models.FileStatusActive).First(&record)
-		if result.Error != nil {
-			if result.Error == gorm.ErrRecordNotFound {
-				return fmt.Errorf("索引记录不存在: %s/%s", rootName, oldPath)
+		if result.Error == gorm.ErrRecordNotFound {
+			// 移动成功后，文件系统监听器可能已先处理 Remove 事件、把旧记录软删除，
+			// 此时回退匹配已软删除的旧记录，在移动的同时将其复活，避免索引记录丢失或重建出新 ID。
+			fallback := tx.Where("root_name = ? AND file_path = ? AND status = ?",
+				rootName, oldDbPath, models.FileStatusDeleted).Order("id ASC").First(&record)
+			if fallback.Error == gorm.ErrRecordNotFound {
+				// 无任何旧记录（例如尚未建索引），按 SyncFile 逻辑在目标路径新建记录
+				return s.createRecordAtPath(tx, rootName, newDbPath, now, &topID)
 			}
+			if fallback.Error != nil {
+				return fallback.Error
+			}
+		} else if result.Error != nil {
 			return result.Error
 		}
 		topID = int64(record.ID)
@@ -334,6 +347,39 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
 					utils.Err(ierr))
 			}
 		}
+	}
+	return nil
+}
+
+// createRecordAtPath 在目标路径新建一条 active 索引记录（moveFileOnce 的无旧记录兜底分支）
+func (s *Syncer) createRecordAtPath(tx *gorm.DB, rootName, dbPath string, now time.Time, topID *int64) error {
+	rootPath, ok := s.rootNames[rootName]
+	if !ok {
+		return fmt.Errorf("根目录不存在: %s", rootName)
+	}
+	fullPath := filepath.Join(rootPath, strings.TrimPrefix(dbPath, "/"))
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return fmt.Errorf("获取文件信息失败: %w", err)
+	}
+	rec := models.FileRecordPublic{
+		FileRecordBase: models.FileRecordBase{
+			FileName:     info.Name(),
+			FilePath:     dbPath,
+			RootName:     rootName,
+			FullPath:     "/" + rootName + dbPath,
+			FileSize:     fileSizeFromInfo(info),
+			IsDir:        info.IsDir(),
+			ModTime:      info.ModTime(),
+			Status:       models.FileStatusActive,
+			LastSyncedAt: now,
+		},
+	}
+	if err := tx.Create(&rec).Error; err != nil {
+		return err
+	}
+	if topID != nil {
+		*topID = int64(rec.ID)
 	}
 	return nil
 }
