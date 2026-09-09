@@ -1,5 +1,6 @@
 <template>
-  <div class="home-view">
+  <div class="home-view" @dragenter.prevent="handlePageDragEnter" @dragover.prevent="handlePageDragOver"
+    @dragleave.prevent="handlePageDragLeave" @drop.prevent="handlePageDrop">
     <!-- Breadcrumb + Actions -->
     <div class="content-header">
       <div class="breadcrumb-actions">
@@ -106,7 +107,7 @@
     </el-dialog>
 
     <!-- 上传弹窗（dialog 集成在 UploadManager 组件内） -->
-    <upload-manager v-model="uploadDialogVisible" :upload-api="uploadApi" title="上传文件"
+    <upload-manager ref="uploadManagerRef" v-model="uploadDialogVisible" :upload-api="uploadApi" title="上传文件"
       @upload-success="onUploadSuccess" @upload-error="onUploadError" />
 
     <!-- 文件预览弹窗 -->
@@ -126,11 +127,22 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 全局拖放上传提醒 -->
+    <transition name="drop-overlay-fade">
+      <div v-if="isPageDragging" class="global-drop-overlay">
+        <div class="global-drop-overlay-content">
+          <el-icon :size="64" color="#fff"><component :is="UploadIcon" /></el-icon>
+          <div class="overlay-title">松开以上传文件</div>
+          <div class="overlay-sub">{{ dragFileCount }} 个文件即将上传</div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, h, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
@@ -141,7 +153,7 @@ import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions, compareFileNa
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 import { isPreviewable } from '@/config/preview'
-import { FileRecordApi, SearchApi } from '@/api'
+import { FileApi, FileRecordApi, SearchApi } from '@/api'
 import { isAppInitialized, initializationComplete } from '@/main'
 
 // 上传 API
@@ -156,6 +168,73 @@ const uploadApi = {
 
 const router = useRouter()
 const route = useRoute()
+
+// 上传图标
+const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
+  h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
+])
+
+// ===== 页面级拖放上传 =====
+// 拖放文件到文件页时，显示上传提醒遮罩，松开鼠标后打开上传弹框并把文件加入本地上传队列
+const uploadManagerRef = ref(null)
+const isPageDragging = ref(false)
+const dragFileCount = ref(0)
+const pendingDropFiles = ref([])
+let pageDragCounter = 0
+// 是否拖入了文件（而非普通元素拖拽）
+const hasFileDrag = (e) => Array.from(e?.dataTransfer?.types || []).includes('Files')
+
+const handlePageDragEnter = (e) => {
+  if (!hasFileDrag(e)) return
+  // 上传弹框已打开时不显示页面遮罩（由弹框内的 drop zone 接管）
+  if (uploadDialogVisible.value) return
+  e.dataTransfer.dropEffect = 'copy'
+  pageDragCounter++
+  isPageDragging.value = true
+  dragFileCount.value = e.dataTransfer?.files?.length || 0
+}
+
+const handlePageDragOver = (e) => {
+  if (!isPageDragging.value && hasFileDrag(e) && !uploadDialogVisible.value) {
+    pageDragCounter = Math.max(pageDragCounter, 1)
+    isPageDragging.value = true
+    dragFileCount.value = e.dataTransfer?.files?.length || 0
+  }
+  e.dataTransfer.dropEffect = 'copy'
+}
+
+const handlePageDragLeave = (e) => {
+  if (!hasFileDrag(e)) return
+  pageDragCounter = Math.max(0, pageDragCounter - 1)
+  if (pageDragCounter === 0) {
+    isPageDragging.value = false
+  }
+}
+
+const handlePageDrop = (e) => {
+  pageDragCounter = 0
+  isPageDragging.value = false
+  const dropFiles = e.dataTransfer?.files
+  if (!dropFiles || dropFiles.length === 0) return
+  // 打开上传弹框，待组件挂载后把拖放文件加入本地上传队列
+  pendingDropFiles.value = Array.from(dropFiles)
+  uploadDialogVisible.value = true
+}
+
+// 上传弹框打开后，将拖放文件注入 UploadManager 的本地上传队列
+watch(uploadDialogVisible, async (visible, prev) => {
+  if (visible && prev === false && pendingDropFiles.value.length > 0) {
+    await nextTick()
+    if (uploadManagerRef.value) {
+      const files = pendingDropFiles.value
+      pendingDropFiles.value = []
+      files.forEach((file, idx) => {
+        uploadManagerRef.value.addFile({ name: file.name, size: file.size, file })
+        if (idx === files.length - 1) ElMessage.success(`已添加 ${files.length} 个文件到上传队列`)
+      })
+    }
+  }
+})
 
 // 备注编辑
 const notesModalVisible = ref(false)
@@ -235,7 +314,7 @@ const confirmRename = async () => {
   }
   renaming.value = true
   try {
-    const res = await FileRecordApi.rename(row.path, newName)
+    const res = await FileApi.rename(row.path, newName)
     if (res.success) {
       ElMessage.success('重命名成功')
       renameDialogVisible.value = false
@@ -257,7 +336,7 @@ const confirmDelete = (row) => {
     type: 'warning'
   }).then(async () => {
     try {
-      const res = await FileRecordApi.deletePublic(row.path)
+      const res = await FileApi.deletePublic(row.path)
       if (res.success) {
         ElMessage.success('删除成功')
         reloadAfterManage()
@@ -295,7 +374,7 @@ const confirmMove = async () => {
   }
   moving.value = true
   try {
-    const res = await FileRecordApi.move(row.path, target)
+    const res = await FileApi.move(row.path, target)
     if (res.success) {
       ElMessage.success('移动成功')
       moveDialogVisible.value = false
@@ -950,6 +1029,59 @@ watch(
       height: 100%;
       width: 100%;
     }
+  }
+
+  // 页面级拖放上传遮罩
+  .global-drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(33, 33, 33, 0.72);
+    animation: dropOverlayIn 0.18s ease-out;
+
+    .global-drop-overlay-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 40px 56px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 2px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 12px;
+      color: #fff;
+
+      .overlay-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .overlay-sub {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.75);
+      }
+    }
+  }
+}
+
+.drop-overlay-fade-enter-active,
+.drop-overlay-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.drop-overlay-fade-enter-from,
+.drop-overlay-fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes dropOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
