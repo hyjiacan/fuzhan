@@ -177,6 +177,7 @@ const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 // ===== 页面级拖放上传 =====
 // 拖放文件到文件页时，显示上传提醒遮罩，松开鼠标后打开上传弹框并把文件加入本地上传队列
 const uploadManagerRef = ref(null)
+const uploadDialogVisible = ref(false)
 const isPageDragging = ref(false)
 const dragFileCount = ref(0)
 const pendingDropFiles = ref([])
@@ -389,7 +390,6 @@ const confirmMove = async () => {
   }
 }
 
-const uploadDialogVisible = ref(false)
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
 const previewFileData = ref({})
