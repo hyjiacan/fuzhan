@@ -68,6 +68,24 @@ while ($i -lt $args.Length) {
     }
 }
 
+# 构建前端；yarn 在 Windows 下是 yarn.cmd，PowerShell 中通过调用运算符 & 显式调用，
+# 其作为原生命令失败时 $ErrorActionPreference 不会拦截，必须显式检查 $LASTEXITCODE，
+# 非零立即中止（防止继续执行后端构建）
+function Build-Frontend {
+    Write-Host "=== Build Frontend ===" -ForegroundColor Cyan
+    Push-Location $uiDir
+    try {
+        & yarn.cmd build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Frontend build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "Frontend built to: $uiDir\..\server\web" -ForegroundColor Green
+}
+
 function Build-Platforms {
     param(
         [string[]]$Platforms,
@@ -115,11 +133,7 @@ function Build-Platforms {
     }
 }
 if ($target -eq "ui") {
-    Write-Host "=== Build Frontend ===" -ForegroundColor Cyan
-    Push-Location $uiDir
-    yarn build
-    Pop-Location
-    Write-Host "Frontend built to: $uiDir\..\server\web" -ForegroundColor Green
+    Build-Frontend
     exit 0
 }
 elseif ($target -eq "server") {
@@ -151,11 +165,9 @@ elseif ($target -ne $null -and $target -ne "") {
     exit 1
 }
 
-# 默认：先编译 ui 再编译 server
+# 默认：先编译 ui 再编译 server（前端失败则在此中止）
 Write-Host "=== Step 1: Build Frontend ===" -ForegroundColor Cyan
-Push-Location $uiDir
-yarn build
-Pop-Location
+Build-Frontend
 
 Write-Host ""
 Write-Host "=== Step 2: Build Backend ($VERSION) ===" -ForegroundColor Cyan
