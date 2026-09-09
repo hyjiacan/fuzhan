@@ -74,6 +74,16 @@ func (c *ConsistencyChecker) RunCheck(ctx context.Context) (*ConsistencyReport, 
 
 // checkRootDir 检查单个根目录的一致性
 func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPath string, report *ConsistencyReport) error {
+	// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过, 否则会把
+	// 有效索引经 fixMissingInFS 批量标记为 deleted（数据丢失）
+	if ok, reason := validateScanRoot(rootPath); !ok {
+		utils.Warn("一致性校验跳过根目录: 根不可遍历",
+			utils.String("root_name", rootName),
+			utils.String("root_path", rootPath),
+			utils.String("reason", reason))
+		return nil
+	}
+
 	// 1. 加载所有活跃记录
 	var dbRecords []models.FileRecordPublic
 	if err := c.db.Where("root_name = ? AND status = ?",

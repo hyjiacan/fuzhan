@@ -321,6 +321,22 @@ func (s *Scanner) finalizeScanRecord(id uint, status models.ScanRecordStatus, er
 	}
 }
 
+// validateScanRoot 校验根目录能否被 filepath.Walk 可靠遍历。
+// filepath.Walk 内部用 os.Lstat 判定根类型：对 junction/符号链接/挂载不可用等根,
+// Lstat 返回的 IsDir() 为 false, Walk 不会下钻, 会得到 0 个条目。
+// 此时若继续执行"未命中即删"逻辑, 会把有效索引批量标记为 deleted（数据丢失）。
+// 返回 true 表示可遍历; false + reason 表示应跳过删除标记以保护索引。
+func validateScanRoot(rootPath string) (bool, string) {
+	li, err := os.Lstat(rootPath)
+	if err != nil {
+		return false, "根目录无法访问: " + err.Error()
+	}
+	if !li.IsDir() {
+		return false, fmt.Sprintf("根目录不是可直接遍历的文件夹 (Lstat IsDir=false, mode=%v), 请配置目标的真实路径而不是挂在点/junction", li.Mode())
+	}
+	return true, ""
+}
+
 // scanRootDir 扫描单个根目录, 返回根目录扫描结果
 func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*models.ScanRootResult, error) {
 	utils.Info("开始扫描根目录",
@@ -328,6 +344,17 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		utils.String("root_path", rootPath))
 
 	result := &models.ScanRootResult{RootName: rootName}
+
+	// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过删除标记,
+	// 否则 filepath.Walk 得到 0 条目会把有效索引批量误删
+	if ok, reason := validateScanRoot(rootPath); !ok {
+		utils.Warn("根目录不可遍历, 跳过扫描与删除标记以避免误删索引",
+			utils.String("root_name", rootName),
+			utils.String("root_path", rootPath),
+			utils.String("reason", reason))
+		result.Error = "根目录不可遍历: " + reason
+		return result, nil
+	}
 
 	// 加载已有活跃记录, 建立 path→ID 映射
 	existing := make(map[string]uint) // filePath → recordID
