@@ -89,6 +89,8 @@ type OperationRecord struct {
 	UploadTime   time.Time      `gorm:"not null;index" json:"uploadTime"`           // 上传时间
 	CreatedAt    time.Time      `gorm:"index" json:"createdAt"`                     // 创建时间（用于统计查询）
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	// Notes 当前关联文件的备注（查询时回填，不落库）
+	Notes string `gorm:"-" json:"notes"`
 }
 
 // TableName 指定表名

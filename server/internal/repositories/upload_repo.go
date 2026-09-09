@@ -234,6 +234,7 @@ func (r *RecordRepository) AttachCurrentPaths(records []models.OperationRecord) 
 		records[i].FilePath = f.FilePath
 		records[i].FullPath = f.FullPath
 		records[i].RootName = f.RootName
+		records[i].Notes = f.Notes
 		if f.FileSize > 0 {
 			records[i].FileSize = f.FileSize
 		}

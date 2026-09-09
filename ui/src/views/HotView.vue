@@ -162,6 +162,14 @@ const downloadColumns = [
     cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
   },
   {
+    title: '备注',
+    key: 'notes',
+    minWidth: 160,
+    cellRenderer: ({ rowData: row }) => row.notes
+      ? h('span', { title: row.notes, style: 'color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
+      : h('span', { style: 'color:#bbb;' }, '-')
+  },
+  {
     title: '时间',
     key: 'uploadTime',
     width: 180,

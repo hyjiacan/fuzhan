@@ -88,6 +88,7 @@ type HotDownloadStat struct {
 	FileSize   int64     `json:"fileSize"`
 	UploadTime time.Time `json:"uploadTime"`
 	Count      int       `json:"count"`
+	Notes      string    `json:"notes"`
 }
 
 // HotDownloadResult 热门下载结果
@@ -160,6 +161,7 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 	}
 
 	result := make([]HotDownloadStat, 0, len(downloadCounts))
+	fullPathIndex := make(map[string]int, len(downloadCounts))
 	for _, d := range downloadCounts {
 		var uploadTime time.Time
 		if d.UploadTime != "" {
@@ -172,6 +174,7 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 		if fullPath == "" {
 			fullPath = "/" + d.RootName + "/" + strings.TrimPrefix(d.FilePath, "/")
 		}
+		fullPathIndex[fullPath] = len(result)
 		result = append(result, HotDownloadStat{
 			FileName:   d.FileName,
 			FilePath:   d.FilePath,
@@ -181,6 +184,23 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 			UploadTime: uploadTime,
 			Count:      d.Count,
 		})
+	}
+
+	// 按完整路径回填当前文件的备注（从权威索引表读取，保证移动/重命名后仍能关联最新备注）
+	if len(fullPathIndex) > 0 {
+		paths := make([]string, 0, len(fullPathIndex))
+		for p := range fullPathIndex {
+			paths = append(paths, p)
+		}
+		var fres []models.FileRecordPublic
+		if err := s.db.Where("full_path IN ? AND status = ? AND deleted_at IS NULL",
+			paths, models.FileStatusActive).Find(&fres).Error; err == nil {
+			for _, f := range fres {
+				if idx, ok := fullPathIndex[f.FullPath]; ok {
+					result[idx].Notes = f.Notes
+				}
+			}
+		}
 	}
 
 	return &HotDownloadResult{Records: result, Total: int(total), Page: page, PageSize: pageSize}, nil
