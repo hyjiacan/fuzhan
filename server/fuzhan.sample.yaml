@@ -186,7 +186,7 @@ account:
 log:
   level: info                   # 日志级别: debug, info, warn, error
   directory: ./logs  # 日志目录
-  max_size: 100                 # 单个日志文件最大大小 (MB)
+  max_size: 10                 # 单个日志文件最大大小 (MB)
   max_backups: 30               # 保留的旧日志文件数量
   max_age: 30                   # 旧日志文件保留天数
   compress: true                # 是否压缩旧日志

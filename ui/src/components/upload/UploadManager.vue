@@ -216,7 +216,7 @@
                 </div>
                 <!-- 依赖区域 -->
                 <div v-if="item.showDeps" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
-                  <div :style="{ display: 'flex', gap: '6px', flexDirection: 'column' }">
+                  <div :style="{ display: 'flex', gap: '6px' }">
                     <el-autocomplete
                       v-model="item.depFileName"
                       :maxlength="255"
@@ -224,12 +224,16 @@
                       placeholder="搜索并选择依赖文件"
                       size="small"
                       clearable
+                      :teleported="true"
+                      style="flex: 1"
                       @select="(opt) => handleDepSelect(item, opt)"
                     />
                     <el-select
                       v-model="item.depRelation"
                       size="small"
                       placeholder="依赖关系"
+                      :teleported="true"
+                      style="width: 150px"
                     >
                       <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                     </el-select>
@@ -269,16 +273,18 @@
           </el-form-item>
           <!-- URL 依赖 -->
           <el-form-item v-if="urlFileInfo.name" label="依赖:">
-            <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">
+            <div style="display: flex; gap: 6px; width: 100%">
               <el-autocomplete
                 v-model="form.urlDepFileName"
                 :maxlength="255"
                 :fetch-suggestions="fetchUrlDepSuggestions"
                 placeholder="搜索并选择依赖文件"
                 clearable
+                :teleported="true"
+                style="flex: 1"
                 @select="handleUrlDepSelect"
               />
-              <el-select v-model="form.urlDepRelation" placeholder="依赖关系">
+              <el-select v-model="form.urlDepRelation" placeholder="依赖关系" :teleported="true" style="width: 150px">
                 <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </div>
@@ -371,16 +377,18 @@
               <el-input v-model="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
             </el-form-item>
             <el-form-item label="依赖:">
-              <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">
+              <div style="display: flex; gap: 6px; width: 100%">
                 <el-autocomplete
                   v-model="extraDepFileName"
                   :maxlength="255"
                   :fetch-suggestions="fetchExtraDepSuggestions"
                   placeholder="搜索并选择依赖文件"
                   clearable
+                  :teleported="true"
+                  style="flex: 1"
                   @select="handleExtraDepSelect"
                 />
-                <el-select v-model="extraDepRelation" placeholder="依赖关系">
+                <el-select v-model="extraDepRelation" placeholder="依赖关系" :teleported="true" style="width: 150px">
                   <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
               </div>
