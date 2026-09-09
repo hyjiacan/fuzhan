@@ -22,9 +22,9 @@ type PrivateFileMeta struct {
 	Code       string    `json:"code"`
 }
 
-// GenerateShareCode 生成8位分享码
+// GenerateShareCode 生成128bit分享码（32位十六进制，防在线枚举爆破）
 func GenerateShareCode() (string, error) {
-	bytes := make([]byte, 4)
+	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}

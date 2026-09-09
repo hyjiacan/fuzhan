@@ -73,39 +73,6 @@
       </template>
     </el-dialog>
 
-    <!-- 重命名弹窗 -->
-    <el-dialog v-model="renameDialogVisible" title="重命名文件" width="420px">
-      <el-input v-model="renameInput" maxlength="255" @keyup.enter="confirmRename" placeholder="输入新文件名" />
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button @click="renameDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="renaming" @click="confirmRename">确定</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 移动弹窗（目标路径可含新文件名） -->
-    <el-dialog v-model="moveDialogVisible" title="移动文件" width="560px">
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="文件名">
-          <el-input :model-value="moveTargetRow?.name" disabled />
-        </el-form-item>
-        <el-form-item label="当前位置">
-          <el-input :model-value="moveTargetRow?.path" disabled />
-        </el-form-item>
-        <el-form-item label="目标路径">
-          <el-input v-model="moveTargetPath" :maxlength="1024" @keyup.enter="confirmMove"
-            placeholder="例如 rootName/新目录/新文件名.pdf" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button @click="moveDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="moving" @click="confirmMove">确定</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
     <!-- 上传弹窗（dialog 集成在 UploadManager 组件内） -->
     <upload-manager ref="uploadManagerRef" v-model="uploadDialogVisible" :upload-api="uploadApi" title="上传文件"
       @upload-success="onUploadSuccess" @upload-error="onUploadError" />
@@ -144,7 +111,7 @@
 <script setup>
 import { ref, computed, h, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox, ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
+import { ElMessage, ElButton } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
@@ -286,109 +253,7 @@ const saveNotes = async () => {
     savingNotes.value = false
   }
 }
-// 重命名/删除（仅上传者IP一致或管理员可操作）
-const renameDialogVisible = ref(false)
-const renameInput = ref('')
-const renameTargetRow = ref(null)
-const renaming = ref(false)
-
-const openRename = (row) => {
-  renameTargetRow.value = row
-  renameInput.value = row.name
-  renameDialogVisible.value = true
-}
-
-const reloadAfterManage = () => {
-  store.actions.loadFileList(store.state.currentPath || '/')
-}
-
-const confirmRename = async () => {
-  const row = renameTargetRow.value
-  const newName = renameInput.value.trim()
-  if (!row || !newName) {
-    ElMessage.warning('文件名不能为空')
-    return
-  }
-  if (newName === row.name) {
-    renameDialogVisible.value = false
-    return
-  }
-  renaming.value = true
-  try {
-    const res = await FileApi.rename(row.path, newName)
-    if (res.success) {
-      ElMessage.success('重命名成功')
-      renameDialogVisible.value = false
-      reloadAfterManage()
-    } else {
-      ElMessage.error(res.message || '重命名失败')
-    }
-  } catch (e) {
-    ElMessage.error(formatErrorMessage(e, '重命名失败'))
-  } finally {
-    renaming.value = false
-  }
-}
-
-const confirmDelete = (row) => {
-  ElMessageBox.confirm(`确定删除「${row.name}」吗？此操作不可恢复。`, '删除确认', {
-    confirmButtonText: '确认删除',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(async () => {
-    try {
-      const res = await FileApi.deletePublic(row.path)
-      if (res.success) {
-        ElMessage.success('删除成功')
-        reloadAfterManage()
-      } else {
-        ElMessage.error(res.message || '删除失败')
-      }
-    } catch (e) {
-      ElMessage.error(formatErrorMessage(e, '删除失败'))
-    }
-  }).catch(() => {})
-}
-
-// 移动文件（目标路径可含新文件名，实现移动+重命名）
-const moveDialogVisible = ref(false)
-const moveTargetRow = ref(null)
-const moveTargetPath = ref('')
-const moving = ref(false)
-
-const openMove = (row) => {
-  moveTargetRow.value = row
-  moveTargetPath.value = row.path
-  moveDialogVisible.value = true
-}
-
-const confirmMove = async () => {
-  const row = moveTargetRow.value
-  const target = moveTargetPath.value.trim()
-  if (!row || !target) {
-    ElMessage.warning('目标路径不能为空')
-    return
-  }
-  if (target === row.path) {
-    moveDialogVisible.value = false
-    return
-  }
-  moving.value = true
-  try {
-    const res = await FileApi.move(row.path, target)
-    if (res.success) {
-      ElMessage.success('移动成功')
-      moveDialogVisible.value = false
-      reloadAfterManage()
-    } else {
-      ElMessage.error(res.message || '移动失败')
-    }
-  } catch (e) {
-    ElMessage.error(formatErrorMessage(e, '移动失败'))
-  } finally {
-    moving.value = false
-  }
-}
+// 公开文件的管理（重命名/移动/删除）已迁移至管理员页面
 
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
@@ -756,27 +621,9 @@ const columns = [
   {
     title: '操作', key: 'actions', width: 150,
     cellRenderer: ({ rowData: row }) => {
-      // 目录：不显示管理操作（依赖与移动/重命名/删除均针对文件）
+      // 目录：不显示管理操作（公开文件的管理已迁移至管理员页面）
       if (isDir(row)) return null
-      // 无管理权限的文件：仅提供"依赖"入口
-      if (!row.canManage) {
-        return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) }, () => '依赖')
-      }
-      // 有管理权限：默认按钮为"依赖"，下拉含移动/重命名/删除
-      return h(ElDropdown, {
-        splitButton: true,
-        type: 'primary',
-        size: 'small',
-        trigger: 'click',
-        onClick: () => openDepTree(row)
-      }, {
-        default: () => '依赖',
-        dropdown: () => h(ElDropdownMenu, {}, [
-          h(ElDropdownItem, { onClick: () => openMove(row) }, () => '移动'),
-          h(ElDropdownItem, { onClick: () => openRename(row) }, () => '重命名'),
-          h(ElDropdownItem, { divided: true, onClick: () => confirmDelete(row) }, () => '删除')
-        ])
-      })
+      return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) }, () => '依赖')
     }
   }
 ]

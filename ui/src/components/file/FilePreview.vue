@@ -76,6 +76,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { FileApi } from '@/api'
 import { PathUtils } from '@/utils'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const props = defineProps({
   file: { type: Object, default: () => ({}) },
@@ -142,7 +143,7 @@ const isMarkdown = computed(() => {
 
 const renderedMarkdown = computed(() => {
   if (!textContent.value) return ''
-  return marked.parse(textContent.value)
+  return DOMPurify.sanitize(marked.parse(textContent.value))
 })
 
 // 判断文件类型（MIME 类型判断）

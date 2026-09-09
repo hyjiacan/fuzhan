@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -177,6 +179,9 @@ func main() {
 		cfg := appconfig.GetConfig()
 		return cfg.Server.JWTSecret
 	})
+	// 若既未配置 JWT 密钥也未通过环境变量指定，则生成随机密钥并持久化到配置，
+	// 确保重启后签名密钥不变（避免已签发 token 每次重启后全部失效）
+	ensureJWTPersisted()
 	if err := jwt.InitJWTSecret(); err != nil {
 		utils.Fatal("JWT 密钥初始化失败", utils.Err(err))
 	}
@@ -601,19 +606,17 @@ func main() {
 				}
 			}
 
-			// 管理页面搜索和下载（无需认证，前端使用 EventSource 无法携带 Authorization 头）
-			api.GET("/admin/search/*query", searchHandlers.AdminSearchFiles)
-			api.GET("/admin/download/*path", downloadHandlers.AdminDownloadFile)
-			api.HEAD("/admin/download/*path", downloadHandlers.AdminDownloadFile)
+			// 管理页面搜索和下载（需管理员鉴权；下载返回文件流不套 ResponseWrapper）
+			api.GET("/admin/search/*query", authMiddleware.AuthRequired(), middleware.RequireAdmin(), searchHandlers.AdminSearchFiles)
+			api.GET("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
+			api.HEAD("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
 
 			// 文件记录搜索（用于 autocomplete，无需 admin）
 			api.GET("/files/search-records", authMiddleware.AuthOptional(), middleware.ResponseWrapperMiddleware(), indexHandler.SearchFileRecords)
 
-			// 扫描相关路由（无需认证，前端 Footer 所有人都可点击立即扫描）
+			// 扫描状态路由（无需认证，footer 与页面用于展示扫描状态）
 			scanRoutes := api.Group("/admin/index")
 			{
-				scanRoutes.POST("/scan", indexHandler.TriggerScan)
-				scanRoutes.POST("/scan/trigger", indexHandler.TriggerFullScan)
 				scanRoutes.GET("/scan/progress", indexHandler.GetScanProgress)
 				scanRoutes.GET("/scan/status", indexHandler.GetScanStatus)
 			}
@@ -622,6 +625,9 @@ func main() {
 			admin := api.Group("/admin")
 			admin.Use(authMiddleware.AuthRequired(), middleware.RequireAdmin(), middleware.TokenRefreshMiddleware(authService), middleware.ResponseWrapperMiddleware())
 			{
+				// 全量/触发扫描（需管理员鉴权，防止匿名资源耗尽 DoS）
+				admin.POST("/index/scan", indexHandler.TriggerScan)
+				admin.POST("/index/scan/trigger", indexHandler.TriggerFullScan)
 				admin.GET("/users", adminHandler.UsersHandler)
 				admin.PUT("/users/:uuid/reset-password", adminHandler.ResetPasswordHandler)
 				admin.PUT("/users/:uuid/disabled", adminHandler.SetUserDisabledHandler)
@@ -695,13 +701,22 @@ func main() {
 				}
 			}
 
-			// 配置引导路由（无需认证）
+			// 配置引导路由（无需认证；初始化后除 status 外的所有 setup 路由返回 404）
 			setup := api.Group("/setup")
 			setup.GET("/status", setupHandler.IsInitialized)
-			setup.POST("/save", setupHandler.SaveConfig)
-			setup.POST("/validate-dir", setupHandler.ValidateDirectory)
-			setup.GET("/network/interfaces", setupHandler.GetNetworkInterfaces)
-			setup.GET("/default-config", setupHandler.GetDefaultConfig)
+			setupInitOnly := api.Group("/setup")
+			setupInitOnly.Use(func(c *gin.Context) {
+				if appconfig.GlobalConfig.App.Initialized {
+					utils.HandleNotFound(c, "API 路由未找到")
+					c.Abort()
+					return
+				}
+				c.Next()
+			})
+			setupInitOnly.POST("/save", setupHandler.SaveConfig)
+			setupInitOnly.POST("/validate-dir", setupHandler.ValidateDirectory)
+			setupInitOnly.GET("/network/interfaces", setupHandler.GetNetworkInterfaces)
+			setupInitOnly.GET("/default-config", setupHandler.GetDefaultConfig)
 
 			// 通知路由（可选认证，同时支持已登录和匿名用户）
 			notifications := api.Group("/notifications")
@@ -800,14 +815,7 @@ func main() {
 				protected.GET("/auth/user", authHandler.GetCurrentUser)
 				protected.PUT("/auth/password", authHandler.ChangePassword)
 
-				// 文件管理路由（公开文件：管理员，或上传者IP一致可操作）
-				files := protected.Group("/files")
-				{
-					files.POST("/rename", fileHandlers.RenamePublicFileHandler)
-					files.POST("/move", fileHandlers.MoveFileHandler)
-					files.DELETE("/delete", fileHandlers.DeleteFileHandler)
-				}
-
+				// 文件管理路由已全部迁移至 admin 组（仅管理员可操作公开文件）
 				protected.GET("/get_file_info", func(c *gin.Context) {
 					file.GetFileInfoFromURL(c.Writer, c.Request)
 				})
@@ -1479,4 +1487,27 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// ensureJWTPersisted 当 JWT 密钥既未配置也未通过环境变量指定时，
+// 生成随机密钥并写入配置文件，保证重启后签名密钥稳定。
+func ensureJWTPersisted() {
+	if os.Getenv("JWT_SECRET") != "" {
+		return
+	}
+	if len(appconfig.GlobalConfig.Server.JWTSecret) >= 32 {
+		return
+	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		utils.Warn("生成固定 JWT 密钥失败，本次运行将使用动态密钥", utils.Err(err))
+		return
+	}
+	secretHex := hex.EncodeToString(secret)
+	if err := appconfig.SaveConfigWithComments(appconfig.ConfigPath, map[string]interface{}{"server.jwt_secret": secretHex}); err != nil {
+		utils.Warn("持久化 JWT 密钥失败，本次运行将使用动态密钥", utils.Err(err))
+		return
+	}
+	appconfig.GlobalConfig.Server.JWTSecret = secretHex
+	utils.Info("检测到未配置 JWT 密钥，已生成固定密钥并写入配置")
 }

@@ -94,6 +94,23 @@ func (v *PathValidator) Validate(targetPath string) error {
 		}
 	}
 
+	// 词法边界通过后，若路径已存在则解析其中的符号链接，校验真实落点仍不越出根目录。
+	// 防止根内 symlink 指向根外路径被越权读取（历史遗留逃逸）。
+	if realTarget, err := filepath.EvalSymlinks(absTarget); err == nil {
+		absRootReal := v.absRoot
+		if r, rerr := filepath.EvalSymlinks(v.absRoot); rerr == nil {
+			absRootReal = r
+		}
+		rel, err = filepath.Rel(absRootReal, realTarget)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			Warn("检测到符号链接越权尝试", String("target_path", targetPath), String("real_path", realTarget), String("root_path", absRootReal))
+			return &PathSecurityError{
+				TargetPath: realTarget,
+				RootPath:   absRootReal,
+			}
+		}
+	}
+
 	return nil
 }
 

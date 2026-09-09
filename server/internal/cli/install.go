@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,16 +9,48 @@ import (
 	"fuzhan/internal/utils"
 )
 
+// buildServerURL 构造客户端可访问的服务器地址。
+// Host 头为攻击者可控，先做严格白名单校验（仅允许主机名/端口/IPv6 字面量字符），
+// 非法值直接返回错误，避免被注入到安装脚本的 shell 上下文。
+func buildServerURL(r *http.Request) (string, error) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	host, err := validateServerHost(r.Host)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s://%s", scheme, host), nil
+}
+
+// validateServerHost 校验 Host 头仅包含主机名字符集（字母/数字/点/冒号/连字符/IPv6括号）
+func validateServerHost(host string) (string, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "", errors.New("无效的服务器地址")
+	}
+	for _, r := range host {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == ':' || r == '-' || r == '[' || r == ']'
+		if !ok {
+			return "", errors.New("无效的服务器地址")
+		}
+	}
+	return host, nil
+}
+
 // HandleInstallScript 生成安装脚本，将 fuzhan 命令行工具安装到用户 PATH
 func HandleInstallScript(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
 
 	// 获取基础URL
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	serverURL, err := buildServerURL(r)
+	if err != nil {
+		utils.Warn("install.sh 请求包含非法 Host", utils.String("host", r.Host))
+		http.Error(w, "无效的服务器地址", http.StatusBadRequest)
+		return
 	}
-	serverURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"install.sh\"")
@@ -32,11 +65,12 @@ func HandleFuzhanScript(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
 
 	// 获取基础URL
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	serverURL, err := buildServerURL(r)
+	if err != nil {
+		utils.Warn("fuzhan.sh 请求包含非法 Host", utils.String("host", r.Host))
+		http.Error(w, "无效的服务器地址", http.StatusBadRequest)
+		return
 	}
-	serverURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"fuzhan.sh\"")
@@ -389,9 +423,15 @@ fi
 `, escapedServer)
 }
 
-// escapeShellString 对字符串进行 shell 安全转义
+// escapeShellString 对字符串进行 shell 安全转义（双引号上下文专用）
+// 生成的脚本将值放入 "..." 中，因此需转义 \、"、$、` 与换行，防止命令注入
 func escapeShellString(s string) string {
-	// 替换单引号为 '\'' (shell 安全的单引号转义)
-	s = strings.ReplaceAll(s, "'", "'\\''")
-	return s
+	r := strings.NewReplacer(
+		"\\", "\\\\",
+		"\"", "\\\"",
+		"$", "\\$",
+		"`", "\\`",
+		"\n", "\\n",
+	)
+	return r.Replace(s)
 }

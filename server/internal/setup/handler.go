@@ -169,7 +169,7 @@ func (h *SetupHandler) SaveConfig(c *gin.Context) {
 	utils.HandleSuccess(c, http.StatusOK, "配置保存成功，配置已热生效", nil)
 }
 
-// ValidateDirectory 验证目录
+// ValidateDirectory 验证目录（初始化后由路由层拦截返回 404）
 func (h *SetupHandler) ValidateDirectory(c *gin.Context) {
 	var req struct {
 		Path string `json:"path"`
@@ -220,7 +220,7 @@ func (h *SetupHandler) ValidateDirectory(c *gin.Context) {
 	})
 }
 
-// GetNetworkInterfaces 获取本机网络接口列表
+// GetNetworkInterfaces 获取本机网络接口列表（初始化后由路由层拦截返回 404）
 func (h *SetupHandler) GetNetworkInterfaces(c *gin.Context) {
 	interfaces, err := net.Interfaces()
 	if err != nil {

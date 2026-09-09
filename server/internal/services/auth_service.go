@@ -59,6 +59,11 @@ type AuthResponse struct {
 
 // Register 用户注册
 func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
+	// 独立注册开关优先检查（与私有存储启用状态解耦）
+	if !appconfig.GlobalConfig.Account.AllowRegistration {
+		return nil, errors.New("注册功能已关闭")
+	}
+
 	if !appconfig.GlobalConfig.Storage.Private.Enabled {
 		return nil, errors.New("私有存储未启用，暂不支持注册")
 	}

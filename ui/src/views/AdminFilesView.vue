@@ -303,7 +303,7 @@ const columns = [
       const currentNavPath = currentPath.value
       const dirPath = row.path
       const downloadFullPath = row.path
-      const fileHref = `/api/v1/admin/download/${PathUtils.encodeFilePath(downloadFullPath)}`
+      const fileHref = adminDownloadHref(downloadFullPath)
       const isPreview = canPreview(row)
 
       // 直接浏览模式（与 HomeView 一致）
@@ -623,6 +623,13 @@ const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
 const previewFileData = ref({})
 
+// 管理下载走 /admin/download（带鉴权）；新窗口打不开无法带请求头，故在 URL 上附 token
+const adminDownloadHref = (fullPath, pathEncoded) => {
+  const p = pathEncoded || PathUtils.encodeFilePath(fullPath)
+  const t = localStorage.getItem('token')
+  return `/api/v1/admin/download/${p}${t ? `?token=${encodeURIComponent(t)}` : ''}`
+}
+
 // 预览文件
 const previewFile = (file) => {
   previewFileData.value = file
@@ -633,7 +640,7 @@ const previewFile = (file) => {
 const downloadFile = (file) => {
   if (file?.path) {
     const fullPath = file.path
-    window.open(`/api/v1/admin/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
+    window.open(adminDownloadHref(fullPath), '_blank')
   }
 }
 

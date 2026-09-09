@@ -411,8 +411,38 @@ func dialFTP(host string, user string, password string, isTLS bool) (*ftp.Server
 	var c *ftp.ServerConn
 	var err error
 
+	urlCfg := utils.URLUploadConfig{
+		Enabled:         appconfig.GlobalConfig.Upload.URLUpload.Enabled,
+		AllowedIPRanges: appconfig.GlobalConfig.Upload.URLUpload.AllowedIPRanges,
+	}
+	// 连接时通过 Control 回调复检实际解析 IP，防止 DNS 重绑定绕过
+	dialer := &net.Dialer{
+		Timeout: 30 * time.Second,
+		Control: func(network, address string, rc syscall.RawConn) error {
+			hostOnly, _, splitErr := net.SplitHostPort(address)
+			if splitErr != nil {
+				hostOnly = address
+			}
+			ip := net.ParseIP(hostOnly)
+			if ip != nil {
+				return utils.CheckIPSafe(ip, urlCfg)
+			}
+			ips, lookupErr := net.LookupIP(hostOnly)
+			if lookupErr != nil {
+				return fmt.Errorf("SSRF 防护: DNS 解析失败 %s: %w", hostOnly, lookupErr)
+			}
+			for _, resolvedIP := range ips {
+				if err := utils.CheckIPSafe(resolvedIP, urlCfg); err != nil {
+					return fmt.Errorf("SSRF 防护: %s (%s) %w", hostOnly, resolvedIP.String(), err)
+				}
+			}
+			return nil
+		},
+	}
+
 	opts := []ftp.DialOption{
 		ftp.DialWithTimeout(30 * time.Second),
+		ftp.DialWithDialer(*dialer),
 	}
 	if isTLS {
 		insecure := appconfig.GlobalConfig.Upload.URLUpload.InsecureSkipVerify

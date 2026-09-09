@@ -10,11 +10,11 @@ import (
 // URLUploadConfig URL上传安全配置
 type URLUploadConfig struct {
 	Enabled         bool
-	AllowedIPRanges []string // CIDR 网段列表，如 1.2.3.4/24；为空表示不限制（允许所有 IP）
+	AllowedIPRanges []string // CIDR 网段列表，如 1.2.3.4/24；为空时默认拒绝内网/回环/保留地址（不表示放行所有）
 }
 
 // IsURLSafe 验证 URL 安全性，防止 SSRF 攻击
-// enabled=true 启用限制，allowedIPRanges 允许的 IP 网段
+// enabled=true 启用限制；allowedIPRanges 显式允许的 IP 网段
 func IsURLSafe(rawURL string, cfg URLUploadConfig) error {
 	// 如果未启用安全限制，直接放行
 	if !cfg.Enabled {
@@ -48,37 +48,59 @@ func IsURLSafe(rawURL string, cfg URLUploadConfig) error {
 		if len(ips) == 0 {
 			return fmt.Errorf("域名解析无结果: %s", host)
 		}
-		ip = ips[0] // 使用第一个 IP
+		// 遍历全部解析 IP，任一不安全即拒绝（防 DNS 重绑定/多 A 记录绕过）
+		for _, resolvedIP := range ips {
+			if err := CheckIPSafe(resolvedIP, cfg); err != nil {
+				return fmt.Errorf("SSRF 防护: %s (%s) 不安全", host, resolvedIP.String())
+			}
+		}
+		return nil
 	}
 
-	// 检查 IP 是否在允许的网段内
-	if err := CheckIPSafe(ip, cfg); err != nil {
-		return err
-	}
-
-	return nil
+	return CheckIPSafe(ip, cfg)
 }
 
-// CheckIPSafe 验证 IP 是否在允许的网段内，用于 DNS 重绑定防护。
-// 未配置任何网段（AllowedIPRanges 为空）时表示不限制，允许所有 IP。
+// CheckIPSafe 验证 IP 是否允许访问，用于 DNS 重绑定防护。
+// - 显式配置 AllowedIPRanges 时作为纯白名单，仅允许列出的网段（含用户明确放行的内网段）；
+// - 未配置网段时采用安全默认：拒绝内网/回环/链路本地等保留地址。
 func CheckIPSafe(ip net.IP, cfg URLUploadConfig) error {
 	if !cfg.Enabled {
 		return nil
 	}
 
-	// 未配置任何允许网段时表示不限制
-	if len(cfg.AllowedIPRanges) == 0 {
-		return nil
+	// 显式白名单：仅允许列出的网段
+	if len(cfg.AllowedIPRanges) > 0 {
+		for _, cidr := range cfg.AllowedIPRanges {
+			_, network, err := net.ParseCIDR(cidr)
+			if err != nil {
+				continue
+			}
+			if network.Contains(ip) {
+				return nil
+			}
+		}
+		return fmt.Errorf("IP 不在允许的网段内: %s", ip.String())
 	}
 
-	for _, cidr := range cfg.AllowedIPRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if network.Contains(ip) {
-			return nil
-		}
+	// 空白名单：默认拒绝内网/回环/链路本地/元数据地址
+	if isInternalIP(ip) {
+		return fmt.Errorf("SSRF 防护: 禁止访问内网/回环/链路本地地址 %s", ip.String())
 	}
-	return fmt.Errorf("IP 不在允许的网段内: %s", ip.String())
+	return nil
+}
+
+// isInternalIP 判断 IP 是否为内网/回环/链路本地等危险目标
+func isInternalIP(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		b := ip4
+		return b[0] == 0 || // 0.0.0.0/8 本机
+			b[0] == 10 || // 10/8 私网
+			b[0] == 127 || // 127/8 回环
+			(b[0] == 100 && b[1]&0xc0 == 0x40) || // 100.64/10 CGNAT
+			(b[0] == 169 && b[1] == 254) || // 169.254/16 链路本地/云元数据
+			(b[0] == 172 && b[1]&0xf0 == 16) || // 172.16/12 私网
+			(b[0] == 192 && b[1] == 168) // 192.168/16 私网
+	}
+	return ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast()
 }

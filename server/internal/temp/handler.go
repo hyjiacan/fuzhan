@@ -20,6 +20,7 @@ import (
 	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 
+	"fuzhan/internal/accessguard"
 	configPkg "fuzhan/internal/appconfig"
 	"fuzhan/internal/index"
 	"fuzhan/internal/middleware"
@@ -91,17 +92,25 @@ func isPathWithinRoot(root, target string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// hexCodePattern 8位十六进制访问码正则
-var hexCodePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}$`)
+// hexCodePattern 32位十六进制访问码正则（128bit 熵，防在线枚举）
+var hexCodePattern = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
 
-// isValidHexCode 检查是否为有效的8位十六进制访问码
+// isValidHexCode 检查是否为有效的32位十六进制访问码
 func isValidHexCode(code string) bool {
 	return hexCodePattern.MatchString(code)
 }
 
 // validateCode 校验分享码格式
 func validateCode(code string) bool {
-	return code != "" && len(code) == 8 && isValidHexCode(code)
+	return code != "" && len(code) == 32 && isValidHexCode(code)
+}
+
+// checkSessionIP 校验上传会话绑定的创建者 IP 与当前请求 IP 一致，防止凭 uploadId 窃取会话
+func (h *Handler) checkSessionIP(c *gin.Context, sessionIP string) bool {
+	if sessionIP == "" {
+		return true
+	}
+	return sessionIP == h.getClientIP(c)
 }
 
 // ListHandler 处理临时文件列表
@@ -246,14 +255,23 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 		return
 	}
 
+	// 下载访问限流：per-IP 频率限制 + 失败计数锁定，防在线枚举爆破
+	ip := utils.GetClientIP(c)
+	if !accessguard.Acquire(accessguard.SCOPE_TEMP, ip) {
+		utils.HandleErrorCompat(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
+		return
+	}
+
 	code := c.Param("code")
 	if !validateCode(code) {
+		accessguard.Fail(accessguard.SCOPE_TEMP, ip)
 		utils.HandleBadRequest(c, "无效的访问码格式", nil)
 		return
 	}
 
 	tempFile, err := h.tempService.DownloadFile(code)
 	if err != nil {
+		accessguard.Fail(accessguard.SCOPE_TEMP, ip)
 		if strings.Contains(err.Error(), "已过期") {
 			utils.HandleErrorCompat(c, http.StatusGone, err.Error(), nil)
 		} else if strings.Contains(err.Error(), "已被下载") {
@@ -501,6 +519,12 @@ func (h *Handler) GetTempSessionHandler(c *gin.Context) {
 		return
 	}
 
+	// 会话绑定创建者 IP，防止凭 uploadId 窃取他人会话
+	if !h.checkSessionIP(c, session.ClientIP) {
+		utils.HandleForbidden(c, "无权访问该上传会话")
+		return
+	}
+
 	// 获取已上传的分片
 	var chunks []ChunkUploadRecord
 	h.db.Where("session_id = ?", session.ID).Find(&chunks)
@@ -562,6 +586,12 @@ func (h *Handler) UploadTempChunkHandler(c *gin.Context) {
 		} else {
 			utils.HandleInternalServerError(c, "获取上传会话失败")
 		}
+		return
+	}
+
+	// 会话绑定创建者 IP，防止凭 uploadId 窃取他人会话
+	if !h.checkSessionIP(c, session.ClientIP) {
+		utils.HandleForbidden(c, "无权访问该上传会话")
 		return
 	}
 
@@ -664,6 +694,12 @@ func (h *Handler) ResumeTempSessionHandler(c *gin.Context) {
 		return
 	}
 
+	// 会话绑定创建者 IP，防止凭 uploadId 窃取他人会话
+	if !h.checkSessionIP(c, session.ClientIP) {
+		utils.HandleForbidden(c, "无权访问该上传会话")
+		return
+	}
+
 	// 重置过期时间
 	expireDays := h.config.DefaultExpireDays
 	session.ExpiredAt = utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
@@ -718,6 +754,12 @@ func (h *Handler) CancelTempSessionHandler(c *gin.Context) {
 		return
 	}
 
+	// 会话绑定创建者 IP，防止凭 uploadId 窃取他人会话
+	if !h.checkSessionIP(c, session.ClientIP) {
+		utils.HandleForbidden(c, "无权访问该上传会话")
+		return
+	}
+
 	// 删除临时上传文件
 	uploadingPath := filepath.Join(h.config.Path, fmt.Sprintf("%s.%d.uploading", uploadID, session.ID))
 	os.Remove(uploadingPath)
@@ -764,6 +806,12 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 		} else {
 			utils.HandleInternalServerError(c, "获取上传会话失败")
 		}
+		return
+	}
+
+	// 会话绑定创建者 IP，防止凭 uploadId 窃取他人会话
+	if !h.checkSessionIP(c, session.ClientIP) {
+		utils.HandleForbidden(c, "无权访问该上传会话")
 		return
 	}
 

@@ -71,9 +71,9 @@ func NewTempFileServiceWithConfig(db *gorm.DB, config TempServiceConfig) *TempFi
 	}
 }
 
-// generateCode 生成8位访问码
+// generateCode 生成128bit访问码（32位十六进制，防在线枚举爆破）
 func (s *TempFileService) generateCode() (string, error) {
-	bytes := make([]byte, 4)
+	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}

@@ -2,7 +2,7 @@
   <footer class="app-footer">
       <div class="footer-left">
         <a @click="showPreferences = true" class="link-button">偏好设置</a>
-        <IndexStatusBar @triggerScan="handleTriggerScan" />
+        <IndexStatusBar />
       </div>
       <div class="footer-right">
           <a @click="showHelp = true" class="link-button">帮助</a>
@@ -151,10 +151,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import store from '@/store'
 import IndexStatusBar from './IndexStatusBar.vue'
-import { IndexApi } from '@/api'
 
 const openApiEnabled = computed(() => store.state.config.openApiEnabled)
 
@@ -190,15 +188,6 @@ const fetchRuntimeInfo = async () => {
     }
   } catch {
     aboutInfo.value = {}
-  }
-}
-
-const handleTriggerScan = async () => {
-  try {
-    await IndexApi.triggerFullScan()
-    ElMessage.success('全量扫描已触发')
-  } catch (e) {
-    ElMessage.error('触发扫描失败: ' + (e.message || '未知错误'))
   }
 }
 

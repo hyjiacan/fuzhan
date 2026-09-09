@@ -195,18 +195,6 @@ export const FileApi = {
     return request.get('/get_file_info', { params: { path } })
   },
 
-  rename(oldPath, newName) {
-    return request.post('/files/rename', { oldPath, newName })
-  },
-
-  move(oldPath, newPath) {
-    return request.post('/files/move', { oldPath, newPath })
-  },
-
-  deletePublic(path) {
-    return request.delete('/files/delete', { params: { path } })
-  },
-
   preview(path) {
     const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
     return request.get(`/files/preview/${encodedPath}`)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fuzhan/internal/accessguard"
 	configPkg "fuzhan/internal/appconfig"
 	constantsPkg "fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
@@ -38,9 +39,9 @@ func (h *PrivateStorageHandlers) getUserUUID(c *gin.Context) (string, error) {
 	return uuid, nil
 }
 
-// isValidShareCode 检查是否为有效的8位十六进制分享码
+// isValidShareCode 检查是否为有效的32位十六进制分享码
 func isValidShareCode(code string) bool {
-	if code == "" || len(code) != 8 {
+	if code == "" || len(code) != 32 {
 		return false
 	}
 	for _, c := range code {
@@ -207,8 +208,16 @@ func (h *PrivateStorageHandlers) Delete(c *gin.Context) {
 
 // Download 分享下载
 func (h *PrivateStorageHandlers) Download(c *gin.Context) {
+	// 下载访问限流：per-IP 频率限制 + 失败计数锁定，防在线枚举爆破
+	ip := utils.GetClientIP(c)
+	if !accessguard.Acquire(accessguard.SCOPE_SHARE, ip) {
+		utils.HandleErrorCompat(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
+		return
+	}
+
 	code := c.Param("code")
 	if !isValidShareCode(code) {
+		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
 		utils.HandleBadRequest(c, "无效的分享码格式", nil)
 		return
 	}
@@ -239,6 +248,7 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	}
 
 	if filePath == "" || meta == nil {
+		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
 		utils.HandleNotFound(c, "文件不存在")
 		return
 	}

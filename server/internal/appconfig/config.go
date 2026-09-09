@@ -59,6 +59,7 @@ type AnonymousConfig struct {
 type AccountConfig struct {
 	Anonymous         AnonymousConfig `yaml:"anonymous"`          // 匿名用户配置
 	ReservedUsernames []string        `yaml:"reserved_usernames"` // 保留用户名列表，注册时不可使用
+	AllowRegistration bool            `yaml:"allow_registration"` // 是否允许匿名注册新账户，默认 false
 }
 
 // FTPConfig FTP 服务器配置

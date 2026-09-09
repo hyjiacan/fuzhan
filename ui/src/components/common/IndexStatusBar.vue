@@ -11,7 +11,7 @@
           </span>
         </span>
       </template>
-      <template #content>点击「立即扫描」可重新触发</template>
+      <template #content>索引扫描进行中，请勿在页面上重复触发</template>
     </el-tooltip>
 
     <!-- 空闲状态 -->
@@ -39,11 +39,6 @@
               Cron: {{ status.scanCronExpression }}
             </div>
             <div v-else>定时扫描未配置</div>
-            <div>
-              <a class="tooltip-link" href="javascript:void(0)" @click="$emit('triggerScan')">
-                点击立即扫描
-              </a>
-            </div>
           </div>
         </template>
       </el-tooltip>
@@ -63,8 +58,6 @@ const props = defineProps({
     default: true
   }
 })
-
-defineEmits(['triggerScan'])
 
 const status = ref({
   lastScanTime: null,
@@ -138,16 +131,6 @@ onMounted(() => {
       &:hover {
         color: @text-color;
       }
-    }
-  }
-
-  .tooltip-link {
-    color: @primary-color;
-    text-decoration: none;
-    cursor: pointer;
-
-    &:hover {
-      text-decoration: underline;
     }
   }
 }

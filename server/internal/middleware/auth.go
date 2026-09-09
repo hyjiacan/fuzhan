@@ -81,23 +81,17 @@ func NewAuthMiddleware(db *gorm.DB) *AuthMiddleware {
 // AuthRequired 是一个JWT认证中间件，检查用户是否被禁用（实时查库）
 func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 检查Authorization头部
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		// 优先从 Authorization 头部读取；缺失时尝试 query token（供下载/新窗口等无法携带请求头的场景）
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+		if tokenString == "" {
 			utils.HandleUnauthorized(c, "缺少认证信息")
 			c.Abort()
 			return
 		}
-
-		// 检查Bearer token格式
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			utils.HandleUnauthorized(c, "认证格式错误")
-			c.Abort()
-			return
-		}
-
-		// 提取token
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 		// 验证token
 		claims, err := jwt.ParseJWT(tokenString)

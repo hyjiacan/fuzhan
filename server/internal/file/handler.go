@@ -224,8 +224,7 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 		if !r.ModTime.IsZero() {
 			modifiedTime = r.ModTime.Format("2006-01-02T15:04:05")
 		}
-		// 管理员，或上传者IP一致者可管理
-		canManage := isAdmin || (r.UploaderIP != "" && r.UploaderIP == requesterIP)
+		canManage := isAdmin
 		result = append(result, FileRecordInfo{
 			Name:          r.FileName,
 			Type:          fileType,
