@@ -50,7 +50,20 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 
 	const batchSize = 500
 	var affected int64
+	actions := []string{"upload", "download", "download-by-hash"}
+	// SQLite 的 UPDATE 语句不支持 LIMIT，改用先取一批待回填记录 id、再按 id 分批更新的方式
 	for {
+		var batchIDs []uint
+		if err := db.Table("operation_records").
+			Where("file_record_id = ? AND action IN ? AND deleted_at IS NULL", 0, actions).
+			Limit(batchSize).
+			Pluck("id", &batchIDs).Error; err != nil {
+			utils.Warn("查询待回填操作记录失败", utils.Err(err))
+			return
+		}
+		if len(batchIDs) == 0 {
+			break
+		}
 		result := db.Exec(`UPDATE operation_records
 			SET file_record_id = (
 				SELECT MIN(frp.id) FROM file_records_public frp
@@ -59,27 +72,14 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 				  AND (frp.full_path = operation_records.full_path
 				       OR frp.full_path = ('/' || operation_records.full_path))
 			)
-			WHERE operation_records.file_record_id = 0
-			  AND operation_records.action IN (?, ?, ?)
-			  AND operation_records.deleted_at IS NULL
-			  AND EXISTS (
-			  	SELECT 1 FROM file_records_public frp2
-			  	WHERE frp2.status = ? AND frp2.deleted_at IS NULL
-			  	  AND frp2.root_name = operation_records.root_name
-			  	  AND (frp2.full_path = operation_records.full_path
-			  	       OR frp2.full_path = ('/' || operation_records.full_path))
-			  )
-			LIMIT ?`,
-			models.FileStatusActive,
-			"upload", "download", "download-by-hash",
-			models.FileStatusActive, batchSize)
+			WHERE id IN ?`,
+			models.FileStatusActive, batchIDs)
 		if result.Error != nil {
 			utils.Warn("回填操作记录 file_record_id 失败", utils.Err(result.Error))
 			return
 		}
-		n := result.RowsAffected
-		affected += n
-		if n < batchSize {
+		affected += result.RowsAffected
+		if len(batchIDs) < batchSize {
 			break
 		}
 	}
