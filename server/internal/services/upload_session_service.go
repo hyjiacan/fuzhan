@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/utils"
-	"fuzhan/pkg/pathutils"
 	"github.com/google/uuid"
 	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
@@ -69,10 +67,11 @@ type UploadSessionService struct {
 	indexSvc    *index.Service
 	chunkSize   int64
 	storage     UploadStorage
+	finalizer   UploadFinalizer
 	mu          sync.Mutex
 }
 
-// NewUploadSessionService 创建上传会话服务实例
+// NewUploadSessionService 创建上传会话服务实例（公开上传的存储与收尾策略）
 func NewUploadSessionService(db *gorm.DB, chunkSize int64, indexSvc *index.Service) *UploadSessionService {
 	return &UploadSessionService{
 		db:          db,
@@ -82,6 +81,22 @@ func NewUploadSessionService(db *gorm.DB, chunkSize int64, indexSvc *index.Servi
 		indexSvc:    indexSvc,
 		chunkSize:   chunkSize,
 		storage:     PublicStorage{},
+		finalizer:   NewPublicFinalizer(db, indexSvc),
+	}
+}
+
+// NewUploadSessionServiceWithPolicies 创建指定落盘与收尾策略的上传会话服务实例，
+// 供私有等需要差异化策略的存储复用同一分片上传流程。
+func NewUploadSessionServiceWithPolicies(db *gorm.DB, chunkSize int64, indexSvc *index.Service, storage UploadStorage, finalizer UploadFinalizer) *UploadSessionService {
+	return &UploadSessionService{
+		db:          db,
+		sessionRepo: repositories.NewSessionRepository(db),
+		chunkRepo:   repositories.NewChunkRepository(db),
+		recordRepo:  repositories.NewRecordRepository(db),
+		indexSvc:    indexSvc,
+		chunkSize:   chunkSize,
+		storage:     storage,
+		finalizer:   finalizer,
 	}
 }
 
@@ -147,11 +162,11 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 		return fmt.Errorf("无效的分片索引: %d", req.ChunkIndex)
 	}
 
-	targetPath, uploadingPath, err := s.storage.ResolvePaths(session)
+	_, uploadingPath, err := s.storage.Paths(session)
 	if err != nil {
 		return fmt.Errorf("构建目标路径失败: %w", err)
 	}
-	if err := EnsureUploadTargetDir(targetPath); err != nil {
+	if err := EnsureUploadDir(uploadingPath); err != nil {
 		return err
 	}
 
@@ -271,7 +286,8 @@ func (s *UploadSessionService) GetStatus(uploadID uint) (*UploadStatus, error) {
 var ErrFileExists = fmt.Errorf("目标文件已存在")
 
 // Finalize 完成上传
-// allowOverwrite 为 true 时，若目标文件已存在则覆盖（仅限管理员）
+// allowOverwrite 为 true 时，若目标文件已存在则覆盖（仅限管理员）。
+// 覆盖判定与落盘后的业务收尾委托给 UploadFinalizer 策略。
 func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*FinalizeResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -295,32 +311,17 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		}
 	}
 
-	targetPath, uploadingPath, err := s.storage.ResolvePaths(session)
+	targetPath, uploadingPath, err := s.storage.Paths(session)
 	if err != nil {
 		return nil, fmt.Errorf("构建目标路径失败: %w", err)
 	}
-	if err := EnsureUploadTargetDir(targetPath); err != nil {
+	if err := EnsureUploadDir(uploadingPath); err != nil {
 		return nil, err
 	}
 
-	// 目标文件在索引表中的 file_path（带前导 /），供覆盖权限与归属写入使用
-	idxRelPath := "/" + session.FileName
-	if dp := strings.Trim(strings.TrimSuffix(session.TargetPath, "/"), "/"); dp != "" {
-		idxRelPath = "/" + dp + "/" + session.FileName
-	}
-
 	if _, err := os.Stat(targetPath); err == nil {
-		// 覆盖权限：管理员放行，或（上传者IP与现有文件上传者IP一致）本人放行
-		if !allowOverwrite && session.ClientIP != "" {
-			var existing models.FileRecordPublic
-			if serr := s.db.Where("root_name = ? AND file_path = ? AND status = ?",
-				session.TargetRoot, idxRelPath, models.FileStatusActive).First(&existing).Error; serr == nil &&
-				existing.UploaderIP != "" && existing.UploaderIP == session.ClientIP {
-				allowOverwrite = true
-				utils.Info("上传者IP一致，允许覆盖", utils.String("path", targetPath))
-			}
-		}
-		if !allowOverwrite {
+		// 目标已存在：按策略判定是否允许覆盖
+		if !s.finalizer.AllowsOverwrite(session, allowOverwrite) {
 			return nil, ErrFileExists
 		}
 		// 覆盖：先删除目标文件，再重命名临时文件
@@ -344,80 +345,7 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		_ = os.Remove(uploadingPath)
 	}
 
-	_ = s.sessionRepo.UpdateStatus(session.ID, models.UploadStatusCompleted)
-
-	// 创建上传记录
-	relativePath := session.TargetPath
-	if relativePath == "/" || relativePath == "" {
-		relativePath = session.FileName
-	} else {
-		// 标准化：移除尾部斜杠
-		relativePath = strings.TrimSuffix(relativePath, "/")
-		// 确保有前导 /
-		if !strings.HasPrefix(relativePath, "/") {
-			relativePath = "/" + relativePath
-		}
-		relativePath = relativePath + "/" + session.FileName
-	}
-	record := &models.OperationRecord{
-		FileName: session.FileName,
-		FileSize: session.FileSize,
-		FilePath: relativePath,
-		// FullPath = /RootName/FilePath（确保根目录文件也有分隔符）
-		FullPath:   "/" + session.TargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
-		RootName:   session.TargetRoot,
-		FileType:   pathutils.GetFileType(session.FileName),
-		ClientIP:   session.UserID,
-		UserID:     session.UserID,
-		UploadType: session.TargetType,
-		UploadTime: utils.Now(),
-	}
-	if err := s.recordRepo.Create(record); err != nil {
-		return nil, fmt.Errorf("创建上传记录失败: %w", err)
-	}
-
-	// 清理分片记录和会话记录
-	_ = s.chunkRepo.DeleteBySessionID(session.ID)
-	_ = s.sessionRepo.Delete(session.ID)
-
-	// 同步到文件索引表（仅公共目录上传）
-	if (session.TargetType != models.TargetTypeTemp && session.TargetType != models.TargetTypePrivate) && s.indexSvc != nil {
-		if err := s.indexSvc.SyncFile(session.TargetRoot, relativePath); err != nil {
-			utils.Warn("上传后同步索引失败",
-				utils.String("root", session.TargetRoot),
-				utils.String("path", relativePath),
-				utils.Err(err))
-		} else {
-			// 标记为最近已同步，防止 watcher 重复处理
-			s.indexSvc.MarkRecentlySynced(session.TargetRoot, relativePath)
-			// 关联公共文件索引记录 ID（身份标识），移动/重命名后依然有效
-			if record.ID > 0 {
-				if fid, rerr := s.recordRepo.ResolvePublicFileID(session.TargetRoot, record.FullPath); rerr == nil && fid > 0 {
-					if uerr := s.recordRepo.UpdateFileRecordID(record.ID, fid); uerr != nil {
-						utils.Warn("上传记录关联索引ID失败", utils.Int64("record", int64(record.ID)), utils.Err(uerr))
-					}
-				}
-			}
-		}
-		// 记录公开文件的上传者IP（覆盖上传会重新绑定归属）
-		if session.ClientIP != "" {
-			if uerr := s.db.Model(&models.FileRecordPublic{}).
-				Where("root_name = ? AND file_path = ?", session.TargetRoot, idxRelPath).
-				UpdateColumn("uploader_ip", session.ClientIP).Error; uerr != nil {
-				utils.Warn("写入上传者IP失败",
-					utils.String("root", session.TargetRoot),
-					utils.String("path", idxRelPath),
-					utils.Err(uerr))
-			}
-		}
-		// 触发哈希计算（后台执行，不阻塞）
-		s.indexSvc.TriggerHash(context.Background())
-	}
-
-	return &FinalizeResult{
-		TargetPath: relativePath,
-		FileName:   session.FileName,
-	}, nil
+	return s.finalizer.Complete(session, targetPath)
 }
 
 // Resume 续传会话
@@ -465,7 +393,7 @@ func (s *UploadSessionService) Cancel(uploadID uint) error {
 		return fmt.Errorf("会话不存在: %w", err)
 	}
 
-	_, uploadingPath, err := s.storage.ResolvePaths(session)
+	_, uploadingPath, err := s.storage.Paths(session)
 	if err == nil {
 		if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			utils.Warn("取消上传删除文件失败", utils.String("path", uploadingPath), utils.Err(rmErr))
@@ -565,7 +493,7 @@ func (s *UploadSessionService) CleanupExpired() (int, error) {
 
 	cleanedCount := 0
 	for _, session := range sessions {
-		_, uploadingPath, err := s.storage.ResolvePaths(&session)
+		_, uploadingPath, err := s.storage.Paths(&session)
 		if err == nil {
 			if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 				utils.Error("清理会话文件失败", utils.Int("session_id", int(session.ID)), utils.Err(rmErr))
