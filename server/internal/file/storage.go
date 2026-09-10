@@ -63,25 +63,25 @@ func ListPrivateDirectory(basePath, userID, dir string) (files []models.FileReco
 
 	// 文件条目来自 DB：过滤当前层。统一要求私有 file_path 以 / 开头（排除存量 shareCode 旧记录）。
 	prefix := strings.Trim(dir, "/")
+	like, notDeeper := layerLikePatterns(prefix)
 	if err := db.Where("owner_id = ? AND status = ? AND is_dir = ?",
 		userID, models.FileStatusActive, false).
 		Where("file_path LIKE ?", "/%").
-		Where(layerLikeClause(prefix)).
+		Where("file_path LIKE ?", like).
+		Where("file_path NOT LIKE ?", notDeeper).
 		Find(&files).Error; err != nil {
 		return nil, nil, err
 	}
 	return files, subdirs, nil
 }
 
-// layerLikeClause 生成当前目录一层的 file_path 匹配条件表达式（SQLite）。
-// 根层：只有一层目录段；子层：恰以 prefix 开头且不再含更深的目录段。
-func layerLikeClause(prefix string) (query string) {
+// layerLikePatterns 生成当前目录一层的 LIKE 参数（全部参数化绑定，防注入）。
+// 根层：pattern "/%"，排除更深的 "/%/%"；子层：恰以 "/prefix/" 开头且不再含更深目录段。
+func layerLikePatterns(prefix string) (like, notDeeper string) {
 	if prefix == "" {
-		// file_path = "/filename"
-		return "file_path NOT LIKE '/%/%%'"
+		return "/%", "/%/%"
 	}
-	// file_path = "/prefix/filename"，prefix 内不含更深目录
-	return "file_path LIKE '/" + prefix + "/%%' AND file_path NOT LIKE '/" + prefix + "/%/%%'"
+	return "/" + prefix + "/%", "/" + prefix + "/%/%"
 }
 
 // GetUserUsedQuota 计算用户已使用的总空间（从 file_records_private 查询，索引未就绪则返回 0）
