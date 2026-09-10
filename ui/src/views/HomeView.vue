@@ -109,19 +109,22 @@
 </template>
 
 <script setup>
-import { ref, computed, h, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElButton } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
-import { NumberUtils, TimeUtils, PathUtils, analyzeLatestVersions, compareFileNames } from '@/utils'
+import { PathUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
-import { isPreviewable } from '@/config/preview'
-import { FileApi, FileRecordApi, SearchApi } from '@/api'
+import { FileRecordApi } from '@/api'
 import { isAppInitialized, initializationComplete } from '@/main'
+import { useHomeSearch } from './home/useHomeSearch'
+import { useHomeDragDrop } from './home/useHomeDragDrop'
+import { useHomeTable } from './home/useHomeTable'
+import { createColumns } from './home/columns'
 
 // 上传 API
 const uploadApi = {
@@ -141,68 +144,52 @@ const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
   h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
 ])
 
+// ===== 搜索逻辑 =====
+const {
+  searchQuery,
+  searchInputRef,
+  searchResultCount,
+  searchTime,
+  isSearching,
+  searchCompleted,
+  searchFiles,
+  clearSearch,
+  resetSearch,
+  querySuggestions,
+  onSuggestionSelect
+} = useHomeSearch()
+
 // ===== 页面级拖放上传 =====
-// 拖放文件到文件页时，显示上传提醒遮罩，松开鼠标后打开上传弹框并把文件加入本地上传队列
 const uploadManagerRef = ref(null)
-const uploadDialogVisible = ref(false)
-const isPageDragging = ref(false)
-const dragFileCount = ref(0)
-const pendingDropFiles = ref([])
-let pageDragCounter = 0
-// 是否拖入了文件（而非普通元素拖拽）
-const hasFileDrag = (e) => Array.from(e?.dataTransfer?.types || []).includes('Files')
+const {
+  uploadDialogVisible,
+  isPageDragging,
+  dragFileCount,
+  handlePageDragEnter,
+  handlePageDragOver,
+  handlePageDragLeave,
+  handlePageDrop,
+  showUploadDialog
+} = useHomeDragDrop(uploadManagerRef)
 
-const handlePageDragEnter = (e) => {
-  if (!hasFileDrag(e)) return
-  // 上传弹框已打开时不显示页面遮罩（由弹框内的 drop zone 接管）
-  if (uploadDialogVisible.value) return
-  e.dataTransfer.dropEffect = 'copy'
-  pageDragCounter++
-  isPageDragging.value = true
-  dragFileCount.value = e.dataTransfer?.files?.length || 0
+// ===== 表格（尺寸/排序/版本标记）=====
+const {
+  isDir,
+  latestVersionPaths,
+  sortState,
+  onColumnSort,
+  sortedFileList,
+  encodePath
+} = useHomeTable({ isSearching, searchCompleted })
+
+const breadcrumb = computed(() => store.state.breadcrumb)
+
+// 对路径的每段分别编码，避免斜杠被编码
+// 点击目录时加载该目录并清空搜索
+const navigateToDir = (dirPath) => {
+  resetSearch()
+  router.push('/files/' + encodePath(dirPath))
 }
-
-const handlePageDragOver = (e) => {
-  if (!isPageDragging.value && hasFileDrag(e) && !uploadDialogVisible.value) {
-    pageDragCounter = Math.max(pageDragCounter, 1)
-    isPageDragging.value = true
-    dragFileCount.value = e.dataTransfer?.files?.length || 0
-  }
-  e.dataTransfer.dropEffect = 'copy'
-}
-
-const handlePageDragLeave = (e) => {
-  if (!hasFileDrag(e)) return
-  pageDragCounter = Math.max(0, pageDragCounter - 1)
-  if (pageDragCounter === 0) {
-    isPageDragging.value = false
-  }
-}
-
-const handlePageDrop = (e) => {
-  pageDragCounter = 0
-  isPageDragging.value = false
-  const dropFiles = e.dataTransfer?.files
-  if (!dropFiles || dropFiles.length === 0) return
-  // 打开上传弹框，待组件挂载后把拖放文件加入本地上传队列
-  pendingDropFiles.value = Array.from(dropFiles)
-  uploadDialogVisible.value = true
-}
-
-// 上传弹框打开后，将拖放文件注入 UploadManager 的本地上传队列
-watch(uploadDialogVisible, async (visible, prev) => {
-  if (visible && prev === false && pendingDropFiles.value.length > 0) {
-    await nextTick()
-    if (uploadManagerRef.value) {
-      const files = pendingDropFiles.value
-      pendingDropFiles.value = []
-      files.forEach((file, idx) => {
-        uploadManagerRef.value.addFile({ name: file.name, size: file.size, file })
-        if (idx === files.length - 1) ElMessage.success(`已添加 ${files.length} 个文件到上传队列`)
-      })
-    }
-  }
-})
 
 // 备注编辑
 const notesModalVisible = ref(false)
@@ -255,407 +242,10 @@ const saveNotes = async () => {
 }
 // 公开文件的管理（重命名/移动/删除）已迁移至管理员页面
 
+// 预览与下载
 const previewDialogVisible = ref(false)
 const previewMaximized = ref(false)
 const previewFileData = ref({})
-const depTreeDialogRef = ref(null)
-const searchQuery = ref('')
-const searchInputRef = ref(null)
-const searchResultCount = ref(-1)
-const searchTime = ref(0)
-const searchStartTime = ref(0)
-
-const searchFiles = () => {
-  searchResultCount.value = -1
-  if (!searchQuery.value.trim()) {
-    store.clearSearchState()
-    store.actions.loadFileList(store.state.currentPath || '/')
-    return
-  }
-  searchStartTime.value = Date.now()
-  store.actions.searchFiles(searchQuery.value)
-}
-
-const clearSearch = () => {
-  searchQuery.value = ''
-  store.clearSearchState()
-  store.actions.loadFileList(store.state.currentPath || '/')
-  router.replace({ query: {} })
-}
-
-// 搜索框下拉推荐：自动补全 + 拼写纠错（输入防抖 300ms，避免每键并发两次请求）
-let suggestTimer = null
-const querySuggestions = (queryString, cb) => {
-  if (suggestTimer) clearTimeout(suggestTimer)
-  suggestTimer = setTimeout(() => {
-    const q = (queryString || '').trim()
-    if (!q) {
-      cb([])
-      return
-    }
-    // 并行拉取自动补全与纠错建议
-    Promise.all([
-      SearchApi.autocomplete(q).catch(() => ({ data: [] })),
-      SearchApi.spellcheck(q).catch(() => ({ data: [] }))
-    ]).then(([autoRes, spellRes]) => {
-      const autoNames = Array.isArray(autoRes?.data) ? autoRes.data : []
-      const spellNames = Array.isArray(spellRes?.data) ? spellRes.data : []
-      const suggestions = new Map() // value -> { value, corrected }
-      // 自动补全结果：直接作为推荐
-      for (const name of autoNames) {
-        if (!suggestions.has(name)) suggestions.set(name, { value: name, corrected: false })
-      }
-      // 纠错结果：标注为"纠错"，且避免与原查询相同、避免与自动补全重复
-      for (const name of spellNames) {
-        if (name === q || suggestions.has(name)) continue
-        suggestions.set(name, { value: name, corrected: true })
-      }
-      cb([...suggestions.values()].slice(0, 12))
-    })
-  }, 300)
-}
-
-// 选中推荐项：用该文件名发起搜索
-const onSuggestionSelect = (item) => {
-  searchQuery.value = item.value
-  searchFiles()
-}
-
-const fileList = computed(() => store.state.fileList)
-const breadcrumb = computed(() => store.state.breadcrumb)
-const searchState = computed(() => store.state.searchState)
-
-const isSearching = computed(() => searchState.value.isSearching)
-const searchCompleted = computed(() => searchState.value.isCompleted)
-
-// 版本标记：仅浏览模式（非搜索）下，分析当前目录，返回"最新版本"文件的 path 集合
-const latestVersionPaths = computed(() => {
-  if (isSearching.value || searchCompleted.value) return new Set()
-  return analyzeLatestVersions(fileList.value)
-})
-
-const isDir = (row) => row.type === 'dir' || row.type === 'directory'
-
-// ============ 界面排序（不涉及后台）============
-// 默认按名称升序；支持按路径(文件名)、修改时间、下载次数排序
-// 注意：el-table-v2 的 sort-state 要求为 { [columnKey]: 'asc'|'desc' } 映射形式，
-// 而非 { key, order }；否则表头不显示排序指示且首次点击 order 为 undefined
-const sortState = ref({ name: 'asc' })
-
-const onColumnSort = (state) => {
-  if (state && state.key) {
-    // 首次点击未排序列时，el-table-v2 传来的 order 为 undefined，归一化为 asc
-    const order = state.order === 'asc' || state.order === 'desc' ? state.order : 'asc'
-    sortState.value = { [state.key]: order }
-  }
-}
-
-const sortedFileList = computed(() => {
-  const list = [...fileList.value]
-  const entry = Object.entries(sortState.value)[0]
-  const key = entry ? entry[0] : 'name'
-  const order = entry ? entry[1] : 'asc'
-
-  const dirFirst = (a, b) => {
-    const aDir = isDir(a)
-    const bDir = isDir(b)
-    if (aDir !== bDir) return aDir ? -1 : 1
-    return 0
-  }
-
-  let cmp
-  if (key === 'modifiedTime') {
-    cmp = (a, b) => {
-      const ta = String(a.modifiedTime || '')
-      const tb = String(b.modifiedTime || '')
-      if (ta < tb) return -1
-      if (ta > tb) return 1
-      return 0
-    }
-  } else if (key === 'downloadCount') {
-    cmp = (a, b) => (a.downloadCount || 0) - (b.downloadCount || 0)
-  } else {
-    // 默认为路径/文件名排序，保持"英文在前、中文按拼音"规则
-    cmp = (a, b) => compareFileNames(a.name, b.name)
-  }
-
-  list.sort((a, b) => {
-    const d = dirFirst(a, b)
-    if (d !== 0) return d
-    const r = cmp(a, b)
-    return order === 'desc' ? -r : r
-  })
-  return list
-})
-
-// HTML 转义函数
-const escapeHtml = (str) => {
-  if (typeof str !== 'string') return ''
-  const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
-  return str.replace(/[&<>"']/g, c => escapeMap[c] || c)
-}
-
-// 从搜索关键词中提取用于高亮的关键词（排除扩展名过滤条件）
-// 与后端 SearchService.SearchFiles 的扩展名提取逻辑保持一致
-const getHighlightKeywords = (keywords) => {
-  if (keywords.length === 0) return keywords
-  const lastIdx = keywords.length - 1
-  const lastKw = keywords[lastIdx]
-
-  if (lastKw.startsWith('.')) {
-    // 纯扩展名过滤，如 ".pdf" - 不参与高亮
-    return keywords.slice(0, lastIdx)
-  }
-  if (lastKw.includes('.')) {
-    // 关键词包含扩展名，如 "file.txt" - 只取关键词部分
-    const parts = lastKw.split('.')
-    if (parts[0] === '') {
-      return keywords.slice(0, lastIdx)
-    }
-    keywords[lastIdx] = parts[0]
-    return keywords
-  }
-  return keywords
-}
-
-// 高亮搜索关键字（返回 VNode 数组），支持多关键词
-const highlightKeyword = (text) => {
-  if (!searchQuery.value.trim() || (!isSearching.value && !searchCompleted.value)) {
-    return escapeHtml(String(text || ''))
-  }
-  const allKeywords = searchQuery.value.trim().split(/\s+/)
-  const keywords = getHighlightKeywords(allKeywords)
-  if (keywords.length === 0) {
-    return escapeHtml(String(text || ''))
-  }
-  const escapedText = escapeHtml(text)
-  const escaped = keywords.map(k => escapeHtml(k).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const splitRegex = new RegExp(`(${escaped.join('|')})`, 'gi')
-  const testRegex = new RegExp(`(${escaped.join('|')})`, 'i')
-  const parts = escapedText.split(splitRegex)
-
-  return parts.map((part, idx) => {
-    if (part && testRegex.test(part)) {
-      return h('mark', { class: 'search-highlight', key: idx }, part)
-    }
-    return part
-  })
-}
-
-const getFileIconClass = (row) => {
-  if (isDir(row)) return 'icon-filetype-folder'
-  const ext = row.name?.split('.').pop()?.toLowerCase() || ''
-  return `icon-filetype-${ext}`
-}
-
-const canPreview = (row) => {
-  if (isDir(row)) return false
-  return isPreviewable(row.name)
-}
-
-// 对路径的每段分别编码，避免斜杠被编码
-const encodePath = (path) => {
-  return path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
-}
-
-// 监听搜索状态变化
-watch(searchState, (newState) => {
-  if (newState.isSearching) {
-    searchResultCount.value = -1
-  }
-  if (newState.isCompleted && searchStartTime.value > 0) {
-    searchTime.value = Date.now() - searchStartTime.value
-    searchResultCount.value = fileList.value.length
-  }
-  if (!newState.isSearching && !newState.isCompleted) {
-    searchStartTime.value = 0
-  }
-}, { immediate: true, deep: true })
-
-// 监听文件列表变化，更新搜索结果计数
-watch(fileList, (newList) => {
-  if (isSearching.value || searchCompleted.value) {
-    searchResultCount.value = newList.length
-  }
-})
-
-// 搜索框被清空时（用户点击输入框的 ×），清除搜索状态
-watch(searchQuery, (newVal, oldVal) => {
-  if (oldVal && !newVal && (isSearching.value || searchCompleted.value)) {
-    clearSearch()
-  }
-})
-
-
-// 点击目录时加载该目录并清空搜索
-const navigateToDir = (dirPath) => {
-  searchQuery.value = ''
-  store.clearSearchState()
-  router.push('/files/' + encodePath(dirPath))
-}
-
-const columns = [
-  {
-    title: '文件名',
-    key: 'name',
-    minWidth: 240,
-    flexGrow: 1,
-    sortable: true,
-    sortBy: 'name',
-    cellRenderer: ({ rowData: row }) => {
-      const iconClass = `icon-filetype ${getFileIconClass(row)}`
-      const isLatest = latestVersionPaths.value.has(row.path)
-      // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
-      const currentNavPath = store.state.currentPath
-      const dirPath = row.path
-      const downloadFullPath = row.path
-      const fileHref = `/download/${PathUtils.encodeFilePath(downloadFullPath)}`
-      const isPreview = canPreview(row)
-      const fullPath = row.path || ''
-      const segments = fullPath.split('/').filter(Boolean)
-      const fileName = segments[segments.length - 1] || ''
-      const pathSegments = segments.slice(0, -1)
-
-      // 直接浏览模式（不显示路径）
-      const renderNormalMode = () => [
-        h('div', { class: 'file-icon-wrapper' }, [
-          h('span', { class: iconClass }),
-          isPreview && !isDir(row) ? h('span', { class: 'preview-icon' }) : null
-        ]),
-        isDir(row)
-          ? h('a', {
-            class: 'file-link',
-            onClick: (e) => {
-              e.preventDefault()
-              router.push('/files/' + encodePath(dirPath))
-            }
-          }, highlightKeyword(fileName))
-          : h('a', {
-            href: fileHref,
-            class: isLatest ? 'file-link latest-version' : 'file-link',
-            onClick: (e) => {
-              if (isPreview) {
-                e.preventDefault()
-                previewFile(row)
-                return
-              }
-              // 非预览：允许默认下载行为，稍后刷新列表更新下载次数
-              refreshAfterDownload()
-            }
-          }, highlightKeyword(fileName))
-      ]
-
-      // 搜索结果模式（显示完整路径）
-      const renderSearchMode = () => [
-        h('div', { class: 'file-icon-wrapper' }, [
-          h('span', { class: iconClass }),
-          isPreview && !isDir(row) ? h('span', { class: 'preview-icon' }) : null
-        ]),
-        h('span', { class: 'file-path-content' }, [
-          ...pathSegments.map((seg, idx) => {
-            const segPath = '/' + pathSegments.slice(0, idx + 1).join('/')
-            return [
-              h('a', {
-                class: 'path-segment',
-                onClick: (e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  navigateToDir(segPath)
-                }
-              }, highlightKeyword(seg)),
-              '/'
-            ]
-          }).flat(),
-          isDir(row)
-            ? h('a', {
-              class: 'file-link',
-              onClick: (e) => {
-                e.preventDefault()
-                navigateToDir(dirPath)
-              }
-            }, highlightKeyword(fileName))
-            : h('a', {
-              href: fileHref,
-              class: 'file-link',
-              onClick: (e) => {
-                if (isPreview) {
-                  e.preventDefault()
-                  previewFile(row)
-                  return
-                }
-                refreshAfterDownload()
-              }
-            }, highlightKeyword(fileName))
-        ])
-      ]
-
-      return h('div', {
-        class: 'file-name-cell',
-        title: fileName
-      }, isSearching.value || searchCompleted.value ? renderSearchMode() : renderNormalMode())
-    }
-  },
-  {
-    title: '大小', key: 'size', width: 150,
-    cellRenderer: ({ rowData: row }) => formatSize(row.size)
-  },
-  {
-    title: '修改时间', key: 'modifiedTime', width: 200, sortable: true, sortBy: 'modifiedTime',
-    cellRenderer: ({ rowData: row }) => {
-      const text = TimeUtils.formatDateTime(row.modifiedTime)
-      if (TimeUtils.isRecent24h(row.modifiedTime)) {
-        return h('span', { style: 'color: #18a058' }, text)
-      }
-      return text
-    }
-  },
-  {
-    title: '下载次数', key: 'downloadCount', width: 110, sortable: true, sortBy: 'downloadCount',
-    cellRenderer: ({ rowData: row }) => isDir(row) ? '' : ((row.downloadCount || 0) > 0 ? row.downloadCount : '-')
-  },
-  {
-    title: '备注', key: 'notes', width: 150,
-    cellRenderer: ({ rowData: row }) => h(ElButton, {
-      size: 'small', link: true,
-      class: ['notes-link', { 'is-empty': !row.notes }],
-      title: row.notes || '',
-      onClick: () => openNotesEditor(row)
-    }, () => h('span', { class: 'notes-text' }, row.notes || '添加备注'))
-  },
-  {
-    title: '操作', key: 'actions', width: 150,
-    cellRenderer: ({ rowData: row }) => {
-      // 目录：不显示管理操作（公开文件的管理已迁移至管理员页面）
-      if (isDir(row)) return null
-      return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) }, () => '依赖')
-    }
-  }
-]
-
-// el-table-v2 需要数值宽高，实时测量容器
-const tableWrapRef = ref(null)
-const tableWidth = ref(600)
-const tableHeight = ref(400)
-let tableResizeObs = null
-const updateTableSize = () => {
-  const el = tableWrapRef.value
-  if (el) {
-    tableWidth.value = el.clientWidth || 600
-    tableHeight.value = el.clientHeight || 400
-  }
-}
-
-const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
-
-const showUploadDialog = () => { uploadDialogVisible.value = true }
-
-// 获取面包屑链接地址（对每段路径分别编码，避免斜杠被编码）
-const getBreadcrumbHref = (item) => {
-  const path = item.path === '/' ? '' : item.path.replace(/^\//, '')
-  if (!path) return '#/files'
-  const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
-  return `#/files/${encodedPath}`
-}
 
 const previewFile = (file) => {
   previewFileData.value = file
@@ -685,7 +275,8 @@ const refreshAfterDownload = () => {
   }, 500)
 }
 
-// 打开依赖树
+// 依赖树
+const depTreeDialogRef = ref(null)
 const openDepTree = (row) => {
   // 如果有 recordId 直接用，否则尝试从文件名搜索
   if (row.recordId) {
@@ -702,6 +293,18 @@ const openDepTree = (row) => {
   }
 }
 
+const columns = createColumns({
+  latestVersionPaths,
+  isSearching,
+  searchCompleted,
+  searchQuery,
+  navigateToDir,
+  previewFile,
+  openNotesEditor,
+  openDepTree,
+  refreshAfterDownload
+})
+
 const onUploadSuccess = () => {
   store.actions.loadFileList(store.state.currentPath || '/')
 }
@@ -709,6 +312,27 @@ const onUploadSuccess = () => {
 const onUploadError = () => {
   // 上传失败时同样刷新列表（可能产生了部分文件）；逐项错误已由上传组件内部展示
   store.actions.loadFileList(store.state.currentPath || '/')
+}
+
+// el-table-v2 需要数值宽高，实时测量容器
+const tableWrapRef = ref(null)
+const tableWidth = ref(600)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = tableWrapRef.value
+  if (el) {
+    tableWidth.value = el.clientWidth || 600
+    tableHeight.value = el.clientHeight || 400
+  }
+}
+
+// 获取面包屑链接地址（对每段路径分别编码，避免斜杠被编码）
+const getBreadcrumbHref = (item) => {
+  const path = item.path === '/' ? '' : item.path.replace(/^\//, '')
+  if (!path) return '#/files'
+  const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
+  return `#/files/${encodedPath}`
 }
 
 // Lifecycle
