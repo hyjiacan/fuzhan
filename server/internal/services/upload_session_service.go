@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,6 +68,7 @@ type UploadSessionService struct {
 	recordRepo  repositories.AuditStore
 	indexSvc    *index.Service
 	chunkSize   int64
+	storage     UploadStorage
 	mu          sync.Mutex
 }
 
@@ -81,6 +81,7 @@ func NewUploadSessionService(db *gorm.DB, chunkSize int64, indexSvc *index.Servi
 		recordRepo:  repositories.NewRecordRepository(db),
 		indexSvc:    indexSvc,
 		chunkSize:   chunkSize,
+		storage:     PublicStorage{},
 	}
 }
 
@@ -146,9 +147,12 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 		return fmt.Errorf("无效的分片索引: %d", req.ChunkIndex)
 	}
 
-	_, uploadingPath, err := s.buildTargetPath(session)
+	targetPath, uploadingPath, err := s.storage.ResolvePaths(session)
 	if err != nil {
 		return fmt.Errorf("构建目标路径失败: %w", err)
+	}
+	if err := EnsureUploadTargetDir(targetPath); err != nil {
+		return err
 	}
 
 	// 计算预期分片大小
@@ -291,9 +295,12 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		}
 	}
 
-	targetPath, uploadingPath, err := s.buildTargetPath(session)
+	targetPath, uploadingPath, err := s.storage.ResolvePaths(session)
 	if err != nil {
 		return nil, fmt.Errorf("构建目标路径失败: %w", err)
+	}
+	if err := EnsureUploadTargetDir(targetPath); err != nil {
+		return nil, err
 	}
 
 	// 目标文件在索引表中的 file_path（带前导 /），供覆盖权限与归属写入使用
@@ -458,7 +465,7 @@ func (s *UploadSessionService) Cancel(uploadID uint) error {
 		return fmt.Errorf("会话不存在: %w", err)
 	}
 
-	_, uploadingPath, err := s.resolvePaths(session)
+	_, uploadingPath, err := s.storage.ResolvePaths(session)
 	if err == nil {
 		if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			utils.Warn("取消上传删除文件失败", utils.String("path", uploadingPath), utils.Err(rmErr))
@@ -558,7 +565,7 @@ func (s *UploadSessionService) CleanupExpired() (int, error) {
 
 	cleanedCount := 0
 	for _, session := range sessions {
-		_, uploadingPath, err := s.resolvePaths(&session)
+		_, uploadingPath, err := s.storage.ResolvePaths(&session)
 		if err == nil {
 			if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 				utils.Error("清理会话文件失败", utils.Int("session_id", int(session.ID)), utils.Err(rmErr))
@@ -579,75 +586,6 @@ func (s *UploadSessionService) CleanupExpired() (int, error) {
 	}
 
 	return cleanedCount, nil
-}
-
-// resolvePaths 构建并验证目标文件路径和上传中文件路径（不创建目录）
-func (s *UploadSessionService) resolvePaths(session *models.UploadSession) (targetPath string, uploadingPath string, err error) {
-	rootPath := appconfig.RootNames[session.TargetRoot]
-	if rootPath == "" {
-		err = fmt.Errorf("无效的目标根目录")
-		return
-	}
-
-	cleanDir := session.TargetPath
-	if cleanDir == "" || cleanDir == "/" {
-		cleanDir = ""
-	} else {
-		cleanDir = filepath.Clean(cleanDir)
-	}
-	if filepath.IsAbs(cleanDir) || cleanDir == ".." || (len(cleanDir) > 256 && cleanDir != "") {
-		err = fmt.Errorf("无效的目标路径")
-		return
-	}
-
-	targetDir := filepath.Join(rootPath, cleanDir)
-	absTargetDir, absErr := filepath.Abs(targetDir)
-	if absErr != nil {
-		err = fmt.Errorf("路径解析失败")
-		return
-	}
-	absRootPath, absErr := filepath.Abs(rootPath)
-	if absErr != nil {
-		err = fmt.Errorf("根路径解析失败")
-		return
-	}
-	if absTargetDir != absRootPath && !strings.HasPrefix(absTargetDir, absRootPath+string(os.PathSeparator)) {
-		err = fmt.Errorf("路径越界")
-		return
-	}
-
-	cleanFilename := filepath.Clean(session.FileName)
-	if strings.Contains(cleanFilename, "..") || strings.Contains(cleanFilename, "/") || strings.Contains(cleanFilename, "\\") {
-		err = fmt.Errorf("无效的文件名")
-		return
-	}
-
-	targetPath = filepath.Join(targetDir, cleanFilename)
-	uploadingPath = filepath.Join(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".uploading")
-
-	absTarget, _ := filepath.Abs(targetPath)
-	if !strings.HasPrefix(absTarget, absRootPath+string(os.PathSeparator)) {
-		err = fmt.Errorf("路径越界")
-		return
-	}
-
-	return
-}
-
-// buildTargetPath 构建目标文件路径、上传中文件路径并创建目标目录
-func (s *UploadSessionService) buildTargetPath(session *models.UploadSession) (targetPath string, uploadingPath string, err error) {
-	targetPath, uploadingPath, err = s.resolvePaths(session)
-	if err != nil {
-		return
-	}
-
-	targetDir := filepath.Dir(targetPath)
-	if err = os.MkdirAll(targetDir, 0755); err != nil {
-		err = fmt.Errorf("创建目标目录失败: %w", err)
-		return
-	}
-
-	return
 }
 
 // classifyUploadFileError 将打开上传文件时的系统错误归类为可读提示
