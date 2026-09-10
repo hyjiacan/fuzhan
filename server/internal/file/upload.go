@@ -204,6 +204,11 @@ func (h *UploadSessionHandler) GetSession(c *gin.Context) {
 		return
 	}
 
+	if err := h.service.VerifyOwner(uint(uploadID), utils.GetClientIP(c)); err != nil {
+		utils.HandleForbidden(c, err.Error())
+		return
+	}
+
 	status, err := h.service.GetStatus(uint(uploadID))
 	if err != nil {
 		middleware.LogOperation(c, "upload.session.cancel", fmt.Sprintf("session %d", uploadID), fmt.Errorf("会话不存在"))
@@ -235,6 +240,11 @@ func (h *UploadSessionHandler) ResumeSession(c *gin.Context) {
 		return
 	}
 
+	if err := h.service.VerifyOwner(uint(uploadID), utils.GetClientIP(c)); err != nil {
+		utils.HandleForbidden(c, err.Error())
+		return
+	}
+
 	status, err := h.service.Resume(uint(uploadID))
 	if err != nil {
 		utils.HandleBadRequest(c, err.Error(), nil)
@@ -254,6 +264,11 @@ func (h *UploadSessionHandler) CancelSession(c *gin.Context) {
 	uploadID, err := strconv.ParseUint(uploadIDStr, 10, 64)
 	if err != nil {
 		utils.HandleBadRequest(c, "无效的会话ID", nil)
+		return
+	}
+
+	if err := h.service.VerifyOwner(uint(uploadID), utils.GetClientIP(c)); err != nil {
+		utils.HandleForbidden(c, err.Error())
 		return
 	}
 
@@ -280,6 +295,11 @@ func (h *UploadSessionHandler) UploadChunk(c *gin.Context) {
 	chunkIndex, err := strconv.Atoi(chunkIndexStr)
 	if err != nil || chunkIndex < 0 {
 		utils.HandleBadRequest(c, "无效的分片索引", nil)
+		return
+	}
+
+	if err := h.service.VerifyOwner(uint(uploadID), utils.GetClientIP(c)); err != nil {
+		utils.HandleForbidden(c, err.Error())
 		return
 	}
 
@@ -319,6 +339,11 @@ func (h *UploadSessionHandler) FinalizeSession(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "无效的会话ID: "+err.Error(), nil)
+		return
+	}
+
+	if err := h.service.VerifyOwner(uint(req.UploadID), utils.GetClientIP(c)); err != nil {
+		utils.HandleForbidden(c, err.Error())
 		return
 	}
 

@@ -1,31 +1,15 @@
 package services
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
-	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 )
-
-// TempFileResult 临时文件上传结果
-type TempFileResult struct {
-	Code        string    `json:"code"`
-	Filename    string    `json:"filename"`
-	FileSize    int64     `json:"fileSize"`
-	ExpiredAt   time.Time `json:"expiredAt"`
-	DownloadURL string    `json:"downloadUrl"`
-	FilePath    string    `json:"-"` // 实际文件路径，内部使用
-}
 
 // TempFileListResult 临时文件列表结果
 type TempFileListResult struct {
@@ -71,22 +55,6 @@ func NewTempFileServiceWithConfig(db *gorm.DB, config TempServiceConfig) *TempFi
 	}
 }
 
-// generateCode 生成128bit访问码（32位十六进制，防在线枚举爆破）
-func (s *TempFileService) generateCode() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return strings.ToUpper(hex.EncodeToString(bytes)), nil
-}
-
-// generateFilePath 生成安全的文件存储路径（使用 xxh3 哈希）
-func (s *TempFileService) generateFilePath(code string) string {
-	hash := xxh3.Hash([]byte(code + "fuzhan-secret"))
-	safeFilename := fmt.Sprintf("%016x", hash)
-	return filepath.Join(s.config.Path, safeFilename)
-}
-
 // GetQuotaUsage 获取指定 IP 的配额使用量
 func (s *TempFileService) GetQuotaUsage(ip string) (int64, error) {
 	var total int64
@@ -95,109 +63,6 @@ func (s *TempFileService) GetQuotaUsage(ip string) (int64, error) {
 		Select("COALESCE(SUM(file_size), 0)").
 		Scan(&total).Error
 	return total, err
-}
-
-// Upload 上传临时文件
-func (s *TempFileService) Upload(src io.Reader, filename string, ip string, dir string, fileSize int64, deleteOnDownload bool) (*TempFileResult, error) {
-	// 检查配额
-	quotaPerIP := s.config.QuotaPerIP
-	if quotaPerIP > 0 {
-		used, err := s.GetQuotaUsage(ip)
-		if err != nil {
-			return nil, fmt.Errorf("获取配额信息失败: %w", err)
-		}
-		if used+fileSize > quotaPerIP {
-			return nil, fmt.Errorf("超出IP配额限制（已用：%d，配额：%d）", used, quotaPerIP)
-		}
-	}
-
-	// 生成访问码
-	code, err := s.generateCode()
-	if err != nil {
-		return nil, fmt.Errorf("生成分享码失败: %w", err)
-	}
-
-	// 确保目录存在
-	if err := os.MkdirAll(s.config.Path, 0755); err != nil {
-		return nil, fmt.Errorf("创建存储目录失败: %w", err)
-	}
-
-	// 保存文件
-	filePath := s.generateFilePath(code)
-	out, err := os.Create(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("保存文件失败: %w", err)
-	}
-	defer out.Close()
-
-	written, err := io.Copy(out, src)
-	if err != nil {
-		os.Remove(filePath)
-		return nil, fmt.Errorf("保存文件失败: %w", err)
-	}
-
-	// 计算过期时间
-	expireDays := s.config.DefaultExpireDays
-	if expireDays <= 0 {
-		expireDays = 7
-	}
-	expiredAt := utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
-
-	// 校验目录参数
-	cleanDir := ""
-	if dir != "" {
-		cleanDir = filepath.Clean(dir)
-		if strings.HasPrefix(cleanDir, "..") || strings.HasPrefix(cleanDir, "/") || strings.HasPrefix(cleanDir, "\\") {
-			os.Remove(filePath)
-			return nil, fmt.Errorf("不允许的路径")
-		}
-	}
-
-	// 保存记录
-	tempFile := &models.TempFile{
-		Code:             code,
-		Filename:         filename,
-		FileSize:         written,
-		FilePath:         filePath,
-		ClientIP:         ip,
-		Dir:              cleanDir,
-		DeleteOnDownload: deleteOnDownload,
-		ExpiredAt:        expiredAt,
-	}
-
-	if err := s.db.Create(tempFile).Error; err != nil {
-		os.Remove(filePath)
-		return nil, fmt.Errorf("保存记录失败: %w", err)
-	}
-
-	// 同步到临时文件索引表
-	now := utils.Now()
-	tempRecord := models.FileRecordTemp{
-		FileRecordBase: models.FileRecordBase{
-			FileName:     filename,
-			FilePath:     code,
-			RootName:     "temp",
-			FullPath:     "/temp/" + code,
-			FileSize:     written,
-			IsDir:        false,
-			ModTime:      now,
-			Status:       models.FileStatusActive,
-			OwnerID:      ip,
-			LastSyncedAt: now,
-		},
-	}
-	if err := s.db.Create(&tempRecord).Error; err != nil {
-		utils.Warn("同步临时文件索引失败", utils.String("code", code), utils.Err(err))
-	}
-
-	return &TempFileResult{
-		Code:        code,
-		Filename:    filename,
-		FileSize:    written,
-		ExpiredAt:   expiredAt,
-		DownloadURL: fmt.Sprintf("/api/v1/temp/%s/download", code),
-		FilePath:    filePath,
-	}, nil
 }
 
 // List 查询临时文件列表

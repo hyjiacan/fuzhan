@@ -57,7 +57,7 @@ func (f *PublicFinalizer) AllowsOverwrite(session *models.UploadSession, allowOv
 	if session.ClientIP == "" {
 		return false
 	}
-	idxRelPath := privateRelPath(session)
+	idxRelPath := uploadRelPath(session)
 	var existing models.FileRecordPublic
 	if err := f.db.Where("root_name = ? AND file_path = ? AND status = ?",
 		session.TargetRoot, idxRelPath, models.FileStatusActive).First(&existing).Error; err == nil &&
@@ -90,7 +90,7 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 		FullPath:   "/" + session.TargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
 		RootName:   session.TargetRoot,
 		FileType:   pathutils.GetFileType(session.FileName),
-		ClientIP:   session.UserID,
+		ClientIP:   session.ClientIP,
 		UserID:     session.UserID,
 		UploadType: session.TargetType,
 		UploadTime: utils.Now(),
@@ -123,11 +123,11 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 		// 记录公开文件的上传者IP（覆盖上传会重新绑定归属）
 		if session.ClientIP != "" {
 			if uerr := f.db.Model(&models.FileRecordPublic{}).
-				Where("root_name = ? AND file_path = ?", session.TargetRoot, privateRelPath(session)).
+				Where("root_name = ? AND file_path = ?", session.TargetRoot, uploadRelPath(session)).
 				UpdateColumn("uploader_ip", session.ClientIP).Error; uerr != nil {
 				utils.Warn("写入上传者IP失败",
 					utils.String("root", session.TargetRoot),
-					utils.String("path", privateRelPath(session)),
+					utils.String("path", uploadRelPath(session)),
 					utils.Err(uerr))
 			}
 		}
@@ -141,9 +141,9 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 	}, nil
 }
 
-// privateRelPath 计算目标文件在索引表中的 file_path（带前导 /），
+// uploadRelPath 计算目标文件在索引表中的 file_path（带前导 /），
 // 供覆盖权限查询与归属写入复用。
-func privateRelPath(session *models.UploadSession) string {
+func uploadRelPath(session *models.UploadSession) string {
 	rel := "/" + session.FileName
 	if dp := strings.Trim(strings.TrimSuffix(session.TargetPath, "/"), "/"); dp != "" {
 		rel = "/" + dp + "/" + session.FileName

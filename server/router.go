@@ -364,7 +364,6 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	// 临时文件路由（基于IP，无需认证）
 	temp := api.Group("/temp")
 	temp.GET("/list", tempHandler.ListHandler)
-	temp.POST("/upload", tempHandler.UploadHandler)
 	temp.GET("/quota", tempHandler.QuotaHandler)
 	temp.GET("/client-ip", tempHandler.ClientIPHandler)
 	temp.GET("/:code", tempHandler.InfoHandler)

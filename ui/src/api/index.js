@@ -570,14 +570,6 @@ export const TempApi = {
     return request.get('/temp/client-ip')
   },
 
-  upload(file) {
-    const formData = new FormData()
-    formData.append('file', file)
-    return request.post('/temp/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-  },
-
   getInfo(code) {
     return request.get(`/temp/${code}`)
   },

@@ -77,7 +77,16 @@ type UploadSessionService struct {
 	// targetType 本服务负责清理的上传类型（每次仅处理归属自己的会话，
 	// 避免统一会话表被多存储服务交叉清理时用错落盘策略）。
 	targetType models.TargetType
-	mu         sync.Mutex
+	// sessionLocks 分片条纹锁：同一会话的分片/收尾/取消需互斥，不同会话并行。
+	// 用固定 64 条条纹按 uploadId 取模，内存有界、无需清理，个别条纹碰撞仅轻微串行。
+	sessionLocks [64]sync.Mutex
+}
+
+// lockSession 获取指定会话的条纹锁，返回释放函数。
+func (s *UploadSessionService) lockSession(id uint) func() {
+	mu := &s.sessionLocks[id%uint(len(s.sessionLocks))]
+	mu.Lock()
+	return mu.Unlock
 }
 
 // NewUploadSessionService 创建上传会话服务实例（公开上传的存储与收尾策略，清理范围为公开/遗留）
@@ -152,8 +161,8 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
 
 // UploadChunk 上传分片
 func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockSession(req.UploadID)
+	defer unlock()
 
 	session, err := s.sessionRepo.GetByID(req.UploadID)
 	if err != nil {
@@ -303,8 +312,8 @@ var ErrFileExists = fmt.Errorf("目标文件已存在")
 // allowOverwrite 为 true 时，若目标文件已存在则覆盖（仅限管理员）。
 // 覆盖判定与落盘后的业务收尾委托给 UploadFinalizer 策略。
 func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*FinalizeResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockSession(uploadID)
+	defer unlock()
 
 	session, err := s.sessionRepo.GetByID(uploadID)
 	if err != nil {
@@ -399,8 +408,8 @@ func (s *UploadSessionService) Resume(uploadID uint) (*UploadStatus, error) {
 
 // Cancel 取消上传
 func (s *UploadSessionService) Cancel(uploadID uint) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockSession(uploadID)
+	defer unlock()
 
 	session, err := s.sessionRepo.GetByID(uploadID)
 	if err != nil {
@@ -417,6 +426,19 @@ func (s *UploadSessionService) Cancel(uploadID uint) error {
 	_ = s.chunkRepo.DeleteBySessionID(session.ID)
 	_ = s.sessionRepo.Delete(session.ID)
 
+	return nil
+}
+
+// VerifyOwner 校验调用方是否为会话持有者，防止凭可枚举的 uploadId 劫持会话。
+// 公开与临时上传以客户端 IP 为身份；私有上传由专属 handler 按 user_id 校验，本方法放行。
+func (s *UploadSessionService) VerifyOwner(uploadID uint, clientIP string) error {
+	session, err := s.sessionRepo.GetByID(uploadID)
+	if err != nil {
+		return fmt.Errorf("会话不存在: %w", err)
+	}
+	if session.TargetType != models.TargetTypePrivate && session.ClientIP != "" && session.ClientIP != clientIP {
+		return fmt.Errorf("无权操作该上传会话")
+	}
 	return nil
 }
 

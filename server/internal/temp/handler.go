@@ -1,7 +1,6 @@
 package temp
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,50 +146,6 @@ func (h *Handler) ClientIPHandler(c *gin.Context) {
 	ip := h.getClientIP(c)
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"ip": ip,
-	})
-}
-
-// UploadHandler 处理临时文件上传
-func (h *Handler) UploadHandler(c *gin.Context) {
-	if !h.config.Enabled {
-		utils.HandleBadRequest(c, "临时文件功能已禁用", nil)
-		return
-	}
-
-	file, handler, err := c.Request.FormFile("file")
-	if err != nil {
-		utils.HandleBadRequest(c, "获取文件失败", nil)
-		return
-	}
-	defer file.Close()
-
-	ip := h.getClientIP(c)
-	uploadDir := c.PostForm("dir")
-	// 清洗上传目录：去除路径遍历和空字节
-	uploadDir = strings.TrimSpace(uploadDir)
-	uploadDir = strings.ReplaceAll(uploadDir, "..", "")
-	uploadDir = strings.ReplaceAll(uploadDir, "\x00", "")
-
-	deleteOnDownload := c.PostForm("deleteOnDownload") == "true"
-
-	result, err := h.tempService.Upload(file, handler.Filename, ip, uploadDir, handler.Size, deleteOnDownload)
-	if err != nil {
-		utils.HandleInternalServerError(c, err.Error())
-		return
-	}
-
-	// 触发哈希计算（后台执行，不阻塞）
-	if h.indexSvc != nil {
-		h.indexSvc.TriggerHash(context.Background())
-	}
-
-	middleware.LogOperation(c, "temp.upload", handler.Filename, nil)
-	utils.HandleSuccess(c, http.StatusCreated, "", gin.H{
-		"code":        result.Code,
-		"filename":    result.Filename,
-		"fileSize":    result.FileSize,
-		"expiredAt":   result.ExpiredAt,
-		"downloadUrl": result.DownloadURL,
 	})
 }
 
