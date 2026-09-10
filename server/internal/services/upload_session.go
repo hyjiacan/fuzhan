@@ -5,15 +5,14 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"fuzhan/internal/appconfig"
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/utils"
+
 	"github.com/google/uuid"
 	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
@@ -440,165 +439,4 @@ func (s *UploadSessionService) VerifyOwner(uploadID uint, clientIP string) error
 		return fmt.Errorf("无权操作该上传会话")
 	}
 	return nil
-}
-
-// ListByUser 根据用户ID和存储类型查询上传会话
-func (s *UploadSessionService) ListByUser(userID string, targetType models.TargetType, page, pageSize int) ([]models.UploadSession, int64, error) {
-	var sessions []models.UploadSession
-	query := s.db.Model(&models.UploadSession{}).
-		Where("target_type = ?", targetType).
-		Where("user_id = ?", userID)
-
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
-	return sessions, total, err
-}
-
-// ListByIPAndType 根据客户端IP和存储类型查询上传会话（临时上传以IP为身份，无 UserID）
-func (s *UploadSessionService) ListByIPAndType(clientIP string, targetType models.TargetType, page, pageSize int) ([]models.UploadSession, int64, error) {
-	var sessions []models.UploadSession
-	query := s.db.Model(&models.UploadSession{}).
-		Where("target_type = ?", targetType).
-		Where("client_ip = ?", clientIP)
-
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
-	return sessions, total, err
-}
-
-// applyCleanupType 将清理查询限定到本服务负责的上传类型。
-// 公开服务需同时覆盖公开与历史无类型的遗留会话。
-func (s *UploadSessionService) applyCleanupType(q *gorm.DB) *gorm.DB {
-	if s.targetType == models.TargetTypeRegular {
-		return q.Where("`target_type` IN (?, '')", models.TargetTypeRegular)
-	}
-	return q.Where("`target_type` = ?", s.targetType)
-}
-
-// CleanupExpired 清理过期会话（仅清理归属本服务 targetType 的会话）
-func (s *UploadSessionService) CleanupExpired() (int, error) {
-	var sessions []models.UploadSession
-	now := utils.Now()
-
-	expiredQuery := s.db.Where("`status` IN ? AND expired_at < ?",
-		[]models.UploadStatus{
-			models.UploadStatusPending,
-			models.UploadStatusInProgress,
-			models.UploadStatusFailed,
-		}, now).Scopes(s.applyCleanupType)
-	if err := expiredQuery.Find(&sessions).Error; err != nil {
-		return 0, fmt.Errorf("查询过期会话失败: %w", err)
-	}
-
-	// 清理已完成的旧会话（保留1小时）
-	var completedSessions []models.UploadSession
-	completedThreshold := now.Add(-1 * time.Hour)
-	if err := s.db.Where("`status` = ? AND updated_at < ?",
-		models.UploadStatusCompleted, completedThreshold).Scopes(s.applyCleanupType).Find(&completedSessions).Error; err != nil {
-		utils.Error("查询已完成会话失败", utils.Err(err))
-	} else {
-		for _, sess := range completedSessions {
-			_ = s.chunkRepo.DeleteBySessionID(sess.ID)
-			_ = s.sessionRepo.Delete(sess.ID)
-		}
-		if len(completedSessions) > 0 {
-			utils.Info("已清理已完成会话", utils.Int("count", len(completedSessions)))
-		}
-	}
-
-	cleanedCount := 0
-	for _, session := range sessions {
-		_, uploadingPath, err := s.storage.Paths(&session)
-		if err == nil {
-			if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				utils.Error("清理会话文件失败", utils.Int("session_id", int(session.ID)), utils.Err(rmErr))
-			}
-		}
-
-		if err := s.sessionRepo.UpdateStatus(session.ID, models.UploadStatusExpired); err != nil {
-			utils.Error("更新会话状态失败", utils.Int("session_id", int(session.ID)), utils.Err(err))
-			continue
-		}
-
-		_ = s.chunkRepo.DeleteBySessionID(session.ID)
-		cleanedCount++
-	}
-
-	if cleanedCount > 0 {
-		utils.Info("已清理过期上传会话", utils.Int("count", cleanedCount))
-	}
-
-	return cleanedCount, nil
-}
-
-// classifyUploadFileError 将打开上传文件时的系统错误归类为可读提示
-func classifyUploadFileError(err error) string {
-	if err == nil {
-		return ""
-	}
-	msg := err.Error()
-	l := strings.ToLower(msg)
-	switch {
-	case strings.Contains(l, "virus") || strings.Contains(l, "potentially unwanted") ||
-		strings.Contains(l, "malware") || strings.Contains(l, "threat"):
-		return "文件被安全软件拦截（疑似病毒或潜在有害软件），请将该目录加入安全软件信任/排除列表后重试"
-	case strings.Contains(l, "being used by another process") || strings.Contains(l, "sharing violation") ||
-		strings.Contains(l, "0x80070020"):
-		return "文件正被其他进程占用，请关闭相关程序后重试"
-	case strings.Contains(l, "access is denied") || strings.Contains(l, "0x80070005") ||
-		strings.Contains(l, "permission denied"):
-		return "无权限写入该目录，请检查目录权限"
-	case strings.Contains(l, "disk full") || strings.Contains(l, "no space") || strings.Contains(l, "0x80070070"):
-		return "磁盘空间不足，请清理后重试"
-	default:
-		return msg
-	}
-}
-
-// ensureUploadingFile 创建上传文件并预分配空间
-func (s *UploadSessionService) ensureUploadingFile(path string, size int64) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil
-		}
-		utils.Warn("创建上传文件失败", utils.String("path", path), utils.Err(err))
-		return fmt.Errorf("无法创建上传文件")
-	}
-	defer file.Close()
-
-	if err := preAllocate(file, size); err != nil {
-		os.Remove(path)
-		return err
-	}
-
-	return nil
-}
-
-// zeroOutChunk 清空已写入的分片数据，用于错误回滚
-func (s *UploadSessionService) zeroOutChunk(f *os.File, offset int64, size int64) {
-	ZeroOutChunk(f, offset, size)
-}
-
-// checkDiskSpace 检查磁盘剩余空间是否足够
-func (s *UploadSessionService) checkDiskSpace(required int64, rootName string) error {
-	checkPath := ""
-	if rootName != "" {
-		if rootPath, ok := appconfig.RootNames[rootName]; ok {
-			checkPath = rootPath
-		}
-	}
-	if checkPath == "" {
-		// 无根目录时跳过磁盘空间检查
-		return nil
-	}
-	return CheckDiskSpace(checkPath, required)
 }
