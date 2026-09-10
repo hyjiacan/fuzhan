@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -24,43 +23,27 @@ import (
 	"fuzhan/internal/utils"
 )
 
-// TempUploadSession 临时文件上传会话
-type TempUploadSession struct {
-	ID               uint      `gorm:"primaryKey"`
-	UploadID         string    `gorm:"uniqueIndex;size:36;not null"`
-	Code             string    `gorm:"size:8;not null"`
-	Filename         string    `gorm:"size:255;not null"`
-	FileSize         int64     `gorm:"not null"`
-	FilePath         string    `gorm:"size:512"`
-	ClientIP         string    `gorm:"size:45;index"`
-	TotalChunks      int       `gorm:"not null"`
-	UploadedSize     int64     `gorm:"default:0"`
-	ExpiredAt        time.Time `gorm:"index"`
-	Dir              string    `gorm:"size:512"`
-	DeleteOnDownload bool      `gorm:"default:false"`
-	CreatedAt        time.Time
-}
-
-// ChunkUploadRecord 分片上传记录
-type ChunkUploadRecord struct {
-	ID         uint   `gorm:"primaryKey"`
-	SessionID  uint   `gorm:"index;not null"`
-	ChunkIndex int    `gorm:"not null"`
-	Checksum   string `gorm:"size:16"`
-	CreatedAt  time.Time
-}
-
 // Handler 临时文件处理器
 type Handler struct {
 	db          *gorm.DB
 	config      configPkg.TempConfig
 	tempService *services.TempFileService
 	indexSvc    *index.Service
+	// uploadSvc 携带临时落盘与收尾策略的统一分片上传服务
+	uploadSvc *services.UploadSessionService
 }
 
 // NewHandler 创建临时文件处理器
 func NewHandler(db *gorm.DB, config configPkg.TempConfig, tempService *services.TempFileService, indexSvc *index.Service) *Handler {
-	return &Handler{db: db, config: config, tempService: tempService, indexSvc: indexSvc}
+	return &Handler{
+		db: db, config: config, tempService: tempService, indexSvc: indexSvc,
+		uploadSvc: services.NewUploadSessionServiceWithPolicies(
+			db, configPkg.GlobalConfig.Upload.ChunkSize, indexSvc,
+			NewStorage(config.Path),
+			NewFinalizer(db, indexSvc, config.Path, config.DefaultExpireDays),
+			models.TargetTypeTemp,
+		),
+	}
 }
 
 // getClientIP 获取客户端IP

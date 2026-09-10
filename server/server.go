@@ -15,7 +15,6 @@ import (
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
 	"fuzhan/internal/services"
-	temph "fuzhan/internal/temp"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
 
@@ -38,6 +37,7 @@ func (rt *runCtx) runFTPWorker(ctx context.Context, ftpHandler interface {
 func (rt *runCtx) runCleanupWorker(ctx context.Context) {
 	taskService := rt.taskService
 	uploadSessionHandler := rt.uploadSessionHandler
+	privateUploadHandler := rt.privateUploadHandler
 	tempHandler := rt.tempHandler
 
 	// 执行一次临时存储清理（上传会话、临时上传分片会话、过期临时文件），并写入任务记录
@@ -54,8 +54,9 @@ func (rt *runCtx) runCleanupWorker(ctx context.Context) {
 		if n, cerr := uploadSessionHandler.CleanupExpiredSessions(); cerr != nil {
 			utils.Warn("清理过期上传会话失败", utils.Err(cerr))
 		} else {
-			cleaned = append(cleaned, fmt.Sprintf("清理上传会话 %d 个", n))
+			cleaned = append(cleaned, fmt.Sprintf("清理公开上传会话 %d 个", n))
 		}
+		cleaned = append(cleaned, fmt.Sprintf("清理私有上传会话 %d 个", privateUploadHandler.CleanupExpiredSessions()))
 		cleaned = append(cleaned, fmt.Sprintf("清理临时上传会话 %d 个", tempHandler.CleanupTempSessions()))
 		cleaned = append(cleaned, fmt.Sprintf("清理临时文件 %d 个", tempHandler.CleanupExpiredFiles()))
 		details := strings.Join(cleaned, "，")
@@ -449,7 +450,6 @@ func (rt *runCtx) run() {
 			&models.User{}, &models.TempFile{},
 			&models.URLDownloadTask{},
 			&models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{},
-			&temph.TempUploadSession{}, &temph.ChunkUploadRecord{},
 			&models.FileDependency{},
 			&models.ApiKey{},
 			&models.OAuthClient{},

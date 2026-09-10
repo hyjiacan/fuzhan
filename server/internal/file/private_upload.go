@@ -34,10 +34,24 @@ func NewPrivateUploadHandler(db *gorm.DB, chunkSize int64, privateStoragePath st
 			db, chunkSize, indexSvc,
 			NewPrivateStorage(privateStoragePath),
 			NewPrivateFinalizer(db, indexSvc),
+			models.TargetTypePrivate,
 		),
 		db:          db,
 		privatePath: privateStoragePath,
 	}
+}
+
+// CleanupExpiredSessions 清理过期的私有上传会话（统一会话表，供定时任务调用）
+func (h *PrivateUploadHandler) CleanupExpiredSessions() int {
+	n, err := h.service.CleanupExpired()
+	if err != nil {
+		utils.Error("清理过期私有上传会话失败", utils.Err(err))
+		return 0
+	}
+	if n > 0 {
+		utils.Info("已清理过期私有上传会话", utils.Int("count", n))
+	}
+	return n
 }
 
 func (h *PrivateUploadHandler) getUserUUID(c *gin.Context) (string, error) {

@@ -30,24 +30,28 @@ const (
 
 // UploadSession 上传会话
 type UploadSession struct {
-	ID          uint            `gorm:"primaryKey" json:"id"`
-	FileName    string          `gorm:"size:255;not null" json:"fileName"`              // 文件名
-	FileSize    int64           `gorm:"not null" json:"fileSize"`                       // 文件大小
-	ChunkSize   int64           `gorm:"not null" json:"chunkSize"`                      // 分片大小
-	TotalChunks int             `gorm:"not null" json:"totalChunks"`                    // 总分片数
-	Checksum    string          `gorm:"size:64" json:"checksum"`                        // 文件校验和
-	Status      UploadStatus    `gorm:"size:20;not null;default:pending" json:"status"` // 会话状态
-	TargetType  TargetType      `gorm:"size:20;not null;default:regular" json:"targetType"`
-	TargetPath  string          `gorm:"size:512" json:"targetPath"`        // 目标路径
-	TargetRoot  string          `gorm:"size:255" json:"targetRoot"`        // 目标根目录
-	UserID      string          `gorm:"size:64" json:"userID"`             // 用户ID
-	ClientIP    string          `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
-	ChunkDir    string          `gorm:"size:512" json:"chunkDir"`          // 分片目录
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
-	ExpiredAt   time.Time       `gorm:"index" json:"expiredAt"` // 过期时间
-	DeletedAt   gorm.DeletedAt  `gorm:"index" json:"deletedAt,omitempty"`
-	Chunks      []UploadedChunk `gorm:"foreignKey:SessionID" json:"chunks,omitempty"`
+	ID          uint         `gorm:"primaryKey" json:"id"`
+	FileName    string       `gorm:"size:255;not null" json:"fileName"`              // 文件名
+	FileSize    int64        `gorm:"not null" json:"fileSize"`                       // 文件大小
+	ChunkSize   int64        `gorm:"not null" json:"chunkSize"`                      // 分片大小
+	TotalChunks int          `gorm:"not null" json:"totalChunks"`                    // 总分片数
+	Checksum    string       `gorm:"size:64" json:"checksum"`                        // 文件校验和
+	Status      UploadStatus `gorm:"size:20;not null;default:pending" json:"status"` // 会话状态
+	TargetType  TargetType   `gorm:"size:20;not null;default:regular" json:"targetType"`
+	TargetPath  string       `gorm:"size:512" json:"targetPath"`        // 目标路径
+	TargetRoot  string       `gorm:"size:255" json:"targetRoot"`        // 目标根目录
+	UserID      string       `gorm:"size:64" json:"userID"`             // 用户ID
+	ClientIP    string       `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
+	ChunkDir    string       `gorm:"size:512" json:"chunkDir"`          // 分片目录
+	// Code 访问码（仅临时上传携带，32 位十六进制 128bit 熵，用于命名与分享/下载）
+	Code string `gorm:"size:64" json:"code,omitempty"`
+	// DeleteOnDownload 下载后自动删除（仅临时上传使用）
+	DeleteOnDownload bool            `gorm:"default:false" json:"deleteOnDownload,omitempty"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	UpdatedAt        time.Time       `json:"updatedAt"`
+	ExpiredAt        time.Time       `gorm:"index" json:"expiredAt"` // 过期时间
+	DeletedAt        gorm.DeletedAt  `gorm:"index" json:"deletedAt,omitempty"`
+	Chunks           []UploadedChunk `gorm:"foreignKey:SessionID" json:"chunks,omitempty"`
 }
 
 // TableName 指定表名

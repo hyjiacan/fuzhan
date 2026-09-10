@@ -381,7 +381,7 @@ func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 		utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
 
 	case "temp":
-		sessions, total, err := h.service.ListTempByUser(clientIP, page, pageSize)
+		sessions, total, err := h.service.ListByIPAndType(clientIP, models.TargetTypeTemp, page, pageSize)
 		if err != nil {
 			utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询失败", nil)
 			return
@@ -389,12 +389,12 @@ func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 		result := make([]gin.H, 0, len(sessions))
 		for _, s := range sessions {
 			result = append(result, gin.H{
-				"id":        s["id"],
-				"fileName":  s["fileName"],
-				"fileSize":  s["fileSize"],
-				"status":    s["status"],
-				"createdAt": s["createdAt"],
-				"expiredAt": s["expiredAt"],
+				"id":        s.ID,
+				"fileName":  s.FileName,
+				"fileSize":  s.FileSize,
+				"status":    s.Status,
+				"createdAt": s.CreatedAt,
+				"expiredAt": s.ExpiredAt,
 			})
 		}
 		utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})

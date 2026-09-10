@@ -28,6 +28,10 @@ type CreateSessionReq struct {
 	TargetType models.TargetType
 	UserID     string
 	ClientIP   string
+	// Code 访问码（仅临时上传传入，作为命名与分享/下载凭证）
+	Code string
+	// DeleteOnDownload 下载后自动删除（仅临时上传使用）
+	DeleteOnDownload bool
 }
 
 // UploadChunkReq 上传分片请求
@@ -70,10 +74,13 @@ type UploadSessionService struct {
 	chunkSize   int64
 	storage     UploadStorage
 	finalizer   UploadFinalizer
-	mu          sync.Mutex
+	// targetType 本服务负责清理的上传类型（每次仅处理归属自己的会话，
+	// 避免统一会话表被多存储服务交叉清理时用错落盘策略）。
+	targetType models.TargetType
+	mu         sync.Mutex
 }
 
-// NewUploadSessionService 创建上传会话服务实例（公开上传的存储与收尾策略）
+// NewUploadSessionService 创建上传会话服务实例（公开上传的存储与收尾策略，清理范围为公开/遗留）
 func NewUploadSessionService(db *gorm.DB, chunkSize int64, indexSvc *index.Service) *UploadSessionService {
 	return &UploadSessionService{
 		db:          db,
@@ -84,12 +91,14 @@ func NewUploadSessionService(db *gorm.DB, chunkSize int64, indexSvc *index.Servi
 		chunkSize:   chunkSize,
 		storage:     PublicStorage{},
 		finalizer:   NewPublicFinalizer(db, indexSvc),
+		targetType:  models.TargetTypeRegular,
 	}
 }
 
 // NewUploadSessionServiceWithPolicies 创建指定落盘与收尾策略的上传会话服务实例，
-// 供私有等需要差异化策略的存储复用同一分片上传流程。
-func NewUploadSessionServiceWithPolicies(db *gorm.DB, chunkSize int64, indexSvc *index.Service, storage UploadStorage, finalizer UploadFinalizer) *UploadSessionService {
+// 供私有/临时等需要差异化策略的存储复用同一分片上传流程；targetType 标识本服务
+// 负责清理的上传类型。
+func NewUploadSessionServiceWithPolicies(db *gorm.DB, chunkSize int64, indexSvc *index.Service, storage UploadStorage, finalizer UploadFinalizer, targetType models.TargetType) *UploadSessionService {
 	return &UploadSessionService{
 		db:          db,
 		sessionRepo: repositories.NewSessionRepository(db),
@@ -99,6 +108,7 @@ func NewUploadSessionServiceWithPolicies(db *gorm.DB, chunkSize int64, indexSvc 
 		chunkSize:   chunkSize,
 		storage:     storage,
 		finalizer:   finalizer,
+		targetType:  targetType,
 	}
 }
 
@@ -117,18 +127,20 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
 	uploadID := uuid.New().String()
 
 	session := &models.UploadSession{
-		FileName:    req.Filename,
-		FileSize:    req.FileSize,
-		ChunkSize:   s.chunkSize,
-		TotalChunks: totalChunks,
-		Status:      models.UploadStatusPending,
-		TargetType:  req.TargetType,
-		TargetPath:  req.Dir,
-		TargetRoot:  req.RootName,
-		UserID:      req.UserID,
-		ClientIP:    req.ClientIP,
-		ChunkDir:    uploadID,
-		ExpiredAt:   utils.Now().Add(24 * time.Hour),
+		FileName:         req.Filename,
+		FileSize:         req.FileSize,
+		ChunkSize:        s.chunkSize,
+		TotalChunks:      totalChunks,
+		Status:           models.UploadStatusPending,
+		TargetType:       req.TargetType,
+		TargetPath:       req.Dir,
+		TargetRoot:       req.RootName,
+		UserID:           req.UserID,
+		ClientIP:         req.ClientIP,
+		ChunkDir:         uploadID,
+		Code:             req.Code,
+		DeleteOnDownload: req.DeleteOnDownload,
+		ExpiredAt:        utils.Now().Add(24 * time.Hour),
 	}
 
 	if err := s.sessionRepo.Create(session); err != nil {
@@ -424,56 +436,43 @@ func (s *UploadSessionService) ListByUser(userID string, targetType models.Targe
 	return sessions, total, err
 }
 
-// ListTempByUser 根据用户IP查询临时上传会话
-func (s *UploadSessionService) ListTempByUser(clientIP string, page, pageSize int) ([]map[string]interface{}, int64, error) {
-	type TempSession struct {
-		ID        uint
-		Filename  string
-		FileSize  int64
-		Status    string
-		CreatedAt time.Time
-		ExpiredAt time.Time
-	}
+// ListByIPAndType 根据客户端IP和存储类型查询上传会话（临时上传以IP为身份，无 UserID）
+func (s *UploadSessionService) ListByIPAndType(clientIP string, targetType models.TargetType, page, pageSize int) ([]models.UploadSession, int64, error) {
+	var sessions []models.UploadSession
+	query := s.db.Model(&models.UploadSession{}).
+		Where("target_type = ?", targetType).
+		Where("client_ip = ?", clientIP)
 
-	var sessions []TempSession
 	var total int64
-
-	tableName := "temp_upload_sessions"
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE client_ip = ?", tableName)
-	if err := s.db.Raw(countQuery, clientIP).Scan(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	dataQuery := fmt.Sprintf("SELECT id, filename, file_size, 'in_progress' as status, created_at, expired_at FROM %s WHERE client_ip = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", tableName)
-	if err := s.db.Raw(dataQuery, clientIP, pageSize, (page-1)*pageSize).Scan(&sessions).Error; err != nil {
-		return nil, 0, err
-	}
-
-	result := make([]map[string]interface{}, len(sessions))
-	for i, s := range sessions {
-		result[i] = map[string]interface{}{
-			"id":        s.ID,
-			"fileName":  s.Filename,
-			"fileSize":  s.FileSize,
-			"status":    s.Status,
-			"createdAt": s.CreatedAt,
-			"expiredAt": s.ExpiredAt,
-		}
-	}
-	return result, total, nil
+	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&sessions).Error
+	return sessions, total, err
 }
 
-// CleanupExpired 清理过期会话
+// applyCleanupType 将清理查询限定到本服务负责的上传类型。
+// 公开服务需同时覆盖公开与历史无类型的遗留会话。
+func (s *UploadSessionService) applyCleanupType(q *gorm.DB) *gorm.DB {
+	if s.targetType == models.TargetTypeRegular {
+		return q.Where("`target_type` IN (?, '')", models.TargetTypeRegular)
+	}
+	return q.Where("`target_type` = ?", s.targetType)
+}
+
+// CleanupExpired 清理过期会话（仅清理归属本服务 targetType 的会话）
 func (s *UploadSessionService) CleanupExpired() (int, error) {
 	var sessions []models.UploadSession
 	now := utils.Now()
 
-	if err := s.db.Where("`status` IN ? AND expired_at < ?",
+	expiredQuery := s.db.Where("`status` IN ? AND expired_at < ?",
 		[]models.UploadStatus{
 			models.UploadStatusPending,
 			models.UploadStatusInProgress,
 			models.UploadStatusFailed,
-		}, now).Find(&sessions).Error; err != nil {
+		}, now).Scopes(s.applyCleanupType)
+	if err := expiredQuery.Find(&sessions).Error; err != nil {
 		return 0, fmt.Errorf("查询过期会话失败: %w", err)
 	}
 
@@ -481,7 +480,7 @@ func (s *UploadSessionService) CleanupExpired() (int, error) {
 	var completedSessions []models.UploadSession
 	completedThreshold := now.Add(-1 * time.Hour)
 	if err := s.db.Where("`status` = ? AND updated_at < ?",
-		models.UploadStatusCompleted, completedThreshold).Find(&completedSessions).Error; err != nil {
+		models.UploadStatusCompleted, completedThreshold).Scopes(s.applyCleanupType).Find(&completedSessions).Error; err != nil {
 		utils.Error("查询已完成会话失败", utils.Err(err))
 	} else {
 		for _, sess := range completedSessions {

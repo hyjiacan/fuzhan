@@ -361,10 +361,7 @@ func main() {
 	}
 	tempService := services.NewTempFileServiceWithConfig(db, tempSvcConfig)
 	tempHandler := temph.NewHandler(db, cfg.Storage.Temp, tempService, indexService)
-	// 初始化临时上传会话表（仅在临时文件功能启用时）
-	if cfg.Storage.Temp.Enabled {
-		tempHandler.InitTempSessionTable()
-	} else {
+	if !cfg.Storage.Temp.Enabled {
 		utils.Info("临时文件功能未启用")
 	}
 
