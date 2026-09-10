@@ -107,652 +107,80 @@
 </template>
 
 <script setup>
-import { ref, computed, h, watch, onUnmounted, onMounted } from 'vue'
+import { watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, ElButton, ElCheckbox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { AdminApi, IndexApi } from '@/api'
-import { NumberUtils, TimeUtils, PathUtils, compareFileNames } from '@/utils'
-import { formatErrorMessage } from '@/utils/error'
 import FilePreview from '@/components/file/FilePreview.vue'
-import { isPreviewable } from '@/config/preview'
 import store from '@/store'
+import { useFilesTable } from './admin/useFilesTable'
+import { useFilesSearch } from './admin/useFilesSearch'
+import { useFileActions } from './admin/useFileActions'
+import { buildFileColumns, isDir } from './admin/fileTableColumns'
 
 const route = useRoute()
 const router = useRouter()
-const loading = ref(false)
-const moving = ref(false)
 
-// 搜索状态（复用 store，与 HomeView 一致）
-const searchQuery = ref('')
-const searchInputRef = ref(null)
-const searchStartTime = ref(0)
+const table = useFilesTable(router)
+const search = useFilesSearch({
+  store,
+  router,
+  fileList: table.fileList,
+  checkedRowKeys: table.checkedRowKeys,
+  loadCurrentDir: table.loadCurrentDir
+})
+// 勾选应基于当前显示列表（搜索时即搜索结果），此处注入 displayList 源
+table.setListSource(() => search.displayList.value)
 
-// 使用 store 的搜索状态
-const searchState = computed(() => store.state.searchState)
-const isSearching = computed(() => searchState.value.isSearching)
-const searchCompleted = computed(() => searchState.value.isCompleted)
-const searchResultCount = computed(() => store.state.fileList.length)
-const searchTime = computed(() => store.state.searchState.searchTime || 0)
-
-// 当前显示的列表：搜索时使用 store.fileList，浏览时使用本地 fileList
-const displayList = computed(() => {
-  if (isSearching.value || searchCompleted.value) {
-    return store.state.fileList
-  }
-  return fileList.value
+const actions = useFileActions({
+  currentPath: table.currentPath,
+  currentFile: table.currentFile,
+  checkedRowKeys: table.checkedRowKeys,
+  loadCurrentDir: table.loadCurrentDir,
+  displayList: search.displayList
 })
 
-// 数据
-const rootOptions = ref([])
-const selectedRoot = ref('')
-const currentPath = ref('')
-const breadcrumb = ref([])
-const fileList = ref([])
-const currentFile = ref(null)
-
-// 是否为根目录（根目录不允许操作）
-const isAtRoot = computed(() => !currentPath.value)
-
-// 对话框状态
-const moveModalVisible = ref(false)
-const targetRootName = ref('')
-const targetSubPath = ref('')
-
-// 移动/重命名弹框宽度：桌面 800px，小屏按百分比自适应
-const MOVE_DIALOG_MAX_WINDOW = 860
-const moveDialogWidth = ref('800px')
-const updateMoveDialogWidth = () => {
-  moveDialogWidth.value = window.innerWidth < MOVE_DIALOG_MAX_WINDOW ? '92%' : '800px'
-}
-
-// ============ 索引扫描 ============
-const scanning = ref(false)
-const scanProgress = ref({ status: 'idle', scannedFiles: 0, totalFiles: 0, currentFile: '', errorMessage: '' })
-
-async function loadScanProgress() {
-  try {
-    const res = await IndexApi.getScanProgress()
-    if (res.success) {
-      scanProgress.value = res.data
-    }
-  } catch (err) {
-    // 静默失败
-  }
-}
-
-async function handleScan() {
-  scanning.value = true
-  try {
-    const res = await IndexApi.triggerScan()
-    if (res.success) {
-      ElMessage.success('扫描已启动')
-      startPollProgress()
-    }
-  } catch (err) {
-    ElMessage.error(formatErrorMessage(err, '启动扫描失败'))
-  } finally {
-    scanning.value = false
-  }
-}
-
-let progressTimer = null
-
-function startPollProgress() {
-  loadScanProgress()
-  progressTimer = setInterval(() => {
-    loadScanProgress()
-  }, 3000)
-}
-
-function stopPollProgress() {
-  if (progressTimer) {
-    clearInterval(progressTimer)
-    progressTimer = null
-  }
-}
-
-// ============ 索引扫描 ============
-const isDir = (row) => row.type === 'dir' || row.type === 'directory'
-
-// 获取文件类型图标类名
-const getFileIconClass = (row) => {
-  if (isDir(row)) return 'icon-filetype-folder'
-  const ext = row.name?.split('.').pop()?.toLowerCase() || ''
-  return `icon-filetype-${ext}`
-}
-
-// 格式化文件大小
-const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
-
-// 判断文件是否可预览
-const canPreview = (row) => {
-  if (isDir(row)) return false
-  return isPreviewable(row.name)
-}
-
-// 对路径的每段分别编码，避免斜杠被编码
-const encodePath = (path) => {
-  return path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
-}
-
-// el-table-v2 需要数值宽高，实时测量容器
-const tableWrapRef = ref(null)
-const tableWidth = ref(600)
-const tableHeight = ref(400)
-let tableResizeObs = null
-const updateTableSize = () => {
-  const el = tableWrapRef.value
-  if (el) {
-    tableWidth.value = el.clientWidth || 600
-    tableHeight.value = el.clientHeight || 400
-  }
-}
-
-// ==== 勾选状态（el-table-v2 不内置选择列，手动实现）====
-const isAllSelected = computed(() => {
-  return displayList.value.length > 0 && displayList.value.every(f => checkedRowKeys.value.includes(f.path))
+// 列定义由独立模块构建，渲染回调从复合式取用
+const columns = buildFileColumns({
+  ...table, ...search, ...actions, router
 })
-const isIndeterminate = computed(() => {
-  if (displayList.value.length === 0) return false
-  const count = displayList.value.filter(f => checkedRowKeys.value.includes(f.path)).length
-  return count > 0 && count < displayList.value.length
-})
-const toggleSelectAll = (val) => {
-  if (val) {
-    checkedRowKeys.value = displayList.value.map(f => f.path)
-  } else {
-    checkedRowKeys.value = []
-  }
-}
-const handleSingleCheck = (row, checked) => {
-  if (checked) {
-    if (!checkedRowKeys.value.includes(row.path)) {
-      checkedRowKeys.value = checkedRowKeys.value.concat(row.path)
-    }
-  } else {
-    checkedRowKeys.value = checkedRowKeys.value.filter(key => key !== row.path)
-  }
-}
 
-// Table columns
-const columns = [
-  {
-    key: 'selection',
-    width: 40,
-    headerCellRenderer: () => h(ElCheckbox, {
-      modelValue: isAllSelected.value,
-      indeterminate: isIndeterminate.value,
-      disabled: isAtRoot.value,
-      onChange: (val) => toggleSelectAll(val)
-    }),
-    cellRenderer: ({ rowData: row }) => h(ElCheckbox, {
-      modelValue: checkedRowKeys.value.includes(row.path),
-      disabled: isAtRoot.value,
-      onChange: (val) => handleSingleCheck(row, val)
-    })
-  },
-  {
-    title: '文件名',
-    key: 'name',
-    minWidth: 240,
-    flexGrow: 1,
-    cellRenderer: ({ rowData: row }) => {
-      const iconClass = `icon-filetype ${getFileIconClass(row)}`
-      // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
-      const currentNavPath = currentPath.value
-      const dirPath = row.path
-      const downloadFullPath = row.path
-      const fileHref = adminDownloadHref(downloadFullPath)
-      const isPreview = canPreview(row)
-
-      // 直接浏览模式（与 HomeView 一致）
-      const renderNormalMode = () => [
-        h('div', { class: 'file-icon-wrapper' }, [
-          h('span', { class: iconClass }),
-          isPreview && !isDir(row) ? h('span', { class: 'preview-icon' }) : null
-        ]),
-        isDir(row)
-          ? h('a', {
-            class: 'file-link dir-link',
-            onClick: (e) => {
-              e.preventDefault()
-              router.push('/admin/files/' + encodePath(dirPath))
-            }
-          }, highlightKeyword(row.name))
-          : h('a', {
-            href: fileHref,
-            class: 'file-link',
-            onClick: (e) => {
-              if (isPreview) {
-                e.preventDefault()
-                previewFile(row)
-              }
-            }
-          }, highlightKeyword(row.name))
-      ]
-
-      // 搜索结果模式（显示完整路径，与 HomeView 一致）
-      const renderSearchMode = () => {
-        const fullPath = row.path || ''
-        const segments = fullPath.split('/').filter(Boolean)
-        const fileName = segments[segments.length - 1] || ''
-        const pathSegments = segments.slice(0, -1)
-
-        return [
-          h('div', { class: 'file-icon-wrapper' }, [
-            h('span', { class: iconClass }),
-            isPreview && !isDir(row) ? h('span', { class: 'preview-icon' }) : null
-          ]),
-          h('span', { class: 'file-path-content' }, [
-            ...pathSegments.map((seg, idx) => {
-              const segPath = '/' + pathSegments.slice(0, idx + 1).join('/')
-              return [
-                h('a', {
-                  class: 'path-segment',
-                  onClick: (e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    navigateToDir(segPath)
-                  }
-                }, highlightKeyword(seg)),
-                '/'
-              ]
-            }).flat(),
-            isDir(row)
-              ? h('a', {
-                class: 'file-link dir-link',
-                onClick: (e) => {
-                  e.preventDefault()
-                  navigateToDir(dirPath)
-                }
-              }, highlightKeyword(fileName))
-              : h('a', {
-                href: fileHref,
-                class: 'file-link',
-                onClick: (e) => {
-                  if (isPreview) {
-                    e.preventDefault()
-                    previewFile(row)
-                  }
-                }
-              }, highlightKeyword(fileName))
-          ])
-        ]
-      }
-
-      return h('div', {
-        class: 'file-name-cell',
-        title: row.name
-      }, isSearching.value || searchCompleted.value ? renderSearchMode() : renderNormalMode())
-    }
-  },
-  { title: '大小', key: 'size', width: 150, cellRenderer: ({ rowData: row }) => formatSize(row.size) },
-  { title: '修改时间', key: 'modifiedTime', width: 200,
-    cellRenderer: ({ rowData: row }) => {
-      const text = TimeUtils.formatDateTime(row.modifiedTime)
-      if (TimeUtils.isRecent24h(row.modifiedTime)) {
-        return h('span', { style: 'color: #18a058' }, text)
-      }
-      return text
-    }
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 200,
-    cellRenderer: ({ rowData: row }) => {
-      // 根目录不显示操作按钮
-      if (isAtRoot.value) {
-        return null
-      }
-      return h('div', { class: 'action-buttons' }, [
-        h(ElButton, { size: 'small', link: true, onClick: () => openMoveModal(row) }, () => '移动/重命名'),
-        h(ElButton, { size: 'small', link: true, type: 'danger', onClick: () => handleDelete(row) }, () => '删除')
-      ])
-    }
-  }
-]
+// 解构给模板使用的绑定（<script setup> 仅顶层绑定可被模板访问）
+const { loading, breadcrumb, currentFile, checkedRowKeys, tableWrapRef, tableWidth, tableHeight, loadCurrentDir, navigateToBreadcrumb } = table
+const { searchQuery, searchInputRef, isSearching, searchCompleted, searchResultCount, searchTime, displayList, searchFiles, clearSearch } = search
+const {
+  scanning, scanProgress, handleScan,
+  moveModalVisible, targetRootName, targetSubPath, moving, moveDialogWidth, handleMove,
+  previewDialogVisible, previewMaximized, previewFileData, downloadFile,
+  handleBatchDelete
+} = actions
 
 // 双击行
 const handleDblClick = (row) => {
   if (isDir(row)) {
-    enterDir(row)
+    table.enterDir(row)
   }
 }
 
-// 进入目录
-const enterDir = (row) => {
-  const newPath = row.path
-  router.push(`/admin/files/${PathUtils.encodeFilePath(newPath)}`)
-}
-
-// 导航到面包屑指定层级
-const navigateToBreadcrumb = (index) => {
-  if (index < breadcrumb.value.length - 1) {
-    // 点击的不是最后一个（当前目录），导航到对应的父目录
-    const target = breadcrumb.value[index]
-    router.push(`/admin/files/${PathUtils.encodeFilePath(target.path.replace(/^\//, ''))}`)
-  }
-}
-
-// 更新面包屑（与文件页面保持一致）
-const updateBreadcrumb = () => {
-  if (!currentPath.value) {
-    breadcrumb.value = [{ name: '文件管理', path: '/' }]
-    return
-  }
-  const parts = currentPath.value.split('/').filter(Boolean)
-  breadcrumb.value = [
-    { name: '文件管理', path: '/' },
-    ...parts.map((name, index) => ({
-      name,
-      path: '/' + parts.slice(0, index + 1).join('/')
-    }))
-  ]
-}
-
-// 从搜索关键词中提取用于高亮的关键词（排除扩展名过滤条件）
-// 与后端 SearchService.SearchFiles 的扩展名提取逻辑保持一致
-const getHighlightKeywords = (keywords) => {
-  if (keywords.length === 0) return keywords
-  const lastIdx = keywords.length - 1
-  const lastKw = keywords[lastIdx]
-
-  if (lastKw.startsWith('.')) {
-    // 纯扩展名过滤，如 ".pdf" - 不参与高亮
-    return keywords.slice(0, lastIdx)
-  }
-  if (lastKw.includes('.')) {
-    // 关键词包含扩展名，如 "file.txt" - 只取关键词部分
-    const parts = lastKw.split('.')
-    if (parts[0] === '') {
-      return keywords.slice(0, lastIdx)
-    }
-    keywords[lastIdx] = parts[0]
-    return keywords
-  }
-  return keywords
-}
-
-// 高亮搜索关键字（使用 VNode），支持多关键词
-const highlightKeyword = (text) => {
-  if (!searchQuery.value.trim() || (!isSearching.value && !searchCompleted.value)) {
-    return text
-  }
-  const allKeywords = searchQuery.value.trim().split(/\s+/)
-  const keywords = getHighlightKeywords(allKeywords)
-  if (keywords.length === 0) {
-    return text
-  }
-  const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const splitRegex = new RegExp(`(${escaped.join('|')})`, 'gi')
-  const testRegex = new RegExp(`(${escaped.join('|')})`, 'i')
-  const parts = text.split(splitRegex)
-
-  return parts.map((part, idx) => {
-    if (part && testRegex.test(part)) {
-      return h('mark', { class: 'search-highlight', key: idx }, part)
-    }
-    return part
-  })
-}
-
-// 搜索文件（复用 store，与 HomeView 一致）
-const searchFiles = () => {
-  checkedRowKeys.value = []
-  if (!searchQuery.value.trim()) {
-    store.clearSearchState()
-    loadCurrentDir()
-    return
-  }
-  store.actions.adminSearchFiles(searchQuery.value)
-}
-
-// 清除搜索（与 HomeView 一致）
-const clearSearch = () => {
-  searchQuery.value = ''
-  checkedRowKeys.value = []
-  store.clearSearchState()
-  loadCurrentDir()
-}
-
-// 点击路径段导航到目录
-const navigateToDir = (dirPath) => {
-  searchQuery.value = ''
-  checkedRowKeys.value = []
-  store.clearSearchState()
-  router.push('/admin/files/' + encodePath(dirPath))
-}
-
-// 从 URL 获取当前路径
-const getCurrentPathFromRoute = () => {
-  const pathMatch = route.params.pathMatch
-  if (!pathMatch) return ''
-  // pathMatch 可能是字符串或字符串数组
-  return Array.isArray(pathMatch) ? pathMatch.join('/') : pathMatch
-}
-
-// 加载当前目录
-const loadCurrentDir = async () => {
-  loading.value = true
-  try {
-    const data = await AdminApi.listFiles(currentPath.value)
-    if (data.success && data.data) {
-      // 排序：目录在前，文件在后，按名称排序
-      fileList.value = data.data.sort((a, b) => {
-        const aIsDir = a.type === 'dir' || a.type === 'directory'
-        const bIsDir = b.type === 'dir' || b.type === 'directory'
-        if (aIsDir && !bIsDir) return -1
-        if (!aIsDir && bIsDir) return 1
-        return compareFileNames(a.name, b.name)
-      })
-
-      // 在根目录时一并更新根目录选项（供移动/重命名使用）
-      if (!currentPath.value) {
-        const dirs = data.data.filter(f => f.type === 'dir' || f.type === 'directory')
-        rootOptions.value = dirs.map(d => ({
-          label: d.name,
-          value: d.name
-        }))
-        if (rootOptions.value.length > 0) {
-          selectedRoot.value = rootOptions.value[0].value
-        }
-      }
-    }
-  } catch (e) {
-    console.error('加载文件列表失败', e)
-    ElMessage.error('加载文件列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 移动/重命名（类似 Linux mv 命令）
-const openMoveModal = (file) => {
-  currentFile.value = file
-  targetRootName.value = file.rootName || ''
-  // 预填相对根目录的路径（去除 rootName 前缀），避免与 handleMove 拼接时出现重复嵌套
-  let rel = file.path || ''
-  const prefix = '/' + (file.rootName || '')
-  if (rel.startsWith(prefix + '/')) {
-    rel = rel.slice(prefix.length + 1)
-  }
-  targetSubPath.value = rel
-  moveModalVisible.value = true
-}
-
-const handleMove = async () => {
-  if (!targetSubPath.value || !targetSubPath.value.trim()) {
-    ElMessage.warning('请输入目标路径（子目录或新文件名）')
-    return
-  }
-
-  // 验证目标路径不能包含 .. 等越权路径
-  const subPath = targetSubPath.value.trim()
-  if (subPath.includes('..')) {
-    ElMessage.error('目标路径无效，不能包含 ..')
-    return
-  }
-
-  // 目标路径 = 根目录名 + 子路径
-  const target = targetRootName.value + '/' + subPath
-  // 源路径 = 根目录名 + 原相对路径
-  const oldFullPath = currentFile.value.path
-
-  moving.value = true
-  try {
-    const data = await AdminApi.move(oldFullPath, target)
-    if (data.success) {
-      ElMessage.success('操作成功')
-      moveModalVisible.value = false
-      targetSubPath.value = ''
-      loadCurrentDir()
-    } else {
-      ElMessage.error(data.message || '操作失败')
-    }
-  } catch (e) {
-    ElMessage.error('操作失败')
-  } finally {
-    moving.value = false
-  }
-}
-
-// 预览对话框状态
-const previewDialogVisible = ref(false)
-const previewMaximized = ref(false)
-const previewFileData = ref({})
-
-// 管理下载走 /admin/download（带鉴权）；新窗口打不开无法带请求头，故在 URL 上附 token
-const adminDownloadHref = (fullPath, pathEncoded) => {
-  const p = pathEncoded || PathUtils.encodeFilePath(fullPath)
-  const t = localStorage.getItem('token')
-  return `/api/v1/admin/download/${p}${t ? `?token=${encodeURIComponent(t)}` : ''}`
-}
-
-// 预览文件
-const previewFile = (file) => {
-  previewFileData.value = file
-  previewDialogVisible.value = true
-}
-
-// 下载文件
-const downloadFile = (file) => {
-  if (file?.path) {
-    const fullPath = file.path
-    window.open(adminDownloadHref(fullPath), '_blank')
-  }
-}
-
-// 删除
-const deleting = ref(false)
-const checkedRowKeys = ref([])
-const handleDelete = async (file) => {
-  const isDirectory = isDir(file)
-  try {
-    await ElMessageBox.confirm(
-      isDirectory
-        ? `确定要删除目录 "${file.name}" 及其所有内容吗？此操作不可恢复。`
-        : `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
-      '确认删除',
-      {
-        type: 'warning',
-        confirmButtonText: '删除',
-        cancelButtonText: '取消'
-      }
-    )
-  } catch {
-    return
-  }
-  deleting.value = true
-  try {
-    const deletePath = file.path
-    const data = await AdminApi.delete(deletePath)
-    if (data.success) {
-      ElMessage.success('删除成功')
-      loadCurrentDir()
-    } else {
-      ElMessage.error(data.message || '删除失败')
-    }
-  } catch (e) {
-    ElMessage.error('删除失败')
-  } finally {
-    deleting.value = false
-  }
-}
-
-// 批量删除选中的文件
-const handleBatchDelete = async () => {
-  const selected = displayList.value.filter(f => checkedRowKeys.value.includes(f.path))
-  if (selected.length === 0) return
-  const dirCount = selected.filter(f => isDir(f)).length
-  const fileCount = selected.length - dirCount
-  let contentText
-  if (dirCount > 0 && fileCount > 0) {
-    contentText = `确定要删除选中的 ${fileCount} 个文件和 ${dirCount} 个目录（含目录下所有内容）吗？此操作不可恢复。`
-  } else if (dirCount > 0) {
-    contentText = `确定要删除选中的 ${dirCount} 个目录（含目录下所有内容）吗？此操作不可恢复。`
-  } else {
-    contentText = `确定要删除选中的 ${fileCount} 个文件吗？此操作不可恢复。`
-  }
-  try {
-    await ElMessageBox.confirm(contentText, '确认删除', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消'
-    })
-  } catch {
-    return
-  }
-  deleting.value = true
-  try {
-    let successCount = 0
-    for (const file of selected) {
-      const data = await AdminApi.delete(file.path)
-      if (data.success) {
-        successCount++
-      }
-    }
-    ElMessage.success(`已删除 ${successCount} 个文件`)
-    checkedRowKeys.value = []
-    loadCurrentDir()
-  } catch (e) {
-    ElMessage.error('删除失败')
-  } finally {
-    deleting.value = false
-  }
-}
-
-// 监听路由变化
+// 路由变化：清空搜索态并切换目录
 watch(
   () => route.params.pathMatch,
-  (newPathMatch) => {
-    // pathMatch 可能是字符串或字符串数组
-    currentPath.value = Array.isArray(newPathMatch) ? newPathMatch.join('/') : (newPathMatch || '')
-    updateBreadcrumb()
-    // 路由变化时清空搜索状态和选中项
-    searchQuery.value = ''
-    store.clearSearchState()
-    checkedRowKeys.value = []
-    loadCurrentDir()
+  async (newPathMatch) => {
+    search.resetFromRoute()
+    await table.handleRouteChange(newPathMatch)
   },
   { immediate: true }
 )
 
 onMounted(() => {
-  updateTableSize()
-  updateMoveDialogWidth()
-  window.addEventListener('resize', updateMoveDialogWidth)
-  tableResizeObs = new ResizeObserver(updateTableSize)
-  if (tableWrapRef.value) {
-    tableResizeObs.observe(tableWrapRef.value)
-  }
+  actions.updateMoveDialogWidth()
+  window.addEventListener('resize', actions.updateMoveDialogWidth)
+  table.setupTableResize()
 })
 
 onUnmounted(() => {
-  stopPollProgress()
-  window.removeEventListener('resize', updateMoveDialogWidth)
-  tableResizeObs?.disconnect()
+  actions.stopPollProgress()
+  window.removeEventListener('resize', actions.updateMoveDialogWidth)
+  table.teardownTableResize()
 })
 </script>
 
