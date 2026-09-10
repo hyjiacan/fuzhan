@@ -8,509 +8,37 @@
     <el-tabs v-model="activeTab">
       <!-- 基本信息 -->
       <el-tab-pane name="basic" label="基本信息">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>应用信息</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="应用名称">
-                  <el-input v-model="settings.appName" :maxlength="64" placeholder="请输入应用名称" />
-                  <div class="field-hint">显示在页面标题和界面顶部的应用名称</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>共享目录配置</span></template>
-              <div v-for="(dir, index) in settings.rootDirs" :key="index" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
-                <el-form label-width="100px">
-                  <el-form-item label="目录路径">
-                    <el-input v-model="dir.path" :maxlength="1024" placeholder="目录路径" />
-                    <div class="field-hint">共享目录的绝对路径或相对路径</div>
-                  </el-form-item>
-                  <el-form-item label="显示名称">
-                    <el-input v-model="dir.name" :maxlength="255" placeholder="显示名称" />
-                    <div class="field-hint">在界面上显示的目录名称</div>
-                  </el-form-item>
-                </el-form>
-                <el-button type="danger" size="small" @click="removeDir(index)">删除</el-button>
-              </div>
-              <el-button plain block @click="addDir">添加共享目录</el-button>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>私有文件配置</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用私有文件">
-                  <el-switch v-model="settings.privateFiles.enabled" />
-                  <div class="field-hint">开启后用户需登录才能上传文件</div>
-                </el-form-item>
-                <el-form-item label="存储路径">
-                  <el-input v-model="settings.privateFiles.path" :maxlength="1024" placeholder="私有文件存储路径" />
-                  <div class="field-hint">私有文件的存储目录</div>
-                </el-form-item>
-                <el-form-item label="全局配额">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="privateQuotaGlobalDisplay" :maxlength="32" placeholder="如 500m, 10g, 1t" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.privateQuotaGlobal) }}</span>
-                  </div>
-                  <div class="field-hint">所有私有文件的总存储上限</div>
-                </el-form-item>
-                <el-form-item label="用户配额">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="privateQuotaUserDisplay" :maxlength="32" placeholder="如 100m, 5g" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.privateQuotaUser) }}</span>
-                  </div>
-                  <div class="field-hint">每个用户的私有文件存储上限</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>临时文件配置</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用临时文件">
-                  <el-switch v-model="settings.tempFiles.enabled" />
-                  <div class="field-hint">开启后无需登录即可上传文件</div>
-                </el-form-item>
-                <el-form-item label="存储路径">
-                  <el-input v-model="settings.tempFiles.path" :maxlength="1024" placeholder="临时文件存储路径" />
-                  <div class="field-hint">临时文件的存储目录</div>
-                </el-form-item>
-                <el-form-item label="全局配额">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="tempQuotaGlobalDisplay" :maxlength="32" placeholder="如 10g, 100g" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaGlobal) }}</span>
-                  </div>
-                  <div class="field-hint">所有临时文件的总存储上限</div>
-                </el-form-item>
-                <el-form-item label="IP 配额">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="tempQuotaPerIPDisplay" :maxlength="32" placeholder="如 500m, 2g" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaPerIP) }}</span>
-                  </div>
-                  <div class="field-hint">每个 IP 的临时文件存储上限</div>
-                </el-form-item>
-                <el-form-item label="默认过期天数">
-                  <el-input-number v-model="settings.tempFiles.defaultExpireDays" :min="1" :max="365" />
-                  <div class="field-hint">临时文件默认的有效天数</div>
-                </el-form-item>
-                <el-form-item label="下载后删除">
-                  <el-switch v-model="settings.tempFiles.deleteOnDownload" />
-                  <div class="field-hint">开启后文件被下载一次即自动删除</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>上传配置</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="分片大小">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="chunkSizeDisplay" :maxlength="32" placeholder="如 10m, 1g" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.upload.chunkSize) }}</span>
-                  </div>
-                  <div class="field-hint">文件分块上传的块大小，建议 5m-10m</div>
-                </el-form-item>
-                <el-form-item label="最大文件大小">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="maxFileSizeDisplay" :maxlength="32" placeholder="如 2g, 10g, 无限制" style="width: 200px;" />
-                    <span style="color: #999;">
-                      {{ settings.upload.maxFileSize === 0 ? '无限制' : formatSize(settings.upload.maxFileSize) }}
-                    </span>
-                  </div>
-                  <div class="field-hint">允许上传的单文件最大体积，0 表示不限制</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>URL 上传配置</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用 URL 上传">
-                  <el-switch v-model="settings.upload.urlUpload.enabled" />
-                  <div class="field-hint">开启后可通过远程 URL 下载文件到服务器</div>
-                </el-form-item>
-                <el-form-item label="跳过证书验证">
-                  <el-switch v-model="settings.upload.urlUpload.insecureSkipVerify" />
-                  <div class="field-hint">跳过 HTTPS/FTPS 的 TLS 证书验证</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsBasic :settings="settings" />
       </el-tab-pane>
 
       <!-- 服务配置 -->
       <el-tab-pane name="service" label="服务配置">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>WEB 服务</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="监听地址">
-                  <el-select v-model="settings.server.host">
-                    <el-option v-for="opt in ipOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                  </el-select>
-                  <div class="field-hint">服务器监听的 IP 地址。<code>0.0.0.0</code> 表示监听所有网卡</div>
-                </el-form-item>
-                <el-divider />
-                <span style="font-weight: 600; color: #909399;">HTTP</span>
-                <div style="width: 100%;">
-                  <el-form-item label="启用 HTTP">
-                    <el-switch v-model="settings.server.http.enabled" />
-                    <div class="field-hint">关闭后 HTTP 端口将不可用</div>
-                  </el-form-item>
-                  <el-form-item label="HTTP 端口" v-if="settings.server.http.enabled">
-                    <el-input-number v-model="settings.server.http.port" :min="1" :max="65535" />
-                    <div class="field-hint">HTTP 服务监听端口，常用：8080（开发）、80（生产）</div>
-                  </el-form-item>
-                </div>
-                <el-divider />
-                <span style="font-weight: 600; color: #909399;">HTTPS</span>
-                <div style="width: 100%;">
-                  <el-form-item label="启用 HTTPS">
-                    <el-switch v-model="settings.server.https.enabled" />
-                    <div class="field-hint">启用后可通过 HTTPS 加密访问</div>
-                  </el-form-item>
-                  <el-form-item label="HTTPS 端口" v-if="settings.server.https.enabled">
-                    <el-input-number v-model="settings.server.https.port" :min="1" :max="65535" />
-                    <div class="field-hint">HTTPS 服务监听端口，默认 8443</div>
-                  </el-form-item>
-                </div>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>FTP 服务</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用 FTP">
-                  <el-switch v-model="settings.server.ftp.enabled" />
-                  <div class="field-hint">开启后可通过 FTP 协议访问共享文件</div>
-                </el-form-item>
-                <el-form-item label="FTP 端口" v-if="settings.server.ftp.enabled">
-                  <el-input-number v-model="settings.server.ftp.port" :min="1" :max="65535" />
-                  <div class="field-hint">FTP 端口，默认 21</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>FTPS 服务</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用 FTPS">
-                  <el-switch v-model="settings.server.ftps.enabled" />
-                  <div class="field-hint">开启后可通过 FTPS（FTP over TLS）安全访问</div>
-                </el-form-item>
-                <el-form-item label="FTPS 端口" v-if="settings.server.ftps.enabled">
-                  <el-input-number v-model="settings.server.ftps.port" :min="1" :max="65535" />
-                  <div class="field-hint">FTPS 端口，默认 990</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>WebDAV 服务</span></template>
-              <el-alert type="info" :show-icon="false" :closable="false" style="margin-bottom: 16px;">
-                <span class="field-hint">WebDAV 通过 HTTP/HTTPS 端口提供访问，无需额外端口配置。</span>
-              </el-alert>
-              <el-form label-width="120px">
-                <el-form-item label="启用 WebDAV">
-                  <el-switch v-model="settings.server.webdav.enabled" />
-                  <div class="field-hint">开启后可通过 WebDAV 客户端浏览文件</div>
-                </el-form-item>
-                <el-form-item label="公开用户名" v-if="settings.server.webdav.enabled">
-                  <el-input v-model="settings.account.anonymous.username" placeholder="public" />
-                  <div class="field-hint">WebDAV/FTP 公开目录的默认用户名</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>TLS 证书</span></template>
-              <el-alert type="info" :show-icon="false" :closable="false" style="margin-bottom: 16px;">
-                <span class="field-hint">TLS 证书由 HTTPS 和 FTPS 共享使用，配置一次即可。</span>
-              </el-alert>
-              <el-form label-width="120px">
-                <el-form-item label="证书文件">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="settings.server.tls.certFile" placeholder="未配置" readonly style="width: 250px;" />
-                    <el-upload
-                      :show-file-list="false"
-                      accept=".pem,.crt"
-                      :http-request="handleCertUpload"
-                    >
-                      <el-button size="small">上传</el-button>
-                    </el-upload>
-                  </div>
-                  <div class="field-hint">上传 .pem 或 .crt 格式的证书文件</div>
-                </el-form-item>
-                <el-form-item label="密钥文件">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="settings.server.tls.keyFile" placeholder="未配置" readonly style="width: 250px;" />
-                    <el-upload
-                      :show-file-list="false"
-                      accept=".key"
-                      :http-request="handleKeyUpload"
-                    >
-                      <el-button size="small">上传</el-button>
-                    </el-upload>
-                  </div>
-                  <div class="field-hint">上传 .key 格式的密钥文件</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsService :settings="settings" />
       </el-tab-pane>
 
       <!-- 存储配置 -->
       <el-tab-pane name="storage" label="存储配置">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24">
-            <el-card>
-              <template #header><span>文件索引配置</span></template>
-              <el-form label-width="140px">
-                <el-form-item label="定时扫描间隔">
-                  <el-input v-model="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
-                  <div class="field-hint">Cron 表达式，默认 <code>0 1 * * *</code>（每天凌晨 1:00）</div>
-                </el-form-item>
-                <el-form-item label="检索索引对齐间隔">
-                  <el-input v-model="settings.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨5点）" />
-                  <div class="field-hint">定时校正检索索引与文件表对齐，默认 <code>0 5 * * *</code>（每天凌晨 5:00，与定时扫描错开）</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsStorage :settings="settings" />
       </el-tab-pane>
 
       <!-- 预览配置 -->
       <el-tab-pane name="preview" label="预览配置">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24">
-            <el-card>
-              <template #header><span>预览配置</span></template>
-              <el-form label-width="140px">
-                <el-form-item label="MIME 类型">
-                  <el-input
-                    v-model="settings.preview.allowMimes"
-                    :maxlength="1024"
-                    type="textarea"
-                    placeholder="text/*,image/*,application/pdf,application/json"
-                    :rows="2"
-                  />
-                  <div class="field-hint">允许预览的 MIME 类型，逗号分隔，支持通配符</div>
-                </el-form-item>
-                <el-form-item label="文件扩展名">
-                  <el-input
-                    v-model="settings.preview.allowExts"
-                    :maxlength="1024"
-                    type="textarea"
-                    placeholder="txt,md,log,json,html,css,js"
-                    :rows="2"
-                  />
-                  <div class="field-hint">允许预览的文件扩展名，逗号分隔</div>
-                </el-form-item>
-                <el-form-item label="最大内联大小">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="maxInlineSizeDisplay" :maxlength="32" placeholder="如 1m, 2m" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.preview.maxInlineSize) }}</span>
-                  </div>
-                  <div class="field-hint">浏览器直接预览的文件大小上限</div>
-                </el-form-item>
-                <el-form-item label="文本分块大小">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input v-model="textChunkSizeDisplay" placeholder="如 100k, 200k" style="width: 200px;" />
-                    <span style="color: #999;">{{ formatSize(settings.preview.textChunkSize) }}</span>
-                  </div>
-                  <div class="field-hint">预览大文本文件时分块读取的大小</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsPreview :settings="settings" />
       </el-tab-pane>
 
       <!-- 数据库 -->
       <el-tab-pane name="database" label="数据库">
-        <el-card>
-          <el-alert type="warning" :show-icon="false" :closable="false" class="db-migration-alert">
-            <template #title>切换数据库配置需手动迁移数据</template>
-            <div>修改数据库类型或地址后，若要保留已有数据，请使用 <code>dbswitch</code> 等外部迁移工具手动迁移数据，本站不提供内置迁移。配置保存后需重启服务方可生效。</div>
-          </el-alert>
-
-          <el-divider />
-
-          <el-form ref="formRef" :model="settings" label-width="120px">
-            <el-form-item label="数据库类型">
-              <el-radio-group v-model="settings.database.driver">
-                <el-radio label="sqlite">SQLite</el-radio>
-                <el-radio label="mysql">MySQL</el-radio>
-                <el-radio label="postgres">PostgreSQL</el-radio>
-              </el-radio-group>
-              <div class="field-hint">
-                <strong>SQLite</strong>：轻量级，文件存储，适合小型部署<br>
-                <strong>MySQL</strong>：适合大规模应用，需要 MySQL 5.7+<br>
-                <strong>PostgreSQL</strong>：功能丰富，适合企业级应用，需要 PostgreSQL 10+
-              </div>
-            </el-form-item>
-
-            <el-form-item v-if="settings.database.driver === 'sqlite'" label="数据库文件" prop="database.dsn">
-              <el-input v-model="settings.database.dsn" :maxlength="1024" placeholder="fuzhan.db" />
-              <div class="field-hint">SQLite 数据库文件路径</div>
-            </el-form-item>
-
-            <template v-if="settings.database.driver === 'mysql'">
-              <el-form-item label="主机地址" prop="database.mysqlHost">
-                <el-input v-model="settings.database.mysqlHost" :maxlength="255" placeholder="localhost" />
-              </el-form-item>
-              <el-form-item label="端口" prop="database.mysqlPort">
-                <el-input-number v-model="settings.database.mysqlPort" :min="1" :max="65535" />
-              </el-form-item>
-              <el-form-item label="用户名" prop="database.mysqlUser">
-                <el-input v-model="settings.database.mysqlUser" :maxlength="64" placeholder="root" />
-              </el-form-item>
-              <el-form-item label="密码">
-                <el-input v-model="settings.database.mysqlPassword" :maxlength="128" type="password" placeholder="输入密码" show-password />
-              </el-form-item>
-              <el-form-item label="数据库名" prop="database.mysqlDatabase">
-                <el-input v-model="settings.database.mysqlDatabase" :maxlength="64" placeholder="fuzhan" />
-              </el-form-item>
-            </template>
-
-            <template v-if="settings.database.driver === 'postgres'">
-              <el-form-item label="主机地址" prop="database.postgresHost">
-                <el-input v-model="settings.database.postgresHost" :maxlength="255" placeholder="localhost" />
-              </el-form-item>
-              <el-form-item label="端口" prop="database.postgresPort">
-                <el-input-number v-model="settings.database.postgresPort" :min="1" :max="65535" />
-              </el-form-item>
-              <el-form-item label="用户名" prop="database.postgresUser">
-                <el-input v-model="settings.database.postgresUser" :maxlength="64" placeholder="postgres" />
-              </el-form-item>
-              <el-form-item label="密码">
-                <el-input v-model="settings.database.postgresPassword" :maxlength="128" type="password" placeholder="输入密码" show-password />
-              </el-form-item>
-              <el-form-item label="数据库名" prop="database.postgresDatabase">
-                <el-input v-model="settings.database.postgresDatabase" :maxlength="64" placeholder="fuzhan" />
-              </el-form-item>
-            </template>
-          </el-form>
-        </el-card>
+        <SettingsDatabase :settings="settings" />
       </el-tab-pane>
 
       <!-- 访问控制 -->
       <el-tab-pane name="access" label="访问控制">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>IP 访问控制</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="访问模式">
-                  <el-radio-group v-model="settings.openApi.ipAccessMode">
-                    <el-radio label="allow">白名单模式</el-radio>
-                    <el-radio label="deny">黑名单模式</el-radio>
-                    <el-radio label="none">不限制</el-radio>
-                  </el-radio-group>
-                  <div class="field-hint">白名单和黑名单不能同时生效</div>
-                </el-form-item>
-                <el-form-item label="IP 列表" v-if="settings.openApi.ipAccessMode !== 'none'">
-                  <el-input
-                    v-model="ipAccessListDisplay"
-                    type="textarea"
-                    :placeholder="settings.openApi.ipAccessMode === 'allow' ? '每行一个 IP 或 CIDR，如 192.168.1.0/24' : '每行一个 IP 或 CIDR'"
-                    :rows="5"
-                  />
-                  <div class="field-hint">{{ settings.openApi.ipAccessMode === 'allow' ? '白名单中的 IP 允许访问' : '黑名单中的 IP 将被拒绝访问' }}</div>
-                </el-form-item>
-                <el-form-item label="频率限制">
-                  <el-switch v-model="settings.openApi.rateLimitEnabled" />
-                  <div class="field-hint">限制调用频率，防止滥用</div>
-                </el-form-item>
-                <el-form-item label="请求频率" v-if="settings.openApi.rateLimitEnabled">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input-number v-model="settings.openApi.requestsPerMinute" :min="1" :max="10000" />
-                    <span>次/分钟</span>
-                  </div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>文件访问控制</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="允许的扩展名">
-                  <el-input
-                    v-model="extensionsDisplay"
-                    type="textarea"
-                    placeholder="每行一个扩展名，如 txt、pdf、jpg"
-                    :rows="6"
-                  />
-                  <div class="field-hint">留空允许所有扩展名；每行输入一个允许的扩展名，不含点号</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsAccess :settings="settings" />
       </el-tab-pane>
 
       <!-- 资源监控 -->
       <el-tab-pane name="resource" label="资源监控">
-        <el-row :gutter="16">
-          <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-            <el-card>
-              <template #header><span>服务器资源监控配置</span></template>
-              <el-form label-width="120px">
-                <el-form-item label="启用监控">
-                  <el-switch v-model="settings.resource.enabled" />
-                  <div class="field-hint">开启后在管理「资源监控」页展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO</div>
-                </el-form-item>
-                <el-form-item label="实时采样间隔">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input-number v-model="settings.resource.samplingInterval" :min="1" :max="60" />
-                    <span>秒</span>
-                  </div>
-                  <div class="field-hint">实时曲线按此频率在内存采样刷新（不落库）</div>
-                </el-form-item>
-                <el-form-item label="历史采集间隔">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input-number v-model="settings.resource.collectInterval" :min="10" :max="3600" />
-                    <span>秒</span>
-                  </div>
-                  <div class="field-hint">历史数据按此间隔落库，默认 60 秒（每分钟一条）</div>
-                </el-form-item>
-                <el-form-item label="历史保留天数">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-input-number v-model="settings.resource.retentionDays" :min="1" :max="365" />
-                    <span>天</span>
-                  </div>
-                  <div class="field-hint">超出保留期的历史数据将被定期清理，默认 7 天</div>
-                </el-form-item>
-              </el-form>
-            </el-card>
-          </el-col>
-        </el-row>
+        <SettingsResource :settings="settings" />
       </el-tab-pane>
     </el-tabs>
 
@@ -524,12 +52,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { NumberUtils } from '@/utils'
-import { formatErrorMessage } from '@/utils/error'
-import { ConfigApi, SetupApi, SystemApi } from '@/api'
+import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
+import SettingsBasic from './settings/SettingsBasic.vue'
+import SettingsService from './settings/SettingsService.vue'
+import SettingsStorage from './settings/SettingsStorage.vue'
+import SettingsPreview from './settings/SettingsPreview.vue'
+import SettingsDatabase from './settings/SettingsDatabase.vue'
+import SettingsAccess from './settings/SettingsAccess.vue'
+import SettingsResource from './settings/SettingsResource.vue'
+import { formatToUnit } from './settings/useSettingsUtils'
 
 const message = ElMessage
 const dialog = {
@@ -542,211 +77,9 @@ const dialog = {
 }
 const saving = ref(false)
 const activeTab = ref('basic')
-const formRef = ref(null)
 
 // 保存原始服务器配置用于变更检测
 const originalServerConfig = ref(null)
-
-// 校验规则
-const rules = {
-  appName: {
-    required: true,
-    message: '请输入应用名称',
-    trigger: ['blur', 'input']
-  },
-  'server.host': {
-    required: true,
-    message: '请选择监听地址',
-    trigger: ['blur', 'change']
-  },
-  'server.http.port': {
-    required: true,
-    type: 'number',
-    message: '请输入有效端口 (1-65535)',
-    trigger: ['blur', 'change']
-  },
-  'database.dsn': {
-    required: true,
-    message: '请输入数据库文件路径',
-    trigger: ['blur', 'input']
-  },
-  'database.mysqlHost': {
-    required: true,
-    message: '请输入 MySQL 主机地址',
-    trigger: ['blur', 'input']
-  },
-  'database.mysqlPort': {
-    required: true,
-    type: 'number',
-    message: '请输入有效端口 (1-65535)',
-    trigger: ['blur', 'change']
-  },
-  'database.mysqlUser': {
-    required: true,
-    message: '请输入 MySQL 用户名',
-    trigger: ['blur', 'input']
-  },
-  'database.mysqlDatabase': {
-    required: true,
-    message: '请输入 MySQL 数据库名',
-    trigger: ['blur', 'input']
-  },
-  'database.postgresHost': {
-    required: true,
-    message: '请输入 PostgreSQL 主机地址',
-    trigger: ['blur', 'input']
-  },
-  'database.postgresPort': {
-    required: true,
-    type: 'number',
-    message: '请输入有效端口 (1-65535)',
-    trigger: ['blur', 'change']
-  },
-  'database.postgresUser': {
-    required: true,
-    message: '请输入 PostgreSQL 用户名',
-    trigger: ['blur', 'input']
-  },
-  'database.postgresDatabase': {
-    required: true,
-    message: '请输入 PostgreSQL 数据库名',
-    trigger: ['blur', 'input']
-  }
-}
-
-// 文件扩展名显示转换（数组 <-> 文本框）
-const extensionsDisplay = computed({
-  get: () => (settings.allowedExtensions || []).join('\n'),
-  set: (val) => {
-    settings.allowedExtensions = val.split('\n').map(s => s.trim()).filter(Boolean)
-  }
-})
-
-// IP 访问列表显示转换（数组 <-> 文本框）
-const ipAccessListDisplay = computed({
-  get: () => {
-    if (settings.openApi.ipAccessMode === 'allow') return (settings.openApi.ipWhitelist || '').split('\n').filter(s => s.trim()).join('\n')
-    if (settings.openApi.ipAccessMode === 'deny') return (settings.openApi.ipBlacklist || '').split('\n').filter(s => s.trim()).join('\n')
-    return ''
-  },
-  set: (val) => {
-    const list = val.split('\n').map(s => s.trim()).filter(Boolean)
-    if (settings.openApi.ipAccessMode === 'allow') {
-      settings.openApi.ipWhitelist = list.join('\n')
-    } else if (settings.openApi.ipAccessMode === 'deny') {
-      settings.openApi.ipBlacklist = list.join('\n')
-    }
-  }
-})
-
-// 单位输入的双向绑定
-const privateQuotaGlobalDisplay = computed({
-  get: () => formatToUnit(settings.privateQuotaGlobal),
-  set: (val) => { settings.privateQuotaGlobal = NumberUtils.parseFileSize(val) }
-})
-const privateQuotaUserDisplay = computed({
-  get: () => formatToUnit(settings.privateQuotaUser),
-  set: (val) => { settings.privateQuotaUser = NumberUtils.parseFileSize(val) }
-})
-const tempQuotaGlobalDisplay = computed({
-  get: () => formatToUnit(settings.tempFilesQuotaGlobal),
-  set: (val) => { settings.tempFilesQuotaGlobal = NumberUtils.parseFileSize(val) }
-})
-const tempQuotaPerIPDisplay = computed({
-  get: () => formatToUnit(settings.tempFilesQuotaPerIP),
-  set: (val) => { settings.tempFilesQuotaPerIP = NumberUtils.parseFileSize(val) }
-})
-const chunkSizeDisplay = computed({
-  get: () => formatToUnit(settings.upload.chunkSize),
-  set: (val) => { settings.upload.chunkSize = NumberUtils.parseFileSize(val) }
-})
-const maxFileSizeDisplay = computed({
-  get: () => settings.upload.maxFileSize === 0 ? '无限制' : formatToUnit(settings.upload.maxFileSize),
-  set: (val) => {
-    if (val === '无限制' || val === '0') {
-      settings.upload.maxFileSize = 0
-    } else {
-      settings.upload.maxFileSize = NumberUtils.parseFileSize(val)
-    }
-  }
-})
-const maxInlineSizeDisplay = computed({
-  get: () => formatToUnit(settings.preview.maxInlineSize),
-  set: (val) => { settings.preview.maxInlineSize = NumberUtils.parseFileSize(val) }
-})
-const textChunkSizeDisplay = computed({
-  get: () => formatToUnit(settings.preview.textChunkSize),
-  set: (val) => { settings.preview.textChunkSize = NumberUtils.parseFileSize(val) }
-})
-
-// 格式化字节为人类可读单位
-const formatToUnit = (bytes) => {
-  if (!bytes || bytes === 0) return '0'
-  if (bytes >= 1024 * 1024 * 1024 * 1024) {
-    return (bytes / (1024 * 1024 * 1024 * 1024)).toFixed(1) + 't'
-  }
-  if (bytes >= 1024 * 1024 * 1024) {
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'g'
-  }
-  if (bytes >= 1024 * 1024) {
-    return (bytes / (1024 * 1024)).toFixed(1) + 'm'
-  }
-  if (bytes >= 1024) {
-    return (bytes / 1024).toFixed(1) + 'k'
-  }
-  return bytes.toString()
-}
-
-const ipOptions = ref([])
-
-// 加载网络接口列表
-const loadNetworkInterfaces = async () => {
-  try {
-    const res = await SetupApi.getNetworkInterfaces()
-    if (res.success && res.data) {
-      ipOptions.value = res.data.map(item => ({
-        label: `${item.name} (${item.ip})`,
-        value: item.ip
-      }))
-    }
-  } catch (e) {
-    console.error('获取网络接口失败:', e)
-  }
-}
-
-// 证书上传处理（el-upload http-request）
-const handleCertUpload = async ({ file, onSuccess, onError }) => {
-  try {
-    const res = await SystemApi.uploadCert(file)
-    if (res.success && res.data?.path) {
-      settings.server.tls.certFile = res.data.path
-      message.success('证书上传成功')
-    } else {
-      message.error(res.message || '证书上传失败')
-    }
-    onSuccess?.(res)
-  } catch (e) {
-    message.error('证书上传失败')
-    onError?.(e)
-  }
-}
-
-// 密钥上传处理（el-upload http-request）
-const handleKeyUpload = async ({ file, onSuccess, onError }) => {
-  try {
-    const res = await SystemApi.uploadKey(file)
-    if (res.success && res.data?.path) {
-      settings.server.tls.keyFile = res.data.path
-      message.success('密钥上传成功')
-    } else {
-      message.error(res.message || '密钥上传失败')
-    }
-    onSuccess?.(res)
-  } catch (e) {
-    message.error('密钥上传失败')
-    onError?.(e)
-  }
-}
 
 const settings = reactive({
   appName: '',
@@ -821,16 +154,6 @@ const settings = reactive({
     retentionDays: 7
   },
 })
-
-const formatSize = (bytes) => NumberUtils.formatFileSize(bytes)
-
-const addDir = () => {
-  settings.rootDirs.push({ path: '', name: '' })
-}
-
-const removeDir = (index) => {
-  settings.rootDirs.splice(index, 1)
-}
 
 // 解析 MySQL DSN
 const parseMysqlDsn = (dsn) => {
@@ -1127,7 +450,6 @@ const saveSettings = () => {
 
 onMounted(() => {
   loadSettings()
-  loadNetworkInterfaces()
 })
 </script>
 
@@ -1151,28 +473,6 @@ onMounted(() => {
       margin: 0;
       color: @text-color-secondary;
       font-size: @font-size-base;
-    }
-  }
-
-  .el-card {
-    transition: transform @transition-smooth, box-shadow @transition-smooth;
-    height: 100%;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-  }
-
-  .el-button:not(.actions-inner .el-button) {
-    transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-    &:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: @button-hover-shadow;
-    }
-
-    &:active:not(:disabled) {
-      transform: scale(0.97);
     }
   }
 
