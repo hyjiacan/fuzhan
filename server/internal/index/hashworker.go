@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,13 @@ import (
 	xxh3pkg "fuzhan/pkg/xxh3"
 	"gorm.io/gorm"
 )
+
+// hashRecord 待计算哈希的文件记录（用于并发批次处理）
+type hashRecord struct {
+	ID       uint
+	FilePath string
+	RootName string
+}
 
 // HashWorker 哈希计算器
 // 扫描所有 hash_status = 'pending' 的记录，按文件大小从小到大计算 hash。
@@ -204,6 +212,8 @@ func (w *HashWorker) run(ctx context.Context) {
 // processTable 处理单个表中的 pending 记录
 func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTotal int64) (int64, int64) {
 	var done, failed int64
+	// 每批处理完会将 hash_status 置为 done，循环会继续拉取下一批 pending，直至清空。
+	const batchSize = 500
 	for {
 		select {
 		case <-ctx.Done():
@@ -211,18 +221,12 @@ func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTo
 		default:
 		}
 
-		type pendingRecord struct {
-			ID       uint
-			FilePath string
-			RootName string
-		}
-
-		var records []pendingRecord
+		var records []hashRecord
 		if err := w.db.Table(tableName).
 			Select("id, file_path, root_name").
 			Where("hash_status = ? AND is_dir = ?", "pending", false).
 			Order("file_size ASC").
-			Limit(100).
+			Limit(batchSize).
 			Find(&records).Error; err != nil {
 			utils.Warn("查询待计算 hash 记录失败",
 				utils.String("table", tableName),
@@ -234,60 +238,126 @@ func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTo
 			return done, failed
 		}
 
-		for _, rec := range records {
-			select {
-			case <-ctx.Done():
-				return done, failed
-			default:
-			}
-
-			rootPath, ok := w.rootNames[rec.RootName]
-			if !ok {
-				w.markFailed(tableName, rec.ID, "root_not_found: "+rec.RootName, 0)
-				failed++
-				w.incStat("rootNotFound")
-				continue
-			}
-
-			fullPath := filepath.Join(rootPath, rec.FilePath)
-			err := w.computeAndSave(tableName, rec.ID, fullPath)
-			if err != nil {
-				failed++
-			} else {
-				done++
-			}
-
-		}
+		batchDone, batchFailed := w.processHashBatch(ctx, tableName, records)
+		done += batchDone
+		failed += batchFailed
 	}
 }
 
-// computeAndSave 计算哈希并保存，返回错误表示失败
-func (w *HashWorker) computeAndSave(tableName string, id uint, fullPath string) error {
-	h, err := xxh3pkg.ComputeFileHash(fullPath)
-	if err != nil {
-		errMsg := categorizeError(fullPath, err)
-		w.markFailed(tableName, id, errMsg, 0)
-		return err
+// processHashBatch 并发计算一批记录的哈希值，并在主 goroutine 统一写库。
+// 哈希计算是纯磁盘 IO 类任务，可安全并行；SQLite 写操作集中串行执行，
+// 避免并发写锁竞争。
+func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, records []hashRecord) (int64, int64) {
+	type hashResult struct {
+		id          uint
+		hash        string
+		errMsg      string
+		errCategory string
+		failed      bool
 	}
 
-	// 成功：加写锁后更新哈希状态
-	release := lockWrite()
-	defer release()
-	// 成功
-	result := w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
-		"xxh3_hash":    h,
-		"hash_status":  "done",
-		"hash_error":   "",
-		"hash_retries": 0,
-	})
-	if result.Error != nil {
-		utils.Warn("更新哈希记录失败",
-			utils.Int("id", int(id)),
-			utils.String("table", tableName),
-			utils.Err(result.Error))
-		return result.Error
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount < 2 {
+		workerCount = 2
 	}
-	return nil
+	if workerCount > len(records) {
+		workerCount = len(records)
+	}
+
+	jobs := make(chan hashRecord, len(records))
+	results := make(chan hashResult, len(records))
+
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			defer wg.Done()
+			for rec := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				res := hashResult{id: rec.ID}
+				rootPath, ok := w.rootNames[rec.RootName]
+				if !ok {
+					res.failed = true
+					res.errMsg = "root_not_found: " + rec.RootName
+					res.errCategory = "rootNotFound"
+				} else {
+					fullPath := filepath.Join(rootPath, rec.FilePath)
+					h, err := xxh3pkg.ComputeFileHash(fullPath)
+					if err != nil {
+						res.failed = true
+						res.errMsg = categorizeError(fullPath, err)
+						res.errCategory = classifyHashError(err)
+					} else {
+						res.hash = h
+					}
+				}
+				results <- res
+			}
+		}()
+	}
+	for _, r := range records {
+		jobs <- r
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	succIDs := make([]uint, 0, len(records))
+	succHashes := make([]string, 0, len(records))
+	var done, failed int64
+	for res := range results {
+		if res.failed {
+			w.markFailed(tableName, res.id, res.errMsg, 0)
+			failed++
+			w.incStat(res.errCategory)
+			continue
+		}
+		succIDs = append(succIDs, res.id)
+		succHashes = append(succHashes, res.hash)
+	}
+
+	if len(succIDs) > 0 {
+		release := lockWrite()
+		for i, id := range succIDs {
+			if err := w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
+				"xxh3_hash":    succHashes[i],
+				"hash_status":  "done",
+				"hash_error":   "",
+				"hash_retries": 0,
+			}).Error; err != nil {
+				utils.Warn("更新哈希记录失败",
+					utils.Int("id", int(id)),
+					utils.String("table", tableName),
+					utils.Err(err))
+				continue
+			}
+			done++
+		}
+		release()
+	}
+
+	return done, failed
+}
+
+// classifyHashError 将哈希计算错误归类为失败统计类别（fileNotFound/permissionDenied/fileLocked/otherError）
+func classifyHashError(err error) string {
+	if os.IsNotExist(err) {
+		return "fileNotFound"
+	}
+	if os.IsPermission(err) {
+		return "permissionDenied"
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "used by another process") ||
+		strings.Contains(msg, "file locked") ||
+		strings.Contains(msg, "text file busy") {
+		return "fileLocked"
+	}
+	return "otherError"
 }
 
 // markFailed 标记记录为失败

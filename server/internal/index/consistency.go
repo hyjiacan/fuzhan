@@ -96,6 +96,12 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 	}
 	report.TotalDB += int64(len(dbRecords))
 
+	now := utils.Now()
+	// 文件系统存在但索引缺失的记录 → 收集后批量新增，避免大目录首次校验时逐条写库
+	var pendingCreate []models.FileRecordPublic
+	// 索引存在但文件系统已删除的记录 ID → 收集后批量标记删除
+	var missingInFSIDs []uint
+
 	// 2. 遍历文件系统
 	fsSeen := make(map[string]bool)
 
@@ -134,7 +140,19 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 				FileName:    info.Name(),
 				Description: "文件系统存在但索引缺失",
 			})
-			c.fixMissingInDB(rootName, relPath, info)
+			pendingCreate = append(pendingCreate, models.FileRecordPublic{
+				FileRecordBase: models.FileRecordBase{
+					FileName:     info.Name(),
+					FilePath:     relPath,
+					RootName:     rootName,
+					FullPath:     "/" + rootName + relPath,
+					FileSize:     fileSizeFromInfo(info),
+					IsDir:        info.IsDir(),
+					ModTime:      info.ModTime(),
+					Status:       models.FileStatusActive,
+					LastSyncedAt: now,
+				},
+			})
 			report.AutoFixed++
 			return nil
 		}
@@ -183,7 +201,19 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 		return nil
 	})
 
-	// 3. 处理 DB 中有但文件系统上不存在的记录
+	// 3. 批量新增文件系统存在但索引缺失的记录
+	if len(pendingCreate) > 0 {
+		release := lockWrite()
+		if err := c.db.CreateInBatches(pendingCreate, 200).Error; err != nil {
+			utils.Error("自动修复批量新增索引记录失败",
+				utils.String("root", rootName),
+				utils.Int("count", len(pendingCreate)),
+				utils.Err(err))
+		}
+		release()
+	}
+
+	// 4. 处理 DB 中有但文件系统上不存在的记录
 	for path, rec := range dbMap {
 		report.MissingInFS = append(report.MissingInFS, ConsistencyDiff{
 			RootName:    rootName,
@@ -192,56 +222,28 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 			FileName:    rec.FileName,
 			Description: "索引存在但文件系统已删除",
 		})
-		c.fixMissingInFS(rec)
+		missingInFSIDs = append(missingInFSIDs, rec.ID)
 		report.AutoFixed++
 	}
 
+	// 5. 批量标记索引存在但文件系统已删除的记录
+	if len(missingInFSIDs) > 0 {
+		release := lockWrite()
+		if err := c.db.Model(&models.FileRecordPublic{}).
+			Where("id IN ?", missingInFSIDs).
+			Updates(map[string]interface{}{
+				"status":     models.FileStatusDeleted,
+				"updated_at": now,
+			}).Error; err != nil {
+			utils.Error("自动修复批量标记删除失败",
+				utils.String("root", rootName),
+				utils.Int("count", len(missingInFSIDs)),
+				utils.Err(err))
+		}
+		release()
+	}
+
 	return walkErr
-}
-
-// fixMissingInDB 修复文件系统存在但索引缺失的情况
-func (c *ConsistencyChecker) fixMissingInDB(rootName, relPath string, info os.FileInfo) {
-	now := utils.Now()
-	rec := models.FileRecordPublic{
-		FileRecordBase: models.FileRecordBase{
-			FileName:     info.Name(),
-			FilePath:     relPath,
-			RootName:     rootName,
-			FullPath:     "/" + rootName + relPath,
-			FileSize:     fileSizeFromInfo(info),
-			IsDir:        info.IsDir(),
-			ModTime:      info.ModTime(),
-			Status:       models.FileStatusActive,
-			LastSyncedAt: now,
-		},
-	}
-
-	if err := c.db.Create(&rec).Error; err != nil {
-		utils.Error("自动修复新增索引记录失败",
-			utils.String("path", relPath),
-			utils.Err(err))
-	} else {
-		utils.Warn("自动修复: 新增索引记录",
-			utils.String("path", relPath),
-			utils.String("root", rootName))
-	}
-}
-
-// fixMissingInFS 修复 DB 存在但文件系统已删除的情况
-func (c *ConsistencyChecker) fixMissingInFS(rec models.FileRecordPublic) {
-	now := utils.Now()
-	if err := c.db.Model(&rec).Updates(map[string]interface{}{
-		"status":     models.FileStatusDeleted,
-		"updated_at": now,
-	}).Error; err != nil {
-		utils.Error("自动修复标记删除失败",
-			utils.String("path", rec.FilePath),
-			utils.Err(err))
-	} else {
-		utils.Warn("自动修复: 标记索引为已删除",
-			utils.String("path", rec.FilePath),
-			utils.String("root", rec.RootName))
-	}
 }
 
 // fixMismatched 修复属性不匹配的记录（不计算 hash，由 HashWorker 处理）

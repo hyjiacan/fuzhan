@@ -125,16 +125,6 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 		Count      int
 	}
 	var downloadCounts []fileDownloadCount
-	hotQuery := s.db.Model(&models.OperationRecord{}).
-		Select("file_name, file_path, full_path, root_name, file_size, MAX(created_at) as upload_time, COUNT(*) as count").
-		Where("action = ?", "download")
-	hotQuery = repositories.ApplyExistingFileFilter(hotQuery)
-	if err := hotQuery.
-		Group("file_name, file_path, full_path, root_name, file_size").
-		Order("count DESC").
-		Find(&downloadCounts).Error; err != nil {
-		return nil, err
-	}
 
 	// 统计总分组数
 	var total int64

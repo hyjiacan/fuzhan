@@ -283,32 +283,36 @@ const clearSearch = () => {
   router.replace({ query: {} })
 }
 
-// 搜索框下拉推荐：自动补全 + 拼写纠错
+// 搜索框下拉推荐：自动补全 + 拼写纠错（输入防抖 300ms，避免每键并发两次请求）
+let suggestTimer = null
 const querySuggestions = (queryString, cb) => {
-  const q = (queryString || '').trim()
-  if (!q) {
-    cb([])
-    return
-  }
-  // 并行拉取自动补全与纠错建议
-  Promise.all([
-    SearchApi.autocomplete(q).catch(() => ({ data: [] })),
-    SearchApi.spellcheck(q).catch(() => ({ data: [] }))
-  ]).then(([autoRes, spellRes]) => {
-    const autoNames = Array.isArray(autoRes?.data) ? autoRes.data : []
-    const spellNames = Array.isArray(spellRes?.data) ? spellRes.data : []
-    const suggestions = new Map() // value -> { value, corrected }
-    // 自动补全结果：直接作为推荐
-    for (const name of autoNames) {
-      if (!suggestions.has(name)) suggestions.set(name, { value: name, corrected: false })
+  if (suggestTimer) clearTimeout(suggestTimer)
+  suggestTimer = setTimeout(() => {
+    const q = (queryString || '').trim()
+    if (!q) {
+      cb([])
+      return
     }
-    // 纠错结果：标注为"纠错"，且避免与原查询相同、避免与自动补全重复
-    for (const name of spellNames) {
-      if (name === q || suggestions.has(name)) continue
-      suggestions.set(name, { value: name, corrected: true })
-    }
-    cb([...suggestions.values()].slice(0, 12))
-  })
+    // 并行拉取自动补全与纠错建议
+    Promise.all([
+      SearchApi.autocomplete(q).catch(() => ({ data: [] })),
+      SearchApi.spellcheck(q).catch(() => ({ data: [] }))
+    ]).then(([autoRes, spellRes]) => {
+      const autoNames = Array.isArray(autoRes?.data) ? autoRes.data : []
+      const spellNames = Array.isArray(spellRes?.data) ? spellRes.data : []
+      const suggestions = new Map() // value -> { value, corrected }
+      // 自动补全结果：直接作为推荐
+      for (const name of autoNames) {
+        if (!suggestions.has(name)) suggestions.set(name, { value: name, corrected: false })
+      }
+      // 纠错结果：标注为"纠错"，且避免与原查询相同、避免与自动补全重复
+      for (const name of spellNames) {
+        if (name === q || suggestions.has(name)) continue
+        suggestions.set(name, { value: name, corrected: true })
+      }
+      cb([...suggestions.values()].slice(0, 12))
+    })
+  }, 300)
 }
 
 // 选中推荐项：用该文件名发起搜索

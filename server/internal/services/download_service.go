@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
@@ -16,25 +15,14 @@ import (
 	"fuzhan/pkg/pathutils"
 )
 
-// recordDownload 安全记录下载操作（带超时保护）
+// recordDownload 记录下载操作。优先走全局有界记录器（有界 async），
+// 未初始化时回退为同步写入，避免漏记。
 func recordDownload(repo RecordRepository, record *models.OperationRecord) {
-	go func() {
-		timer := time.NewTimer(10 * time.Second)
-		defer timer.Stop()
-
-		done := make(chan struct{})
-		go func() {
-			if err := repo.Create(record); err != nil {
-				utils.Error("记录下载操作失败", utils.String("file", record.FileName), utils.Err(err))
-			}
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-timer.C:
+	if !SubmitRecord(record) {
+		if err := repo.Create(record); err != nil {
+			utils.Error("记录下载操作失败", utils.String("file", record.FileName), utils.Err(err))
 		}
-	}()
+	}
 }
 
 // RecordRepository 接口用于记录下载

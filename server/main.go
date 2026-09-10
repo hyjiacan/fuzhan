@@ -200,6 +200,8 @@ func main() {
 
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
+	// 为操作记录表创建组合索引（最近/热门列表按 action + created_at 过滤排序）
+	models.EnsureOperationRecordIndexes(db)
 
 	// 回填公共文件下载次数（从下载记录统计，升级/启动时执行一次）
 	services.BackfillPublicDownloadCounts(db)
@@ -285,6 +287,10 @@ func main() {
 	downloadService := serviceDeps.DownloadService
 	searchService := serviceDeps.SearchService
 	authService := serviceDeps.AuthService
+
+	// 初始化全局有界操作记录器（固定 worker + 有界缓冲），
+	// 让下载/搜索/FTP 等记录点都走有界异步，避免每次操作起新协程造成瞬态尖峰
+	services.InitRecordWriter(recordRepo, services.RecordWriterWorkers, services.RecordWriterBuffer)
 
 	// LDAP 认证服务（v3 Phase 2）
 	ldapService := auth.NewLDAPService(db, &auth.LDAPConfig{
@@ -429,28 +435,28 @@ func main() {
 			}
 			return user.UUID, nil
 		}))
-		// 设置 FTP 操作录制回调
+		// 设置 FTP 操作录制回调（走全局有界记录器，避免每次操作起新协程）
 		ftpHandler.SetRecordFunc(func(action, filePath, fileName, rootName, fileTypeTag, clientIP, userUUID string, fileSize int64) {
-			// 异步录制，避免影响 FTP 性能
-			go func() {
-				if err := recordRepo.Create(&models.OperationRecord{
-					FileName: fileName,
-					FilePath: filePath,
-					// FullPath = /RootName + FilePath
-					FullPath:   "/" + rootName + filePath,
-					RootName:   rootName,
-					FileSize:   fileSize,
-					ClientIP:   clientIP,
-					UserID:     userUUID,
-					Action:     action,
-					UploadTime: utils.Now(),
-				}); err != nil {
+			rec := &models.OperationRecord{
+				FileName: fileName,
+				FilePath: filePath,
+				// FullPath = /RootName + FilePath
+				FullPath:   "/" + rootName + filePath,
+				RootName:   rootName,
+				FileSize:   fileSize,
+				ClientIP:   clientIP,
+				UserID:     userUUID,
+				Action:     action,
+				UploadTime: utils.Now(),
+			}
+			if !services.SubmitRecord(rec) {
+				if err := recordRepo.Create(rec); err != nil {
 					utils.Debug("FTP操作记录失败",
 						utils.String("action", action),
 						utils.String("file", filePath),
 						utils.Err(err))
 				}
-			}()
+			}
 		})
 
 		// 创建 Gin 路由
@@ -1458,6 +1464,8 @@ func main() {
 					utils.Warn("关闭文件名检索索引失败", utils.Err(cerr))
 				}
 			}
+			// 停止有界记录器，排空并写完全部排队操作记录
+			services.StopRecordWriter()
 			utils.Info("服务器已关闭")
 			return
 		case <-configCh:

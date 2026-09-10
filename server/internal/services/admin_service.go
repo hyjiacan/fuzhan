@@ -86,16 +86,31 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 
 	items := make([]UserItem, len(users))
 	perUserQuota := appconfig.GlobalConfig.Storage.Private.Quota.PerUserQuota
-	for i, u := range users {
-		// 查询用户已使用的私有存储空间
-		var usedStorage int64
-		if row := s.db.Model(&models.FileRecordPrivate{}).
-			Select("COALESCE(SUM(file_size), 0)").
-			Where("owner_id = ? AND status = ? AND is_dir = ?", u.UUID, models.FileStatusActive, false).
-			Row(); row != nil {
-			row.Scan(&usedStorage)
-		}
 
+	// 一次性聚合本页所有用户的私有存储用量，避免每用户一条查询（N+1）
+	usageByOwner := make(map[string]int64)
+	if len(users) > 0 {
+		uuids := make([]any, len(users))
+		for i, u := range users {
+			uuids[i] = u.UUID
+		}
+		var usages []struct {
+			OwnerID string
+			Sum     int64
+		}
+		if err := s.db.Model(&models.FileRecordPrivate{}).
+			Select("owner_id, COALESCE(SUM(file_size), 0) AS sum").
+			Where("owner_id IN ? AND status = ? AND is_dir = ?", uuids, models.FileStatusActive, false).
+			Group("owner_id").
+			Scan(&usages).Error; err != nil {
+			utils.Error("查询用户存储用量失败", utils.Err(err))
+		}
+		for _, u := range usages {
+			usageByOwner[u.OwnerID] = u.Sum
+		}
+	}
+
+	for i, u := range users {
 		items[i] = UserItem{
 			UUID:        u.UUID,
 			Username:    u.Username,
@@ -103,7 +118,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 			Disabled:    u.Disabled,
 			CreatedAt:   u.CreatedAt,
 			UpdatedAt:   u.UpdatedAt,
-			UsedStorage: usedStorage,
+			UsedStorage: usageByOwner[u.UUID],
 			Quota:       perUserQuota,
 		}
 	}

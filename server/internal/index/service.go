@@ -262,29 +262,32 @@ func (s *Service) ListRecords(query ListRecordsQuery) ([]models.FileRecordPublic
 
 // GetStats 获取文件统计
 func (s *Service) GetStats() (*RecordStatsResponse, error) {
-	var activeCount, dirCount, deletedCount int64
+	// 一次分组查询同时统计总数、目录数、文件大小总和，避免多次全表扫描
+	type statRow struct {
+		IsDir bool
+		Cnt   int64
+		Size  int64
+	}
+	var rows []statRow
 	if err := s.db.Model(&models.FileRecordPublic{}).
+		Select("is_dir, COUNT(*) AS cnt, COALESCE(SUM(file_size), 0) AS size").
 		Where("status = ?", models.FileStatusActive).
-		Count(&activeCount).Error; err != nil {
+		Group("is_dir").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	var sizeSum int64
-	if row := s.db.Model(&models.FileRecordPublic{}).
-		Where("status = ? AND is_dir = ?", models.FileStatusActive, false).
-		Select("COALESCE(SUM(file_size), 0)").
-		Row(); row != nil {
-		if err := row.Scan(&sizeSum); err != nil {
-			return nil, err
+	var activeCount, dirCount, sizeSum int64
+	for _, r := range rows {
+		activeCount += r.Cnt
+		if r.IsDir {
+			dirCount = r.Cnt
+		} else {
+			sizeSum = r.Size
 		}
 	}
 
-	if err := s.db.Model(&models.FileRecordPublic{}).
-		Where("status = ? AND is_dir = ?", models.FileStatusActive, true).
-		Count(&dirCount).Error; err != nil {
-		return nil, err
-	}
-
+	var deletedCount int64
 	if err := s.db.Model(&models.FileRecordPublic{}).
 		Where("status = ?", models.FileStatusDeleted).
 		Count(&deletedCount).Error; err != nil {
@@ -370,18 +373,38 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 		return make([]DuplicateGroup, 0), total, nil
 	}
 
-	// 查询每个分组中的文件详情
+	// 一次批量取出本页所有哈希对应的文件详情，避免逐哈希查询（N+1）
+	hashes := make([]string, len(hashCounts))
+	for i, hc := range hashCounts {
+		hashes[i] = hc.Xxh3Hash
+	}
+	var allFiles []models.FileRecordPublic
+	if err := s.db.Model(&models.FileRecordPublic{}).
+		Select("id, file_name, file_path, full_path, root_name, file_size, mod_time, xxh3_hash").
+		Where("xxh3_hash IN ? AND status = ? AND is_dir = ? AND file_size > 0",
+			hashes, models.FileStatusActive, false).
+		Order("file_path ASC").
+		Find(&allFiles).Error; err != nil {
+		return nil, 0, fmt.Errorf("查询重复分组文件详情失败: %w", err)
+	}
+	filesByHash := make(map[string][]DuplicateFileItem, len(hashCounts))
+	for _, f := range allFiles {
+		filesByHash[f.Xxh3Hash] = append(filesByHash[f.Xxh3Hash], DuplicateFileItem{
+			ID:       f.ID,
+			FileName: f.FileName,
+			FilePath: f.FilePath,
+			FullPath: f.FullPath,
+			RootName: f.RootName,
+			FileSize: f.FileSize,
+			ModTime:  f.ModTime,
+		})
+	}
+
 	groups := make([]DuplicateGroup, 0, len(hashCounts))
 	for _, hc := range hashCounts {
-		var files []DuplicateFileItem
-		if err := s.db.Model(&models.FileRecordPublic{}).
-			Select("id, file_name, file_path, full_path, root_name, file_size, mod_time").
-			Where("xxh3_hash = ? AND status = ? AND is_dir = ? AND file_size > 0",
-				hc.Xxh3Hash, models.FileStatusActive, false).
-			Order("file_path ASC").
-			Find(&files).Error; err != nil {
-			utils.Warn("查询重复分组文件详情失败", utils.String("hash", hc.Xxh3Hash), utils.Err(err))
-			continue
+		files := filesByHash[hc.Xxh3Hash]
+		if files == nil {
+			files = make([]DuplicateFileItem, 0)
 		}
 		groups = append(groups, DuplicateGroup{
 			Xxh3Hash:  hc.Xxh3Hash,

@@ -14,25 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// recordSearch 安全记录搜索操作（带超时保护）
+// recordSearch 记录搜索操作。优先走全局有界记录器（有界 async），
+// 未初始化时回退为同步写入，避免漏记。
 func recordSearch(recordRepo interface {
 	Create(record *models.OperationRecord) error
 }, record *models.OperationRecord) {
-	go func() {
-		timer := time.NewTimer(10 * time.Second)
-		defer timer.Stop()
-
-		done := make(chan struct{})
-		go func() {
-			_ = recordRepo.Create(record)
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-timer.C:
+	if !services.SubmitRecord(record) {
+		if err := recordRepo.Create(record); err != nil {
+			utils.Error("记录搜索操作失败", utils.Err(err))
 		}
-	}()
+	}
 }
 
 // SearchHandlers 搜索相关处理器

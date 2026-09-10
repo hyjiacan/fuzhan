@@ -5,11 +5,18 @@ import (
 	"testing"
 )
 
-func TestCheckIPSafe_EmptyRangesMeansUnrestricted(t *testing.T) {
-	ip := net.ParseIP("10.0.0.1")
+// 空网段 = 安全默认：拒绝内网/回环/链路本地等保留地址，仅放行公网
+// （防 SSRF，不允许隐式放行内网）
+func TestCheckIPSafe_EmptyRangesBlocksInternal(t *testing.T) {
 	cfg := URLUploadConfig{Enabled: true}
-	if err := CheckIPSafe(ip, cfg); err != nil {
-		t.Fatalf("空网段应放行所有 IP, got err=%v", err)
+	internalIPs := []string{"10.0.0.1", "192.168.1.5", "172.16.0.1", "127.0.0.1", "169.254.169.254"}
+	for _, s := range internalIPs {
+		if err := CheckIPSafe(net.ParseIP(s), cfg); err == nil {
+			t.Fatalf("空网段应拒绝内网/回环/链路本地地址 %s, got nil", s)
+		}
+	}
+	if err := CheckIPSafe(net.ParseIP("8.8.8.8"), cfg); err != nil {
+		t.Fatalf("空网段应放行公网地址 8.8.8.8, got err=%v", err)
 	}
 }
 

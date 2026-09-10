@@ -554,6 +554,19 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 	now := utils.Now()
 	var batch []models.FileRecordTemp
 
+	// 已索引的临时文件 code 集合，避免每轮扫描重复插入导致索引膨胀
+	existingKeys := make(map[string]struct{})
+	var existingRows []struct {
+		FilePath string
+	}
+	if err := s.db.Model(&models.FileRecordTemp{}).
+		Where("root_name = ? AND status = ?", "temp", models.FileStatusActive).
+		Select("file_path").Find(&existingRows).Error; err == nil {
+		for _, er := range existingRows {
+			existingKeys[er.FilePath] = struct{}{}
+		}
+	}
+
 	// 每10秒报告进度
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
@@ -581,6 +594,9 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 		}
 
 		hash := tf.Code // 使用 code 作为简化标识
+		if _, exists := existingKeys[hash]; exists {
+			continue
+		}
 		batch = append(batch, models.FileRecordTemp{
 			FileRecordBase: models.FileRecordBase{
 				FileName:     tf.Filename,
@@ -669,6 +685,19 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 	var batch []models.FileRecordPrivate
 	var scanned int64
 
+	// 已索引的私有文件 code 集合，避免每轮扫描重复插入导致索引膨胀
+	existingKeys := make(map[string]struct{})
+	var existingRows []struct {
+		FilePath string
+	}
+	if err := s.db.Model(&models.FileRecordPrivate{}).
+		Where("root_name = ? AND status = ?", "private", models.FileStatusActive).
+		Select("file_path").Find(&existingRows).Error; err == nil {
+		for _, er := range existingRows {
+			existingKeys[er.FilePath] = struct{}{}
+		}
+	}
+
 	// 每10秒报告进度
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
@@ -701,6 +730,10 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
+			}
+
+			if _, exists := existingKeys[codeEntry.Name()]; exists {
+				continue
 			}
 
 			dataPath := filepath.Join(userDir, codeEntry.Name(), "data")

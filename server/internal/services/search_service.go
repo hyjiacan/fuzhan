@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,99 +99,52 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 
 	startTime := utils.Now()
 	const maxResults = 1000
-	var results []appconfig.FileInfo
-	var mu sync.Mutex
-	var wg sync.WaitGroup
 
-	for rootName := range rootNameSet {
-		wg.Add(1)
-		go func(rn string) {
-			defer wg.Done()
-
-			tx := s.db.WithContext(ctx).
-				Model(&models.FileRecordPublic{}).
-				Where("root_name = ? AND status = 'active'", rn)
-
-			for _, kw := range keywords {
-				// 同时匹配文件名与备注，便于用备注内容检索文件
-				tx = tx.Where("(file_name LIKE ? OR notes LIKE ?)", "%"+kw+"%", "%"+kw+"%")
-			}
-
-			// 添加扩展名过滤条件
-			if extFilter != "" {
-				tx = tx.Where("file_name LIKE ?", "%."+extFilter)
-			}
-
-			const batchSize = 500
-			offset := 0
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				mu.Lock()
-				if len(results) >= maxResults {
-					mu.Unlock()
-					return
-				}
-				mu.Unlock()
-
-				var batch []models.FileRecordPublic
-				if err := tx.Offset(offset).Limit(batchSize).Find(&batch).Error; err != nil {
-					utils.Warn("数据库搜索查询失败",
-						utils.String("root", rn),
-						utils.Err(err))
-					return
-				}
-
-				if len(batch) == 0 {
-					break
-				}
-
-				for _, record := range batch {
-					fileType := "file"
-					if record.IsDir {
-						fileType = "directory"
-					}
-
-					fileInfo := appconfig.FileInfo{
-						Name:          record.FileName,
-						Type:          fileType,
-						Path:          record.FullPath,
-						ModifiedTime:  record.ModTime.Format("2006-01-02T15:04:05"),
-						Size:          record.FileSize,
-						RootName:      rn,
-						Xxh3Hash:      record.Xxh3Hash,
-						Notes:         record.Notes,
-						DownloadCount: record.DownloadCount,
-						RecordID:      record.ID,
-					}
-
-					mu.Lock()
-					if len(results) < maxResults {
-						results = append(results, fileInfo)
-					}
-					mu.Unlock()
-				}
-
-				mu.Lock()
-				if len(results) >= maxResults {
-					mu.Unlock()
-					return
-				}
-				mu.Unlock()
-
-				offset += batchSize
-			}
-		}(rootName)
+	// 合并所有根目录为单次查询，避免为每个 root 各自深分页反复全表扫描（原实现
+	// 多 goroutine + OFFSET 在 SQLite 下单写锁下反而加剧锁竞争）。
+	roots := make([]string, 0, len(rootNameSet))
+	for rn := range rootNameSet {
+		roots = append(roots, rn)
 	}
 
-	wg.Wait()
+	tx := s.db.WithContext(ctx).Model(&models.FileRecordPublic{}).
+		Where("status = 'active'")
+	if len(roots) > 0 {
+		tx = tx.Where("root_name IN ?", roots)
+	}
+	for _, kw := range keywords {
+		// 同时匹配文件名与备注，便于用备注内容检索文件
+		tx = tx.Where("(file_name LIKE ? OR notes LIKE ?)", "%"+kw+"%", "%"+kw+"%")
+	}
+	// 添加扩展名过滤条件
+	if extFilter != "" {
+		tx = tx.Where("file_name LIKE ?", "%."+extFilter)
+	}
 
-	if results == nil {
-		results = make([]appconfig.FileInfo, 0)
+	var records []models.FileRecordPublic
+	if err := tx.Order("id DESC").Limit(maxResults).Find(&records).Error; err != nil {
+		utils.Warn("数据库搜索查询失败", utils.Err(err))
+		return nil, fmt.Errorf("数据库搜索查询失败: %w", err)
+	}
+
+	results := make([]appconfig.FileInfo, 0, len(records))
+	for _, record := range records {
+		fileType := "file"
+		if record.IsDir {
+			fileType = "directory"
+		}
+		results = append(results, appconfig.FileInfo{
+			Name:          record.FileName,
+			Type:          fileType,
+			Path:          record.FullPath,
+			ModifiedTime:  record.ModTime.Format("2006-01-02T15:04:05"),
+			Size:          record.FileSize,
+			RootName:      record.RootName,
+			Xxh3Hash:      record.Xxh3Hash,
+			Notes:         record.Notes,
+			DownloadCount: record.DownloadCount,
+			RecordID:      record.ID,
+		})
 	}
 
 	utils.Info("数据库索引搜索完成",

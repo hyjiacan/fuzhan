@@ -115,6 +115,10 @@ func EnsureFileRecordIndexes(db *gorm.DB) {
 			{name: "root_name_status", columns: "root_name, status"},
 			{name: "hash_status_status", columns: "hash_status, status"},
 			{name: "owner_id_status_deleted_at", columns: "owner_id, status, deleted_at"},
+			// 支持按根目录+完整路径快速关联（ResolvePublicFileID 及历史记录路径回查）
+			{name: "root_name_full_path", columns: "root_name, full_path"},
+			// 支持重复文件分组（xxh3_hash 全量排序前先按 status 过滤）
+			{name: "status_xxh3_hash", columns: "status, xxh3_hash"},
 		}
 		for _, idx := range compositeIndexes {
 			indexName := "idx__" + table + "__" + idx.name
@@ -122,6 +126,24 @@ func EnsureFileRecordIndexes(db *gorm.DB) {
 			if err := db.Exec(sql).Error; err != nil {
 				db.Logger.Warn(nil, "创建索引失败: %v, SQL: %s", err, sql)
 			}
+		}
+	}
+}
+
+// EnsureOperationRecordIndexes 为操作记录表创建组合索引（单列索引由 GORM 自动迁移创建）。
+// 最近/热门列表与统计都按 action + created_at 过滤排序，组合索引优于单列索引。
+func EnsureOperationRecordIndexes(db *gorm.DB) {
+	compositeIndexes := []struct {
+		name    string
+		columns string
+	}{
+		{name: "action_created_at", columns: "`action`, created_at"},
+	}
+	for _, idx := range compositeIndexes {
+		indexName := "idx__operation_records__" + idx.name
+		sql := "CREATE INDEX IF NOT EXISTS " + indexName + " ON operation_records(" + idx.columns + ")"
+		if err := db.Exec(sql).Error; err != nil {
+			db.Logger.Warn(nil, "创建索引失败: %v, SQL: %s", err, sql)
 		}
 	}
 }

@@ -322,7 +322,7 @@ upload:
   max_file_size: 17179869184 # 16GB 最大文件
   url_upload:
     enabled: false
-    allowed_ip_ranges: []   # CIDR 网段，留空表示不限制（允许所有 IP）
+    allowed_ip_ranges: []   # CIDR 网段，留空时不限制公网，但会拒绝内网/回环/链路本地等保留地址（安全默认，防 SSRF）
 
 # 预览配置
 preview:
