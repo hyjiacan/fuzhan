@@ -11,11 +11,11 @@ import (
 
 	"fuzhan/internal/accessguard"
 	configPkg "fuzhan/internal/appconfig"
-	constantsPkg "fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
-	"fuzhan/internal/response"
+	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // PrivateStorageHandlers 私有存储相关处理器
@@ -28,7 +28,7 @@ func NewPrivateStorageHandlers() *PrivateStorageHandlers {
 
 // getUserUUID 从 gin context 获取用户 UUID
 func (h *PrivateStorageHandlers) getUserUUID(c *gin.Context) (string, error) {
-	uuidInterface, exists := c.Get(string(constantsPkg.ContextKeyUserUUID))
+	uuidInterface, exists := c.Get("userUUID")
 	if !exists {
 		return "", fmt.Errorf("用户未认证")
 	}
@@ -44,15 +44,15 @@ func isValidShareCode(code string) bool {
 	if code == "" || len(code) != 32 {
 		return false
 	}
-	for _, c := range code {
-		if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+	for _, cc := range code {
+		if !((cc >= '0' && cc <= '9') || (cc >= 'A' && cc <= 'F') || (cc >= 'a' && cc <= 'f')) {
 			return false
 		}
 	}
 	return true
 }
 
-// Upload 私有文件上传
+// Upload 私有文件上传（简单上传，落真实文件名）
 func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
 	userID, err := h.getUserUUID(c)
 	if err != nil {
@@ -60,20 +60,13 @@ func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
 		return
 	}
 
-	file, handler, err := c.Request.FormFile("file")
+	fh, header, err := c.Request.FormFile("file")
 	if err != nil {
 		middleware.LogOperation(c, "private.upload", "", fmt.Errorf("获取文件失败"))
 		utils.HandleBadRequest(c, "获取文件失败", nil)
 		return
 	}
-	defer file.Close()
-
-	code, err := GenerateShareCode()
-	if err != nil {
-		middleware.LogOperation(c, "private.upload", "", fmt.Errorf("生成分享码失败"))
-		utils.HandleInternalServerError(c, "生成分享码失败")
-		return
-	}
+	defer fh.Close()
 
 	basePath := configPkg.GlobalConfig.Storage.Private.Path
 	userDir := GetPrivateUserPath(basePath, userID)
@@ -82,42 +75,67 @@ func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
 		return
 	}
 
-	fileDir := GetPrivateFileDir(basePath, userID, code)
-	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		utils.HandleInternalServerError(c, "创建目录失败")
+	// 简单上传固定落到用户根目录；名称经净化后作为真实文件名。
+	cleanFilename := filepath.Base(filepath.Clean(header.Filename))
+	if cleanFilename == "." || strings.Contains(cleanFilename, "..") {
+		utils.HandleBadRequest(c, "无效的文件名", nil)
+		return
+	}
+	targetPath := filepath.Join(userDir, cleanFilename)
+	if _, err := os.Stat(targetPath); err == nil {
+		utils.HandleErrorCompat(c, http.StatusConflict, "同名文件已存在，请使用其他名称", nil)
 		return
 	}
 
-	filePath := filepath.Join(fileDir, "data")
-	out, err := os.Create(filePath)
+	out, err := os.Create(targetPath)
 	if err != nil {
 		utils.HandleInternalServerError(c, "创建文件失败")
 		return
 	}
-	defer out.Close()
-
-	fileSize, err := io.Copy(out, file)
-	if err != nil {
+	fileSize, copyErr := io.Copy(out, fh)
+	closeErr := out.Close()
+	if copyErr != nil {
+		os.Remove(targetPath)
+		utils.HandleInternalServerError(c, "保存文件失败")
+		return
+	}
+	if closeErr != nil {
 		utils.HandleInternalServerError(c, "保存文件失败")
 		return
 	}
 
-	meta := &PrivateFileMeta{
-		Filename:   handler.Filename,
-		UploadTime: utils.Now(),
-		FileSize:   fileSize,
-		Owner:      userID,
-		Code:       code,
-	}
-
-	if err := SavePrivateFileMetadata(fileDir, meta); err != nil {
-		utils.HandleInternalServerError(c, "保存元数据失败")
+	code, err := GenerateShareCode()
+	if err != nil {
+		os.Remove(targetPath)
+		utils.HandleInternalServerError(c, "生成分享码失败")
 		return
 	}
 
-	ipAddress := utils.GetRealIP(c.Request)
-	response.AddUploadRecord(ipAddress, handler.Filename, filePath)
-	middleware.LogOperation(c, "private.upload", handler.Filename, nil)
+	now := utils.Now()
+	rec := &models.FileRecordPrivate{ShareCode: code}
+	rec.FileName = cleanFilename
+	rec.FilePath = "/" + cleanFilename
+	rec.RootName = privateRootName
+	rec.FullPath = "/" + privateRootName + "/" + cleanFilename
+	rec.FileSize = fileSize
+	rec.IsDir = false
+	rec.Xxh3Hash = ""
+	rec.HashStatus = "pending"
+	rec.ModTime = now
+	rec.LastSyncedAt = now
+	rec.Status = models.FileStatusActive
+	rec.OwnerID = userID
+	rec.CreatedAt = now
+	rec.UpdatedAt = now
+	if db := configPkg.GetDB(); db != nil {
+		if err := db.Create(rec).Error; err != nil {
+			os.Remove(targetPath)
+			utils.HandleInternalServerError(c, "保存记录失败")
+			return
+		}
+	}
+
+	middleware.LogOperation(c, "private.upload", cleanFilename, nil)
 	utils.HandleSuccess(c, http.StatusCreated, "", gin.H{"code": code})
 }
 
@@ -129,10 +147,7 @@ func (h *PrivateStorageHandlers) List(c *gin.Context) {
 		return
 	}
 
-	path := c.Query("path")
-	if path == "/" {
-		path = ""
-	}
+	path := strings.Trim(c.Query("path"), "/")
 
 	files, subdirs, err := ListPrivateDirectory(configPkg.GlobalConfig.Storage.Private.Path, userID, path)
 	if err != nil {
@@ -141,17 +156,59 @@ func (h *PrivateStorageHandlers) List(c *gin.Context) {
 		return
 	}
 
+	items := make([]gin.H, 0, len(files))
+	for _, f := range files {
+		items = append(items, gin.H{
+			"filename":   f.FileName,
+			"fileSize":   f.FileSize,
+			"uploadTime": f.CreatedAt,
+			"owner":      f.OwnerID,
+			"code":       f.ShareCode,
+		})
+	}
+
 	userUsed := GetUserUsedQuota(configPkg.GlobalConfig.Storage.Private.Path, userID)
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"files":   files,
+		"files":   items,
 		"subdirs": subdirs,
 		"quota":   map[string]interface{}{"user": configPkg.GlobalConfig.Storage.Private.PerUserQuota},
 		"used":    userUsed,
 	})
 }
 
-// Delete 删除私有文件
+// resolveShareCodeRecord 按分享码反查私有文件活跃记录
+func resolveShareCodeRecord(db *gorm.DB, code string, upper bool) (*models.FileRecordPrivate, error) {
+	if upper {
+		code = strings.ToUpper(code)
+	}
+	var rec models.FileRecordPrivate
+	if err := db.Where("share_code = ? AND status = ?", code, models.FileStatusActive).First(&rec).Error; err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// privateFileRealPath 由索引记录计算物理文件路径（带越界校验）
+func privateFileRealPath(basePath, userID string, rec *models.FileRecordPrivate) (string, error) {
+	userDir := GetPrivateUserPath(basePath, userID)
+	rel := strings.TrimPrefix(rec.FilePath, "/")
+	p := filepath.Join(userDir, rel)
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("路径解析失败")
+	}
+	absRoot, err := filepath.Abs(userDir)
+	if err != nil {
+		return "", fmt.Errorf("根路径解析失败")
+	}
+	if !strings.HasPrefix(abs, absRoot+string(filepath.Separator)) {
+		return "", fmt.Errorf("路径越权")
+	}
+	return p, nil
+}
+
+// Delete 删除私有文件（按分享码反查）
 func (h *PrivateStorageHandlers) Delete(c *gin.Context) {
 	userID, err := h.getUserUUID(c)
 	if err != nil {
@@ -165,48 +222,47 @@ func (h *PrivateStorageHandlers) Delete(c *gin.Context) {
 		return
 	}
 
-	fileDir, meta, err := FindPrivateFileByCode(configPkg.GlobalConfig.Storage.Private.Path, userID, code)
+	db := configPkg.GetDB()
+	if db == nil {
+		utils.HandleInternalServerError(c, "数据库未就绪")
+		return
+	}
+	rec, err := resolveShareCodeRecord(db, code, true)
 	if err != nil {
 		middleware.LogOperation(c, "private.delete", code, fmt.Errorf("文件不存在"))
 		utils.HandleNotFound(c, "文件不存在")
 		return
 	}
-
-	if meta.Owner != userID {
+	if rec.OwnerID != userID {
 		utils.HandleForbidden(c, "无权限删除此文件")
 		return
 	}
 
-	// 安全验证：确保文件目录在用户目录范围内（防御元数据腐败/篡改）
-	userBaseDir := GetPrivateUserPath(configPkg.GlobalConfig.Storage.Private.Path, userID)
-	absFileDir, err := filepath.Abs(fileDir)
+	basePath := configPkg.GlobalConfig.Storage.Private.Path
+	p, err := privateFileRealPath(basePath, rec.OwnerID, rec)
 	if err != nil {
-		utils.Error("私有文件删除: 路径解析失败", utils.Err(err), utils.String("path", fileDir))
-		utils.HandleInternalServerError(c, "文件路径错误")
-		return
-	}
-	absUserBaseDir, err := filepath.Abs(userBaseDir)
-	if err != nil {
-		utils.Error("私有文件删除: 用户目录解析失败", utils.Err(err))
-		utils.HandleInternalServerError(c, "内部错误")
-		return
-	}
-	if !strings.HasPrefix(absFileDir, absUserBaseDir+string(filepath.Separator)) && absFileDir != absUserBaseDir {
-		utils.Error("私有文件删除: 路径越权", utils.String("fileDir", absFileDir), utils.String("userDir", absUserBaseDir))
 		utils.HandleForbidden(c, "无权操作此文件")
 		return
 	}
 
-	if err := os.RemoveAll(fileDir); err != nil {
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		utils.HandleInternalServerError(c, "删除文件失败")
 		return
+	}
+	// 若父目录为空则清理，保留用户根目录
+	if dir := filepath.Dir(p); dir != GetPrivateUserPath(basePath, rec.OwnerID) {
+		_ = os.Remove(dir)
+	}
+
+	if err := db.Delete(rec).Error; err != nil {
+		utils.Error("删除私有文件记录失败", utils.Err(err))
 	}
 
 	middleware.LogOperation(c, "private.delete", code, nil)
 	utils.HandleSuccess(c, http.StatusOK, "", nil)
 }
 
-// Download 分享下载
+// Download 分享下载（按分享码反查，免认证）
 func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	// 下载访问限流：per-IP 频率限制 + 失败计数锁定，防在线枚举爆破
 	ip := utils.GetClientIP(c)
@@ -222,38 +278,27 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 		return
 	}
 
-	usersDir := filepath.Join(configPkg.GlobalConfig.Storage.Private.Path, "users")
-	entries, err := os.ReadDir(usersDir)
-	if err != nil {
-		utils.HandleInternalServerError(c, "无法访问存储目录")
+	db := configPkg.GetDB()
+	if db == nil {
+		utils.HandleInternalServerError(c, "服务暂不可用")
 		return
 	}
-
-	var filePath string
-	var meta *PrivateFileMeta
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		fileDir, entryMeta, findErr := FindPrivateFileByCode(configPkg.GlobalConfig.Storage.Private.Path, entry.Name(), code)
-		if findErr != nil {
-			continue
-		}
-
-		meta = entryMeta
-		filePath = filepath.Join(fileDir, "data")
-		break
-	}
-
-	if filePath == "" || meta == nil {
+	rec, err := resolveShareCodeRecord(db, code, true)
+	if err != nil {
 		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
 		utils.HandleNotFound(c, "文件不存在")
 		return
 	}
 
-	file, err := os.Open(filePath)
+	basePath := configPkg.GlobalConfig.Storage.Private.Path
+	p, err := privateFileRealPath(basePath, rec.OwnerID, rec)
+	if err != nil {
+		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
+		utils.HandleNotFound(c, "文件不存在")
+		return
+	}
+
+	file, err := os.Open(p)
 	if err != nil {
 		utils.HandleInternalServerError(c, "无法打开文件")
 		return
@@ -261,10 +306,10 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	defer file.Close()
 
 	// RFC 5987/RFC 6266 安全编码文件名
-	safeFilename := url.PathEscape(meta.Filename)
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, meta.Filename, safeFilename))
+	safeFilename := url.PathEscape(rec.FileName)
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, rec.FileName, safeFilename))
 	c.Header("Content-Type", "application/octet-stream")
-	middleware.LogOperation(c, "private.download", meta.Filename, nil)
+	middleware.LogOperation(c, "private.download", rec.FileName, nil)
 	if _, err := io.Copy(c.Writer, file); err != nil {
 		utils.Error("文件下载失败", utils.Err(err))
 	}

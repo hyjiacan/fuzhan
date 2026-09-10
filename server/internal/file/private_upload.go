@@ -1,44 +1,42 @@
 package file
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/services"
-	"fuzhan/internal/uploadutil"
 	"fuzhan/internal/utils"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// PrivateUploadHandler 私有存储上传处理器
+// PrivateUploadHandler 私有存储上传处理器。
+// 只负责 HTTP 层与授权/配额校验，分片上传的编排统一委托
+// 携带私有落盘与收尾策略的 UploadSessionService。
 type PrivateUploadHandler struct {
 	service     *services.UploadSessionService
 	db          *gorm.DB
-	chunkSize   int64
 	privatePath string
-	indexSvc    *index.Service
 }
 
-// NewPrivateUploadHandler 创建私有存储上传处理器
-func NewPrivateUploadHandler(svc *services.UploadSessionService, db *gorm.DB, chunkSize int64, privateStoragePath string, indexSvc *index.Service) *PrivateUploadHandler {
+// NewPrivateUploadHandler 创建私有存储上传处理器。
+func NewPrivateUploadHandler(db *gorm.DB, chunkSize int64, privateStoragePath string, indexSvc *index.Service) *PrivateUploadHandler {
 	return &PrivateUploadHandler{
-		service:     svc,
+		service: services.NewUploadSessionServiceWithPolicies(
+			db, chunkSize, indexSvc,
+			NewPrivateStorage(privateStoragePath),
+			NewPrivateFinalizer(db, indexSvc),
+		),
 		db:          db,
-		chunkSize:   chunkSize,
 		privatePath: privateStoragePath,
-		indexSvc:    indexSvc,
 	}
 }
 
@@ -54,24 +52,19 @@ func (h *PrivateUploadHandler) getUserUUID(c *gin.Context) (string, error) {
 	return uuid, nil
 }
 
-// getSessionRepo 创建一个新的 SessionRepository 实例
 func (h *PrivateUploadHandler) getSessionRepo() *repositories.SessionRepository {
 	return repositories.NewSessionRepository(h.db)
 }
 
-// getChunkRepo 创建一个新的 ChunkRepository 实例
-func (h *PrivateUploadHandler) getChunkRepo() *repositories.ChunkRepository {
-	return repositories.NewChunkRepository(h.db)
-}
-
+// getAndVerifySession 解析会话ID并校验归属（只能操作本人会话）
 func (h *PrivateUploadHandler) getAndVerifySession(c *gin.Context, userID string) (*models.UploadSession, error) {
 	var uploadIDStr string
-	if c.Param("id") != "" {
+	switch {
+	case c.Param("id") != "":
 		uploadIDStr = c.Param("id")
-	} else if c.PostForm("uploadId") != "" {
+	case c.PostForm("uploadId") != "":
 		uploadIDStr = c.PostForm("uploadId")
-	} else {
-		// 前端 UploadManager 发送 JSON body，尝试解析
+	default:
 		var body struct {
 			UploadID string `json:"uploadId"`
 		}
@@ -116,13 +109,11 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
-	// 检查磁盘空间
 	if err := services.CheckDiskSpace(h.privatePath, req.FileSize); err != nil {
 		utils.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
 
-	// 检查用户配额
 	quota := appconfig.GlobalConfig.Storage.Private.PerUserQuota
 	if quota > 0 {
 		used, err := h.getUserUsedSpace(userID)
@@ -132,48 +123,33 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 		}
 	}
 
-	// 验证 Dir 路径安全性
-
 	if req.Dir != "" {
-		cleanDir := filepath.Clean(req.Dir)
-		if strings.HasPrefix(cleanDir, "..") || strings.HasPrefix(cleanDir, "/") || strings.HasPrefix(cleanDir, "\\") {
+		cleanDir := filepath.Clean(filepath.FromSlash(req.Dir))
+		if strings.HasPrefix(cleanDir, "..") || strings.HasPrefix(cleanDir, "/") || strings.HasPrefix(cleanDir, "\\") || filepath.IsAbs(cleanDir) {
 			utils.HandleBadRequest(c, "不允许的路径", nil)
 			return
 		}
 	}
 
-	totalChunks := int((req.FileSize-1)/h.chunkSize + 1)
-	// 防御: userID 为短字符串时避免切片越界 panic（userID 通常为 UUID，但仍需兜底）
-	shortID := userID
-	if len(shortID) > 8 {
-		shortID = shortID[:8]
-	}
-	uploadID := fmt.Sprintf("pv_%s_%d", shortID, utils.Now().UnixNano())
-
-	session := &models.UploadSession{
-		FileName:    req.Filename,
-		FileSize:    req.FileSize,
-		ChunkSize:   h.chunkSize,
-		TotalChunks: totalChunks,
-		Status:      models.UploadStatusPending,
-		TargetType:  models.TargetTypePrivate,
-		TargetPath:  req.Dir,
-		TargetRoot:  userID,
-		UserID:      userID,
-		ChunkDir:    uploadID,
-		ExpiredAt:   utils.Now().Add(24 * time.Hour), // 上传分片会话有效期固定 24 小时
-	}
-
-	if err := h.getSessionRepo().Create(session); err != nil {
-		utils.HandleErrorCompat(c, http.StatusInternalServerError, "创建会话失败", nil)
+	cs, err := h.service.CreateSession(&services.CreateSessionReq{
+		Filename:   req.Filename,
+		FileSize:   req.FileSize,
+		Dir:        req.Dir,
+		RootName:   userID,
+		TargetType: models.TargetTypePrivate,
+		UserID:     userID,
+		ClientIP:   utils.GetRealIP(c.Request),
+	})
+	if err != nil {
+		utils.HandleErrorCompat(c, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
 	utils.HandleSuccess(c, http.StatusCreated, "会话创建成功", gin.H{
-		"uploadId":    session.ID,
-		"chunkSize":   h.chunkSize,
-		"totalChunks": totalChunks,
-		"expiredAt":   session.ExpiredAt,
+		"uploadId":    cs.ID,
+		"chunkSize":   cs.ChunkSize,
+		"totalChunks": cs.TotalChunks,
+		"expiredAt":   cs.ExpiredAt,
 	})
 }
 
@@ -184,28 +160,19 @@ func (h *PrivateUploadHandler) GetSession(c *gin.Context) {
 		utils.HandleUnauthorized(c, err.Error())
 		return
 	}
-
 	session, err := h.getAndVerifySession(c, userID)
 	if err != nil {
 		utils.HandleNotFound(c, err.Error())
 		return
 	}
 
-	uploadedIndexes, _ := h.getChunkRepo().GetUploadedIndexes(session.ID)
-	expired := session.ExpiredAt.Before(utils.Now()) && session.Status != models.UploadStatusCompleted
+	status, err := h.service.GetStatus(session.ID)
+	if err != nil {
+		utils.HandleNotFound(c, err.Error())
+		return
+	}
 
-	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"session": gin.H{
-			"id":              session.ID,
-			"fileName":        session.FileName,
-			"fileSize":        session.FileSize,
-			"status":          session.Status,
-			"totalChunks":     session.TotalChunks,
-			"uploadedIndexes": uploadedIndexes,
-			"expired":         expired,
-			"expiredAt":       session.ExpiredAt,
-		},
-	})
+	utils.HandleSuccess(c, http.StatusOK, "", gin.H{"session": status})
 }
 
 // ResumeSession 续传私有会话
@@ -215,29 +182,26 @@ func (h *PrivateUploadHandler) ResumeSession(c *gin.Context) {
 		utils.HandleUnauthorized(c, err.Error())
 		return
 	}
-
 	session, err := h.getAndVerifySession(c, userID)
 	if err != nil {
 		utils.HandleNotFound(c, err.Error())
 		return
 	}
-
 	if session.Status == models.UploadStatusCompleted || session.Status == models.UploadStatusCancelled {
 		utils.HandleBadRequest(c, "会话已完成或已取消", nil)
 		return
 	}
 
-	session.ExpiredAt = utils.Now().Add(24 * time.Hour)
-	session.Status = models.UploadStatusInProgress
-	if err := h.getSessionRepo().Update(session); err != nil {
-		utils.Error("更新会话状态失败", utils.Err(err))
+	status, err := h.service.Resume(session.ID)
+	if err != nil {
+		utils.HandleErrorCompat(c, http.StatusInternalServerError, err.Error(), nil)
+		return
 	}
 
-	uploadedIndexes, _ := h.getChunkRepo().GetUploadedIndexes(session.ID)
 	utils.HandleSuccess(c, http.StatusOK, "会话已恢复", gin.H{
-		"uploadId":        session.ID,
-		"uploadedIndexes": uploadedIndexes,
-		"expiredAt":       session.ExpiredAt,
+		"uploadId":        status.ID,
+		"uploadedIndexes": status.UploadedIndexes,
+		"expiredAt":       status.ExpiredAt,
 	})
 }
 
@@ -248,24 +212,16 @@ func (h *PrivateUploadHandler) CancelSession(c *gin.Context) {
 		utils.HandleUnauthorized(c, err.Error())
 		return
 	}
-
-	session, err := h.getAndVerifySession(c, userID)
-	if err != nil {
+	if _, err := h.getAndVerifySession(c, userID); err != nil {
 		utils.HandleNotFound(c, err.Error())
 		return
 	}
 
-	// 删除临时上传文件
-	uploadingPath := filepath.Join(h.privatePath, fmt.Sprintf("%s.%d.uploading", session.ChunkDir, session.ID))
-	os.Remove(uploadingPath)
-
-	if err := h.getChunkRepo().DeleteBySessionID(session.ID); err != nil {
-		utils.Error("删除分片记录失败", utils.Err(err))
+	uploadID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err := h.service.Cancel(uint(uploadID)); err != nil {
+		utils.HandleNotFound(c, err.Error())
+		return
 	}
-	if err := h.getSessionRepo().Delete(session.ID); err != nil {
-		utils.Error("删除会话记录失败", utils.Err(err))
-	}
-
 	utils.HandleSuccess(c, http.StatusOK, "会话已取消", nil)
 }
 
@@ -286,27 +242,9 @@ func (h *PrivateUploadHandler) UploadChunk(c *gin.Context) {
 		utils.HandleBadRequest(c, "无效的会话ID", nil)
 		return
 	}
-
-	session, err := h.getSessionRepo().GetByID(uint(uploadID))
-	if err != nil || session.UserID != userID {
+	// 校验会话归属（只能上传本人会话）
+	if _, err := h.getAndVerifySession(c, userID); err != nil {
 		utils.HandleNotFound(c, "会话不存在")
-		return
-	}
-
-	if session.Status == models.UploadStatusCompleted || session.Status == models.UploadStatusCancelled {
-		utils.HandleBadRequest(c, "会话状态不允许上传", nil)
-		return
-	}
-
-	if session.ExpiredAt.Before(utils.Now()) {
-		h.getSessionRepo().UpdateStatus(session.ID, models.UploadStatusExpired)
-		utils.HandleBadRequest(c, "会话已过期", nil)
-		return
-	}
-
-	chunkIndex, err := strconv.Atoi(chunkIndexStr)
-	if err != nil || chunkIndex < 0 || chunkIndex >= session.TotalChunks {
-		utils.HandleBadRequest(c, "无效的分片索引", nil)
 		return
 	}
 
@@ -315,54 +253,24 @@ func (h *PrivateUploadHandler) UploadChunk(c *gin.Context) {
 		utils.HandleBadRequest(c, "未找到分片文件", nil)
 		return
 	}
-
-	// 构建上传文件路径
-	uploadingPath := filepath.Join(h.privatePath, fmt.Sprintf("%s.%d.uploading", session.ChunkDir, session.ID))
-
-	// 打开上传的分片文件
 	srcFile, err := file.Open()
 	if err != nil {
 		utils.HandleInternalServerError(c, "打开分片文件失败")
 		return
 	}
-	defer srcFile.Close()
 
-	// 使用共享函数写入分片数据
-	written, err := uploadutil.WriteChunkToUploading(
-		uploadingPath, session.FileSize,
-		chunkIndex, h.chunkSize, session.TotalChunks,
-		file.Size, srcFile, checksum,
-	)
-	if err != nil {
-		utils.HandleErrorCompat(c, http.StatusInternalServerError, err.Error(), nil)
-		return
-	}
-
-	if session.Status == models.UploadStatusPending {
-		session.Status = models.UploadStatusInProgress
-		if err := h.getSessionRepo().Update(session); err != nil {
-			utils.Error("更新会话状态失败", utils.Err(err))
-		}
-	}
-
-	if err := h.getChunkRepo().Create(&models.UploadedChunk{
-		SessionID:     session.ID,
-		ChunkIndex:    chunkIndex,
-		ChunkSize:     written,
-		ChunkChecksum: checksum,
+	if err := h.service.UploadChunk(&services.UploadChunkReq{
+		UploadID:   uint(uploadID),
+		ChunkIndex: int(mustAtoi(chunkIndexStr)),
+		ChunkData:  srcFile,
+		ChunkSize:  file.Size,
+		Checksum:   checksum,
 	}); err != nil {
-		utils.Error("创建分片记录失败", utils.Err(err))
-		// 回滚已写入的分片数据
-		zeroOffset := int64(chunkIndex) * h.chunkSize
-		if f, reopenErr := os.OpenFile(uploadingPath, os.O_RDWR, 0644); reopenErr == nil {
-			services.ZeroOutChunk(f, zeroOffset, written)
-			f.Close()
-		}
-		utils.HandleErrorCompat(c, http.StatusInternalServerError, "保存分片记录失败", nil)
+		utils.HandleErrorCompat(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
-	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunkIndex": chunkIndex})
+	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunkIndex": chunkIndexStr})
 }
 
 // FinalizeSession 完成私有上传
@@ -372,112 +280,28 @@ func (h *PrivateUploadHandler) FinalizeSession(c *gin.Context) {
 		utils.HandleUnauthorized(c, err.Error())
 		return
 	}
-
 	session, err := h.getAndVerifySession(c, userID)
 	if err != nil {
 		utils.HandleNotFound(c, err.Error())
 		return
 	}
-
 	if session.Status == models.UploadStatusCompleted {
 		utils.HandleBadRequest(c, "会话已完成", nil)
 		return
 	}
 
-	uploadedIndexes, _ := h.getChunkRepo().GetUploadedIndexes(session.ID)
-	if len(uploadedIndexes) != session.TotalChunks {
-		utils.HandleBadRequest(c, fmt.Sprintf("分片不完整: %d/%d", len(uploadedIndexes), session.TotalChunks), nil)
-		return
-	}
-
-	shareCode, err := GenerateShareCode()
+	result, err := h.service.Finalize(session.ID, false)
 	if err != nil {
-		utils.HandleInternalServerError(c, "生成分享码失败")
+		if errors.Is(err, services.ErrFileExists) {
+			utils.HandleErrorCompat(c, http.StatusConflict, "同名文件已存在，请使用其他名称", nil)
+			return
+		}
+		utils.HandleErrorCompat(c, http.StatusBadRequest, err.Error(), nil)
 		return
-	}
-
-	userPath := GetPrivateUserPath(appconfig.GlobalConfig.Storage.Private.Path, userID)
-	fileDir := userPath
-	if session.TargetPath != "" && session.TargetPath != "/" {
-		fileDir = filepath.Join(fileDir, session.TargetPath)
-		// 验证路径不越权
-		absTarget, _ := filepath.Abs(fileDir)
-		absRoot, _ := filepath.Abs(userPath)
-		if !strings.HasPrefix(absTarget, absRoot) {
-			utils.HandleBadRequest(c, "不允许的路径", nil)
-			return
-		}
-	}
-	fileDir = filepath.Join(fileDir, shareCode)
-	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		utils.Error("创建文件目录失败", utils.String("dir", fileDir), utils.Err(err))
-	}
-
-	finalPath := filepath.Join(fileDir, "data")
-
-	// 重命名 .uploading 文件为最终文件
-	uploadingPath := filepath.Join(h.privatePath, fmt.Sprintf("%s.%d.uploading", session.ChunkDir, session.ID))
-	if err := os.Rename(uploadingPath, finalPath); err != nil {
-		var linkErr *os.LinkError
-		if errors.As(err, &linkErr) {
-			if copyErr := utils.CopyFile(uploadingPath, finalPath); copyErr != nil {
-				utils.HandleErrorCompat(c, http.StatusInternalServerError, "完成上传失败: "+copyErr.Error(), nil)
-				return
-			}
-			if rmErr := os.Remove(uploadingPath); rmErr != nil {
-				utils.Warn("跨设备复制后删除源文件失败", utils.String("path", uploadingPath), utils.Err(rmErr))
-			}
-		} else {
-			utils.HandleErrorCompat(c, http.StatusInternalServerError, "完成上传失败: "+err.Error(), nil)
-			return
-		}
-	}
-	if err := h.getChunkRepo().DeleteBySessionID(session.ID); err != nil {
-		utils.Error("删除分片记录失败", utils.Err(err))
-	}
-
-	meta := &PrivateFileMeta{
-		Filename:   session.FileName,
-		UploadTime: utils.Now(),
-		FileSize:   session.FileSize,
-		Owner:      userID,
-		Code:       shareCode,
-	}
-	SavePrivateFileMetadata(fileDir, meta)
-
-	// 同步写入 file_records_private（最佳努力，失败不影响主流程）
-	if err := h.db.Create(&models.FileRecordPrivate{
-		FileRecordBase: models.FileRecordBase{
-			FileName:     session.FileName,
-			FilePath:     shareCode,
-			RootName:     "private",
-			FullPath:     "private/" + shareCode,
-			FileSize:     session.FileSize,
-			IsDir:        false,
-			ModTime:      utils.Now(),
-			Status:       models.FileStatusActive,
-			OwnerID:      userID,
-			LastSyncedAt: utils.Now(),
-		},
-	}).Error; err != nil {
-		utils.Warn("同步私有文件索引失败", utils.String("file", session.FileName), utils.Err(err))
-	}
-
-	// 触发哈希计算（后台执行，不阻塞）
-	if h.indexSvc != nil {
-		h.indexSvc.TriggerHash(context.Background())
-	}
-
-	session.Status = models.UploadStatusCompleted
-	if err := h.getSessionRepo().Update(session); err != nil {
-		utils.Warn("更新会话状态失败", utils.Err(err))
-	}
-	if err := h.getSessionRepo().Delete(session.ID); err != nil {
-		utils.Error("删除会话记录失败", utils.Err(err))
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "上传完成", gin.H{
-		"code":     shareCode,
+		"code":     result.ShareCode,
 		"filename": session.FileName,
 		"fileSize": session.FileSize,
 	})
@@ -491,10 +315,6 @@ func (h *PrivateUploadHandler) QuotaHandler(c *gin.Context) {
 		return
 	}
 
-	// 获取用户配额配置（使用配置值）
-	quota := appconfig.GlobalConfig.Storage.Private.PerUserQuota
-
-	// 计算用户已使用空间
 	used, err := h.getUserUsedSpace(userID)
 	if err != nil {
 		utils.HandleInternalServerError(c, "获取空间使用情况失败")
@@ -503,18 +323,26 @@ func (h *PrivateUploadHandler) QuotaHandler(c *gin.Context) {
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"used":  used,
-		"quota": quota,
+		"quota": appconfig.GlobalConfig.Storage.Private.PerUserQuota,
 	})
 }
 
-// getUserUsedSpace 获取用户已使用的空间
-// 从 file_records_private 查询，索引未就绪则返回 0
+// getUserUsedSpace 获取用户已使用的空间（从 file_records_private 查询）
 func (h *PrivateUploadHandler) getUserUsedSpace(userID string) (int64, error) {
 	var total int64
 	err := h.db.Table("file_records_private").
 		Where("owner_id = ? AND status = ? AND is_dir = ?",
-			userID, "active", false).
+			userID, models.FileStatusActive, false).
 		Select("COALESCE(SUM(file_size), 0)").
 		Scan(&total).Error
 	return total, err
+}
+
+// mustAtoi 宽容解析整数（失败返回 -1，由 service 侧再次校验分片索引范围）
+func mustAtoi(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return -1
+	}
+	return n
 }

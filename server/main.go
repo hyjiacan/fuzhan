@@ -322,7 +322,7 @@ func main() {
 	uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService)
 	taskService := services.NewTaskService(db)
 	uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService, taskService)
-	privateUploadHandler := file.NewPrivateUploadHandler(uploadSessionSvc, db, chunkSize, cfg.Storage.Private.Path, indexService)
+	privateUploadHandler := file.NewPrivateUploadHandler(db, chunkSize, cfg.Storage.Private.Path, indexService)
 	privateStorageHandler := file.NewPrivateStorageHandlers()
 	adminService := services.NewAdminService(db)
 	adminHandler := admin.NewHandler(adminService, db)

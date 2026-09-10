@@ -63,8 +63,11 @@ func (FileRecordTemp) TableName() string {
 }
 
 // FileRecordPrivate 私有文件索引表
+// ShareCode 承载分享码（128bit hex 32字符），仅作分享/下载凭证、与存储布局解耦；
+// FilePath 为私有存储内的真实相对路径（含子目录+真实文件名）。
 type FileRecordPrivate struct {
 	FileRecordBase
+	ShareCode string `gorm:"size:64" json:"shareCode,omitempty"`
 }
 
 func (FileRecordPrivate) TableName() string {
@@ -123,6 +126,15 @@ func EnsureFileRecordIndexes(db *gorm.DB) {
 		for _, idx := range compositeIndexes {
 			indexName := "idx__" + table + "__" + idx.name
 			sql := "CREATE INDEX IF NOT EXISTS " + indexName + " ON " + table + "(" + idx.columns + ")"
+			if err := db.Exec(sql).Error; err != nil {
+				db.Logger.Warn(nil, "创建索引失败: %v, SQL: %s", err, sql)
+			}
+		}
+
+		// 私有表额外建 share_code 唯一索引（分享下载按码直接反查）。
+		// 空的 share_code（存量未迁移记录）在 SQLite 唯一索引下按 NULL 处理，多行互不冲突。
+		if table == "file_records_private" {
+			sql := "CREATE UNIQUE INDEX IF NOT EXISTS idx__file_records_private__share_code ON file_records_private(share_code)"
 			if err := db.Exec(sql).Error; err != nil {
 				db.Logger.Warn(nil, "创建索引失败: %v, SQL: %s", err, sql)
 			}

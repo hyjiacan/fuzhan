@@ -56,6 +56,8 @@ type UploadStatus struct {
 type FinalizeResult struct {
 	TargetPath string `json:"targetPath"`
 	FileName   string `json:"fileName"`
+	// ShareCode 仅私有上传回填（作为分享/下载凭证）。公开上传为空。
+	ShareCode string `json:"shareCode,omitempty"`
 }
 
 // UploadSessionService 上传会话服务
