@@ -502,7 +502,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	// CLI 路由（无需认证）
 	cli := api.Group("/cli")
 	{
-		cli.GET("", rt.cliHandlers.HandleCli)
+		cli.GET("/", rt.cliHandlers.HandleCli)
 		cli.GET("/search/*query", rt.cliHandlers.CliSearch)
 		cli.GET("/list/*path", rt.cliHandlers.CliList)
 		cli.GET("/install.sh", rt.cliHandlers.InstallScript)
@@ -601,7 +601,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// CLI 路由别名（无需认证，/cli 作为 /api/v1/cli 的快捷入口）
 	cliAlias := r.Group("/cli")
 	{
-		cliAlias.GET("", rt.cliHandlers.HandleCli)
+		cliAlias.GET("/", rt.cliHandlers.HandleCli)
 		cliAlias.GET("/search/*query", rt.cliHandlers.CliSearch)
 		cliAlias.GET("/list/*path", rt.cliHandlers.CliList)
 		cliAlias.GET("/install.sh", rt.cliHandlers.InstallScript)

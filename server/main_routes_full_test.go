@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -184,13 +186,13 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	}
 
 	cli := api.Group("/cli")
-	cli.GET("", dummy)
+	cli.GET("/", dummy)
 	cli.GET("/search/*query", dummy)
 	cli.GET("/list/*path", dummy)
 	cli.GET("/install.sh", dummy)
 
 	cliAlias := r.Group("/cli")
-	cliAlias.GET("", dummy)
+	cliAlias.GET("/", dummy)
 	cliAlias.GET("/search/*query", dummy)
 	cliAlias.GET("/list/*path", dummy)
 	cliAlias.GET("/install.sh", dummy)
@@ -211,4 +213,44 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 
 	// 触发路由树最终化；若存在任何同类冲突，这里会 panic
 	_ = r.Routes()
+}
+
+// TestCLIRedirectNoLoop 验证 /cli 与 /cli/ 之间不存在无限重定向：
+// /cli 应被 Gin 重定向到 /cli/（一次），/cli/ 直接命中 handler 返回 200，
+// 两者不再互相跳转。回归用例：曾注册为 GET("") 导致 /cli→/cli/→/cli 循环。
+func TestCLIRedirectNoLoop(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+
+	handle := func(c *gin.Context) {
+		c.String(http.StatusOK, "help")
+	}
+
+	// 与 registerTopLevelRoutes 中 /cli 别名保持一致
+	cliAlias := r.Group("/cli")
+	{
+		cliAlias.GET("/", handle)
+		cliAlias.GET("/search/*query", handle)
+		cliAlias.GET("/list/*path", handle)
+	}
+	_ = r.Routes()
+
+	// /cli 无尾斜杠 → gin 301 重定向到 /cli/（single redirect）
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/cli", nil))
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("/cli 期望 %d 重定向，实际 %d", http.StatusMovedPermanently, w.Code)
+	}
+	loc := w.Header().Get("Location")
+	if loc != "/cli/" {
+		t.Fatalf("/cli 期望重定向到 /cli/，实际 Location=%q", loc)
+	}
+
+	// /cli/ 带尾斜杠 → 直接命中 handler，返回 200，不应再重定向
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/cli/", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("/cli/ 期望 200，实际 %d (Location=%q)",
+			w.Code, w.Header().Get("Location"))
+	}
 }
