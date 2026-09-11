@@ -464,15 +464,16 @@
   opacity: 1;
 }
 
-// 备注列 ellipsis：限制按钮宽度并截断长备注
+// 备注列 ellipsis：按钮占满列宽，长备注在按钮内自动截断为省略号
 .el-table-v2__row-cell .notes-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
   max-width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
   padding: 0 2px;
 }
 .notes-link .notes-text {
-  display: inline-block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

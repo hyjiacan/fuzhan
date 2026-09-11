@@ -164,7 +164,7 @@ const downloadColumns = [
   {
     title: '备注',
     key: 'notes',
-    minWidth: 160,
+    width: 150,
     cellRenderer: ({ rowData: row }) => row.notes
       ? h('span', { title: row.notes, style: 'color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
       : h('span', { style: 'color:#bbb;' }, '-')
