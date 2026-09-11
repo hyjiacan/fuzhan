@@ -27,7 +27,8 @@
           <el-autocomplete ref="searchInputRef" v-model="searchQuery" :maxlength="200"
             :fetch-suggestions="querySuggestions" :trigger-on-focus="false" placeholder="搜索文件..."
             clearable @select="onSuggestionSelect" @keydown.enter="searchFiles"
-            class="search-input">
+            @focus="searchInputFocused = true" @blur="searchInputFocused = false"
+            class="search-input" :style="searchInputWidth" size="large">
             <template #default="{ item }">
               <div class="suggest-item">
                 <span class="suggest-name">{{ item.value }}</span>
@@ -35,7 +36,7 @@
               </div>
             </template>
           </el-autocomplete>
-          <el-button @click="searchFiles">
+          <el-button @click="searchFiles" size="large">
             搜索
           </el-button>
           <el-button @click="showUploadDialog" type="primary">
@@ -145,6 +146,8 @@ const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 ])
 
 // ===== 搜索逻辑 =====
+const searchInputFocused = ref(false)
+const searchInputWidth = computed(() => ({ width: searchInputFocused.value ? '400px' : '200px' }))
 const {
   searchQuery,
   searchInputRef,
@@ -474,6 +477,11 @@ watch(
 
         .search-input {
           width: 200px;
+          transition: width @transition-smooth;
+
+          :deep(.el-input) {
+            width: 100%;
+          }
         }
 
         .el-button {
