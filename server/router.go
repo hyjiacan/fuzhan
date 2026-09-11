@@ -94,6 +94,31 @@ func isCLIRequest(c *gin.Context) bool {
 	return strings.HasPrefix(ua, "curl") || strings.HasPrefix(ua, "wget")
 }
 
+// isIEBrowser 判断请求是否来自 IE/Trident 内核浏览器（排除 Edge/Edg）。
+func isIEBrowser(r *http.Request) bool {
+	low := strings.ToLower(r.Header.Get("User-Agent"))
+	if low == "" {
+		return false
+	}
+	// 排除 Microsoft Edge（Chromium 内核 UA 含 edg/，旧版含 edge/）
+	if strings.Contains(low, "edg/") || strings.Contains(low, "edge/") {
+		return false
+	}
+	return strings.Contains(low, "msie") || strings.Contains(low, "trident")
+}
+
+// redirectIEToSimple 当请求来自 IE 浏览器时 302 跳转到 /simple（老旧浏览器改用简单浏览页）。
+// 仅在 SPA 页面导航处（GET / 与 NoRoute fallback）调用；/simple、/assets、/download、API 等
+// 独立路由不会走到这里，因此不会造成循环重定向。返回是否已跳转。
+func redirectIEToSimple(c *gin.Context) bool {
+	if !isIEBrowser(c.Request) {
+		return false
+	}
+	c.Redirect(http.StatusFound, "/simple")
+	c.Abort()
+	return true
+}
+
 // newRouter 创建 Gin Engine 与 FTP Handler（热重启时重新创建）
 func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 	// 创建 FTP 处理器（每次热重启时重建）
@@ -176,6 +201,10 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 				rt.cliHandlers.HandleCli(c)
 				return
 			}
+			// IE 浏览器自动跳转到 /simple 简单浏览页
+			if redirectIEToSimple(c) {
+				return
+			}
 			c.File(filepath.Join(webDir, "index.html"))
 		})
 		r.Static("/assets", assetsDir)
@@ -188,6 +217,10 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		r.GET("/", func(c *gin.Context) {
 			if isCLIRequest(c) {
 				rt.cliHandlers.HandleCli(c)
+				return
+			}
+			// IE 浏览器自动跳转到 /simple 简单浏览页
+			if redirectIEToSimple(c) {
 				return
 			}
 			data, err := webAssets.ReadFile("web/index.html")
@@ -223,6 +256,10 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 			return
 		}
 		// 其他路径返回 index.html（SPA fallback）
+		// IE 浏览器自动跳转到 /simple 简单浏览页
+		if redirectIEToSimple(c) {
+			return
+		}
 		c.File(filepath.Join(webDir, "index.html"))
 	})
 
@@ -614,6 +651,10 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		downloadAlias.GET("/*path", rt.downloadHandlers.DownloadFile)
 		downloadAlias.HEAD("/*path", rt.downloadHandlers.DownloadFile)
 	}
+
+	// 简单浏览入口（无需认证）：服务器渲染的纯 HTML 列表，兼容老旧浏览器，
+	// 提供目录进入与文件下载链接，不含样式/上传/其它操作。
+	r.Group("/simple").GET("/*path", rt.cliHandlers.Simple)
 
 	// Open API 路由组（v3 Phase 3）
 	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 调用统计 → 路由分发 → Handler

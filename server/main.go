@@ -351,6 +351,8 @@ func main() {
 	}
 	// 文件名检索提示处理器（索引未打开时为 nil，搜索联想/纠错不可用）
 	suggestHandler := search.NewHandler(idxSearch)
+	// /simple 简单浏览页检索的推荐/纠错同样依赖检索索引
+	cliHandlers.SearchIndex = idxSearch
 
 	// 临时文件处理器 (基于IP，无需认证)
 	tempSvcConfig := services.TempServiceConfig{

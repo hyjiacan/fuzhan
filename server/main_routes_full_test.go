@@ -201,6 +201,9 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	downloadAlias.GET("/*path", dummy)
 	downloadAlias.HEAD("/*path", dummy)
 
+	simple := r.Group("/simple")
+	simple.GET("/*path", dummy)
+
 	openAPI := r.Group("/api/open/v1")
 	openAPI.GET("/files/list", dummy)
 	openAPI.GET("/files/search", dummy)
@@ -252,5 +255,31 @@ func TestCLIRedirectNoLoop(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("/cli/ 期望 200，实际 %d (Location=%q)",
 			w.Code, w.Header().Get("Location"))
+	}
+}
+
+// TestIsIEBrowser 验证 IE/Trident 判定，并排除 Edge（Chromium/旧版）与 curl 等非浏览器。
+func TestIsIEBrowser(t *testing.T) {
+	cases := []struct {
+		ua   string
+		want bool
+	}{
+		{"Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)", true},
+		{"Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko", true},
+		{"Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko", true},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", false},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edge/18.10240", false},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", false},
+		{"curl/8.0.1", false},
+		{"wget/1.21", false},
+		{"", false},
+		{"some generic client", false},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("User-Agent", c.ua)
+		if got := isIEBrowser(req); got != c.want {
+			t.Errorf("isIEBrowser(%q) = %v, 期望 %v", c.ua, got, c.want)
+		}
 	}
 }

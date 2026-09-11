@@ -193,6 +193,39 @@ func (s *SearchService) LoadHashMap(rootName string) (map[string]string, error) 
 	return hashMap, nil
 }
 
+// LoadDirectoryNotes 返回指定根目录下、某子目录的直接子项的备注映射。
+// prefix 为根内相对路径（不含前导斜杠），空表示根级；返回的键为归一化的
+// URL 相对路径（"/"+file_path，file_path 根级可能不带前导 /）。
+func (s *SearchService) LoadDirectoryNotes(rootName, prefix string) map[string]string {
+	if s.db == nil || rootName == "" {
+		return nil
+	}
+	tx := s.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND status = ?", rootName, models.FileStatusActive)
+	if prefix == "" {
+		// 根级：文件路径不含额外 "/"（只有前导 / 或没有）
+		tx = tx.Where("file_path NOT LIKE ?", "/%/%")
+	} else {
+		cleanPrefix := strings.TrimRight(prefix, "/")
+		tx = tx.Where("file_path LIKE ? AND file_path NOT LIKE ?",
+			"/"+cleanPrefix+"/%", "/"+cleanPrefix+"/%/%")
+	}
+	var rows []struct {
+		FilePath string
+		Notes    string
+	}
+	if err := tx.Select("file_path, notes").Find(&rows).Error; err != nil {
+		utils.Warn("加载目录备注失败", utils.String("root", rootName), utils.Err(err))
+		return nil
+	}
+	m := make(map[string]string, len(rows))
+	for _, r := range rows {
+		key := "/" + strings.TrimLeft(r.FilePath, "/")
+		m[key] = r.Notes
+	}
+	return m
+}
+
 // IncrementPublicDownloadCount 公共文件下载次数 +1（按完整路径定位，非阻塞返回错误）
 func (s *SearchService) IncrementPublicDownloadCount(fullPath string) error {
 	if fullPath == "" {

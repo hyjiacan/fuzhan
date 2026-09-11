@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style type="text/css">
+.logo {
+  vertical-align: middle;
+}
+.brand, .search {
+  display: inline-block;
+}
+
+.search {
+  margin-left: 40px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+tr:hover {
+  background-color: #eee;
+}
+
+td {
+ padding: 2px 3px;
+}
+
+.tag {
+  padding: 2px 3px;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="brand">
+    {{if .LogoPath}}<img class="logo" src="{{.LogoPath}}" alt="{{.AppName}}" width="40" height="40">{{end}}
+    <span class="title">{{.AppName}}</span>
+  </div>
+  <form action="/simple" method="get" class="search">
+    <input type="text" name="q" value="{{.SearchQuery}}" style="width: 300px; height: 32px;" placeholder="搜索（空格多词 / .ext 按类型）">
+    <button type="submit" style="height: 40px; width: 60px">搜索</button>
+  </form>
+</div>
+
+<p class="crumb">
+{{range $i, $c := .Crumb}}{{if $c.Href}}<a href="{{$c.Href}}">{{$c.Name}}</a>{{else}}{{$c.Name}}{{end}}{{if crumbSep $i (len $.Crumb)}} / {{end}}{{end}}
+</p>
+
+{{if .ResultInfo}}<p class="result-info">{{.ResultInfo}}</p>{{end}}
+
+{{if .Recommends}}<p>推荐：{{range .Recommends}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a> {{end}}</p>{{end}}
+{{if .Corrections}}<p>是否在找：{{range .Corrections}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a> {{end}}</p>{{end}}
+<hr />
+<table>
+<tbody>
+{{range .Rows}}
+<tr>
+  <td>{{if .IsDir}}+{{end}}</td>
+  <td>{{if .IsDir}}<a href="{{.Href}}">{{.Name}}/</a>{{else}}<a href="{{.Href}}">{{.Name}}</a>{{end}}</td>
+  <td>{{.Size}}</td>
+  <td>{{.Time}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</body>
+</html>

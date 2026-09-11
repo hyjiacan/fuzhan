@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/search"
 	"fuzhan/internal/services"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,7 @@ import (
 type CLIHandlers struct {
 	FileService   *services.FileService
 	SearchService *services.SearchService
+	SearchIndex   *search.SearchIndex
 }
 
 // NewCLIHandlers 创建 CLI 处理器实例
@@ -26,6 +28,11 @@ func NewCLIHandlers(fileService *services.FileService, searchService *services.S
 // HandleCli 处理CLI请求
 func (ch *CLIHandlers) HandleCli(c *gin.Context) {
 	HandleCli(c.Writer, c.Request)
+}
+
+// Simple 处理 /simple 服务器渲染浏览请求（面向老旧浏览器）
+func (ch *CLIHandlers) Simple(c *gin.Context) {
+	HandleSimple(c.Writer, c.Request, ch.SearchService, ch.SearchIndex)
 }
 
 // CliSearch 处理CLI搜索请求
