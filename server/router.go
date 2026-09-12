@@ -108,14 +108,14 @@ func isIEBrowser(r *http.Request) bool {
 	return strings.Contains(low, "msie") || strings.Contains(low, "trident")
 }
 
-// redirectIEToSimple 当请求来自 IE 浏览器时 302 跳转到 /simple（老旧浏览器改用简单浏览页）。
-// 仅在 SPA 页面导航处（GET / 与 NoRoute fallback）调用；/simple、/assets、/download、API 等
+// redirectIEToLite 当请求来自 IE 浏览器时 302 跳转到 /lite（老旧浏览器改用简洁浏览页）。
+// 仅在 SPA 页面导航处（GET / 与 NoRoute fallback）调用；/lite、/assets、/download、API 等
 // 独立路由不会走到这里，因此不会造成循环重定向。返回是否已跳转。
-func redirectIEToSimple(c *gin.Context) bool {
+func redirectIEToLite(c *gin.Context) bool {
 	if !isIEBrowser(c.Request) {
 		return false
 	}
-	c.Redirect(http.StatusFound, "/simple")
+	c.Redirect(http.StatusFound, "/lite")
 	c.Abort()
 	return true
 }
@@ -225,8 +225,8 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 				rt.cliHandlers.HandleCli(c)
 				return
 			}
-			// IE 浏览器自动跳转到 /simple 简单浏览页
-			if redirectIEToSimple(c) {
+			// IE 浏览器自动跳转到 /lite 简洁浏览页
+			if redirectIEToLite(c) {
 				return
 			}
 			c.File(filepath.Join(webDir, "index.html"))
@@ -243,8 +243,8 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 				rt.cliHandlers.HandleCli(c)
 				return
 			}
-			// IE 浏览器自动跳转到 /simple 简单浏览页
-			if redirectIEToSimple(c) {
+			// IE 浏览器自动跳转到 /lite 简洁浏览页
+			if redirectIEToLite(c) {
 				return
 			}
 			data, err := webAssets.ReadFile("web/index.html")
@@ -280,8 +280,8 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 			return
 		}
 		// 其他路径返回 index.html（SPA fallback）
-		// IE 浏览器自动跳转到 /simple 简单浏览页
-		if redirectIEToSimple(c) {
+		// IE 浏览器自动跳转到 /lite 简洁浏览页
+		if redirectIEToLite(c) {
 			return
 		}
 		c.File(filepath.Join(webDir, "index.html"))
@@ -689,9 +689,9 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		downloadAlias.HEAD("/*path", rt.downloadHandlers.DownloadFile)
 	}
 
-	// 简单浏览入口（无需认证）：服务器渲染的纯 HTML 列表，兼容老旧浏览器，
+	// 简洁浏览入口（无需认证）：服务器渲染的纯 HTML 列表，兼容老旧浏览器，
 	// 提供目录进入与文件下载链接，不含样式/上传/其它操作。
-	r.Group("/simple").GET("/*path", rt.cliHandlers.Simple)
+	r.Group("/lite").GET("/*path", rt.cliHandlers.Lite)
 
 	// Open API 路由组（v3 Phase 3）
 	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 调用统计 → 路由分发 → Handler

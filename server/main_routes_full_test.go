@@ -201,8 +201,8 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	downloadAlias.GET("/*path", dummy)
 	downloadAlias.HEAD("/*path", dummy)
 
-	simple := r.Group("/simple")
-	simple.GET("/*path", dummy)
+	lite := r.Group("/lite")
+	lite.GET("/*path", dummy)
 
 	openAPI := r.Group("/api/open/v1")
 	openAPI.GET("/files/list", dummy)

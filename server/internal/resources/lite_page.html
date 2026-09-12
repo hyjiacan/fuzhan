@@ -150,7 +150,7 @@ tr:hover td {
     {{if .LogoPath}}<img class="logo" src="{{.LogoPath}}" alt="{{.AppName}}" width="40" height="40">{{end}}
     <span class="title">{{.AppName}}</span>
   </div>
-  <form action="/simple" method="get" class="search">
+  <form action="/lite" method="get" class="search">
     <input type="text" name="q" value="{{.SearchQuery}}" class="search-txt" placeholder="搜索（空格多词 / .ext 按类型）">
     <button type="submit" class="search-btn">搜索</button>
   </form>

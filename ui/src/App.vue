@@ -16,6 +16,7 @@ import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue'
 import store from '@/store'
 import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
+import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
 
 // 页面宽度偏好
 const STORAGE_KEY = 'page-width-preference'
@@ -68,6 +69,9 @@ onMounted(() => {
   if (token) {
     store.actions.validateAuth()
   }
+
+  // 页面卡顿检测：提示用户是否切换到简洁模式（选择存 localStorage）
+  useLiteModeSuggestion().start(10000)
 
   setTimeout(() => {
     // Setup 页面不需要健康检查 — AppShell 内部已处理

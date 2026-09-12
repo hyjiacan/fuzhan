@@ -17,5 +17,5 @@ var LaunchdPlistTemplate string
 //go:embed systemd.service.txt
 var SystemdServiceTemplate string
 
-//go:embed simple_page.html
-var SimplePageTpl string
+//go:embed lite_page.html
+var LitePageTpl string

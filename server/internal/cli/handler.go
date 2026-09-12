@@ -30,9 +30,9 @@ func (ch *CLIHandlers) HandleCli(c *gin.Context) {
 	HandleCli(c.Writer, c.Request)
 }
 
-// Simple 处理 /simple 服务器渲染浏览请求（面向老旧浏览器）
-func (ch *CLIHandlers) Simple(c *gin.Context) {
-	HandleSimple(c.Writer, c.Request, ch.SearchService, ch.SearchIndex)
+// Lite 处理 /lite 服务器渲染浏览请求（面向老旧浏览器）
+func (ch *CLIHandlers) Lite(c *gin.Context) {
+	HandleLite(c.Writer, c.Request, ch.SearchService, ch.SearchIndex)
 }
 
 // CliSearch 处理CLI搜索请求

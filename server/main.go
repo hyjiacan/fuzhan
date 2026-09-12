@@ -351,7 +351,7 @@ func main() {
 	}
 	// 文件名检索提示处理器（索引未打开时为 nil，搜索联想/纠错不可用）
 	suggestHandler := search.NewHandler(idxSearch)
-	// /simple 简单浏览页检索的推荐/纠错同样依赖检索索引
+	// /lite 简洁浏览页检索的推荐/纠错同样依赖检索索引
 	cliHandlers.SearchIndex = idxSearch
 
 	// 临时文件处理器 (基于IP，无需认证)
@@ -460,7 +460,11 @@ func main() {
 	}
 
 	// 服务器地址
-	address := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.HTTP.Port)
+	host := cfg.Server.Host
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	address := fmt.Sprintf("%s:%d", host, cfg.Server.HTTP.Port)
 	utils.Info("监听地址", utils.String("address", address))
 
 	// 输出共享目录列表
