@@ -12,7 +12,6 @@ import (
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
-	"fuzhan/pkg/pathutils"
 )
 
 // recordDownload 记录下载操作。优先走全局有界记录器（有界 async），
@@ -215,7 +214,8 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	filename := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/download/")
 	filename = strings.TrimPrefix(filename, "/api/v1/download/")
 	filename = strings.TrimPrefix(filename, "/download/")
-	filename, _ = pathutils.URLDecode(filename)
+	// 说明：net/http 已对 r.URL.Path 完成百分号解码（%2B→+、%25→%、UTF-8→中文）。
+	// 因此这里不再二次解码，否则文件名含字面 "+" 或用后再被 QueryUnescape 转成空格出错。
 
 	// 检测是否为按哈希下载: 路径为单段且是 16 位十六进制字符串（xxh3 64位）
 	if isHashPath(filename) {

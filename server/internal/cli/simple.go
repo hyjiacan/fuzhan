@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"fuzhan/internal/appconfig"
@@ -174,8 +175,8 @@ func HandleSimple(w http.ResponseWriter, r *http.Request, svc *services.SearchSe
 	page := simplePage{
 		Title:   head + " - 目录浏览",
 		AppName: head,
-		// logo.svg 为嵌入/磁盘资源，统一以 /assets/icons/logo.svg 引用
-		LogoPath: "/assets/icons/logo.svg",
+		// logo.svg 为嵌入/磁盘资源，统一以 /assets/icons/logo.png 引用
+		LogoPath: "/assets/icons/logo.png",
 	}
 
 	segs := resolveSimpleSegments(r)
@@ -278,14 +279,10 @@ func HandleSimple(w http.ResponseWriter, r *http.Request, svc *services.SearchSe
 	// 枚举目录内容（复用 CLI 过滤：忽略 .uploading、限制扩展名）
 	items := GetDirectoryItems(targetPath, rootName, nil)
 
-	// 加载本目录直接子项的备注（根内相对路径 -> 备注）
-	var notesMap map[string]string
-	if svc != nil {
-		notesMap = svc.LoadDirectoryNotes(rootName, subPath)
-	}
-
 	for _, it := range items {
-		rel := "/" + strings.TrimPrefix(it.Path, rootName)
+		// it.Path 为 "<rootName>/<相对路径>"，去掉前缀后即带单个前导 "/" 的相对路径，
+		// 与 LoadDirectoryNotes 的 map 键格式一致；encodeRelPath 会 trim 前导斜杠所以 Href 不受影响
+		rel := strings.TrimPrefix(it.Path, rootName)
 		row := simpleRow{Name: it.Name, Time: formatModTimeText(it.ModifiedTime), Notes: "-"}
 		if it.Type == "directory" {
 			row.IsDir = true
@@ -294,11 +291,6 @@ func HandleSimple(w http.ResponseWriter, r *http.Request, svc *services.SearchSe
 		} else {
 			row.Href = "/download/" + encodeRelPath(rootName, rel)
 			row.Size = formatSimpleSize(it.Size)
-		}
-		if notesMap != nil {
-			if n, ok := notesMap[rel]; ok && n != "" {
-				row.Notes = n
-			}
 		}
 		page.Rows = append(page.Rows, row)
 	}
@@ -338,14 +330,8 @@ func renderSimpleSearch(w http.ResponseWriter, page simplePage, svc *services.Se
 	page.ResultInfo = fmt.Sprintf("搜索“%s”，共 %d 个结果", q, len(results))
 	for _, res := range results {
 		rootName := res.RootName
-		rel := ""
-		if i := strings.Index(res.Path, "/"); i >= 0 {
-			if rootName == "" {
-				rootName = res.Path[:i]
-			}
-			rel = res.Path[i:]
-		}
-		if rootName == "" {
+		rel := simpleSearchRel(res.Path, rootName)
+		if rel == "" {
 			continue
 		}
 		row := simpleRow{Name: res.Name, Time: formatModTimeText(res.ModifiedTime), Notes: "-"}
@@ -363,6 +349,20 @@ func renderSimpleSearch(w http.ResponseWriter, page simplePage, svc *services.Se
 		page.Rows = append(page.Rows, row)
 	}
 	renderSimple(w, page)
+}
+
+// simpleSearchRel 将检索结果的完整路径（"/<rootName>/<相对路径>"）还原为带前导 "/" 的相对路径。
+// 检索结果的 Path 已含 rootName，若直接交给 encodeRelPath 前置 rootName 会造成根目录名重复；
+// 还原失败（rootName 为空或前缀不匹配）时返回空串，调用方跳过该行。
+func simpleSearchRel(fullPath, rootName string) string {
+	if rootName == "" {
+		return ""
+	}
+	prefix := "/" + rootName + "/"
+	if !strings.HasPrefix(fullPath, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(fullPath, "/"+rootName)
 }
 
 // buildSimpleSuggestions 基于检索索引生成推荐（AutoComplete 前缀匹配）与纠错（SpellCheck 模糊匹配）。
@@ -415,14 +415,37 @@ func compareSimpleName(a, b string) bool {
 	return strings.ToLower(a) < strings.ToLower(b)
 }
 
+// simpleTemplateFuncs 简单页模板的自定义函数
+func simpleTemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"crumbSep": func(i, n int) bool { return i < n-1 },
+	}
+}
+
+// simpleEmbedTmpl 缓存的嵌入模板解析结果；磁盘模板存在时不用缓存。
+var (
+	simpleEmbedTmplOnce sync.Once
+	simpleEmbedTmpl     *template.Template
+	simpleEmbedTmplErr  error
+)
+
+// loadSimplePageTmpl 返回 /simple 页面模板：磁盘模板存在则每次重新解析（支持运行时免重启修改），
+// 否则返回按嵌入内容缓存好的模板，避免每次请求重复解析。
+func loadSimplePageTmpl() (*template.Template, error) {
+	content, fromDisk := resources.SimplePageContent()
+	if fromDisk {
+		return template.New("simple").Funcs(simpleTemplateFuncs()).Parse(content)
+	}
+	simpleEmbedTmplOnce.Do(func() {
+		simpleEmbedTmpl, simpleEmbedTmplErr = template.New("simple").Funcs(simpleTemplateFuncs()).Parse(content)
+	})
+	return simpleEmbedTmpl, simpleEmbedTmplErr
+}
+
 // renderSimple 渲染 /simple 页面。模板内容优先读取磁盘上 resources/simple_page.html，
-// 无则用嵌入模板（见 resources.LoadSimplePageTpl），以便运行时免重启修改模板。
+// 无则用嵌入模板（见 resources.SimplePageContent），以便运行时免重启修改模板。
 func renderSimple(w http.ResponseWriter, page simplePage) {
-	tmpl, err := template.New("simple").
-		Funcs(template.FuncMap{
-			"crumbSep": func(i, n int) bool { return i < n-1 },
-		}).
-		Parse(resources.LoadSimplePageTpl())
+	tmpl, err := loadSimplePageTmpl()
 	if err != nil {
 		utils.Error("解析简单页模板失败", utils.Err(err))
 		http.Error(w, "internal server error", http.StatusInternalServerError)

@@ -70,6 +70,26 @@ func TestSimpleSecurity(t *testing.T) {
 	}
 }
 
+// TestSimpleSearchRel 验证检索完整路径还原为相对路径，避免 encodeRelPath 二次前置 rootName。
+func TestSimpleSearchRel(t *testing.T) {
+	cases := []struct {
+		path, rootName, want string
+	}{
+		{"/root/sub/file.txt", "root", "/sub/file.txt"},
+		{"/root/file.txt", "root", "/file.txt"},
+		{"/root/中文 文件名.txt", "root", "/中文 文件名.txt"},
+		{"", "root", ""},
+		{"/root", "root", ""},
+		{"/other/sub/file.txt", "root", ""},
+		{"/root/sub/file.txt", "", ""},
+	}
+	for _, c := range cases {
+		if got := simpleSearchRel(c.path, c.rootName); got != c.want {
+			t.Errorf("simpleSearchRel(%q, %q)=%q，期望 %q", c.path, c.rootName, got, c.want)
+		}
+	}
+}
+
 // TestBuildSimpleSuggestions 验证检索推荐/纠错的生成：索引可用时产出超链接，
 // 且排除当前查询词、Href 为 /simple?q= 格式；索引为 nil 时返回空。
 func TestBuildSimpleSuggestions(t *testing.T) {

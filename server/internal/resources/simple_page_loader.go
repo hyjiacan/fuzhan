@@ -26,14 +26,21 @@ func simplePageDiskCandidates() []string {
 	return out
 }
 
+// SimplePageContent 返回 /simple 页面模板内容及来源：磁盘模板存在时 (内容, true)，
+// 否则回退到程序内嵌入的模板返回 (嵌入内容, false)，供调用方按来源决定是否缓存解析。
+func SimplePageContent() (content string, fromDisk bool) {
+	for _, p := range simplePageDiskCandidates() {
+		if data, err := os.ReadFile(p); err == nil {
+			return string(data), true
+		}
+	}
+	return SimplePageTpl, false
+}
+
 // LoadSimplePageTpl 读取 /simple 页面模板：运行时若磁盘上存在
 // <binaryDir|CWD>/internal/resources/simple_page.html，则直接读取磁盘内容
 // （便于免重启修改模板）；不存在时回退到程序内嵌入的 SimplePageTpl。
 func LoadSimplePageTpl() string {
-	for _, p := range simplePageDiskCandidates() {
-		if data, err := os.ReadFile(p); err == nil {
-			return string(data)
-		}
-	}
-	return SimplePageTpl
+	content, _ := SimplePageContent()
+	return content
 }
