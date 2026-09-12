@@ -5,32 +5,142 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style type="text/css">
-.logo {
-  vertical-align: middle;
-}
-.brand, .search {
-  display: inline-block;
+body {
+  margin: 0;
+  background: #f7f7f7;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: #333;
 }
 
+.header {
+  background: #fff;
+  border-bottom: 2px solid #FFA500;
+  padding: 12px 24px;
+  overflow: hidden; /* 包含内部 float，避免 header 塌陷 */
+}
+.brand {
+  float: left;
+  line-height: 40px;
+}
+.logo {
+  vertical-align: middle;
+  border: 0;
+}
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #FFA500;
+  vertical-align: middle;
+}
 .search {
-  margin-left: 40px;
+  float: right;
+}
+.search-txt {
+  width: 300px;
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  vertical-align: middle;
+}
+.search-btn {
+  height: 40px;
+  padding: 0 16px;
+  margin-left: 4px;
+  background: #FFA500;
+  border: 1px solid #FFA500;
+  color: #fff;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.search-btn:hover {
+  background: #FFB733;
+}
+
+.wrap {
+  padding: 0 0 24px;
+}
+
+.crumb {
+  margin: 4px 12px 8px;
+  color: #888;
+}
+.crumb a {
+  color: #E69500;
+  text-decoration: none;
+}
+.crumb a:hover {
+  text-decoration: underline;
+}
+
+.result-info {
+  margin-left: 12px;
+  color: #888;
+}
+
+.suggest {
+  margin: 6px 12px 20px 12px;
+  color: #666;
+}
+.suggest .tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: #fff3e0;
+  border: 1px solid #ffd9a3;
+  color: #E69500;
+  text-decoration: none;
+}
+.suggest .tag:hover {
+  background: #ffe8c2;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  background: #fff;
+}
+thead th {
+  background: #f3f3f3;
+  color: #666;
+  font-weight: normal;
+}
+th.name {
+  text-align: left;
+}
+th, td {
+  padding: 5px;
+  border-bottom: 1px solid #e3e6ea;
+}
+td.type {
+  text-align: center;
+  width: 24px;
+  color: #FFA500;
+  font-size: large;
+}
+td.name a {
+  color: #333;
+  text-decoration: none;
+}
+td.name a:hover {
+  color: #E69500;
+  text-decoration: underline;
+}
+th.size, td.size {
+  text-align: right;
+  white-space: nowrap;
+}
+th.time, td.time {
+  text-align: right;
+  white-space: nowrap;
+  color: #777;
+}
+td.time {
+  color: #777;
 }
 
-tr:hover {
-  background-color: #eee;
-}
-
-td {
- padding: 2px 3px;
-}
-
-.tag {
-  padding: 2px 3px;
+tr:hover td {
+  background: #fff7ec;
 }
 </style>
 </head>
@@ -41,10 +151,12 @@ td {
     <span class="title">{{.AppName}}</span>
   </div>
   <form action="/simple" method="get" class="search">
-    <input type="text" name="q" value="{{.SearchQuery}}" style="width: 300px; height: 32px;" placeholder="搜索（空格多词 / .ext 按类型）">
-    <button type="submit" style="height: 40px; width: 60px">搜索</button>
+    <input type="text" name="q" value="{{.SearchQuery}}" class="search-txt" placeholder="搜索（空格多词 / .ext 按类型）">
+    <button type="submit" class="search-btn">搜索</button>
   </form>
 </div>
+
+<div class="wrap">
 
 <p class="crumb">
 {{range $i, $c := .Crumb}}{{if $c.Href}}<a href="{{$c.Href}}">{{$c.Name}}</a>{{else}}{{$c.Name}}{{end}}{{if crumbSep $i (len $.Crumb)}} / {{end}}{{end}}
@@ -52,20 +164,29 @@ td {
 
 {{if .ResultInfo}}<p class="result-info">{{.ResultInfo}}</p>{{end}}
 
-{{if .Recommends}}<p>推荐：{{range .Recommends}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a> {{end}}</p>{{end}}
-{{if .Corrections}}<p>是否在找：{{range .Corrections}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a> {{end}}</p>{{end}}
-<hr />
+{{if .Recommends}}<p class="suggest">推荐：{{range .Recommends}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a>{{end}}</p>{{end}}
+{{if .Corrections}}<p class="suggest">是否在找：{{range .Corrections}}<a href="{{.Href}}" class="tag">{{.Keyword}}</a>{{end}}</p>{{end}}
+
 <table>
+<thead>
+<tr>
+  <th class="type">&nbsp;</th>
+  <th class="name">名称</th>
+  <th class="size">大小</th>
+  <th class="time">时间</th>
+</tr>
+</thead>
 <tbody>
 {{range .Rows}}
 <tr>
-  <td>{{if .IsDir}}+{{end}}</td>
-  <td>{{if .IsDir}}<a href="{{.Href}}">{{.Name}}/</a>{{else}}<a href="{{.Href}}">{{.Name}}</a>{{end}}</td>
-  <td>{{.Size}}</td>
-  <td>{{.Time}}</td>
+  <td class="type">{{if .IsDir}}+{{end}}</td>
+  <td class="name">{{if .IsDir}}<a href="{{.Href}}">{{.Name}}/</a>{{else}}<a href="{{.Href}}">{{.Name}}</a>{{end}}</td>
+  <td class="size">{{.Size}}</td>
+  <td class="time">{{.Time}}</td>
 </tr>
 {{end}}
 </tbody>
 </table>
+</div>
 </body>
 </html>
