@@ -232,7 +232,7 @@
 
 - **URL**：`GET /api/v1/search-suggest`
 - **认证**：无需认证
-- **说明**：基于文件名检索索引（Bluge + gse）的前缀联想，输入时实时返回匹配的文件名
+- **说明**：基于文件名检索索引（Bluge + gse）的关键词联想，返回最常见的关键词 term（英文小写、中文语义词），而非完整文件名
 - **请求参数**：
   | 参数 | 类型 | 必填 | 说明 |
   |------|------|------|------|
@@ -240,14 +240,14 @@
   | limit | int | 否 | 返回数量上限，默认 10，最大 30 |
 - **响应**：
   ```json
-  {"success":true,"code":0,"message":"","data":["Firefox Setup 108.0.2.msi","Firefox Setup 152.0.4.exe"]}
+  {"success":true,"code":0,"message":"","data":["firefox","setup"]}
   ```
 
 ### 3. 搜索拼写纠错
 
 - **URL**：`GET /api/v1/search-spellcheck`
 - **认证**：无需认证
-- **说明**：基于文件名检索索引（Bluge Fuzzy 查询）的拼写纠错，返回最相似的候选文件名
+- **说明**：基于文件名检索索引（Bluge Fuzzy 查询）的拼写纠错，返回编辑距离内最相似的关键词候选（非完整文件名）
 - **请求参数**：
   | 参数 | 类型 | 必填 | 说明 |
   |------|------|------|------|
@@ -255,7 +255,7 @@
   | limit | int | 否 | 返回数量上限，默认 5，最大 10 |
 - **响应**：
   ```json
-  {"success":true,"code":0,"message":"","data":["Firefox Setup 108.0.2.msi"]}
+  {"success":true,"code":0,"message":"","data":["firefox"]}
   ```
 
 ## 文件操作接口

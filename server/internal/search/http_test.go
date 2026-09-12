@@ -48,14 +48,14 @@ func TestAutocompleteHandler(t *testing.T) {
 	}
 	h := NewHandler(idx)
 
-	// 正常前缀
+	// 正常前缀（返回关键词，而非完整文件名）
 	rr := doGET(h, "Autocomplete", "/api/v1/search-suggest", "q=read")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d: %s", rr.Code, rr.Body.String())
 	}
 	names := decodeData(t, rr)
-	if len(names) == 0 || names[0] != "README.md" {
-		t.Fatalf("q=read 应建议 README.md，实际 %v", names)
+	if len(names) == 0 || names[0] != "readme" {
+		t.Fatalf("q=read 应建议关键词 readme，实际 %v", names)
 	}
 
 	// 空 q 返回空数组
@@ -81,12 +81,12 @@ func TestSpellCheckHandler(t *testing.T) {
 	names := decodeData(t, rr)
 	found := false
 	for _, n := range names {
-		if n == "README.md" {
+		if n == "readme" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("REEDME 纠错应含 README.md，实际 %v", names)
+		t.Fatalf("REEDME 纠错应含关键词 readme，实际 %v", names)
 	}
 }
 

@@ -3,6 +3,7 @@ package search
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestIndex(t *testing.T) *SearchIndex {
@@ -49,6 +50,89 @@ func TestIndexFileUpdateOverwrite(t *testing.T) {
 	}
 	if len(hits) != 0 {
 		t.Fatalf("旧文件名应被覆盖，实际返回 %v", hits)
+	}
+}
+
+// TestTermCacheInvalidation 验证词表缓存：未写入时复用缓存，写入后重建反映新词表。
+// 测试将节流窗口置 0，使写入后下一次读立即重建。
+func TestTermCacheInvalidation(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	idx.suggestDebounceNs = 0 // 禁用节流，验证写入后下次读立即重建
+
+	if terms, _ := idx.enumSuggestTermsUncached(); len(terms) != 0 {
+		t.Fatalf("空索引词表应为空，实际 %v", terms)
+	}
+	_ = idx.IndexFile(1, "README.md")
+
+	// 首次读取触发缓存加载
+	first, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) == 0 {
+		t.Fatal("写入后词表不应为空")
+	}
+	if !idx.termCacheLoaded || idx.lastWriteAt != 0 {
+		t.Fatalf("首次读取后应缓存已加载且无挂起写入：loaded=%v lastWriteAt=%d", idx.termCacheLoaded, idx.lastWriteAt)
+	}
+
+	// 未写入时再读，应命中缓存（不触发枚举重建）
+	second, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second) != len(first) {
+		t.Fatalf("未写入时缓存应对等，首次 %d 二次 %d", len(first), len(second))
+	}
+
+	// 写入后标记挂起重建，下一次读重建并反映新词表
+	_ = idx.IndexFile(2, "年度财务报表.pdf")
+	if idx.lastWriteAt == 0 {
+		t.Fatal("写入后 lastWriteAt 应非零（标记挂起重建）")
+	}
+	third, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.lastWriteAt != 0 {
+		t.Fatal("重建后 lastWriteAt 应清零")
+	}
+	if len(third) <= len(first) {
+		t.Fatalf("重建后词表应包含新增 term，首次 %d 重建后 %d", len(first), len(third))
+	}
+}
+
+// TestTermCacheDebounce 验证节流：节点窗口内的读复用旧缓存不重建，窗口过后再读才重建。
+func TestTermCacheDebounce(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	idx.suggestDebounceNs = int64(30 * time.Millisecond)
+
+	_ = idx.IndexFile(1, "README.md")
+	first, err := idx.enumSuggestTerms() // 首次重建
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 写入另一文件，紧接读应落在节流窗口内 → 复用旧缓存（不含新词）
+	_ = idx.IndexFile(2, "年度财务报表.pdf")
+	stale, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != len(first) {
+		t.Fatalf("节流窗口内的读应复用旧缓存：首 %d 窗口内 %d", len(first), len(stale))
+	}
+
+	// 等待窗口过后再读 → 重建并包含新词
+	time.Sleep(50 * time.Millisecond)
+	fresh, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh) <= len(first) {
+		t.Fatalf("窗口过后应重建包含新词：首 %d 之后 %d", len(first), len(fresh))
 	}
 }
 
@@ -136,6 +220,85 @@ func TestSpellCheck(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(hits, "|"), "ISO9001") {
 		t.Fatalf("纠错建议应包含 ISO9001，实际 %v", hits)
+	}
+}
+
+// TestSuggestKeywords 覆盖关键词补全：返回关键词（term）而非完整文件名
+func TestSuggestKeywords(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	files := map[int64]string{
+		1: "README.md",
+		2: "年度财务报表2024.pdf",
+		3: "华为Mate60Pro评测.pdf",
+		4: "readme-zh_CN.md",
+		5: "ISO9001质量体系文档.docx",
+	}
+	for id, name := range files {
+		if err := idx.IndexFile(id, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cases := []struct {
+		prefix string
+		want   string
+	}{
+		{"read", "readme"},    // 英文整词（README.md 的中锋词）
+		{"Mate", "mate60pro"}, // 数字混排整词
+		{"年度", "年度"},          // 中文语义词
+		{"财务", "财务报表"},        // 前缀命中完整语义词
+		{"ISO9001", "iso9001"},
+		{"不存在的词", ""}, // 无命中应返回空
+	}
+	for _, c := range cases {
+		got, err := idx.SuggestKeywords(c.prefix, 10)
+		if err != nil {
+			t.Fatalf("SuggestKeywords(%q) 失败: %v", c.prefix, err)
+		}
+		if c.want == "" {
+			if len(got) != 0 {
+				t.Fatalf("SuggestKeywords(%q) 期望无结果，实际 %v", c.prefix, got)
+			}
+			continue
+		}
+		if len(got) == 0 {
+			t.Fatalf("SuggestKeywords(%q) 期望含 %s，实际空", c.prefix, c.want)
+			continue
+		}
+		if got[0] != c.want {
+			t.Fatalf("SuggestKeywords(%q) 期望 %s，实际 %v", c.prefix, c.want, got)
+		}
+	}
+}
+
+// TestSuggestCorrectKeywords 覆盖关键词纠错：返回编辑距离内的关键词候选
+func TestSuggestCorrectKeywords(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	if err := idx.IndexFile(1, "README.md"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.IndexFile(2, "ISO9001质量体系文档.docx"); err != nil {
+		t.Fatal(err)
+	}
+
+	// REEDME -> readme
+	hits, err := idx.SuggestCorrectKeywords("REEDME", 5)
+	if err != nil {
+		t.Fatalf("SuggestCorrectKeywords 失败: %v", err)
+	}
+	if len(hits) == 0 || hits[0] != "readme" {
+		t.Fatalf("REEDME 纠错应首选关键词 readme，实际 %v", hits)
+	}
+
+	// ISO9000 -> iso9001
+	hits, err = idx.SuggestCorrectKeywords("ISO9000", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 || hits[0] != "iso9001" {
+		t.Fatalf("ISO9000 纠错应首选 iso9001，实际 %v", hits)
 	}
 }
 

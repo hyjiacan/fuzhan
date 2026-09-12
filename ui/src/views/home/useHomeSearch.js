@@ -73,7 +73,7 @@ export function useHomeSearch() {
     }, 300)
   }
 
-  // 选中推荐项：用该文件名发起搜索
+  // 选中推荐项：用该关键词发起搜索（下拉项为关键词 term，而非完整文件名）
   const onSuggestionSelect = (item) => {
     searchQuery.value = item.value
     searchFiles()

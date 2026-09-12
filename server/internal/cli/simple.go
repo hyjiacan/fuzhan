@@ -266,7 +266,7 @@ func HandleSimple(w http.ResponseWriter, r *http.Request, svc *services.SearchSe
 		}
 	}
 
-	// 上级目录行
+	// 上级目录行：点击返回上一层（根级时指向 /simple）
 	parent := "/simple"
 	if len(segs) > 1 {
 		parent = "/simple/" + encodeSegments(segs[:len(segs)-1])
@@ -365,8 +365,9 @@ func simpleSearchRel(fullPath, rootName string) string {
 	return strings.TrimPrefix(fullPath, "/"+rootName)
 }
 
-// buildSimpleSuggestions 基于检索索引生成推荐（AutoComplete 前缀匹配）与纠错（SpellCheck 模糊匹配）。
-// 二者共用一个去重集合，且排除当前查询词。索引不可用时返回空切片。
+// buildSimpleSuggestions 基于检索索引生成关键词推荐（前缀匹配）与纠错（模糊匹配），
+// 返回的是索引中的关键词 term 而非完整文件名。二者共用一个去重集合，且排除当前查询词。
+// 索引不可用时返回空切片。
 func buildSimpleSuggestions(idx *search.SearchIndex, q string) (recommends, corrections []simpleSuggestion) {
 	if idx == nil {
 		return nil, nil
@@ -390,10 +391,10 @@ func buildSimpleSuggestions(idx *search.SearchIndex, q string) (recommends, corr
 		}
 		return dst
 	}
-	if names, err := idx.AutoComplete(q, 10); err == nil {
+	if names, err := idx.SuggestKeywords(q, 10); err == nil {
 		recommends = add(nil, names)
 	}
-	if names, err := idx.SpellCheck(q, 5); err == nil {
+	if names, err := idx.SuggestCorrectKeywords(q, 5); err == nil {
 		corrections = add(nil, names)
 	}
 	if recommends == nil {

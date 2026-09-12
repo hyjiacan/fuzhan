@@ -37,14 +37,14 @@ func parseLimit(raw string, def, max int) int {
 
 // Autocomplete 自动补全建议。
 // GET /api/v1/search-suggest?q=前缀&limit=数量
-// 返回 data: []string（匹配的文件名）。
+// 返回 data: []string（最常见的关键词，而非完整文件名）。
 func (h *Handler) Autocomplete(c *gin.Context) {
 	q := c.Query("q")
 	if q == "" || h.idx == nil {
 		utils.HandleSuccess(c, http.StatusOK, "", []string{})
 		return
 	}
-	names, err := h.idx.AutoComplete(q, parseLimit(c.Query("limit"), 10, 30))
+	names, err := h.idx.SuggestKeywords(q, parseLimit(c.Query("limit"), 10, 30))
 	if err != nil {
 		utils.HandleError(c, http.StatusInternalServerError, 500, "自动补全失败", err.Error())
 		return
@@ -57,14 +57,14 @@ func (h *Handler) Autocomplete(c *gin.Context) {
 
 // SpellCheck 拼写纠错建议。
 // GET /api/v1/search-spellcheck?q=单词&limit=数量
-// 返回 data: []string（最相似的文件名候选）。
+// 返回 data: []string（最相似的关键词候选，而非完整文件名）。
 func (h *Handler) SpellCheck(c *gin.Context) {
 	q := c.Query("q")
 	if q == "" || h.idx == nil {
 		utils.HandleSuccess(c, http.StatusOK, "", []string{})
 		return
 	}
-	names, err := h.idx.SpellCheck(q, parseLimit(c.Query("limit"), 5, 10))
+	names, err := h.idx.SuggestCorrectKeywords(q, parseLimit(c.Query("limit"), 5, 10))
 	if err != nil {
 		utils.HandleError(c, http.StatusInternalServerError, 500, "拼写纠错失败", err.Error())
 		return

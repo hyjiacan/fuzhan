@@ -14,9 +14,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/blugelabs/bluge"
 	"github.com/blugelabs/bluge/analysis"
@@ -40,6 +42,14 @@ type SearchIndex struct {
 	writer *bluge.Writer
 	seg    *gse.Segmenter
 	mu     sync.Mutex // 串行化写操作
+
+	// 词表缓存：建议接口（SuggestKeywords/SuggestCorrectKeywords）基于去重后的 term 词表工作，
+	// 直接每次枚举全词表开销大，这里在写入后节流（debounce）重建一次，后续读复用。
+	termCacheMu       sync.Mutex // 保护 termCacheTerms 及 lastWriteAt/loaded 的重建
+	lastWriteAt       int64      // 最近一次索引写入的 UnixNano 时间，用于节流判定
+	termCacheLoaded   bool
+	termCacheTerms    []suggestTerm
+	suggestDebounceNs int64 // 写后重建的节流窗口（纳秒），0=不节流
 }
 
 // OpenIndex 打开（或创建）位于 dir 的搜索索引，并加载 gse 分词词典。
@@ -62,7 +72,11 @@ func OpenIndex(dir string) (*SearchIndex, error) {
 	if err != nil {
 		return nil, fmt.Errorf("打开 Bluge 索引失败: %w", err)
 	}
-	return &SearchIndex{writer: writer, seg: &seg}, nil
+	return &SearchIndex{
+		writer:            writer,
+		seg:               &seg,
+		suggestDebounceNs: int64(suggestRebuildDebounce), // 写后重建节流窗口
+	}, nil
 }
 
 // newMixedAnalyzer 构造组合分析器：
@@ -167,6 +181,7 @@ func (s *SearchIndex) IndexFile(fileID int64, fileName string) error {
 	if err := s.writer.Update(bluge.Identifier(id), s.buildDoc(id, fileName)); err != nil {
 		return fmt.Errorf("写入索引失败: %w", err)
 	}
+	s.invalidateTermCache()
 	return nil
 }
 
@@ -198,6 +213,7 @@ func (s *SearchIndex) IndexBatch(entries []IndexEntry) error {
 	if err := s.writer.Batch(b); err != nil {
 		return fmt.Errorf("批量写入索引失败: %w", err)
 	}
+	s.invalidateTermCache()
 	return nil
 }
 
@@ -223,6 +239,7 @@ func (s *SearchIndex) Delete(fileID int64) error {
 	if err := s.writer.Delete(id); err != nil {
 		return fmt.Errorf("删除索引失败: %w", err)
 	}
+	s.invalidateTermCache()
 	return nil
 }
 
@@ -244,6 +261,7 @@ func (s *SearchIndex) DeleteBatch(fileIDs []int64) error {
 	if err := s.writer.Batch(b); err != nil {
 		return fmt.Errorf("批量删除索引失败: %w", err)
 	}
+	s.invalidateTermCache()
 	return nil
 }
 
@@ -285,6 +303,231 @@ func (s *SearchIndex) AllFileIDs() ([]int64, error) {
 		})
 	}
 	return ids, nil
+}
+
+// suggestTerm 索引中一个关键词（去重后的 term）及其在全部文档中的出现次数。
+type suggestTerm struct {
+	term  string
+	count uint64
+}
+
+// suggestRebuildDebounce 词表缓存写后重建的节流窗口：写入后若尚有后续写入或高频读，
+// 暂不重建，等待该窗口内无新写入且用户敲击有间隙时再重建，避免频繁全量枚举。
+var suggestRebuildDebounce = 500 * time.Millisecond
+
+// invalidateTermCache 标记词表缓存失效并记录写入时刻。写入索引后调用；
+// 实际重建由下次读在节流窗口过后执行。
+func (s *SearchIndex) invalidateTermCache() {
+	s.lastWriteAt = time.Now().UnixNano()
+}
+
+// enumSuggestTerms 返回去重后的全部索引 term（含频率），供建议接口复用。
+// 带惰性+节流缓存：首读重建一次；写入后不立即重建，待节流窗口（suggestRebuildDebounce）
+// 过后再重建，窗口内的高频读直接复用旧缓存，避免每次键入都枚举全词表。
+// termCacheMu 互斥串行化所有读与重建，保证同一时刻仅一个 goroutine 枚举词表。
+func (s *SearchIndex) enumSuggestTerms() ([]suggestTerm, error) {
+	if s.writer == nil {
+		return nil, nil
+	}
+	s.termCacheMu.Lock()
+	defer s.termCacheMu.Unlock()
+
+	// 缓存未失效且有结果，直接返回
+	if s.termCacheLoaded && s.lastWriteAt == 0 {
+		return s.termCacheTerms, nil
+	}
+
+	// 缓存曾有数据但刚写入（仍在节流窗口内）：复用旧缓存，不打断高频读
+	if s.termCacheLoaded && s.writeStillRecent() {
+		return s.termCacheTerms, nil
+	}
+
+	// 需要重建；CAS 抢到重建权才执行，其余并发调用复用旧缓存
+	if s.termCacheLoaded {
+		s.lastWriteAt = 0 // 允许后续本次重建被接住后再判定
+	}
+
+	terms, err := s.enumSuggestTermsUncached()
+	if err != nil {
+		return nil, err
+	}
+	s.termCacheTerms = terms
+	s.termCacheLoaded = true
+	s.lastWriteAt = 0
+	return s.termCacheTerms, nil
+}
+
+// writeStillRecent 判断最近一次写入是否仍在节流窗口内。（须持有 termCacheMu）
+func (s *SearchIndex) writeStillRecent() bool {
+	if s.suggestDebounceNs <= 0 || s.lastWriteAt == 0 {
+		return false
+	}
+	return time.Now().UnixNano()-s.lastWriteAt < s.suggestDebounceNs
+}
+
+// enumSuggestTermsUncached 实际枚举词表（无缓存）。
+func (s *SearchIndex) enumSuggestTermsUncached() ([]suggestTerm, error) {
+	reader, err := s.writer.Reader()
+	if err != nil {
+		return nil, fmt.Errorf("打开读端失败: %w", err)
+	}
+	defer reader.Close()
+
+	dict, err := reader.DictionaryIterator(FieldFileName, nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("打开词表迭代器失败: %w", err)
+	}
+	defer dict.Close()
+
+	var terms []suggestTerm
+	for {
+		entry, err := dict.Next()
+		if err != nil {
+			return nil, fmt.Errorf("遍历词表失败: %w", err)
+		}
+		if entry == nil {
+			break
+		}
+		terms = append(terms, suggestTerm{term: entry.Term(), count: entry.Count()})
+	}
+	return terms, nil
+}
+
+// filterTermFragments 过滤 N-gram 碎片（英文/数字片段被索引为 2~4 长度的子串）。
+// 规则：仅当某 ASCII term 是某更长 ASCII term 的连续子串（即更完整词的碎片）时判定为碎片并丢弃，
+// 中文词汇不受影响。完整词（如 readme、mate60pro）因无更长宿主不会被误删。
+func filterTermFragments(terms []suggestTerm) []suggestTerm {
+	out := make([]suggestTerm, 0, len(terms))
+	for _, t := range terms {
+		if isASCIIWord(t.term) && len(t.term) < 5 && containsIn(t.term, terms) {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// containsIn 判断 s（ASCII 词）是否作为另一更长 ASCII 词（长度 >= len(s)+2）的连续子串出现。
+func containsIn(s string, terms []suggestTerm) bool {
+	for _, t := range terms {
+		if !isASCIIWord(t.term) || len(t.term) <= len(s) {
+			continue
+		}
+		if strings.Contains(t.term, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// SuggestKeywords 自动补全关键词：返回以 prefix 开头的最常见关键词（term），而非完整文件名。
+// 基于词表枚举，按出现频率排序；返回最多 limit 个。英文为小写，中文为语义词。
+func (s *SearchIndex) SuggestKeywords(prefix string, limit int) ([]string, error) {
+	if s.writer == nil {
+		return nil, nil
+	}
+	terms, err := s.enumSuggestTerms()
+	if err != nil {
+		return nil, err
+	}
+	terms = filterTermFragments(terms)
+
+	want := strings.ToLower(strings.TrimSpace(prefix))
+	var cand []suggestTerm
+	for _, t := range terms {
+		if strings.HasPrefix(t.term, want) {
+			cand = append(cand, t)
+		}
+	}
+	sort.SliceStable(cand, func(i, j int) bool { return cand[i].count > cand[j].count })
+
+	out := make([]string, 0, limit)
+	for i := 0; i < len(cand) && len(out) < limit; i++ {
+		out = append(out, cand[i].term)
+	}
+	return out, nil
+}
+
+// SuggestCorrectKeywords 拼写纠错关键词：在词表中做编辑距离模糊匹配（fuzziness=2、prefix_length=1），
+// 返回最相似的关键词，按（距离升序→频率降序）排序，最多 limit 个。
+func (s *SearchIndex) SuggestCorrectKeywords(word string, limit int) ([]string, error) {
+	if s.writer == nil {
+		return nil, nil
+	}
+	terms, err := s.enumSuggestTerms()
+	if err != nil {
+		return nil, err
+	}
+	want := strings.ToLower(strings.TrimSpace(word))
+	if want == "" {
+		return []string{}, nil
+	}
+
+	// 先过滤碎片后再做距离比较，避免把 N-gram 碎片当作纠错候选
+	clean := filterTermFragments(terms)
+	firstChar := want[0]
+	type scored struct {
+		suggestTerm
+		dist int
+	}
+	var cand []scored
+	for _, t := range clean {
+		if len(t.term) == 0 || t.term[0] != firstChar {
+			continue
+		}
+		d := editDistance(want, t.term)
+		if d <= 2 {
+			cand = append(cand, scored{suggestTerm: t, dist: d})
+		}
+	}
+	sort.SliceStable(cand, func(i, j int) bool {
+		if cand[i].dist != cand[j].dist {
+			return cand[i].dist < cand[j].dist
+		}
+		return cand[i].count > cand[j].count
+	})
+
+	out := make([]string, 0, limit)
+	for i := 0; i < len(cand) && len(out) < limit; i++ {
+		out = append(out, cand[i].term)
+	}
+	return out, nil
+}
+
+// editDistance 计算两个小写字符串的 Levenshtein 编辑距离（字节级，英文与中文 UTF-8 序列均适用）。
+func editDistance(a, b string) int {
+	la, lb := len(a), len(b)
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		cur[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min3(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[lb]
+}
+
+// min3 返回三个整数中的最小值
+func min3(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
 }
 
 // AutoComplete 自动补全：基于前缀查询。
