@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/webdav"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/utils"
 )
 
 // RecordingRepository defines the interface for recording operations.
@@ -44,17 +45,19 @@ func (fs *RecordingFileSystem) Mkdir(ctx context.Context, name string, perm os.F
 	if err := fs.inner.Mkdir(ctx, name, perm); err != nil {
 		return err
 	}
-	rootName, subPath := splitPath(name)
+	rootName, filePath, targetType := decodeUnifiedPath(name)
+	now := utils.Now()
 	fs.recordAsync(&models.OperationRecord{
-		Action:   "mkdir",
-		FileName: filepath.Base(name),
-		// WebDAV 虚拟路径为 "/<rootName>/<subPath>"，FilePath 取子路径以便与 FileRecord 保持一致
-		FilePath: ensureLeadingSlash(subPath),
-		// FullPath 拼上 rootName 前缀，便于统一查询
-		FullPath: rootName + ensureLeadingSlash(subPath),
-		RootName: rootName,
-		ClientIP: getClientIP(ctx),
-		UserID:   getUserUUID(ctx),
+		Action:     "mkdir",
+		FileName:   filepath.Base(name),
+		FilePath:   filePath,
+		FullPath:   "/" + rootName + filePath,
+		RootName:   rootName,
+		UploadType: targetType,
+		UploadTime: now,
+		CreatedAt:  now,
+		ClientIP:   getClientIP(ctx),
+		UserID:     getUserUUID(ctx),
 	})
 	return nil
 }
@@ -73,16 +76,19 @@ func (fs *RecordingFileSystem) OpenFile(ctx context.Context, name string, flag i
 		return f, nil
 	}
 
-	rootName, subPath := splitPath(name)
+	rootName, filePath, targetType := decodeUnifiedPath(name)
+	now := utils.Now()
 	record := &models.OperationRecord{
 		Action:     action,
 		FileName:   filepath.Base(name),
-		FilePath:   ensureLeadingSlash(subPath),
-		FullPath:   "/" + rootName + ensureLeadingSlash(subPath),
+		FilePath:   filePath,
+		FullPath:   "/" + rootName + filePath,
 		RootName:   rootName,
+		UploadTime: now,
+		CreatedAt:  now,
 		ClientIP:   getClientIP(ctx),
 		UserID:     getUserUUID(ctx),
-		UploadType: detectUploadType(name),
+		UploadType: targetType,
 	}
 
 	// For downloads, try to get file size from the opened file handle.
@@ -134,6 +140,36 @@ func detectAction(ctx context.Context, flag int) string {
 // isWriteFlags returns true if the file open flags include any write mode.
 func isWriteFlags(flag int) bool {
 	return flag&(os.O_RDWR|os.O_WRONLY|os.O_CREATE|os.O_TRUNC|os.O_APPEND) != 0
+}
+
+// decodeUnifiedPath 将统一 WebDAV 虚拟路径解码为 (rootName, 相对filePath, targetType)。
+//
+//	/public/<rootName>/<sub>...  → ("<rootName>", "/<sub>...", regular)
+//	/private/<userRel>...        → ("private", "/<userRel>...", private)
+//	其它                            → 退化为 splitPath 语义
+func decodeUnifiedPath(name string) (rootName, filePath string, t models.TargetType) {
+	name = strings.TrimPrefix(name, "/")
+	if name == "" {
+		return "", "", models.TargetTypeRegular
+	}
+	parts := strings.SplitN(name, "/", 2)
+	prefix := parts[0]
+	rest := ""
+	if len(parts) > 1 {
+		rest = "/" + parts[1]
+	} else {
+		rest = "/"
+	}
+	switch prefix {
+	case "public":
+		rn, sub := splitPath(rest)
+		return rn, ensureLeadingSlash(sub), models.TargetTypeRegular
+	case "private":
+		return "private", rest, models.TargetTypePrivate
+	default:
+		rn, sub := splitPath(name)
+		return rn, ensureLeadingSlash(sub), models.TargetTypeRegular
+	}
 }
 
 // detectUploadType determines the target type from the virtual path.

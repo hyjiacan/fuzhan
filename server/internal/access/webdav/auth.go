@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"fuzhan/internal/accessguard"
 	xxh3pkg "fuzhan/pkg/xxh3"
 	"github.com/gin-gonic/gin"
 )
@@ -137,6 +138,12 @@ func OptionalBasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc
 		ctx := context.WithValue(c.Request.Context(), ContextKeyClientIP, clientIP)
 		ctx = context.WithValue(ctx, ContextKeyMethod, c.Request.Method)
 
+		// 失败锁定预检：该 IP 触发过 Basic Auth 失败锁定（M3）则直接拒绝
+		if accessguard.IsLocked(accessguard.SCOPE_WEBDAV, clientIP) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "访问过于频繁，请稍后再试"})
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			// No credentials → anonymous
@@ -148,7 +155,8 @@ func OptionalBasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc
 
 		userUUID, err := authenticateRequest(c.Request, authenticate)
 		if err != nil {
-			// Invalid credentials → 401
+			// Invalid credentials → 401，并累计失败（达到阈值即锁定该 IP）
+			accessguard.Fail(accessguard.SCOPE_WEBDAV, clientIP)
 			c.Header("WWW-Authenticate", `Basic realm="WebDAV"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return

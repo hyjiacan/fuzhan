@@ -39,7 +39,6 @@ func (h *Handler) GetOptions(c *gin.Context) {
 		},
 		"webdav": gin.H{
 			"enabled":        currentConfig.Server.WebDAV.Enabled,
-			"port":           currentConfig.Server.WebDAV.Port,
 			"publicUsername": currentConfig.Account.Anonymous.Username,
 		},
 		"upload": gin.H{
@@ -47,6 +46,14 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			"maxFileSize": currentConfig.Upload.MaxFileSize,
 			"urlUpload": gin.H{
 				"enabled": currentConfig.Upload.URLUpload.Enabled,
+			},
+		},
+		"download": gin.H{
+			"rateLimit": gin.H{
+				"windowMinutes": currentConfig.Download.RateLimit.WindowMinutes,
+				"maxRequests":   currentConfig.Download.RateLimit.MaxRequests,
+				"lockAfter":     currentConfig.Download.RateLimit.LockAfter,
+				"lockMinutes":   currentConfig.Download.RateLimit.LockMinutes,
 			},
 		},
 		"preview": gin.H{
@@ -162,6 +169,19 @@ type URLUploadConfigResp struct {
 	InsecureSkipVerify bool `json:"insecureSkipVerify"`
 }
 
+// DownloadConfigReq 保存请求中的下载限流配置（maxRequests=0 表示不限制）
+type DownloadConfigReq struct {
+	RateLimit DownloadRateLimitConfigReq `json:"rateLimit"`
+}
+
+// DownloadRateLimitConfigReq 下载频率限制请求结构
+type DownloadRateLimitConfigReq struct {
+	WindowMinutes int `json:"windowMinutes"`
+	MaxRequests   int `json:"maxRequests"`
+	LockAfter     int `json:"lockAfter"`
+	LockMinutes   int `json:"lockMinutes"`
+}
+
 type PreviewConfig struct {
 	AllowMimes    string `json:"allowMimes"`
 	AllowExts     string `json:"allowExts"`
@@ -187,6 +207,7 @@ type SaveConfigRequest struct {
 	PrivateFiles      PrivateFilesConfig          `json:"privateFiles"`
 	TempFiles         TempFilesConfig             `json:"tempFiles"`
 	Upload            UploadConfig                `json:"upload"`
+	Download          DownloadConfigReq           `json:"download"`
 	Preview           PreviewConfig               `json:"preview"`
 	OpenApi           *OpenApiConfig              `json:"openApi"`
 	Index             appconfig.IndexConfigDTO    `json:"index"`
@@ -302,14 +323,13 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			appconfig.GlobalConfig.Server.FTPS.Port = req.Server.FTPS.Port
 			updates.Add("server.ftps.port", req.Server.FTPS.Port)
 		}
-		// WebDAV 端口未被前端管理，绝不在未提供时覆盖既有值(0 表示与 HTTP/HTTPS 同端口)
-		if req.Server.WebDAV.Enabled || req.Server.WebDAV.Port != 0 {
-			appconfig.GlobalConfig.Server.WebDAV.Enabled = req.Server.WebDAV.Enabled
-			updates.Add("server.webdav.enabled", req.Server.WebDAV.Enabled)
-		}
-		if req.Server.WebDAV.Port > 0 {
-			appconfig.GlobalConfig.Server.WebDAV.Port = req.Server.WebDAV.Port
-			updates.Add("server.webdav.port", req.Server.WebDAV.Port)
+		// WebDAV 端口未被前端管理，仅保存启用状态
+		if req.Server.WebDAV.Enabled {
+			appconfig.GlobalConfig.Server.WebDAV.Enabled = true
+			updates.Add("server.webdav.enabled", true)
+		} else {
+			appconfig.GlobalConfig.Server.WebDAV.Enabled = false
+			updates.Add("server.webdav.enabled", false)
 		}
 	}
 
@@ -400,6 +420,18 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Upload.URLUpload.InsecureSkipVerify = req.Upload.URLUpload.InsecureSkipVerify
 		updates.Add("upload.url_upload.enabled", req.Upload.URLUpload.Enabled)
 		updates.Add("upload.url_upload.insecure_skip_verify", req.Upload.URLUpload.InsecureSkipVerify)
+	}
+
+	// —— 下载限流（max_requests=0 表示不限制）——
+	if present("download") {
+		appconfig.GlobalConfig.Download.RateLimit.WindowMinutes = req.Download.RateLimit.WindowMinutes
+		appconfig.GlobalConfig.Download.RateLimit.MaxRequests = req.Download.RateLimit.MaxRequests
+		appconfig.GlobalConfig.Download.RateLimit.LockAfter = req.Download.RateLimit.LockAfter
+		appconfig.GlobalConfig.Download.RateLimit.LockMinutes = req.Download.RateLimit.LockMinutes
+		updates.Add("download.rate_limit.window_minutes", req.Download.RateLimit.WindowMinutes)
+		updates.Add("download.rate_limit.max_requests", req.Download.RateLimit.MaxRequests)
+		updates.Add("download.rate_limit.lock_after", req.Download.RateLimit.LockAfter)
+		updates.Add("download.rate_limit.lock_minutes", req.Download.RateLimit.LockMinutes)
 	}
 
 	// —— 预览 ——

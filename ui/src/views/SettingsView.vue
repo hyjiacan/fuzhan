@@ -123,6 +123,9 @@ const settings = reactive({
     maxFileSize: 17179869184,
     urlUpload: { enabled: false, insecureSkipVerify: false }
   },
+  download: {
+    rateLimit: { windowMinutes: 1, maxRequests: 0, lockAfter: 0, lockMinutes: 10 }
+  },
   tempFiles: {
     enabled: true,
     path: '',
@@ -264,6 +267,16 @@ const loadSettings = async () => {
 
       settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, insecureSkipVerify: false } }
 
+      // 下载限流配置（maxRequests=0 表示不限制）
+      settings.download = {
+        rateLimit: {
+          windowMinutes: cfg.download?.rateLimit?.windowMinutes || 1,
+          maxRequests: cfg.download?.rateLimit?.maxRequests || 0,
+          lockAfter: cfg.download?.rateLimit?.lockAfter || 0,
+          lockMinutes: cfg.download?.rateLimit?.lockMinutes || 10
+        }
+      }
+
       // 预览配置
       settings.preview = {
         allowMimes: cfg.preview?.allowMimes || '',
@@ -374,6 +387,9 @@ const doSaveSettings = async () => {
         quotaPerIP: settings.tempFilesQuotaPerIP
       },
       upload: settings.upload,
+      download: {
+        rateLimit: settings.download.rateLimit
+      },
       preview: {
         allowMimes: settings.preview.allowMimes,
         allowExts: settings.preview.allowExts,

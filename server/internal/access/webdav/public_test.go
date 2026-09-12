@@ -61,6 +61,40 @@ func TestPublicFileSystem_RootListing(t *testing.T) {
 	}
 }
 
+func TestPublicFileSystem_RootListingFiltersMissingRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+	existing := filepath.Join(tmpDir, "existing")
+	os.MkdirAll(existing, 0755)
+	missing := filepath.Join(tmpDir, "missing") // 磁盘上不存在，属幽灵根，不应被列出
+	jar := filepath.Join(tmpDir, "jar.notdir")  // 存在但不是目录，也不应列出
+	os.WriteFile(jar, []byte("x"), 0644)
+
+	fs := NewPublicFileSystem(map[string]string{
+		"existing": existing,
+		"missing":  missing,
+		"jar":      jar,
+	})
+	ctx := context.Background()
+
+	f, err := fs.OpenFile(ctx, "/", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatalf("OpenFile / failed: %v", err)
+	}
+	defer f.Close()
+
+	entries, err := f.Readdir(0)
+	if err != nil {
+		t.Fatalf("Readdir failed: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "existing" {
+		got := make([]string, 0, len(entries))
+		for _, e := range entries {
+			got = append(got, e.Name())
+		}
+		t.Fatalf("幽灵根应被过滤, 期望仅 [existing], 实际 %v", got)
+	}
+}
+
 func TestPublicFileSystem_ResolveFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	root1 := filepath.Join(tmpDir, "share1")

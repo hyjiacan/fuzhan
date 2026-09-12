@@ -28,6 +28,7 @@ import (
 	"fuzhan/internal/setup"
 	temph "fuzhan/internal/temp"
 	"fuzhan/internal/utils"
+	webdavsvc "fuzhan/internal/webdav"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -117,6 +118,22 @@ func redirectIEToSimple(c *gin.Context) bool {
 	c.Redirect(http.StatusFound, "/simple")
 	c.Abort()
 	return true
+}
+
+// webdavRecordingRepo 将 repositories.AuditStore 适配为 webdav 的 RecordingRepository：
+// 优先走全局有界记录器（与 FTP 一致），失败/未初始化时回退直写 AuditStore。
+type webdavRecordingRepo struct {
+	store repositories.AuditStore
+}
+
+func (r *webdavRecordingRepo) Create(rec *models.OperationRecord) error {
+	if services.SubmitRecord(rec) {
+		return nil
+	}
+	if r.store == nil {
+		return nil
+	}
+	return r.store.Create(rec)
 }
 
 // newRouter 创建 Gin Engine 与 FTP Handler（热重启时重新创建）
@@ -526,16 +543,29 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 			return user.UUID, user.Disabled, nil
 		})
 
+		// 注入服务层后端能力（上传开关/扩展名/磁盘/配额/索引哈希），使 WebDAV
+		// 与 Web 上传体系共用同一套安全与索引规则
+		privatePath := ""
+		if rt.cfg.Storage.Private.Enabled {
+			privatePath = rt.cfg.Storage.Private.Path
+		}
+		wdService := webdavsvc.NewWebDAVBackend(rt.db, rt.indexService, privatePath)
+
 		publicFS := webdav.NewPublicFileSystem(appconfig.RootNames)
+		publicFS.SetBackend(wdService)
 		var unifiedFS *webdav.UnifiedFileSystem
 		if rt.cfg.Storage.Private.Enabled {
 			privateFS := webdav.NewPrivateFileSystem(rt.cfg.Storage.Private.Path)
+			privateFS.SetBackend(wdService)
 			unifiedFS = webdav.NewUnifiedFileSystem(publicFS, privateFS)
 		} else {
 			unifiedFS = webdav.NewUnifiedFileSystem(publicFS, nil)
 		}
 
-		davHandler := webdav.NewHandler("/api/v1/webdav", unifiedFS)
+		// 操作录制（审计）：优先走全局有界记录器，与 FTP 行为一致
+		recordingFS := webdav.NewRecordingFileSystem(unifiedFS, &webdavRecordingRepo{store: rt.recordRepo})
+
+		davHandler := webdav.NewHandler("/api/v1/webdav", recordingFS)
 		// 挂到 /api/v1/webdav 子组，避免 /*path 通配符与 /api/v1 下同级静态路由冲突
 		webdav.SetupUnifiedRouter(api.Group("/webdav"), davHandler, authenticate, rt.cfg.Upload.MaxFileSize)
 		utils.Info("WebDAV 统一端点已启用", utils.String("path", "/api/v1/webdav"))

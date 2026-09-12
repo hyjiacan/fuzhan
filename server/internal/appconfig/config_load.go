@@ -41,10 +41,11 @@ func readConfig() {
 			MaxFileSize string          `yaml:"max_file_size,omitempty"`
 			URLUpload   URLUploadConfig `yaml:"url_upload"`
 		} `yaml:"upload"`
-		Preview PreviewConfig   `yaml:"preview"`
-		Log     utils.LogConfig `yaml:"log"`
-		OpenAPI OpenAPIConfig   `yaml:"open_api"`
-		Index   IndexConfig     `yaml:"index"`
+		Download DownloadConfig  `yaml:"download"`
+		Preview  PreviewConfig   `yaml:"preview"`
+		Log      utils.LogConfig `yaml:"log"`
+		OpenAPI  OpenAPIConfig   `yaml:"open_api"`
+		Index    IndexConfig     `yaml:"index"`
 	}
 
 	if err := yaml.Unmarshal(data, &tempConfig); err != nil {
@@ -145,6 +146,9 @@ func readConfig() {
 		GlobalConfig.Upload.Enabled = *tempConfig.Upload.Enabled
 	}
 	GlobalConfig.Upload.URLUpload = tempConfig.Upload.URLUpload
+
+	// 下载限流配置（不配置 max_requests=0 表示不限制）
+	GlobalConfig.Download = tempConfig.Download
 
 	// 解析临时文件配置（基于IP）
 	GlobalConfig.Storage.Temp = TempConfig{

@@ -3,6 +3,7 @@ package webdav
 import (
 	"net/http"
 
+	"fuzhan/internal/accessguard"
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,11 +35,25 @@ func SetupRouter(rg *gin.RouterGroup, davHandler http.Handler) {
 // only public/ directories.
 // maxFileSize is the per-request body limit for write operations (0 = unlimited).
 func SetupUnifiedRouter(rg *gin.RouterGroup, davHandler http.Handler, authenticate UserAuthenticator, maxFileSize int64) {
-	middlewares := []gin.HandlerFunc{OptionalBasicAuthMiddleware(authenticate), depthMiddleware()}
+	middlewares := []gin.HandlerFunc{OptionalBasicAuthMiddleware(authenticate), webdavRateLimitMiddleware(), depthMiddleware()}
 	if maxFileSize > 0 {
 		middlewares = append(middlewares, bodyLimitMiddleware(maxFileSize))
 	}
 	registerWebDAVRoutes(rg, davHandler, middlewares...)
+}
+
+// webdavRateLimitMiddleware 对 WebDAV 的 GET/HEAD 下载请求做按 IP 的频率限制（L1）。
+// 限流参数实时读取下载限流配置（accessguard），max_requests=0/未配置表示不限制。
+func webdavRateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Method == "GET" || c.Request.Method == "HEAD" {
+			if !accessguard.Acquire(accessguard.SCOPE_WEBDAV, c.ClientIP()) {
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "下载过于频繁，请稍后再试"})
+				return
+			}
+		}
+		c.Next()
+	}
 }
 
 // depthMiddleware restricts PROPFIND Depth header to at most 1.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/afero"
 
+	"fuzhan/internal/accessguard"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/utils"
 )
@@ -342,10 +343,13 @@ func (fs *MultiRootFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	// RETR 下载记录（仅文件，非目录）
+	// RETR 下载记录（仅文件，非目录）+ 匿名下载限流
 	fi, serr := f.Stat()
 	if serr == nil && !fi.IsDir() {
-		fs.recordDownload(name, fi.Size())
+		if derr := fs.recordDownload(name, fi.Size()); derr != nil {
+			f.Close()
+			return nil, derr
+		}
 	}
 	return f, nil
 }
@@ -385,13 +389,16 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 			return nil, err
 		}
 	} else {
-		// 读模式（RETR）：打开成功后记录下载
+		// 读模式（RETR）：打开成功后记录下载 + 匿名下载限流
 		f, err := afero.NewOsFs().OpenFile(realPath, flag, perm)
 		if err != nil {
 			return nil, err
 		}
 		if fi, serr := f.Stat(); serr == nil && !fi.IsDir() {
-			fs.recordDownload(name, fi.Size())
+			if derr := fs.recordDownload(name, fi.Size()); derr != nil {
+				f.Close()
+				return nil, derr
+			}
 		}
 		return f, nil
 	}
@@ -404,12 +411,18 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 }
 
 // recordDownload 记录下载操作（含真实文件大小）。
-func (fs *MultiRootFs) recordDownload(name string, size int64) {
+// 匿名 FTP 下载是免认证下载面，按共享下载限流配置做 per-IP 频率限制（accessguard，
+// max_requests=0/未配置时无限）；认证用户下载走登录态，不参与匿名限流。
+func (fs *MultiRootFs) recordDownload(name string, size int64) error {
+	if fs.userUUID == "" && !accessguard.Acquire(accessguard.SCOPE_FTP, fs.clientIP) {
+		return os.ErrPermission
+	}
 	if fs.recordFn == nil {
-		return
+		return nil
 	}
 	rootName, relPath := fs.recordPath(name)
 	fs.recordFn("download", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, size)
+	return nil
 }
 
 // wrapWriteFile 包装写文件：传输完成后（Close）记录上传操作并同步索引/触发哈希；

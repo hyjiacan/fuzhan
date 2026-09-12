@@ -16,6 +16,7 @@ type ConfigDTO struct {
 	PrivateFiles      PrivateConfigDTO   `json:"privateFiles"`
 	TempFiles         TempFilesConfigDTO `json:"tempFiles"`
 	Upload            UploadConfigDTO    `json:"upload"`
+	Download          DownloadConfigDTO  `json:"download"`
 	Preview           PreviewConfigDTO   `json:"preview"`
 	OpenApi           *OpenApiConfigDTO  `json:"openApi"`
 	Index             IndexConfigDTO     `json:"index"`
@@ -81,6 +82,19 @@ type URLUploadDTO struct {
 	InsecureSkipVerify bool `json:"insecureSkipVerify"`
 }
 
+// DownloadConfigDTO 下载配置 DTO
+type DownloadConfigDTO struct {
+	RateLimit DownloadRateLimitDTO `json:"rateLimit"`
+}
+
+// DownloadRateLimitDTO 下载频率限制 DTO
+type DownloadRateLimitDTO struct {
+	WindowMinutes int `json:"windowMinutes"`
+	MaxRequests   int `json:"maxRequests"`
+	LockAfter     int `json:"lockAfter"`
+	LockMinutes   int `json:"lockMinutes"`
+}
+
 // PreviewConfigDTO 预览配置 DTO
 type PreviewConfigDTO struct {
 	AllowMimes    string `json:"allowMimes"`
@@ -133,7 +147,6 @@ type FTPSConfigResp struct {
 // WebDAVConfigResp WebDAV 配置响应
 type WebDAVConfigResp struct {
 	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
 }
 
 // IndexConfigDTO 文件索引配置 DTO
@@ -212,7 +225,6 @@ func (c *Config) ToDTO() ConfigDTO {
 			},
 			WebDAV: WebDAVConfigResp{
 				Enabled: c.Server.WebDAV.Enabled,
-				Port:    c.Server.WebDAV.Port,
 			},
 		},
 		Database: DatabaseConfigDTO{
@@ -241,6 +253,14 @@ func (c *Config) ToDTO() ConfigDTO {
 			URLUpload: URLUploadDTO{
 				Enabled:            c.Upload.URLUpload.Enabled,
 				InsecureSkipVerify: c.Upload.URLUpload.InsecureSkipVerify,
+			},
+		},
+		Download: DownloadConfigDTO{
+			RateLimit: DownloadRateLimitDTO{
+				WindowMinutes: c.Download.RateLimit.WindowMinutes,
+				MaxRequests:   c.Download.RateLimit.MaxRequests,
+				LockAfter:     c.Download.RateLimit.LockAfter,
+				LockMinutes:   c.Download.RateLimit.LockMinutes,
 			},
 		},
 		Preview: PreviewConfigDTO{
@@ -289,7 +309,6 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Server.FTPS.Enabled = dto.Server.FTPS.Enabled
 	cfg.Server.FTPS.Port = dto.Server.FTPS.Port
 	cfg.Server.WebDAV.Enabled = dto.Server.WebDAV.Enabled
-	cfg.Server.WebDAV.Port = dto.Server.WebDAV.Port
 
 	cfg.Account.Anonymous.Username = dto.Account.Anonymous.Username
 	cfg.Account.ReservedUsernames = dto.Account.ReservedUsernames
@@ -332,6 +351,12 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Upload.MaxFileSize = dto.Upload.MaxFileSize
 	cfg.Upload.URLUpload.Enabled = dto.Upload.URLUpload.Enabled
 	cfg.Upload.URLUpload.InsecureSkipVerify = dto.Upload.URLUpload.InsecureSkipVerify
+
+	// 下载限流
+	cfg.Download.RateLimit.WindowMinutes = dto.Download.RateLimit.WindowMinutes
+	cfg.Download.RateLimit.MaxRequests = dto.Download.RateLimit.MaxRequests
+	cfg.Download.RateLimit.LockAfter = dto.Download.RateLimit.LockAfter
+	cfg.Download.RateLimit.LockMinutes = dto.Download.RateLimit.LockMinutes
 
 	// 预览
 	cfg.Preview.AllowMimes = dto.Preview.AllowMimes

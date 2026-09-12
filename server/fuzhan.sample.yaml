@@ -60,7 +60,6 @@ server:
   #   - 已认证：访问 public/ + private/ 目录
   webdav:
     enabled: false
-    port: 0            # 0 表示与 HTTP/HTTPS 同端口
 
 # ----------------------------------------
 # 数据库配置 (可选，默认使用 SQLite)
@@ -148,6 +147,24 @@ upload:
     enabled: false              # 是否启用 URL 上传的 SSRF 安全限制（默认 false 不限制）
     allowed_ip_ranges: []       # 允许的 IP 网段 (CIDR 格式)，为空表示不限制（允许所有 IP）
     insecure_skip_verify: false # 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false 即验证证书）
+
+# ----------------------------------------
+# 下载限流配置
+# ----------------------------------------
+# 对免认证下载路径做按 IP 的频率限制与失败锁定，涉及：
+#   - 私有分享码下载 /share/:code
+#   - 临时下载码下载 /temp/:code/download
+#   - 匿名 FTP 下载（RETR，仅匿名用户走限流）
+#   - WebDAV 下载（GET/HEAD）及基础认证失败锁定
+# 各处共用同一套配置；关键项为 0/未配置时表示不限制：
+#   - max_requests=0 或未配置：不做频率限制
+#   - lock_after=0 或未配置：不做失败锁定（无效码暴力枚举防护）
+download:
+  rate_limit:
+    window_minutes: 1           # 统计窗口（分钟），默认 1
+    max_requests: 120           # 窗口内每个 IP 最大请求数；0/未配置 = 不限制
+    lock_after: 20              # 窗口内无效访问次数达此值则锁定该 IP；0/未配置 = 不锁定
+    lock_minutes: 10            # 锁定时长（分钟），默认 10
 
 # ----------------------------------------
 # 文件预览配置

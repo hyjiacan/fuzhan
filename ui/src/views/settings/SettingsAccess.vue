@@ -51,6 +51,39 @@
         </el-form>
       </el-card>
     </el-col>
+
+    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
+      <el-card>
+        <template #header><span>下载频率限制</span></template>
+        <el-form label-width="120px">
+          <el-form-item label="频率限制">
+            <el-switch :model-value="rateLimitEnabled" @update:model-value="setRateLimitEnabled" />
+            <div class="field-hint">限制免认证下载（分享码 / 临时下载）每个 IP 在窗口内的最大请求数</div>
+          </el-form-item>
+          <template v-if="rateLimitEnabled">
+            <el-form-item label="窗口(分钟)">
+              <el-input-number v-model="settings.download.rateLimit.windowMinutes" :min="1" :max="10080" />
+            </el-form-item>
+            <el-form-item label="最大请求数">
+              <el-input-number v-model="settings.download.rateLimit.maxRequests" :min="1" :max="100000" />
+            </el-form-item>
+          </template>
+          <el-form-item label="失效锁定">
+            <el-switch :model-value="lockEnabled" @update:model-value="setLockEnabled" />
+            <div class="field-hint">窗口内无效访问（不存在的分享码/下载码）达阈值即锁定该 IP</div>
+          </el-form-item>
+          <template v-if="lockEnabled">
+            <el-form-item label="失效阈值">
+              <el-input-number v-model="settings.download.rateLimit.lockAfter" :min="1" :max="10000" />
+              <span style="margin-left: 8px;">次</span>
+            </el-form-item>
+            <el-form-item label="锁定(分钟)">
+              <el-input-number v-model="settings.download.rateLimit.lockMinutes" :min="1" :max="10080" />
+            </el-form-item>
+          </template>
+        </el-form>
+      </el-card>
+    </el-col>
   </el-row>
 </template>
 
@@ -60,6 +93,26 @@ import { computed } from 'vue'
 const props = defineProps({
   settings: { type: Object, required: true }
 })
+
+// 下载频率限制开关：maxRequests>0 表示启用
+const rateLimitEnabled = computed(() => (props.settings.download?.rateLimit?.maxRequests || 0) > 0)
+const setRateLimitEnabled = (val) => {
+  if (val && props.settings.download.rateLimit.maxRequests <= 0) {
+    props.settings.download.rateLimit.maxRequests = 120
+  } else if (!val) {
+    props.settings.download.rateLimit.maxRequests = 0
+  }
+}
+
+// 失效锁定开关：lockAfter>0 表示启用
+const lockEnabled = computed(() => (props.settings.download?.rateLimit?.lockAfter || 0) > 0)
+const setLockEnabled = (val) => {
+  if (val && props.settings.download.rateLimit.lockAfter <= 0) {
+    props.settings.download.rateLimit.lockAfter = 20
+  } else if (!val) {
+    props.settings.download.rateLimit.lockAfter = 0
+  }
+}
 
 // 文件扩展名显示转换（数组 <-> 文本框）
 const extensionsDisplay = computed({

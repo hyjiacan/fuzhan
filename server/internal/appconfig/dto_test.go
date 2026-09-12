@@ -22,7 +22,7 @@ func TestToDTO_RoundTrip(t *testing.T) {
 			HTTPS:  HTTPSConfig{Enabled: false, Port: 8443},
 			FTP:    FTPConfig{Enabled: true, Port: 21},
 			FTPS:   FTPSConfig{Enabled: false, Port: 990},
-			WebDAV: WebDAVConfig{Enabled: true, Port: 0},
+			WebDAV: WebDAVConfig{Enabled: true},
 		},
 		Database: DatabaseConfig{
 			Driver: "sqlite",
@@ -92,7 +92,7 @@ func TestToDTO_RoundTrip(t *testing.T) {
 	if !dto.Server.FTP.Enabled || dto.Server.FTP.Port != 21 {
 		t.Errorf("Server.FTP = %+v", dto.Server.FTP)
 	}
-	if !dto.Server.WebDAV.Enabled || dto.Server.WebDAV.Port != 0 {
+	if !dto.Server.WebDAV.Enabled {
 		t.Errorf("Server.WebDAV = %+v", dto.Server.WebDAV)
 	}
 

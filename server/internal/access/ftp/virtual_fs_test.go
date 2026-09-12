@@ -86,6 +86,41 @@ func TestAnonymousCannotModifyPublic(t *testing.T) {
 	_ = f.Close()
 }
 
+func TestAnonymousDownloadRateLimited(t *testing.T) {
+	rootDir := t.TempDir()
+	writeRootFile(t, rootDir, "a.txt", "hello")
+	// 匿名用户（userUUID 空、真实 clientIP），下载走免认证面
+	fs := NewMultiRootFs(map[string]string{"files": rootDir}, "", "", "9.9.9.9", nil, &stubBackend{})
+	appconfig.GlobalConfig.Download.RateLimit = appconfig.DownloadRateLimitConfig{WindowMinutes: 1, MaxRequests: 1}
+	defer func() { appconfig.GlobalConfig = appconfig.Config{} }()
+
+	if f, err := fs.Open("public/files/a.txt"); err != nil {
+		t.Fatalf("首次匿名下载应放行, got %v", err)
+	} else {
+		f.Close()
+	}
+	if _, err := fs.Open("public/files/a.txt"); err != os.ErrPermission {
+		t.Fatalf("超阈值匿名下载应被拒绝, got %v", err)
+	}
+}
+
+func TestAuthenticatedDownloadNotRateLimited(t *testing.T) {
+	rootDir := t.TempDir()
+	writeRootFile(t, rootDir, "a.txt", "hello")
+	// 认证用户下载走登录态，不受匿名下载限流约束
+	fs := NewMultiRootFs(map[string]string{"files": rootDir}, "", "uuid-owner", "1.2.3.4", nil, &stubBackend{})
+	appconfig.GlobalConfig.Download.RateLimit = appconfig.DownloadRateLimitConfig{WindowMinutes: 1, MaxRequests: 1}
+	defer func() { appconfig.GlobalConfig = appconfig.Config{} }()
+
+	for i := 0; i < 3; i++ {
+		if f, err := fs.Open("public/files/a.txt"); err != nil {
+			t.Fatalf("认证用户下载不应被限流(第 %d 次), got %v", i+1, err)
+		} else {
+			f.Close()
+		}
+	}
+}
+
 func TestUploaderIPCanManagePublic(t *testing.T) {
 	rootDir := t.TempDir()
 	writeRootFile(t, rootDir, "a.txt", "hello")

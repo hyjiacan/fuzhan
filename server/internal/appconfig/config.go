@@ -80,7 +80,6 @@ type FTPSConfig struct {
 // WebDAVConfig WebDAV 配置
 type WebDAVConfig struct {
 	Enabled bool `yaml:"enabled"`
-	Port    int  `yaml:"port"` // 0 表示与 HTTP/HTTPS 同端口
 }
 
 // ServerConfig 服务器配置结构体
@@ -180,6 +179,20 @@ type UploadConfig struct {
 	URLUpload   URLUploadConfig `yaml:"url_upload"`              // URL上传配置
 }
 
+// DownloadConfig 下载配置
+type DownloadConfig struct {
+	RateLimit DownloadRateLimitConfig `yaml:"rate_limit"`
+}
+
+// DownloadRateLimitConfig 下载频率限制配置
+// MaxRequests <= 0（或未配置）表示不限制；WindowMinutes 默认 1（分钟）。
+type DownloadRateLimitConfig struct {
+	WindowMinutes int `yaml:"window_minutes,omitempty"` // 统计窗口（分钟），默认 1
+	MaxRequests   int `yaml:"max_requests,omitempty"`   // 窗口内每个 IP 最大请求数；0/未配置 = 不限制
+	LockAfter     int `yaml:"lock_after,omitempty"`     // 无效访问失败次数达此值则锁定该 IP；0/未配置 = 不锁定
+	LockMinutes   int `yaml:"lock_minutes,omitempty"`   // 锁定时长（分钟），默认 10
+}
+
 // URLUploadConfig URL上传安全配置
 type URLUploadConfig struct {
 	// 是否启用安全限制（默认 false）
@@ -201,6 +214,7 @@ type Config struct {
 	Database DatabaseConfig  `yaml:"database"`
 	Storage  StorageConfig   `yaml:"storage"`
 	Upload   UploadConfig    `yaml:"upload"`
+	Download DownloadConfig  `yaml:"download"`
 	Preview  PreviewConfig   `yaml:"preview"`
 	Log      utils.LogConfig `yaml:"log"`
 	Security SecurityConfig  `yaml:"security"`
@@ -419,6 +433,15 @@ func RLockConfig() { configMu.RLock() }
 
 // RUnlockConfig 释放读锁
 func RUnlockConfig() { configMu.RUnlock() }
+
+// GetDownloadRateLimit 返回下载频率限制配置（供下载限流器每个请求实时读取，
+// 支持配置热更新；MaxRequests <= 0 表示不限制）。
+func GetDownloadRateLimit() DownloadRateLimitConfig {
+	configMu.RLock()
+	dl := GlobalConfig.Download.RateLimit
+	configMu.RUnlock()
+	return dl
+}
 
 // GetBackupsDir 获取备份目录
 func GetBackupsDir() string {
