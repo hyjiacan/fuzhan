@@ -45,7 +45,9 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			"chunkSize":   currentConfig.Upload.ChunkSize,
 			"maxFileSize": currentConfig.Upload.MaxFileSize,
 			"urlUpload": gin.H{
-				"enabled": currentConfig.Upload.URLUpload.Enabled,
+				"enabled":            currentConfig.Upload.URLUpload.Enabled,
+				"allowedIPRanges":    currentConfig.Upload.URLUpload.AllowedIPRanges,
+				"insecureSkipVerify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
 			},
 		},
 		"download": gin.H{
@@ -165,8 +167,9 @@ type UploadConfig struct {
 }
 
 type URLUploadConfigResp struct {
-	Enabled            bool `json:"enabled"`
-	InsecureSkipVerify bool `json:"insecureSkipVerify"`
+	Enabled            bool     `json:"enabled"`
+	AllowedIPRanges    []string `json:"allowedIPRanges"`
+	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
 }
 
 // DownloadConfigReq 保存请求中的下载限流配置（maxRequests=0 表示不限制）
@@ -212,6 +215,7 @@ type SaveConfigRequest struct {
 	OpenApi           *OpenApiConfig              `json:"openApi"`
 	Index             appconfig.IndexConfigDTO    `json:"index"`
 	Resource          appconfig.ResourceConfigDTO `json:"resource"`
+	Security          appconfig.SecurityConfigDTO `json:"security"`
 }
 
 type OpenApiConfig struct {
@@ -417,8 +421,14 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Upload.MaxFileSize = req.Upload.MaxFileSize
 		updates.Add("upload.max_file_size", formatSizeToString(req.Upload.MaxFileSize))
 		appconfig.GlobalConfig.Upload.URLUpload.Enabled = req.Upload.URLUpload.Enabled
+		appconfig.GlobalConfig.Upload.URLUpload.AllowedIPRanges = req.Upload.URLUpload.AllowedIPRanges
 		appconfig.GlobalConfig.Upload.URLUpload.InsecureSkipVerify = req.Upload.URLUpload.InsecureSkipVerify
 		updates.Add("upload.url_upload.enabled", req.Upload.URLUpload.Enabled)
+		allowedIPRanges := make([]interface{}, len(req.Upload.URLUpload.AllowedIPRanges))
+		for i, ip := range req.Upload.URLUpload.AllowedIPRanges {
+			allowedIPRanges[i] = ip
+		}
+		updates.Add("upload.url_upload.allowed_ip_ranges", allowedIPRanges)
 		updates.Add("upload.url_upload.insecure_skip_verify", req.Upload.URLUpload.InsecureSkipVerify)
 	}
 
@@ -480,6 +490,12 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// —— 检索索引对齐任务 cron ——
 		appconfig.GlobalConfig.Index.SearchReconcileCronExpression = req.Index.SearchReconcileCronExpression
 		updates.Add("index.search_reconcile_cron_expression", req.Index.SearchReconcileCronExpression)
+
+		// —— 启动扫描延迟 ——
+		if req.Index.ScanStartDelaySeconds > 0 {
+			appconfig.GlobalConfig.Index.ScanStartDelaySeconds = req.Index.ScanStartDelaySeconds
+			updates.Add("index.scan_start_delay_seconds", req.Index.ScanStartDelaySeconds)
+		}
 	}
 
 	// —— 服务器资源监控 ——
@@ -499,6 +515,19 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			appconfig.GlobalConfig.Resource.RetentionDays = req.Resource.RetentionDays
 			updates.Add("resource.retention_days", req.Resource.RetentionDays)
 		}
+	}
+
+	// —— 安全配置（trust_proxy / CORS）——
+	if present("security") {
+		appconfig.GlobalConfig.Security.TrustProxy = req.Security.TrustProxy
+		updates.Add("security.trust_proxy", req.Security.TrustProxy)
+
+		appconfig.GlobalConfig.Security.AllowedOrigins = req.Security.AllowedOrigins
+		origins := make([]interface{}, len(req.Security.AllowedOrigins))
+		for i, o := range req.Security.AllowedOrigins {
+			origins[i] = o
+		}
+		updates.Add("security.allowed_origins", origins)
 	}
 
 	// 私有/临时文件存储目录创建

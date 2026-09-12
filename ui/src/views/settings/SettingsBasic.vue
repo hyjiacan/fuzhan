@@ -136,6 +136,11 @@
             <el-switch v-model="settings.upload.urlUpload.insecureSkipVerify" />
             <div class="field-hint">跳过 HTTPS/FTPS 的 TLS 证书验证</div>
           </el-form-item>
+          <el-form-item label="允许 IP 网段">
+            <el-input v-model="allowedIPRangesDisplay" type="textarea" :rows="3" :maxlength="2000"
+              placeholder="每行一个 CIDR 网段，如 10.0.0.0/8、1.2.3.4/32" style="width: 100%;" />
+            <div class="field-hint">URL 上传允许解析到哪些目标网段（SSRF 防护），每行一个，留空表示不限制（允许所有 IP）</div>
+          </el-form-item>
         </el-form>
       </el-card>
     </el-col>
@@ -180,6 +185,13 @@ const maxFileSizeDisplay = computed({
     } else {
       props.settings.upload.maxFileSize = NumberUtils.parseFileSize(val)
     }
+  }
+})
+const allowedIPRangesDisplay = computed({
+  get: () => (props.settings.upload.urlUpload.allowedIPRanges || []).join('\n'),
+  set: (val) => {
+    props.settings.upload.urlUpload.allowedIPRanges = String(val).split('\n')
+      .map(s => s.trim()).filter(s => s.length > 0)
   }
 })
 

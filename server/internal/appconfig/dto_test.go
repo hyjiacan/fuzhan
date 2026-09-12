@@ -264,3 +264,61 @@ func TestParseOrDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestSecurityConfigDTORoundTrip 验证安全配置（信任代理头 / CORS）在
+// ToDTO -> ConfigFromDTO 链路上无损往返，这也是 GET /api/v1/config 与
+// 设置页加载/保存所依赖的序列化路径。
+func TestSecurityConfigDTORoundTrip(t *testing.T) {
+	cfg := Config{
+		Security: SecurityConfig{
+			TrustProxy:     true,
+			AllowedOrigins: []string{"https://a.example.com", "https://b.example.com"},
+		},
+	}
+
+	dto := cfg.ToDTO()
+	if !dto.Security.TrustProxy {
+		t.Error("ToDTO: TrustProxy = false, want true")
+	}
+	if want := []string{"https://a.example.com", "https://b.example.com"}; !equalStrings(dto.Security.AllowedOrigins, want) {
+		t.Errorf("ToDTO: AllowedOrigins = %v, want %v", dto.Security.AllowedOrigins, want)
+	}
+
+	restored := ConfigFromDTO(dto)
+	if restored.Security.TrustProxy != true {
+		t.Errorf("ConfigFromDTO: TrustProxy = %v, want true", restored.Security.TrustProxy)
+	}
+	if !equalStrings(restored.Security.AllowedOrigins, dto.Security.AllowedOrigins) {
+		t.Errorf("ConfigFromDTO: AllowedOrigins = %v, want %v", restored.Security.AllowedOrigins, dto.Security.AllowedOrigins)
+	}
+}
+
+// TestSecurityConfigDTODefaults 验证安全配置零值往返：默认关闭信任代理、
+// 来源为空列表，保证未配置时前端拿到稳定默认值。
+func TestSecurityConfigDTODefaults(t *testing.T) {
+	cfg := Config{} // 零值
+	dto := cfg.ToDTO()
+	if dto.Security.TrustProxy {
+		t.Error("ToDTO(零值): TrustProxy = true, want false")
+	}
+	if len(dto.Security.AllowedOrigins) != 0 {
+		t.Errorf("ToDTO(零值): AllowedOrigins = %v, want empty", dto.Security.AllowedOrigins)
+	}
+	restored := ConfigFromDTO(dto)
+	if restored.Security.TrustProxy {
+		t.Error("ConfigFromDTO(零值): TrustProxy = true, want false")
+	}
+}
+
+// equalStrings 按顺序比较两个字符串切片。
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

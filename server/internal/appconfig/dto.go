@@ -21,6 +21,13 @@ type ConfigDTO struct {
 	OpenApi           *OpenApiConfigDTO  `json:"openApi"`
 	Index             IndexConfigDTO     `json:"index"`
 	Resource          ResourceConfigDTO  `json:"resource"`
+	Security          SecurityConfigDTO  `json:"security"`
+}
+
+// SecurityConfigDTO 安全配置 DTO（trust_proxy / CORS）
+type SecurityConfigDTO struct {
+	TrustProxy     bool     `json:"trustProxy"`
+	AllowedOrigins []string `json:"allowedOrigins"`
 }
 
 type OpenApiConfigDTO struct {
@@ -78,8 +85,9 @@ type UploadConfigDTO struct {
 
 // URLUploadDTO URL 上传配置 DTO
 type URLUploadDTO struct {
-	Enabled            bool `json:"enabled"`
-	InsecureSkipVerify bool `json:"insecureSkipVerify"`
+	Enabled            bool     `json:"enabled"`
+	AllowedIPRanges    []string `json:"allowedIPRanges"`
+	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
 }
 
 // DownloadConfigDTO 下载配置 DTO
@@ -151,6 +159,7 @@ type WebDAVConfigResp struct {
 
 // IndexConfigDTO 文件索引配置 DTO
 type IndexConfigDTO struct {
+	ScanStartDelaySeconds         int    `json:"scanStartDelaySeconds"`
 	ScanCronExpression            string `json:"scanCronExpression"`
 	SearchReconcileCronExpression string `json:"searchReconcileCronExpression"`
 }
@@ -252,6 +261,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			MaxFileSize: c.Upload.MaxFileSize,
 			URLUpload: URLUploadDTO{
 				Enabled:            c.Upload.URLUpload.Enabled,
+				AllowedIPRanges:    c.Upload.URLUpload.AllowedIPRanges,
 				InsecureSkipVerify: c.Upload.URLUpload.InsecureSkipVerify,
 			},
 		},
@@ -278,6 +288,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			RequestsPerMinute: c.OpenAPI.RequestsPerMinute,
 		},
 		Index: IndexConfigDTO{
+			ScanStartDelaySeconds:         c.Index.ScanStartDelaySeconds,
 			ScanCronExpression:            c.Index.ScanCronExpression,
 			SearchReconcileCronExpression: c.Index.SearchReconcileCronExpression,
 		},
@@ -286,6 +297,10 @@ func (c *Config) ToDTO() ConfigDTO {
 			SamplingInterval: c.Resource.SamplingInterval,
 			CollectInterval:  c.Resource.CollectInterval,
 			RetentionDays:    c.Resource.RetentionDays,
+		},
+		Security: SecurityConfigDTO{
+			TrustProxy:     c.Security.TrustProxy,
+			AllowedOrigins: c.Security.AllowedOrigins,
 		},
 	}
 }
@@ -350,6 +365,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Upload.ChunkSize = dto.Upload.ChunkSize
 	cfg.Upload.MaxFileSize = dto.Upload.MaxFileSize
 	cfg.Upload.URLUpload.Enabled = dto.Upload.URLUpload.Enabled
+	cfg.Upload.URLUpload.AllowedIPRanges = dto.Upload.URLUpload.AllowedIPRanges
 	cfg.Upload.URLUpload.InsecureSkipVerify = dto.Upload.URLUpload.InsecureSkipVerify
 
 	// 下载限流
@@ -374,6 +390,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	}
 
 	// 索引配置
+	cfg.Index.ScanStartDelaySeconds = dto.Index.ScanStartDelaySeconds
 	cfg.Index.ScanCronExpression = dto.Index.ScanCronExpression
 	cfg.Index.SearchReconcileCronExpression = dto.Index.SearchReconcileCronExpression
 
@@ -382,6 +399,10 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Resource.SamplingInterval = dto.Resource.SamplingInterval
 	cfg.Resource.CollectInterval = dto.Resource.CollectInterval
 	cfg.Resource.RetentionDays = dto.Resource.RetentionDays
+
+	// 安全配置
+	cfg.Security.TrustProxy = dto.Security.TrustProxy
+	cfg.Security.AllowedOrigins = dto.Security.AllowedOrigins
 
 	return cfg
 }

@@ -199,7 +199,7 @@ type URLUploadConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// 允许的 IP 网段列表（CIDR 格式，如 1.2.3.4/24），为空表示不限制（允许所有 IP）
 	AllowedIPRanges []string `yaml:"allowed_ip_ranges"`
-	// FTPS/FTP URL 下载时是否跳过 TLS 证书验证（默认 false）
+	// 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false，即验证证书）
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 

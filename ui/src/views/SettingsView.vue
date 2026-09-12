@@ -121,7 +121,7 @@ const settings = reactive({
   upload: {
     chunkSize: 10485760,
     maxFileSize: 17179869184,
-    urlUpload: { enabled: false, insecureSkipVerify: false }
+    urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false }
   },
   download: {
     rateLimit: { windowMinutes: 1, maxRequests: 0, lockAfter: 0, lockMinutes: 10 }
@@ -148,8 +148,13 @@ const settings = reactive({
     rateLimitEnabled: true,
     requestsPerMinute: 60
   },
+  scanStartDelaySeconds: 10,
   scanCronExpression: '0 1 * * *',
   searchReconcileCronExpression: '0 5 * * *',
+  security: {
+    trustProxy: false,
+    allowedOrigins: []
+  },
   resource: {
     enabled: false,
     samplingInterval: 5,
@@ -265,7 +270,7 @@ const loadSettings = async () => {
       settings.tempFilesQuotaGlobal = cfg.tempFiles?.quotaGlobal || 0
       settings.tempFilesQuotaPerIP = cfg.tempFiles?.quotaPerIP || 0
 
-      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, insecureSkipVerify: false } }
+      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false } }
 
       // 下载限流配置（maxRequests=0 表示不限制）
       settings.download = {
@@ -296,8 +301,15 @@ const loadSettings = async () => {
       }
 
       // 文件索引配置
+      settings.scanStartDelaySeconds = cfg.index?.scanStartDelaySeconds || 10
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
       settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
+
+      // 安全配置（trust_proxy / CORS）
+      settings.security = {
+        trustProxy: cfg.security?.trustProxy ?? false,
+        allowedOrigins: cfg.security?.allowedOrigins || []
+      }
 
       // 资源监控配置
       settings.resource = {
@@ -405,6 +417,7 @@ const doSaveSettings = async () => {
         requestsPerMinute: settings.openApi.requestsPerMinute
       },
       index: {
+        scanStartDelaySeconds: settings.scanStartDelaySeconds,
         scanCronExpression: settings.scanCronExpression,
         searchReconcileCronExpression: settings.searchReconcileCronExpression,
       },
@@ -413,6 +426,10 @@ const doSaveSettings = async () => {
         samplingInterval: settings.resource.samplingInterval,
         collectInterval: settings.resource.collectInterval,
         retentionDays: settings.resource.retentionDays
+      },
+      security: {
+        trustProxy: settings.security.trustProxy,
+        allowedOrigins: settings.security.allowedOrigins
       }
     }
 

@@ -31,7 +31,11 @@ app:
 # ----------------------------------------
 server:
   host: 0.0.0.0       # 监听地址，0.0.0.0 表示所有网卡
-  # TLS 证书配置（FTPS/HTTPS 共用）
+  # JWT 签名密钥（至少 32 字符）。留空时程序首次启动自动生成并持久化，
+  # 重启不会重新生成，保证已签发 token 持续有效；一般无需手动配置。
+  # jwt_secret: ""
+  # TLS 证书配置。当前仅用于 FTPS（ftps.enabled: true 时强制隐式 TLS）；
+  # 注意程序并未接管 HTTP/HTTPS 网关，`https.enabled` 需要反向代理或另配 HTTPS 服务。
   # tls:
   #   cert_file: ""   # TLS 证书文件路径
   #   key_file: ""    # TLS 密钥文件路径
@@ -74,7 +78,12 @@ server:
 # 例如 dbswitch（https://github.com/light-art/dbswitch）。
 database:
   driver: ""     # 数据库驱动: mysql, postgres (为空则使用 SQLite)
-  dsn: ""        # 数据库连接字符串
+  dsn: ""        # 数据库连接字符串（SQLite 留空时默认落到 <work_dir>/data/fuzhan.db）
+  # 连接池配置（可选，0/未配置使用默认值）
+  # pool:
+  #   max_idle_conns: 2         # 最大空闲连接数，默认 2（SQLite 建议保持小型连接池）
+  #   max_open_conns: 8         # 最大打开连接数，默认 8
+  #   conn_max_lifetime: 3600   # 连接最大生存时间（秒），默认 3600
 
 # =============================================
 # MySQL 配置示例 (取消注释即可使用)
@@ -199,12 +208,14 @@ account:
   reserved_usernames:
     - admin
     - root
+  # 是否允许匿名注册新账户（默认 false）。与私有存储启用相互独立，可单独开启/关闭。
+  allow_registration: false
 
 # ----------------------------------------
 # 日志配置
 # ----------------------------------------
 log:
-  level: info                   # 日志级别: debug, info, warn, error
+  level: info                   # 日志级别: debug, info, warn, error, fatal
   directory: ./logs  # 日志目录
   max_size: 10                 # 单个日志文件最大大小 (MB)
   max_backups: 30               # 保留的旧日志文件数量
@@ -224,6 +235,49 @@ log:
 index:
   scan_start_delay_seconds: 10  # 启动时扫描延迟（秒）
   scan_cron_expression: "0 1 * * *"  # 定时全量扫描 cron 表达式，默认每天凌晨 1:00
+  # 检索索引对齐任务 cron 表达式（默认每天凌晨 5:00，与定时扫描错开）。
+  # 该任务定期将文件表变更同步到检索索引，保证搜索与文件系统一致。
+  # search_reconcile_cron_expression: "0 5 * * *"
+
+# ----------------------------------------
+# 安全配置（代理与 CORS）
+# ----------------------------------------
+security:
+  trust_proxy: false              # 是否信任代理头 (X-Forwarded-For, X-Real-IP)，置反代后为准时应开启
+  # 允许的 CORS 来源列表，* 表示所有（默认/为空表示不限制，允许所有来源）
+  # allowed_origins:
+  #   - "*"
+
+# ----------------------------------------
+# LDAP 认证配置
+# ----------------------------------------
+# 用于对接企业目录（Active Directory / OpenLDAP）。仅当需要 LDAP 账户同步/认证时配置。
+# auth:
+#   ldap:
+#     enabled: false
+#     host: ""                 # LDAP 服务器地址
+#     port: 389                # 端口（use_ssl: true 时通常为 636）
+#     use_ssl: false           # 是否使用 LDAPS（TLS）
+#     base_dn: ""              # 用户基准 DN，如 dc=example,dc=com
+#     bind_dn: ""              # 绑定 DN（仅用于目录查询）
+#     bind_password: ""        # 绑定密码
+#     user_filter: ""          # 用户过滤条件，如 (uid=%s) 或 (sAMAccountName=%s)
+#     sync_interval: 3600      # 目录同步间隔（秒）
+#     auto_create_user: false  # 认证通过后是否自动创建本地账户
+#     insecure_skip_verify: false  # 跳过 LDAPS 证书校验（仅测试/自签名环境可设为 true）
+
+# ----------------------------------------
+# Open API 配置
+# ----------------------------------------
+# 可选的安全增强：对开放接口做来源 IP 访问控制与频率限制。默认关闭。
+# open_api:
+#   enabled: false
+#   ip_access_mode: disable    # disable / whitelist / blacklist
+#   ip_whitelist: []           # CIDR 白名单
+#   ip_blacklist: []           # CIDR 黑名单
+#   rate_limit_enabled: false  # 是否启用频率限制
+#   requests_per_minute: 60    # 每分钟请求上限
+#   burst_size: 10             # 突发容忍量
 
 # ----------------------------------------
 # 服务器资源监控配置

@@ -84,6 +84,37 @@
         </el-form>
       </el-card>
     </el-col>
+
+    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
+      <el-card>
+        <template #header><span>安全配置</span></template>
+        <el-form label-width="120px">
+          <el-form-item label="信任代理头">
+            <el-switch v-model="settings.security.trustProxy" />
+            <div class="field-hint">信任 X-Forwarded-For / X-Real-IP 以取真实客户端 IP，置于反向代理后时应开启</div>
+          </el-form-item>
+          <el-form-item label="CORS 来源白名单">
+            <el-input v-model="allowedOriginsDisplay" type="textarea" :rows="3" :maxlength="2000"
+              placeholder="每行一个来源，如 https://a.example.com、*" style="width: 100%;" />
+            <div class="field-hint">允许跨域访问的来源列表，每行一个；留空或 <code>*</code> 表示允许所有来源</div>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </el-col>
+
+    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
+      <el-card>
+        <template #header><span>LDAP 认证</span></template>
+        <el-form label-width="120px">
+          <el-form-item>
+            <div class="field-hint" style="margin: 0;">
+              LDAP 认证（Active Directory / OpenLDAP）暂未提供界面配置。
+              如需启用，请编辑 <code>fuzhan.yaml</code> 的 <code>auth.ldap</code> 节点后重启生效。
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </el-col>
   </el-row>
 </template>
 
@@ -136,6 +167,14 @@ const ipAccessListDisplay = computed({
     } else if (props.settings.openApi.ipAccessMode === 'deny') {
       props.settings.openApi.ipBlacklist = list.join('\n')
     }
+  }
+})
+
+// CORS 来源列表显示转换（数组 <-> 文本框）
+const allowedOriginsDisplay = computed({
+  get: () => (props.settings.security?.allowedOrigins || []).join('\n'),
+  set: (val) => {
+    props.settings.security.allowedOrigins = val.split('\n').map(s => s.trim()).filter(Boolean)
   }
 })
 </script>
