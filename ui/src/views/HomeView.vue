@@ -64,10 +64,11 @@
 
     <dependency-tree-dialog ref="depTreeDialogRef" />
     <!-- 备注编辑弹窗 -->
-    <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px">
-      <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="500" placeholder="输入备注内容..." />
+    <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px" :class="notesMaximized ? 'preview-maximized' : ''">
+      <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="4096" placeholder="输入备注内容..." />
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="notesMaximized = !notesMaximized">{{ notesMaximized ? '还原' : '最大化' }}</el-button>
           <el-button @click="notesModalVisible = false">取消</el-button>
           <el-button type="primary" :loading="savingNotes" @click="saveNotes">保存</el-button>
         </div>
@@ -196,6 +197,7 @@ const navigateToDir = (dirPath) => {
 
 // 备注编辑
 const notesModalVisible = ref(false)
+const notesMaximized = ref(false)
 const editNotes = ref('')
 const editNotesRow = ref(null)
 const savingNotes = ref(false)

@@ -121,7 +121,7 @@
           <el-form-item v-if="urlFileInfo.name" label="备注:">
             <el-input
               v-model="form.urlNotes"
-              :maxlength="500"
+              :maxlength="4096"
               type="textarea"
               :rows="2"
               placeholder="输入文件备注（可选）"
@@ -230,7 +230,7 @@
             </div>
             <!-- 剪贴板备注/依赖 -->
             <el-form-item label="备注:" style="margin-top: 12px;">
-              <el-input v-model="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+              <el-input v-model="extraNotes" :maxlength="4096" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
             </el-form-item>
             <el-form-item label="依赖:">
               <div style="display: flex; gap: 6px; width: 100%">
@@ -263,7 +263,7 @@
           />
           <!-- 文本备注/依赖 -->
           <el-form-item label="备注:" style="margin-top: 12px;">
-            <el-input v-model="extraNotes" :maxlength="500" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
+            <el-input v-model="extraNotes" :maxlength="4096" type="textarea" :rows="2" placeholder="输入文件备注（可选）" />
           </el-form-item>
           <el-form-item label="依赖:">
             <div style="display: flex; flex-direction: column; gap: 6px; width: 100%">

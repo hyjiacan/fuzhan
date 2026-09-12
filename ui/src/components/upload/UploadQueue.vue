@@ -114,7 +114,7 @@
         <div v-if="item.showNotes" class="queue-item-extra" :style="{ padding: '0 12px 8px' }">
           <el-input
             v-model="item.notes"
-            :maxlength="500"
+            :maxlength="4096"
             type="textarea"
             placeholder="输入文件备注..."
             :rows="2"

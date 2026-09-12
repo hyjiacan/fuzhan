@@ -8,11 +8,23 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// maxNotesLen 备注最大长度（字符数，与前端输入框 maxlength 一致）
+const maxNotesLen = 4096
+
+// validateNotes 校验备注长度，超限返回错误描述，合法返回空串
+func validateNotes(notes string) string {
+	if utf8.RuneCountInString(notes) > maxNotesLen {
+		return fmt.Sprintf("备注长度不能超过 %d 个字符", maxNotesLen)
+	}
+	return ""
+}
 
 // Handler 文件索引 HTTP 处理器
 type Handler struct {
@@ -205,6 +217,11 @@ func (h *Handler) UpdateNotes(c *gin.Context) {
 		return
 	}
 
+	if msg := validateNotes(req.Notes); msg != "" {
+		response.HandleBadRequest(c, msg, nil)
+		return
+	}
+
 	if err := h.svc.UpdateNotes(uint(id), req.Notes); err != nil {
 		response.HandleBadRequest(c, err.Error(), nil)
 		return
@@ -274,6 +291,11 @@ func (h *Handler) PublicUpdateNotes(c *gin.Context) {
 	var req UpdateNotesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
+		return
+	}
+
+	if msg := validateNotes(req.Notes); msg != "" {
+		response.HandleBadRequest(c, msg, nil)
 		return
 	}
 
