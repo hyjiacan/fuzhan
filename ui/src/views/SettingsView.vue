@@ -91,7 +91,7 @@ const settings = reactive({
     host: '0.0.0.0',
     http: { enabled: true, port: 8080 },
     https: { enabled: false, port: 8443 },
-    ftp: { enabled: false, port: 21 },
+    ftp: { enabled: false, port: 21, passivePortStart: 2122, passivePortEnd: 2221 },
     ftps: { enabled: false, port: 990 },
     webdav: { enabled: false },
     tls: { certFile: '', keyFile: '' }
@@ -219,7 +219,9 @@ const loadSettings = async () => {
       }
       settings.server.ftp = {
         enabled: cfg.server?.ftp?.enabled ?? false,
-        port: cfg.server?.ftp?.port || 21
+        port: cfg.server?.ftp?.port || 21,
+        passivePortStart: cfg.server?.ftp?.passivePortStart || 2122,
+        passivePortEnd: cfg.server?.ftp?.passivePortEnd || 2221
       }
       settings.server.ftps = {
         enabled: cfg.server?.ftps?.enabled ?? false,
@@ -346,7 +348,12 @@ const doSaveSettings = async () => {
         host: settings.server.host,
         http: { enabled: settings.server.http.enabled, port: settings.server.http.port },
         https: { enabled: settings.server.https.enabled, port: settings.server.https.port },
-        ftp: { enabled: settings.server.ftp.enabled, port: settings.server.ftp.port },
+        ftp: {
+          enabled: settings.server.ftp.enabled,
+          port: settings.server.ftp.port,
+          passivePortStart: settings.server.ftp.passivePortStart,
+          passivePortEnd: settings.server.ftp.passivePortEnd
+        },
         ftps: { enabled: settings.server.ftps.enabled, port: settings.server.ftps.port },
         webdav: { enabled: settings.server.webdav.enabled }
       },

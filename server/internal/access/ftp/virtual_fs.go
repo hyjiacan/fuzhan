@@ -13,11 +13,13 @@ import (
 	"github.com/spf13/afero"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/utils"
 )
 
 // OperationRecordFunc 操作记录回调函数
 // rootName 是 filePath 所属的逻辑根名（来自配置的 rootNames key，或 "private"），
-// 用于让调用方构造 FullPath（rootName + filePath）。
+// filePath 为带前导 / 的、不含 rootName 的相对路径（与索引表 file_path 约定一致），
+// 用于让调用方构造 FullPath（"/" + rootName + filePath）。
 type OperationRecordFunc func(action, filePath, fileName, rootName, fileTypeTag, clientIP, userID string, fileSize int64)
 
 // MultiRootFs implements afero.Fs for FTP with a virtual directory structure:
@@ -35,13 +37,15 @@ type MultiRootFs struct {
 	allowedExtensions []string          // from appconfig.Storage.AllowedExtensions
 	maxFileSize       int64             // from appconfig.Upload.MaxFileSize (0 = unlimited)
 	recordFn          OperationRecordFunc
+	backend           FtpBackend // 服务层注入：权限/索引/配额（nil 时权限校验保守拒绝管理操作）
 }
 
 // NewMultiRootFs creates a MultiRootFs. For anonymous users, privateDir and
 // userUUID should be empty; the private/ directory will not appear.
 //
 // clientIP is used for operation recording. recordFn may be nil to skip recording.
-func NewMultiRootFs(rootNames map[string]string, privateDir, userUUID, clientIP string, recordFn OperationRecordFunc) *MultiRootFs {
+// backend 为服务层注入的权限/索引/配额能力，可为 nil（此时管理类操作一律拒绝）。
+func NewMultiRootFs(rootNames map[string]string, privateDir, userUUID, clientIP string, recordFn OperationRecordFunc, backend FtpBackend) *MultiRootFs {
 	cfg := appconfig.GlobalConfig
 	return &MultiRootFs{
 		rootNames:         rootNames,
@@ -51,6 +55,7 @@ func NewMultiRootFs(rootNames map[string]string, privateDir, userUUID, clientIP 
 		allowedExtensions: cfg.Storage.AllowedExtensions,
 		maxFileSize:       cfg.Upload.MaxFileSize,
 		recordFn:          recordFn,
+		backend:           backend,
 	}
 }
 
@@ -96,6 +101,37 @@ func ftpRootName(name string) string {
 		return "private"
 	}
 	return ""
+}
+
+// recordPath 将虚拟路径拆为 (rootName, filePath)：
+// filePath 为带前导 / 的、不含 rootName 的相对路径（与索引表/操作记录约定一致）。
+// "public/files/sub/a.txt" -> ("files", "/sub/a.txt")
+// "private/sub/a.txt"      -> ("private", "/sub/a.txt")
+func (fs *MultiRootFs) recordPath(virtualPath string) (rootName, filePath string) {
+	cleaned := cleanFtpPath(virtualPath)
+	prefix, rest := splitFtpPath(cleaned)
+	switch prefix {
+	case "public":
+		sub := strings.SplitN(rest, "/", 2)
+		if len(sub) == 0 || sub[0] == "" {
+			return "", ""
+		}
+		if len(sub) < 2 || sub[1] == "" {
+			return sub[0], "/"
+		}
+		return sub[0], "/" + sub[1]
+	case "private":
+		if rest == "" {
+			return "private", "/"
+		}
+		return "private", "/" + rest
+	}
+	return "", ""
+}
+
+// isPrivatePath reports whether the virtual path belongs to the private namespace.
+func (fs *MultiRootFs) isPrivatePath(virtualPath string) bool {
+	return fs.getNamespace(virtualPath) == "private"
 }
 
 // resolvePublicPath resolves a "public/..." virtual path to a real filesystem path.
@@ -187,6 +223,55 @@ func (fs *MultiRootFs) validateExtension(filename string) error {
 	return fmt.Errorf("不允许的文件类型: .%s", ext)
 }
 
+// ---- permission helpers ----
+
+// canCreatePublic 公共目录上传总开关校验（与 Web 上传一致，不豁免管理员）。
+// backend 为 nil 时保持旧行为（不校验）。
+func (fs *MultiRootFs) canCreatePublic() bool {
+	return fs.backend == nil || fs.backend.UploadEnabled()
+}
+
+// canManagePublic 判定对 public 下已有文件执行覆盖/删除/重命名是否允许：
+// 匿名一律拒绝；管理员放行；否则仅当索引记录上传者 IP 与当前客户端 IP 一致时放行。
+// backend 为 nil 时一律拒绝（保守安全）。
+func (fs *MultiRootFs) canManagePublic(rootName, relPath string) bool {
+	if fs.backend == nil || rootName == "" || relPath == "" || relPath == "/" {
+		return false
+	}
+	if fs.userUUID == "" {
+		return false
+	}
+	if fs.backend.IsAdmin(fs.userUUID) {
+		return true
+	}
+	ip := fs.backend.PublicUploaderIP(rootName, relPath)
+	return ip != "" && ip == fs.clientIP
+}
+
+// existsOnDisk 判断磁盘上是否存在指定文件（目录视为存在）。
+func existsOnDisk(realPath string) bool {
+	_, err := afero.NewOsFs().Stat(realPath)
+	return err == nil
+}
+
+// checkDiskSpace 创建/写入前的磁盘空间与配额检查（backend 为 nil 时跳过）。
+func (fs *MultiRootFs) checkDiskSpace(realPath string, private bool) error {
+	if fs.backend == nil {
+		return nil
+	}
+	// required=1 仅验证分区可写；FTP 流式传输无法预知最终大小，
+	// 真实大小上限由 sizeLimitedFile（偏移感知）兜底。
+	if err := fs.backend.CheckDiskSpace(filepath.Dir(realPath), 1); err != nil {
+		return err
+	}
+	if private && fs.userUUID != "" {
+		if err := fs.backend.CheckPrivateQuota(fs.userUUID, 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ---- afero.Fs implementation ----
 
 func (fs *MultiRootFs) Create(name string) (afero.File, error) {
@@ -194,25 +279,25 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Validate extension for public namespace
-	if fs.isPublicPath(name) {
+	isPublic := fs.isPublicPath(name)
+	isPrivate := fs.isPrivatePath(name)
+	if isPublic {
+		if !fs.canCreatePublic() {
+			return nil, os.ErrPermission
+		}
 		if err := fs.validateExtension(filepath.Base(name)); err != nil {
 			return nil, err
 		}
+	}
+	if err := fs.checkDiskSpace(realPath, isPrivate); err != nil {
+		return nil, err
 	}
 	f, err := afero.NewOsFs().Create(realPath)
 	if err != nil {
 		return nil, err
 	}
-	// Record operation
-	if fs.recordFn != nil {
-		fs.recordFn("upload", name, filepath.Base(name), ftpRootName(name), "", fs.clientIP, fs.userUUID, 0)
-	}
-	// Wrap for size limiting in public namespace
-	if fs.isPublicPath(name) && fs.maxFileSize > 0 {
-		return &sizeLimitedFile{File: f, maxSize: fs.maxFileSize, path: realPath}, nil
-	}
-	return f, nil
+	// 包装：传输完成后（Close）记录操作并同步索引/触发哈希
+	return fs.wrapWriteFile(f, name, realPath, isPublic, isPrivate)
 }
 
 func (fs *MultiRootFs) Mkdir(name string, perm os.FileMode) error {
@@ -220,7 +305,11 @@ func (fs *MultiRootFs) Mkdir(name string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return afero.NewOsFs().Mkdir(realPath, perm)
+	if err := afero.NewOsFs().Mkdir(realPath, perm); err != nil {
+		return err
+	}
+	fs.recordMkdir(name)
+	return nil
 }
 
 func (fs *MultiRootFs) MkdirAll(name string, perm os.FileMode) error {
@@ -228,7 +317,20 @@ func (fs *MultiRootFs) MkdirAll(name string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return afero.NewOsFs().MkdirAll(realPath, perm)
+	if err := afero.NewOsFs().MkdirAll(realPath, perm); err != nil {
+		return err
+	}
+	fs.recordMkdir(name)
+	return nil
+}
+
+// recordMkdir 记录创建目录操作（与 WebDAV 行为一致）。
+func (fs *MultiRootFs) recordMkdir(name string) {
+	if fs.recordFn == nil {
+		return
+	}
+	rootName, relPath := fs.recordPath(name)
+	fs.recordFn("mkdir", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, 0)
 }
 
 func (fs *MultiRootFs) Open(name string) (afero.File, error) {
@@ -236,7 +338,16 @@ func (fs *MultiRootFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return afero.NewOsFs().Open(realPath)
+	f, err := afero.NewOsFs().Open(realPath)
+	if err != nil {
+		return nil, err
+	}
+	// RETR 下载记录（仅文件，非目录）
+	fi, serr := f.Stat()
+	if serr == nil && !fi.IsDir() {
+		fs.recordDownload(name, fi.Size())
+	}
+	return f, nil
 }
 
 func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
@@ -244,58 +355,159 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 	if err != nil {
 		return nil, err
 	}
-	// Validate extension for write operations in public namespace
-	isWrite := flag&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC) != 0
-	if isWrite && fs.isPublicPath(name) {
-		if err := fs.validateExtension(filepath.Base(name)); err != nil {
+	isWrite := flag&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_APPEND) != 0
+	isPublic := fs.isPublicPath(name)
+	isPrivate := fs.isPrivatePath(name)
+
+	if isWrite {
+		if isPublic {
+			if !fs.canCreatePublic() {
+				return nil, os.ErrPermission
+			}
+			if err := fs.validateExtension(filepath.Base(name)); err != nil {
+				return nil, err
+			}
+			// 覆盖已有文件需管理权限（上传者 IP 一致或管理员）
+			if existsOnDisk(realPath) {
+				rootName, relPath := fs.recordPath(name)
+				if !fs.canManagePublic(rootName, relPath) {
+					return nil, os.ErrPermission
+				}
+			}
+		}
+		if isPrivate {
+			// 与 Web 私有上传一致：不允许覆盖已有文件（每次上传生成独立分享码）
+			if existsOnDisk(realPath) {
+				return nil, os.ErrPermission
+			}
+		}
+		if err := fs.checkDiskSpace(realPath, isPrivate); err != nil {
 			return nil, err
 		}
+	} else {
+		// 读模式（RETR）：打开成功后记录下载
+		f, err := afero.NewOsFs().OpenFile(realPath, flag, perm)
+		if err != nil {
+			return nil, err
+		}
+		if fi, serr := f.Stat(); serr == nil && !fi.IsDir() {
+			fs.recordDownload(name, fi.Size())
+		}
+		return f, nil
 	}
+
 	f, err := afero.NewOsFs().OpenFile(realPath, flag, perm)
 	if err != nil {
 		return nil, err
 	}
-	// Wrap for size limiting in public namespace on write operations
-	if isWrite && fs.isPublicPath(name) && fs.maxFileSize > 0 {
-		wrapped := &sizeLimitedFile{File: f, maxSize: fs.maxFileSize, path: realPath}
-		return wrapped, nil
+	return fs.wrapWriteFile(f, name, realPath, isPublic, isPrivate)
+}
+
+// recordDownload 记录下载操作（含真实文件大小）。
+func (fs *MultiRootFs) recordDownload(name string, size int64) {
+	if fs.recordFn == nil {
+		return
 	}
-	return f, nil
+	rootName, relPath := fs.recordPath(name)
+	fs.recordFn("download", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, size)
+}
+
+// wrapWriteFile 包装写文件：传输完成后（Close）记录上传操作并同步索引/触发哈希；
+// 同时叠加偏移感知的大小限制（public/private 一致）。
+func (fs *MultiRootFs) wrapWriteFile(f afero.File, name, realPath string, isPublic, isPrivate bool) (afero.File, error) {
+	var limited afero.File = f
+	if fs.maxFileSize > 0 {
+		limited = &sizeLimitedFile{File: f, maxSize: fs.maxFileSize}
+	}
+	rec := &recordingFile{
+		File: limited,
+		path: realPath,
+	}
+	rootName, relPath := fs.recordPath(name)
+	rec.onClose = func(size int64) error {
+		if fs.recordFn != nil {
+			fs.recordFn("upload", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, size)
+		}
+		if fs.backend == nil {
+			return nil
+		}
+		if isPublic {
+			fs.backend.SyncPublicFile(rootName, relPath, fs.clientIP)
+			return nil
+		}
+		if isPrivate && fs.userUUID != "" {
+			if err := fs.backend.AddPrivateFile(fs.userUUID, relPath, filepath.Base(name), size); err != nil {
+				utils.Warn("FTP 私有上传写入索引失败",
+					utils.String("path", relPath),
+					utils.Err(err))
+				return err
+			}
+		}
+		return nil
+	}
+	return rec, nil
 }
 
 func (fs *MultiRootFs) Remove(name string) error {
-	// Block anonymous users from deleting public files
-	if fs.isPublicPath(name) && fs.userUUID == "" {
-		return os.ErrPermission
+	if fs.isPublicPath(name) {
+		rootName, relPath := fs.recordPath(name)
+		if !fs.canManagePublic(rootName, relPath) {
+			return os.ErrPermission
+		}
 	}
 	realPath, err := fs.resolvePath(name)
 	if err != nil {
 		return err
 	}
-	err = afero.NewOsFs().Remove(realPath)
-	if err == nil && fs.recordFn != nil {
-		fs.recordFn("delete", name, filepath.Base(name), ftpRootName(name), "", fs.clientIP, fs.userUUID, 0)
+	if err := afero.NewOsFs().Remove(realPath); err != nil {
+		return err
 	}
-	return err
+	fs.recordRemove(name)
+	return nil
 }
 
 func (fs *MultiRootFs) RemoveAll(name string) error {
-	// Block anonymous users from deleting public directories
-	if fs.isPublicPath(name) && fs.userUUID == "" {
-		return os.ErrPermission
+	if fs.isPublicPath(name) {
+		rootName, relPath := fs.recordPath(name)
+		if !fs.canManagePublic(rootName, relPath) {
+			return os.ErrPermission
+		}
 	}
 	realPath, err := fs.resolvePath(name)
 	if err != nil {
 		return err
 	}
-	err = afero.NewOsFs().RemoveAll(realPath)
-	if err == nil && fs.recordFn != nil {
-		fs.recordFn("delete", name, filepath.Base(name), ftpRootName(name), "", fs.clientIP, fs.userUUID, 0)
+	if err := afero.NewOsFs().RemoveAll(realPath); err != nil {
+		return err
 	}
-	return err
+	fs.recordRemove(name)
+	return nil
+}
+
+// recordRemove 记录删除操作并同步索引（公开软删 file_records_public，私有软删 file_records_private）。
+func (fs *MultiRootFs) recordRemove(name string) {
+	isPublic := fs.isPublicPath(name)
+	rootName, relPath := fs.recordPath(name)
+	if fs.recordFn != nil {
+		fs.recordFn("delete", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, 0)
+	}
+	if fs.backend == nil {
+		return
+	}
+	if isPublic {
+		fs.backend.RemovePublicFile(rootName, relPath)
+	} else if fs.isPrivatePath(name) && fs.userUUID != "" {
+		fs.backend.SoftDeletePrivateFile(fs.userUUID, relPath)
+	}
 }
 
 func (fs *MultiRootFs) Rename(oldName, newName string) error {
+	oldNS := fs.getNamespace(oldName)
+	newNS := fs.getNamespace(newName)
+	// 禁止跨命名空间（public↔private 互移会窃取/泄露文件）
+	if oldNS == "" || oldNS != newNS {
+		return os.ErrPermission
+	}
 	oldPath, err := fs.resolvePath(oldName)
 	if err != nil {
 		return err
@@ -304,7 +516,38 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	return afero.NewOsFs().Rename(oldPath, newPath)
+
+	oldRoot, oldRel := fs.recordPath(oldName)
+	newRoot, newRel := fs.recordPath(newName)
+
+	if oldNS == "public" {
+		// 仅同根内重命名；匿名一律禁止；管理员/上传者本人放行
+		if oldRoot != newRoot {
+			return os.ErrPermission
+		}
+		if !fs.canManagePublic(oldRoot, oldRel) {
+			return os.ErrPermission
+		}
+	}
+	// 目标已存在（文件或目录）→ 拒绝覆盖
+	if existsOnDisk(newPath) {
+		return os.ErrExist
+	}
+	if err := afero.NewOsFs().Rename(oldPath, newPath); err != nil {
+		return err
+	}
+	if fs.recordFn != nil {
+		fs.recordFn("rename", newRel, filepath.Base(newName), newRoot, "", fs.clientIP, fs.userUUID, 0)
+	}
+	if fs.backend == nil {
+		return nil
+	}
+	if oldNS == "public" {
+		fs.backend.MovePublicFile(oldRoot, oldRel, newRel)
+	} else if oldNS == "private" && fs.userUUID != "" {
+		fs.backend.RenamePrivateFile(fs.userUUID, oldRel, newRel)
+	}
+	return nil
 }
 
 func (fs *MultiRootFs) Stat(name string) (os.FileInfo, error) {
@@ -321,7 +564,14 @@ func (fs *MultiRootFs) Stat(name string) (os.FileInfo, error) {
 	prefix, rest := splitFtpPath(cleaned)
 	if rest == "" {
 		// Top-level virtual dirs (public, private)
-		if prefix == "public" || prefix == "private" {
+		switch prefix {
+		case "public":
+			return &virtualDirInfo{name: prefix}, nil
+		case "private":
+			// 私有未启用或匿名用户时，不应暴露私有存储的存在性
+			if fs.privateDir == "" || fs.userUUID == "" {
+				return nil, os.ErrPermission
+			}
 			return &virtualDirInfo{name: prefix}, nil
 		}
 		return nil, os.ErrNotExist
@@ -335,9 +585,9 @@ func (fs *MultiRootFs) Stat(name string) (os.FileInfo, error) {
 			rootPath, ok := fs.rootNames[subParts[0]]
 			if ok {
 				fi, err := afero.NewOsFs().Stat(rootPath)
-				if err != nil {
-					// Root path doesn't exist on disk; return virtual dir
-					return &virtualDirInfo{name: subParts[0]}, nil
+				if err != nil || !fi.IsDir() {
+					// 根目录在磁盘上不存在/不可访问时按不存在处理（避免幽灵目录）
+					return nil, os.ErrNotExist
 				}
 				return fi, nil
 			}
@@ -396,9 +646,12 @@ func (fs *MultiRootFs) readDir(name string) ([]os.FileInfo, error) {
 
 	// /public → list root names (photos, documents, etc.)
 	if prefix == "public" && rest == "" {
+		// 只列出磁盘上真实存在的根目录，避免幽灵目录
 		entries := make([]os.FileInfo, 0, len(fs.rootNames))
-		for name := range fs.rootNames {
-			entries = append(entries, &virtualDirInfo{name: name})
+		for name, rootPath := range fs.rootNames {
+			if fi, err := afero.NewOsFs().Stat(rootPath); err == nil && fi.IsDir() {
+				entries = append(entries, &virtualDirInfo{name: name})
+			}
 		}
 		sort.Slice(entries, func(i, j int) bool {
 			return entries[i].Name() < entries[j].Name()
@@ -474,8 +727,13 @@ func (a *ftpDriverAdapter) Open(name string) (afero.File, error) {
 	if prefix == "public" {
 		subParts := strings.SplitN(rest, "/", 2)
 		if len(subParts) == 1 {
-			// Just a root name — virtual directory listing
-			return &virtualDir{fs: a.fs, name: name}, nil
+			// Just a root name — virtual directory listing (仅磁盘存在的根)
+			if rootPath, ok := a.fs.rootNames[subParts[0]]; ok {
+				if fi, err := afero.NewOsFs().Stat(rootPath); err == nil && fi.IsDir() {
+					return &virtualDir{fs: a.fs, name: name}, nil
+				}
+			}
+			return nil, os.ErrNotExist
 		}
 	}
 
@@ -568,19 +826,28 @@ func (d *virtualDir) Truncate(size int64) error {
 }
 
 // sizeLimitedFile wraps an afero.File and enforces a maximum file size on writes.
+// offset 跟踪底层文件的逻辑写入位置（含 Seek），REST 续传偏移也纳入上限判定，
+// 避免通过 REST 大偏移 + 少量写入生成超限稀疏文件。
 type sizeLimitedFile struct {
 	afero.File
 	maxSize int64
-	written int64
-	path    string
+	offset  int64 // 当前写入偏移（Seek/Write/WriteAt 同步维护）
+}
+
+func (f *sizeLimitedFile) Seek(offset int64, whence int) (int64, error) {
+	n, err := f.File.Seek(offset, whence)
+	if err == nil {
+		f.offset = n
+	}
+	return n, err
 }
 
 func (f *sizeLimitedFile) Write(p []byte) (int, error) {
-	if f.maxSize > 0 && f.written+int64(len(p)) > f.maxSize {
+	if f.maxSize > 0 && f.offset+int64(len(p)) > f.maxSize {
 		return 0, fmt.Errorf("文件大小超过最大限制 (%d bytes)", f.maxSize)
 	}
 	n, err := f.File.Write(p)
-	f.written += int64(n)
+	f.offset += int64(n)
 	return n, err
 }
 
@@ -589,19 +856,43 @@ func (f *sizeLimitedFile) WriteAt(p []byte, off int64) (int, error) {
 		return 0, fmt.Errorf("文件大小超过最大限制 (%d bytes)", f.maxSize)
 	}
 	n, err := f.File.WriteAt(p, off)
-	if off+int64(n) > f.written {
-		f.written = off + int64(n)
+	if off+int64(n) > f.offset {
+		f.offset = off + int64(n)
 	}
 	return n, err
 }
 
 func (f *sizeLimitedFile) WriteString(s string) (ret int, err error) {
-	if f.maxSize > 0 && f.written+int64(len(s)) > f.maxSize {
-		return 0, fmt.Errorf("文件大小超过最大限制 (%d bytes)", f.maxSize)
+	return f.Write([]byte(s))
+}
+
+// recordingFile 包装写文件：传输完成后（Close）以真实大小执行 onClose 回调
+// （记录上传操作、同步索引、触发哈希），避免在创建时留下 0 大小的失真记录。
+// onClose 返回错误时（如私有配额超限）回传 FTP 客户端，使 STOR 以失败结束。
+type recordingFile struct {
+	afero.File
+	path    string
+	onClose func(size int64) error
+	closed  bool
+}
+
+func (f *recordingFile) Close() error {
+	if f.closed {
+		return f.File.Close()
 	}
-	ret, err = f.File.WriteString(s)
-	f.written += int64(ret)
-	return ret, err
+	f.closed = true
+	err := f.File.Close()
+	if err != nil {
+		return err
+	}
+	size := int64(0)
+	if fi, serr := afero.NewOsFs().Stat(f.path); serr == nil {
+		size = fi.Size()
+	}
+	if f.onClose != nil {
+		return f.onClose(size)
+	}
+	return nil
 }
 
 // virtualDirInfo implements os.FileInfo for virtual directories.

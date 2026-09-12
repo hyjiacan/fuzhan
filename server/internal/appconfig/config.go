@@ -66,6 +66,9 @@ type AccountConfig struct {
 type FTPConfig struct {
 	Enabled bool `yaml:"enabled"`
 	Port    int  `yaml:"port"` // 默认 21
+	// PassivePortStart/PassivePortEnd 被动模式数据端口范围（默认 2122-2221）
+	PassivePortStart int `yaml:"passive_port_start,omitempty"`
+	PassivePortEnd   int `yaml:"passive_port_end,omitempty"`
 }
 
 // FTPSConfig FTPS 服务器配置
@@ -288,18 +291,22 @@ func GetReservedUsernames() []string {
 	account := GlobalConfig.Account
 	configMu.RUnlock()
 	reserved := account.ReservedUsernames
-	// 将匿名用户名动态加入保留列表
-	anonymousUser := account.Anonymous.Username
-	if anonymousUser != "" {
+	// 将匿名用户名动态加入保留列表：配置的匿名用户名，以及 FTP/WebDAV
+	// 始终接受的 "anonymous" 别名，避免注册同名账户后被匿名通道劫持
+	names := []string{account.Anonymous.Username, "anonymous"}
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
 		found := false
 		for _, u := range reserved {
-			if strings.EqualFold(u, anonymousUser) {
+			if strings.EqualFold(u, name) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			reserved = append(reserved, anonymousUser)
+			reserved = append(reserved, name)
 		}
 	}
 	return reserved

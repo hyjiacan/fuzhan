@@ -19,13 +19,18 @@ import (
 // AuthUserFunc 用户认证函数（由 main.go 注入）
 type AuthUserFunc func(username, password string) (string, error)
 
-// FTPHandler FTP 服务器处理器
+// FTPHandler FTP/FTPS 服务器处理器。
+// FTP（明文，默认 21）与 FTPS（隐式 TLS，默认 990）相互独立：
+// 仅在各自配置启用时监听对应端口；FTPS 启用后强制 TLS（ImplicitEncryption），
+// 未启用 FTPS 时不会以明文形式在 990 提供 FTP。
 type FTPHandler struct {
-	server     *ftpserver.FtpServer
+	servers    []*ftpserver.FtpServer
+	drivers    []*ftpDriver
 	rootDirs   map[string]string
 	privateDir string
 	authUser   AuthUserFunc
 	recordFn   ftpfs.OperationRecordFunc
+	backend    ftpfs.FtpBackend
 }
 
 // NewFTPHandler 创建 FTP 处理器
@@ -43,20 +48,29 @@ func (h *FTPHandler) SetRecordFunc(fn ftpfs.OperationRecordFunc) {
 	h.recordFn = fn
 }
 
+// SetBackend 设置服务层后端能力（权限/索引/配额）
+func (h *FTPHandler) SetBackend(backend ftpfs.FtpBackend) {
+	h.backend = backend
+}
+
 // ftpDriver FTP驱动实现
 type ftpDriver struct {
-	rootDirs    map[string]string
-	privateDir  string
-	authUser    AuthUserFunc
-	recordFn    ftpfs.OperationRecordFunc
-	host        string
-	port        int
-	tlsCfg      *tls.Config
-	activeConns int32
-	maxConns    int32
-	connsMu     sync.Mutex
-	failCounts  map[string]*loginFailEntry // IP → failure counter
-	failMu      sync.Mutex
+	rootDirs       map[string]string
+	privateDir     string
+	authUser       AuthUserFunc
+	recordFn       ftpfs.OperationRecordFunc
+	backend        ftpfs.FtpBackend
+	host           string
+	port           int
+	tlsCfg         *tls.Config
+	tlsRequirement ftpserver.TLSRequirement
+	passive        *ftpserver.PortRange
+	activeConns    int32
+	maxConns       int32
+	connsMu        sync.Mutex
+	failCounts     map[string]*loginFailEntry // IP → failure counter
+	failMu         sync.Mutex
+	stopCh         chan struct{}
 }
 
 type loginFailEntry struct {
@@ -71,27 +85,45 @@ const (
 	loginRateLimitDelay = 2 * time.Second // 超过阈值后的延迟
 )
 
+// passiveRange 解析被动模式数据端口范围（默认 2122-2221）。
+func passiveRange(cfg appconfig.FTPConfig) *ftpserver.PortRange {
+	start, end := cfg.PassivePortStart, cfg.PassivePortEnd
+	if start <= 0 {
+		start = 2122
+	}
+	if end <= 0 {
+		end = 2221
+	}
+	if end < start {
+		end = start + 99
+	}
+	return &ftpserver.PortRange{Start: start, End: end}
+}
+
 func (d *ftpDriver) GetSettings() (*ftpserver.Settings, error) {
 	addr := fmt.Sprintf("%s:%d", d.host, d.port)
 	return &ftpserver.Settings{
-		ListenAddr: addr,
-		PassiveTransferPortRange: &ftpserver.PortRange{
-			Start: 2122,
-			End:   2221, // 100 passive ports
-		},
+		ListenAddr:               addr,
+		TLSRequired:              d.tlsRequirement,
+		PassiveTransferPortRange: d.passive,
 	}, nil
 }
 
 func (d *ftpDriver) ClientConnected(cc ftpserver.ClientContext) (string, error) {
-	// Connection limit check
-	if d.maxConns > 0 && atomic.LoadInt32(&d.activeConns) >= d.maxConns {
-		utils.Warn("FTP连接数已达上限，拒绝新连接",
-			utils.Int("active", int(atomic.LoadInt32(&d.activeConns))),
-			utils.Int("max", int(d.maxConns)),
-			utils.Stringer("addr", cc.RemoteAddr()))
-		return "", fmt.Errorf("服务器连接数已达上限，请稍后重试")
+	// Connection limit check（CAS 避免并发越过上限）
+	if d.maxConns > 0 {
+		n := atomic.AddInt32(&d.activeConns, 1)
+		if n > d.maxConns {
+			atomic.AddInt32(&d.activeConns, -1)
+			utils.Warn("FTP连接数已达上限，拒绝新连接",
+				utils.Int("active", int(n-1)),
+				utils.Int("max", int(d.maxConns)),
+				utils.Stringer("addr", cc.RemoteAddr()))
+			return "", fmt.Errorf("服务器连接数已达上限，请稍后重试")
+		}
+	} else {
+		atomic.AddInt32(&d.activeConns, 1)
 	}
-	atomic.AddInt32(&d.activeConns, 1)
 	connID := cc.ID()
 	utils.Info("FTP客户端连接",
 		utils.Int("id", int(connID)),
@@ -105,6 +137,30 @@ func (d *ftpDriver) ClientDisconnected(cc ftpserver.ClientContext) {
 	utils.Info("FTP客户端断开",
 		utils.Int("id", int(cc.ID())),
 		utils.Int("activeConns", int(atomic.LoadInt32(&d.activeConns))))
+}
+
+// startFailCleanup 定期清理过期的登录失败计数，防止 IP 条目无限增长。
+func (d *ftpDriver) startFailCleanup() {
+	d.stopCh = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				d.failMu.Lock()
+				now := time.Now()
+				for ip, e := range d.failCounts {
+					if now.Sub(e.lastFail) > loginFailWindow {
+						delete(d.failCounts, ip)
+					}
+				}
+				d.failMu.Unlock()
+			case <-d.stopCh:
+				return
+			}
+		}
+	}()
 }
 
 func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftpserver.ClientDriver, error) {
@@ -144,7 +200,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		utils.Info("FTP匿名用户登录成功",
 			utils.String("user", user),
 			utils.String("ip", clientIP))
-		multiFs := ftpfs.NewMultiRootFs(d.rootDirs, "", "", clientIP, d.recordFn)
+		multiFs := ftpfs.NewMultiRootFs(d.rootDirs, "", "", clientIP, d.recordFn, d.backend)
 		return &ftpClientDriver{Fs: multiFs.ClientDriver()}, nil
 	}
 
@@ -180,7 +236,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 	utils.Info("FTP用户登录成功",
 		utils.String("user", user),
 		utils.String("ip", clientIP))
-	multiFs := ftpfs.NewMultiRootFs(d.rootDirs, d.privateDir, uuid, clientIP, d.recordFn)
+	multiFs := ftpfs.NewMultiRootFs(d.rootDirs, d.privateDir, uuid, clientIP, d.recordFn, d.backend)
 	return &ftpClientDriver{Fs: multiFs.ClientDriver()}, nil
 }
 
@@ -193,17 +249,17 @@ type ftpClientDriver struct {
 	afero.Fs
 }
 
-// Start 启动 FTP 服务器
+// Start 启动 FTP/FTPS 服务器。
+// FTP 与 FTPS 独立监听各自端口：FTPS 启用时强制隐式 TLS（990 默认），
+// FTP 保持明文；仅当对应配置启用时才启动。
 func (h *FTPHandler) Start() error {
 	serverCfg := appconfig.GlobalConfig.Server
-
-	// 尝试 FTPS（TLS启用时），否则回退到 FTP
 	ftpCfg := serverCfg.FTP
 	ftpsCfg := serverCfg.FTPS
-	useTLS := ftpsCfg.Enabled
-	enabled := ftpCfg.Enabled || ftpsCfg.Enabled
+	ftpEnabled := ftpCfg.Enabled
+	ftpsEnabled := ftpsCfg.Enabled
 
-	if !enabled {
+	if !ftpEnabled && !ftpsEnabled {
 		utils.Info("FTP/FTPS服务未启用")
 		return nil
 	}
@@ -216,61 +272,86 @@ func (h *FTPHandler) Start() error {
 	}
 
 	if len(h.rootDirs) == 0 {
-		h.rootDirs = map[string]string{"files": "."}
+		// 正常启动路径 initRootNames 已保证根目录非空；此处兜底避免暴露进程工作目录
+		utils.Warn("未配置共享根目录，FTP/FTPS服务不启动")
+		return nil
 	}
 
-	// TLS 配置（共享 server.tls）
-	var tlsCfg *tls.Config
-	if useTLS && serverCfg.TLS.CertFile != "" && serverCfg.TLS.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(serverCfg.TLS.CertFile, serverCfg.TLS.KeyFile)
-		if err != nil {
-			// FTPS is explicitly enabled but cert loading failed — refuse to start as plain FTP
-			return fmt.Errorf("FTPS已启用但TLS证书加载失败: %w", err)
-		}
-		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}}
-	} else if useTLS {
-		// FTPS enabled but no cert configured
-		return fmt.Errorf("FTPS已启用但未配置TLS证书文件 (server.tls.cert_file / server.tls.key_file)")
-	}
-
-	// 确定端口和协议
 	host := serverCfg.Host
 	if host == "" {
 		host = "0.0.0.0"
 	}
-	port := ftpCfg.Port
-	if port <= 0 {
-		port = 21
+
+	// FTPS 必须配置 TLS 证书，否则拒绝启动
+	var tlsCfg *tls.Config
+	if ftpsEnabled {
+		if serverCfg.TLS.CertFile == "" || serverCfg.TLS.KeyFile == "" {
+			return fmt.Errorf("FTPS已启用但未配置TLS证书文件 (server.tls.cert_file / server.tls.key_file)")
+		}
+		cert, err := tls.LoadX509KeyPair(serverCfg.TLS.CertFile, serverCfg.TLS.KeyFile)
+		if err != nil {
+			return fmt.Errorf("FTPS已启用但TLS证书加载失败: %w", err)
+		}
+		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
 
-	// Check if port is already in use before starting
-	if appconfig.IsPortInUse(port) {
-		return fmt.Errorf("FTP端口 %d 已被占用", port)
+	if ftpEnabled {
+		port := ftpCfg.Port
+		if port <= 0 {
+			port = 21
+		}
+		if appconfig.IsPortInUse(port) {
+			return fmt.Errorf("FTP端口 %d 已被占用", port)
+		}
+		if err := h.startOne(host, port, ftpCfg, tlsCfg, ftpserver.ClearOrEncrypted, "FTP"); err != nil {
+			return err
+		}
 	}
 
+	if ftpsEnabled {
+		port := ftpsCfg.Port
+		if port <= 0 {
+			port = 990
+		}
+		if appconfig.IsPortInUse(port) {
+			return fmt.Errorf("FTPS端口 %d 已被占用", port)
+		}
+		if err := h.startOne(host, port, ftpCfg, tlsCfg, ftpserver.ImplicitEncryption, "FTPS"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// startOne 启动单个 FTP/FTPS 监听实例。
+func (h *FTPHandler) startOne(host string, port int, ftpCfg appconfig.FTPConfig, tlsCfg *tls.Config, tlsRequired ftpserver.TLSRequirement, proto string) error {
 	driver := &ftpDriver{
-		rootDirs:   h.rootDirs,
-		privateDir: h.privateDir,
-		authUser:   h.authUser,
-		recordFn:   h.recordFn,
-		host:       host,
-		port:       port,
-		tlsCfg:     tlsCfg,
-		maxConns:   maxConnections,
-		failCounts: make(map[string]*loginFailEntry),
+		rootDirs:       h.rootDirs,
+		privateDir:     h.privateDir,
+		authUser:       h.authUser,
+		recordFn:       h.recordFn,
+		backend:        h.backend,
+		host:           host,
+		port:           port,
+		tlsCfg:         tlsCfg,
+		tlsRequirement: tlsRequired,
+		passive:        passiveRange(ftpCfg),
+		maxConns:       maxConnections,
+		failCounts:     make(map[string]*loginFailEntry),
 	}
 
-	// 创建 FTP 服务器
-	h.server = ftpserver.NewFtpServer(driver)
+	server := ftpserver.NewFtpServer(driver)
+	driver.startFailCleanup()
+	h.servers = append(h.servers, server)
+	h.drivers = append(h.drivers, driver)
 
-	// 启动服务
-	proto := "FTP"
-	if useTLS {
-		proto = "FTPS"
-	}
-	utils.Info(proto+"服务器启动中", utils.Int("port", port), utils.String("host", host), utils.Bool("tls", useTLS))
+	utils.Info(proto+"服务器启动中",
+		utils.Int("port", port),
+		utils.String("host", host),
+		utils.Bool("tls", tlsCfg != nil))
 	go func() {
-		if err := h.server.ListenAndServe(); err != nil {
+		if err := server.ListenAndServe(); err != nil {
 			utils.Error(proto+"服务器已停止", utils.Err(err))
 		}
 	}()
@@ -278,11 +359,17 @@ func (h *FTPHandler) Start() error {
 	return nil
 }
 
-// Stop 停止 FTP 服务器
+// Stop 停止 FTP/FTPS 服务器
 func (h *FTPHandler) Stop() {
-	if h.server != nil {
-		h.server.Stop()
-		h.server = nil
+	for _, server := range h.servers {
+		server.Stop()
 	}
-	utils.Info("FTP服务器已停止")
+	for _, d := range h.drivers {
+		if d.stopCh != nil {
+			close(d.stopCh)
+		}
+	}
+	h.servers = nil
+	h.drivers = nil
+	utils.Info("FTP/FTPS服务器已停止")
 }

@@ -47,7 +47,10 @@ server:
   ftp:
     enabled: false
     port: 21           # FTP 端口
-  # FTPS 配置（启用需配置 server.tls）
+    # 被动模式数据端口范围（留空使用默认 2122-2221）
+    # passive_port_start: 2122
+    # passive_port_end: 2221
+  # FTPS 配置（仅 enabled: true 时强制隐式 TLS，需配置 server.tls）
   ftps:
     enabled: false
     port: 990          # FTPS 端口

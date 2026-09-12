@@ -112,11 +112,17 @@ server:
   ftp:
     enabled: false
     port: 21           # FTP 端口
-  # FTPS 配置（启用需配置 server.tls）
+    # 被动模式数据端口范围（留空使用默认 2122-2221）
+    # passive_port_start: 2122
+    # passive_port_end: 2221
+  # FTPS 配置（仅 enabled: true 时强制隐式 TLS，需配置 server.tls 证书）
   ftps:
     enabled: false
     port: 990          # FTPS 端口
 ```
+
+> FTPS 不是强制的：只有将 `server.ftps.enabled` 设为 `true` 才会在 FTPS 端口强制隐式 TLS。
+> 仅配置了 `server.tls` 证书（用于 HTTPS）不会自动启用 FTPS，FTP 端口仍保持明文。
 
 ### 认证方式
 
@@ -178,7 +184,8 @@ ftp> passive
 
 ### FTPS 连接（加密）
 
-启用 TLS 加密后，所有 FTP 连接需使用 FTPS：
+仅在服务端 `server.ftps.enabled: true` 时，FTPS 端口（默认 990）才会强制隐式 TLS：
+所有连接必须使用 FTPS 协议。未启用 FTPS 时，FTP 端口（默认 21）保持明文。
 
 ```bash
 # 使用 lftp（Linux/macOS）

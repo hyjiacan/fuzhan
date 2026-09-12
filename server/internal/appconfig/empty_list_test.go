@@ -42,9 +42,10 @@ func TestGetReservedUsernames_EmptyMeansOnlyAnonymous(t *testing.T) {
 		wantReserved bool // 是否额外出现 anonymous
 		wantLen      int
 	}{
-		{name: "nil reserved means unlimited", reserved: nil, anon: "public", wantReserved: true, wantLen: 1},
-		{name: "empty reserved means unlimited", reserved: []string{}, anon: "public", wantReserved: true, wantLen: 1},
-		{name: "configured list kept plus anonymous", reserved: []string{"admin", "root"}, anon: "public", wantReserved: true, wantLen: 3},
+		{name: "nil reserved means unlimited", reserved: nil, anon: "public", wantReserved: true, wantLen: 2},
+		{name: "empty reserved means unlimited", reserved: []string{}, anon: "public", wantReserved: true, wantLen: 2},
+		{name: "configured list kept plus anonymous", reserved: []string{"admin", "root"}, anon: "public", wantReserved: true, wantLen: 4},
+		{name: "anonymous alias always reserved", reserved: nil, anon: "", wantReserved: true, wantLen: 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,8 +70,11 @@ func TestGetReservedUsernames_EmptyMeansOnlyAnonymous(t *testing.T) {
 					}
 				}
 			}
-			if tc.wantReserved && !contains(got, "public") {
-				t.Fatalf("got %v, want contains anonymous public", got)
+			if !contains(got, "anonymous") {
+				t.Fatalf("got %v, want contains anonymous", got)
+			}
+			if tc.wantReserved && tc.anon != "" && !contains(got, tc.anon) {
+				t.Fatalf("got %v, want contains %s", got, tc.anon)
 			}
 		})
 	}

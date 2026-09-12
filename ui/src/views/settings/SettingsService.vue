@@ -50,6 +50,14 @@
             <el-input-number v-model="settings.server.ftp.port" :min="1" :max="65535" />
             <div class="field-hint">FTP 端口，默认 21</div>
           </el-form-item>
+          <el-form-item label="被动端口起始" v-if="settings.server.ftp.enabled">
+            <el-input-number v-model="settings.server.ftp.passivePortStart" :min="1" :max="65535" />
+            <div class="field-hint">被动模式数据端口起始，默认 2122</div>
+          </el-form-item>
+          <el-form-item label="被动端口结束" v-if="settings.server.ftp.enabled">
+            <el-input-number v-model="settings.server.ftp.passivePortEnd" :min="1" :max="65535" />
+            <div class="field-hint">被动模式数据端口结束，默认 2221</div>
+          </el-form-item>
         </el-form>
       </el-card>
     </el-col>

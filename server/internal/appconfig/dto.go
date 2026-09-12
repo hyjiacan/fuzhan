@@ -118,8 +118,10 @@ type HTTPConfigResp struct {
 
 // FTPConfigResp FTP 配置响应
 type FTPConfigResp struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
+	Enabled          bool `json:"enabled"`
+	Port             int  `json:"port"`
+	PassivePortStart int  `json:"passivePortStart"`
+	PassivePortEnd   int  `json:"passivePortEnd"`
 }
 
 // FTPSConfigResp FTPS 配置响应
@@ -199,8 +201,10 @@ func (c *Config) ToDTO() ConfigDTO {
 				Port:    c.Server.HTTPS.Port,
 			},
 			FTP: FTPConfigResp{
-				Enabled: c.Server.FTP.Enabled,
-				Port:    c.Server.FTP.Port,
+				Enabled:          c.Server.FTP.Enabled,
+				Port:             c.Server.FTP.Port,
+				PassivePortStart: c.Server.FTP.PassivePortStart,
+				PassivePortEnd:   c.Server.FTP.PassivePortEnd,
 			},
 			FTPS: FTPSConfigResp{
 				Enabled: c.Server.FTPS.Enabled,
@@ -280,6 +284,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Server.HTTPS.Port = dto.Server.HTTPS.Port
 	cfg.Server.FTP.Enabled = dto.Server.FTP.Enabled
 	cfg.Server.FTP.Port = dto.Server.FTP.Port
+	cfg.Server.FTP.PassivePortStart = dto.Server.FTP.PassivePortStart
+	cfg.Server.FTP.PassivePortEnd = dto.Server.FTP.PassivePortEnd
 	cfg.Server.FTPS.Enabled = dto.Server.FTPS.Enabled
 	cfg.Server.FTPS.Port = dto.Server.FTPS.Port
 	cfg.Server.WebDAV.Enabled = dto.Server.WebDAV.Enabled

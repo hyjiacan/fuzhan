@@ -154,6 +154,13 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		}
 	})
 
+	// 注入服务层后端能力（权限/索引/配额），使 FTP 与 Web 上传体系共用同一套规则
+	privatePath := ""
+	if appconfig.GlobalConfig.Storage.Private.Enabled {
+		privatePath = appconfig.GlobalConfig.Storage.Private.Path
+	}
+	ftpHandler.SetBackend(ftp.NewFtpBackend(rt.db, rt.indexService, privatePath))
+
 	// 创建 Gin 路由
 	r := gin.New()
 
