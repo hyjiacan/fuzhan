@@ -854,17 +854,26 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   }
 
   .queue-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border-bottom: 1px solid #f5f5f5;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f5f5f5;
 
-    &:last-child {
-      border-bottom: none;
-    }
+      &:last-child {
+        border-bottom: none;
+      }
 
-    .queue-item-info {
+      .queue-item-index {
+        width: 20px;
+        flex-shrink: 0;
+        text-align: center;
+        font-size: 12px;
+        color: #bbb;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .queue-item-info {
       flex: 1;
       min-width: 0;
 

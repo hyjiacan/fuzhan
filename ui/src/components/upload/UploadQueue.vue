@@ -5,11 +5,12 @@
       <span style="color: #999;">等待 {{ pendingCount }} 个</span>
     </div>
     <div class="queue-list" style="max-height: 160px; overflow-y: auto;">
-      <template v-for="item in items" :key="item.id">
+      <template v-for="(item, index) in items" :key="item.id">
         <div
           :ref="el => { if (el) queueItemRefs[item.id] = el }"
           class="queue-item"
         >
+          <div class="queue-item-index" :title="'序号 ' + (index + 1)">{{ index + 1 }}</div>
           <div class="queue-item-info">
             <template v-if="editingId === item.id">
               <el-input
