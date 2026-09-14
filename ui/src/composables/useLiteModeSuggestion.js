@@ -1,4 +1,5 @@
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
+import { safeStorage } from '@/utils/storage'
 
 // 简洁模式（/lite）卡顿提醒。
 // 检测主线程长时间阻塞（页面卡顿）后，询问用户是否切换到简洁模式；
@@ -19,13 +20,13 @@ export function useLiteModeSuggestion() {
 
     setTimeout(() => {
       // 用户已明确选择过，不再干预
-      const choice = localStorage.getItem(STORAGE_KEY)
+      const choice = safeStorage.get(STORAGE_KEY)
       if (choice === 'yes' || choice === 'no') return
 
       let prompted = false
       const maybePrompt = () => {
         if (prompted) return
-        if (localStorage.getItem(STORAGE_KEY) === 'yes' || localStorage.getItem(STORAGE_KEY) === 'no') return
+        if (safeStorage.get(STORAGE_KEY) === 'yes' || safeStorage.get(STORAGE_KEY) === 'no') return
         prompted = true // 每会话仅询问一次，避免重复打扰
         ElMessageBox.confirm(PROMPT_TEXT, PROMPT_TITLE, {
           confirmButtonText: '切换到简洁模式',
@@ -34,10 +35,10 @@ export function useLiteModeSuggestion() {
           closeOnClickModal: false,
           closeOnPressEscape: false
         }).then(() => {
-          localStorage.setItem(STORAGE_KEY, 'yes')
+          safeStorage.set(STORAGE_KEY, 'yes')
           window.location.href = RECOMMEND_URL
         }).catch(() => {
-          localStorage.setItem(STORAGE_KEY, 'no')
+          safeStorage.set(STORAGE_KEY, 'no')
         })
       }
 
@@ -66,7 +67,7 @@ export function useLiteModeSuggestion() {
   }
 
   // 允许用户/设置页重置选择（例如某个页面正常后续需要再提醒）
-  const clearChoice = () => localStorage.removeItem(STORAGE_KEY)
+  const clearChoice = () => safeStorage.remove(STORAGE_KEY)
 
   return { start, clearChoice }
 }

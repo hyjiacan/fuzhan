@@ -485,6 +485,7 @@ onMounted(async () => {
   await loadHistory()
 
   window.addEventListener('resize', resizeHandler)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   polling()
 })
 
@@ -494,12 +495,27 @@ function polling() {
   pollTimer = setTimeout(() => {
     loadSnapshot()
       .then(() => liveRefresh())
-      .finally(polling)
+      .finally(() => {
+        // 页面隐藏时不再续期，待重新可见时由 onVisibilityChange 恢复
+        if (!document.hidden) polling()
+      })
   }, delay)
+}
+
+// 页面切换到后台时暂停轮询（不发起请求）；重新可见时立即同步一次并恢复轮询
+function onVisibilityChange() {
+  if (document.hidden) {
+    clearTimeout(pollTimer)
+  } else {
+    loadSnapshot()
+      .then(() => liveRefresh())
+      .finally(() => polling())
+  }
 }
 
 onUnmounted(() => {
   clearTimeout(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('resize', resizeHandler)
   for (const c of [gaugeCpu, gaugeMem, chCpu, chMem, chDisk, chIo]) c.value?.dispose()
 })

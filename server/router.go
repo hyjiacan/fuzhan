@@ -184,6 +184,9 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 	// 添加监控中间件
 	r.Use(middleware.MonitoringMiddleware())
 
+	// 静态资源压缩与长缓存（仅对 /assets、/scalar/assets 生效）
+	r.Use(middleware.StaticAssetsMiddleware())
+
 	// 添加安全头中间件
 	r.Use(middleware.SecurityHeadersMiddleware())
 

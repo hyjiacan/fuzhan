@@ -10,7 +10,7 @@
       <template #header>当前执行中的任务</template>
       <div class="tasks-table-wrap">
         <!-- 表内嵌于流式卡片中，使用普通 el-table（支持 max-height）即可满足固定高度滚动，虚拟滚动无法稳定测量高度，故未采用 el-table-v2 -->
-        <el-table :data="activeTasks" size="small" :border="false" :max-height="400">
+        <el-table :data="visibleActiveTasks" size="small" :border="false" :max-height="400">
           <el-table-column label="任务名称" prop="taskName" min-width="200" show-overflow-tooltip />
           <el-table-column label="类型" width="110">
             <template #default="{ row }">
@@ -183,6 +183,10 @@ const filterType = ref(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalCount = ref(0)
+
+// 活跃任务渲染上限：避免并发/堆积任务过多时一次性渲染大量行（表格本身固定高度滚动）。
+const ACTIVE_SLICE = 100
+const visibleActiveTasks = computed(() => activeTasks.value.slice(0, ACTIVE_SLICE))
 
 const typeOptions = [
   { label: '扫描', value: 'scan' },

@@ -134,16 +134,7 @@ const loadData = async () => {
   }
 }
 
-// 自动刷新
-let timer = null
-const startAutoRefresh = () => {
-  timer = setInterval(loadData, 8000)
-}
-const stopAutoRefresh = () => {
-  if (timer) clearInterval(timer)
-  timer = null
-}
-
+// 手动刷新：进入页面时加载一次，之后由用户点击「刷新」按钮触发（不再自动轮询）
 onMounted(async () => {
   updateTableSize()
   tableResizeObs = new ResizeObserver(updateTableSize)
@@ -151,11 +142,9 @@ onMounted(async () => {
     tableResizeObs.observe(wrapRef.value)
   }
   await loadData()
-  startAutoRefresh()
 })
 
 onUnmounted(() => {
-  stopAutoRefresh()
   tableResizeObs?.disconnect()
 })
 </script>

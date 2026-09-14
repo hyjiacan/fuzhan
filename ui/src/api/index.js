@@ -1,5 +1,6 @@
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+// 按路径引入命令式组件，避免从 element-plus 总入口引入（总入口在打包时可能拖入未用组件）
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { createErrorFromResponse, createNetworkError } from '../utils/error.js'
 import { beginRequest, endRequest } from '../utils/requestLoading.js'
 
@@ -422,17 +423,18 @@ export const AdminApi = {
     return request.delete(`/admin/users/${uuid}`)
   },
 
-  getSessions() {
-    return request.get('/admin/sessions')
+  getSessions(page = 1, pageSize = 100) {
+    return request.get('/admin/sessions', { params: { page, pageSize } })
   },
 
   cleanupSessions(sessionIds) {
     return request.post('/admin/sessions/cleanup', { sessionIds })
   },
 
-  // 当前在线 IP（与登录无关，依据最近请求判定）
-  getOnlineIps() {
-    return request.get('/admin/online-ips')
+  // 当前在线 IP（与登录无关，依据最近请求判定）——限制单次返回条数，
+  // 避免在线 IP 较多时一次性拉全量到前端。
+  getOnlineIps(limit = 500) {
+    return request.get('/admin/online-ips', { params: { limit } })
   },
 
   // 文件管理

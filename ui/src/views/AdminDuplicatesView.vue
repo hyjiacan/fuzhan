@@ -23,33 +23,38 @@
           :title="groupTitle(group, idx)"
         >
           <!-- 表内嵌于可折叠面板中，容器高度动态变化，虚拟滚动(el-table-v2)难以稳定测量高度，故采用普通 el-table 实现 -->
-          <el-table :data="group.files" size="small" stripe :border="false">
-            <el-table-column label="文件路径" min-width="260">
-              <template #default="{ row }">
-                <div class="dup-path-cell">
-                  <template v-for="(d, dirIdx) in parseDupPath(row.fullPath).dirs" :key="'d' + dirIdx">
-                    <a class="path-segment" @click.prevent="goToDir(d.path)">{{ d.name }}</a>
-                    <span class="path-sep">/</span>
-                  </template>
-                  <span class="dup-file-name" :title="parseDupPath(row.fullPath).fileName">
-                    {{ parseDupPath(row.fullPath).fileName }}
-                  </span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="大小" width="100">
-              <template #default="{ row }">{{ formatSizeDup(row.fileSize) }}</template>
-            </el-table-column>
-            <el-table-column label="修改时间" width="170">
-              <template #default="{ row }">{{ row.modTime ? TimeUtils.formatDateTime(row.modTime) : '-' }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="80">
-              <template #default="{ row }">
-                <el-button size="small" type="primary" link @click="handleKeepDuplicate(row)">保留</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-collapse-item>
+          <el-table :data="visibleGroupFiles(group)" size="small" stripe :border="false">
+              <el-table-column label="文件路径" min-width="260">
+                <template #default="{ row }">
+                  <div class="dup-path-cell">
+                    <template v-for="(d, dirIdx) in parseDupPath(row.fullPath).dirs" :key="'d' + dirIdx">
+                      <a class="path-segment" @click.prevent="goToDir(d.path)">{{ d.name }}</a>
+                      <span class="path-sep">/</span>
+                    </template>
+                    <span class="dup-file-name" :title="parseDupPath(row.fullPath).fileName">
+                      {{ parseDupPath(row.fullPath).fileName }}
+                    </span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="大小" width="100">
+                <template #default="{ row }">{{ formatSizeDup(row.fileSize) }}</template>
+              </el-table-column>
+              <el-table-column label="修改时间" width="170">
+                <template #default="{ row }">{{ row.modTime ? TimeUtils.formatDateTime(row.modTime) : '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80">
+                <template #default="{ row }">
+                  <el-button size="small" type="primary" link @click="handleKeepDuplicate(row)">保留</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="dup-group-more" v-if="(group.files || []).length > GROUP_SLICE">
+              <el-button link type="primary" @click="toggleGroupFull(group)">
+                {{ groupExpand.get(group.xxh3Hash) ? '收起' : `展开全部 ${group.files.length} 个` }}
+              </el-button>
+            </div>
+          </el-collapse-item>
       </el-collapse>
 
       <div style="display: flex; justify-content: center; margin-top: 16px;" v-if="dupTotal > dupPageSize">
@@ -75,6 +80,26 @@ const dupTotal = ref(0)
 const dupPage = ref(1)
 const dupPageSize = 20
 const openGroups = ref([])
+
+// 单个重复组内默认只渲染前 GROUP_SLICE 条，展开后渲染全部，避免同哈希副本很多时一次性全量渲染。
+const GROUP_SLICE = 30
+// 记录各哈希组是否已展开全部（xxh3Hash -> bool）
+const groupExpand = ref(new Map())
+
+const isGroupExpanded = (hash) => groupExpand.value.get(hash) === true
+
+// 客户端切片：未展开则只取前 GROUP_SLICE 条，展开则返回全部
+const visibleGroupFiles = (group) => {
+  const files = group.files || []
+  if (isGroupExpanded(group.xxh3Hash)) return files
+  return files.slice(0, GROUP_SLICE)
+}
+
+const toggleGroupFull = (group) => {
+  const next = new Map(groupExpand.value)
+  next.set(group.xxh3Hash, !isGroupExpanded(group.xxh3Hash))
+  groupExpand.value = next
+}
 
 const formatSizeDup = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
 
@@ -118,6 +143,8 @@ async function loadDuplicates() {
     if (res.success) {
       if (dupPage.value === 1) {
         duplicateGroups.value = res.data.groups || []
+        // 重置分页/刷新时清空各组的展开状态
+        groupExpand.value = new Map()
       } else {
         duplicateGroups.value = [...duplicateGroups.value, ...(res.data.groups || [])]
       }

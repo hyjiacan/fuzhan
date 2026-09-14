@@ -48,6 +48,24 @@ export const useFilesSearch = ({ store, router, fileList, checkedRowKeys, loadCu
   }
 
   // 高亮搜索关键字（使用 VNode），支持多关键词
+  // 同一查询在搜索结果里会被逐行反复调用，单个结果行路径分多段也会重复调用，
+  // 因此按转义后的关键词缓存编译好的正则，避免每次都重复 new RegExp。
+  const highlightKeywordCache = new Map()
+  const getHighlightRegex = (escaped) => {
+    const key = escaped.join('|')
+    let re = highlightKeywordCache.get(key)
+    if (!re) {
+      re = {
+        splitRegex: new RegExp(`(${key})`, 'gi'),
+        testRegex: new RegExp(`(${key})`, 'i')
+      }
+      // 防止查询词持续变化导致缓存无限增长
+      if (highlightKeywordCache.size >= 100) highlightKeywordCache.clear()
+      highlightKeywordCache.set(key, re)
+    }
+    return re
+  }
+
   const highlightKeyword = (text) => {
     if (!searchQuery.value.trim() || (!isSearching.value && !searchCompleted.value)) {
       return text
@@ -58,8 +76,7 @@ export const useFilesSearch = ({ store, router, fileList, checkedRowKeys, loadCu
       return text
     }
     const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    const splitRegex = new RegExp(`(${escaped.join('|')})`, 'gi')
-    const testRegex = new RegExp(`(${escaped.join('|')})`, 'i')
+    const { splitRegex, testRegex } = getHighlightRegex(escaped)
     const parts = text.split(splitRegex)
 
     return parts.map((part, idx) => {

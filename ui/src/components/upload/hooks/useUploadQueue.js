@@ -2,6 +2,7 @@ import { ref, computed, nextTick } from 'vue'
 import { FileRecordApi, DependencyApi, request } from '@/api'
 import { NumberUtils, xxh3Hash } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
+import { safeStorage } from '@/utils/storage'
 import { SESSION_KEY_PREFIX } from '../constants'
 
 // 本地分片上传队列：入队/移除/暂停/重试/续传/会话持久化、串行分片上传与进度、备注依赖提交
@@ -39,22 +40,27 @@ export function useUploadQueue({
         rootName: item.rootName || form.rootName,
         uploadDir: item.uploadDir || form.uploadDir
       }
-      localStorage.setItem(SESSION_KEY_PREFIX + item.uploadId, JSON.stringify(session))
+      safeStorage.set(SESSION_KEY_PREFIX + item.uploadId, JSON.stringify(session))
     }
   }
 
   const loadUploadSessions = () => {
     const sessions = []
-    const keys = Object.keys(localStorage)
+    let keys = []
+    try {
+      keys = Object.keys(localStorage)
+    } catch {
+      return sessions
+    }
     for (const key of keys) {
       if (!key.startsWith(SESSION_KEY_PREFIX)) continue
-      const saved = localStorage.getItem(key)
+      const saved = safeStorage.get(key)
       if (!saved) continue
       try {
         const session = JSON.parse(saved)
         if (session && session.uploadId) sessions.push(session)
       } catch (e) {
-        localStorage.removeItem(key)
+        safeStorage.remove(key)
       }
     }
     return sessions
@@ -62,14 +68,19 @@ export function useUploadQueue({
 
   const removeUploadSession = (uploadId) => {
     if (!uploadId) return
-    localStorage.removeItem(SESSION_KEY_PREFIX + uploadId)
+    safeStorage.remove(SESSION_KEY_PREFIX + uploadId)
   }
 
   const clearUploadSessions = () => {
-    const keys = Object.keys(localStorage)
+    let keys = []
+    try {
+      keys = Object.keys(localStorage)
+    } catch {
+      return
+    }
     for (const key of keys) {
       if (key.startsWith(SESSION_KEY_PREFIX)) {
-        localStorage.removeItem(key)
+        safeStorage.remove(key)
       }
     }
   }

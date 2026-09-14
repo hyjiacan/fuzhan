@@ -29,11 +29,18 @@ export function useHomeTable({ isSearching, searchCompleted }) {
   }
 
   const sortedFileList = computed(() => {
-    const list = [...fileList.value]
     const entry = Object.entries(sortState.value)[0]
     const key = entry ? entry[0] : 'name'
     const order = entry ? entry[1] : 'asc'
 
+    // 默认序（名称升序、目录优先）与 store.setFileList 的排序口径一致，
+    // 直接复用 store 已排好的数组，避免对大数组做重复的复制 + 排序，
+    // 仅在用户点击表头自定义排序时才复制排序。
+    if (key === 'name' && order === 'asc') {
+      return fileList.value
+    }
+
+    const list = [...fileList.value]
     const dirFirst = (a, b) => {
       const aDir = isDir(a)
       const bDir = isDir(b)

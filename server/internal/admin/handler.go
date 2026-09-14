@@ -36,9 +36,15 @@ func NewHandler(adminService *services.AdminService, db *gorm.DB) *Handler {
 }
 
 // OnlineIPs 获取当前在线 IP 列表（依据最近请求判定，与登录无关）
+// 支持可选 limit 参数（在线 IP 较多时避免一次性返回全量），未传则不限制。
 func (h *Handler) OnlineIPs(c *gin.Context) {
 	now := utils.Now()
 	entries := online.Default.Snapshot(now)
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(entries) {
+			entries = entries[:limit]
+		}
+	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"online":             entries,
 		"idleTimeoutSeconds": int(online.IdleTimeout.Seconds()),
