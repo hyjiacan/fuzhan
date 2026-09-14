@@ -140,8 +140,8 @@ yarn install
 # 开发模式
 yarn dev
 
-# 生产构建
-yarn build
+# 生产构建（主应用 + scalar 按需，命令见下方「前端 (ui/)」章节）
+yarn build:frontend
 ```
 
 ### 4. 访问应用
@@ -169,9 +169,21 @@ yarn build
 | 命令 | 说明 |
 |------|------|
 | `yarn dev` | 开发服务器 (localhost:5173) |
-| `yarn build` | 生产构建 |
+| `yarn build` | 生产构建（仅主应用，输出到 `server/web`） |
+| `yarn build:scalar` | 强制重建 scalar 文档页（输出到 `server/scalar`） |
+| `yarn build:scalar:if-needed` | scalar 输出已存在则跳过，否则自动构建 |
+| `yarn build:frontend` | 主应用 + scalar 按需构建（一键打包流程使用） |
+| `yarn build:all` | 主应用 + scalar 强制全量重建 |
 | `yarn preview` | 预览构建 |
 | `yarn test` | Playwright 测试 |
+
+> **scalar 按需构建逻辑**
+>
+> scalar（OpenAPI 文档页）是独立构建，产物输出到 `server/scalar`，与主应用解耦。它是稳定产物、可长期复用，因此默认**不随每次构建全量重建**：
+>
+> - 一键流程（`build.ps1`/`build.sh` → `yarn build:frontend`）先构建主应用，再调用 `build:scalar:if-needed`：检测 `server/scalar/scalar.html` 是否已存在——存在即跳过，缺失才自动执行 `yarn build:scalar` 生成。
+> - 后端 `go build` 通过 `//go:embed` 将 `server/web` 与 `server/scalar` 一起打进二进制，因此编译后端前必须先保证前端产物齐全。
+> - 当 scalar 源码更新后需要重建时，请使用强制命令 `yarn build:scalar` 或 `yarn build:all`。
 
 ---
 
@@ -190,6 +202,8 @@ chmod +x build.sh
 ./build.sh [ui|server]
 ./build.sh       # 构建前端和后端
 ```
+
+一键打包时前端步骤执行 `yarn build:frontend`：主应用总会重建，scalar（`server/scalar`）仅在产物缺失时自动构建、已存在则跳过，以避免不必要的全量重建。若更新了 scalar 源码，请先手动执行 `yarn build:scalar` 或 `yarn build:all` 重建后再打包。
 
 **输出文件名格式:**
 ```

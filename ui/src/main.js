@@ -5,6 +5,11 @@ import { loadPreviewConfig } from '@/config/preview'
 import store from '@/store'
 import { SetupApi, SystemApi, AuthApi, NotificationApi } from '@/api'
 
+// ElMessage / ElMessageBox 为 JS 函数式调用，不会被 unplugin-vue-components 的
+// ElementPlusResolver 自动注入样式，需在此按需导入，否则弹层无样式
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+
 const app = createApp(App)
 app.use(router)
 

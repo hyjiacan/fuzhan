@@ -78,9 +78,10 @@ fi
 build_ui() {
     echo "=== Build Frontend ==="
     cd "$SCRIPT_DIR/ui"
-    yarn build
+    # build:frontend = 主应用 + scalar（已存在则自动跳过，避免每次全量重建）
+    yarn build:frontend
     cd "$SCRIPT_DIR"
-    echo "Frontend built to: $SCRIPT_DIR/server/web"
+    echo "Frontend built to: $SCRIPT_DIR/server/web (scalar: $SCRIPT_DIR/server/scalar)"
 }
 
 build_server() {

@@ -7,7 +7,7 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { resolve } from 'path'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     // 兼容老旧浏览器（IE 11+、旧版 Chrome/Firefox/Safari）
     legacy({
@@ -27,6 +27,9 @@ export default defineConfig({
     })
   ],
   base: '/',
+  // 生产构建时用 esbuild 压缩并移除 console/debugger（dev 保留调试输出）。
+  // 该选项供 build.minify='esbuild' 的压缩器读取。
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')
@@ -35,11 +38,10 @@ export default defineConfig({
   build: {
     outDir: '../server/web',
     emptyOutDir: true,
-    // 多页面入口配置
+    // 多页面入口配置（scalar 已拆为独立构建，见 scalar.vite.config.js）
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        scalar: resolve(__dirname, 'scalar.html'),
       },
       output: {
         // 手动分包策略
@@ -61,14 +63,8 @@ export default defineConfig({
         }
       }
     },
-    // 压缩配置
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // 生产环境移除 console
-        drop_debugger: true
-      }
-    },
+    // 压缩配置：使用 esbuild（Go 实现），比 terser 快一个数量级
+    minify: 'esbuild',
     // 启用 source map 便于调试（生产可关闭）
     sourcemap: false
   },
@@ -90,4 +86,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['vue', 'vue-router', 'axios', 'element-plus', '@element-plus/icons-vue']
   }
-})
+}))

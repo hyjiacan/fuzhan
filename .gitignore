@@ -10,6 +10,7 @@ tmp/
 .local_test/
 
 server/web
+server/scalar
 /server/fuzhan.yaml
 server/fuzhan
 server/fuzhan.log

@@ -75,7 +75,8 @@ function Build-Frontend {
     Write-Host "=== Build Frontend ===" -ForegroundColor Cyan
     Push-Location $uiDir
     try {
-        & yarn.cmd build
+        # build:frontend = 主应用 + scalar（已存在则自动跳过，避免每次全量重建）
+        & yarn.cmd build:frontend
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Frontend build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
             exit 1

@@ -208,6 +208,8 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 
 	// 获取前端构建目录
 	webDir := appconfig.GetWebDir()
+	// scalar（OpenAPI 文档页）独立构建目录，与 web 同级
+	scalarDir := filepath.Join(filepath.Dir(webDir), "scalar")
 
 	// 检查是否存在磁盘上的前端构建
 	useDiskAssets := false
@@ -232,9 +234,11 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 			c.File(filepath.Join(webDir, "index.html"))
 		})
 		r.Static("/assets", assetsDir)
+		// scalar（OpenAPI 文档页）独立构建
+		r.Static("/scalar/assets", filepath.Join(scalarDir, "assets"))
 		// 独立页面
 		r.GET("/scalar.html", func(c *gin.Context) {
-			c.File(filepath.Join(webDir, "scalar.html"))
+			c.File(filepath.Join(scalarDir, "scalar.html"))
 		})
 	} else {
 		// 嵌入资源
@@ -255,9 +259,11 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 		})
 		r.StaticFS("/assets", http.FS(assetsFS))
+		// scalar（OpenAPI 文档页）独立构建
+		r.StaticFS("/scalar/assets", http.FS(scalarAssetsFS))
 		// 独立页面
 		r.GET("/scalar.html", func(c *gin.Context) {
-			data, err := webAssets.ReadFile("web/scalar.html")
+			data, err := webAssets.ReadFile("scalar/scalar.html")
 			if err != nil {
 				utils.HandleNotFound(c, "scalar.html not found")
 				return

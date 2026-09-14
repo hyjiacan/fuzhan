@@ -4,7 +4,7 @@ import { ElMessageBox } from 'element-plus'
 // 检测主线程长时间阻塞（页面卡顿）后，询问用户是否切换到简洁模式；
 // 用户的选择存储到 localStorage，避免反复打扰。"yes"/"no" 即不再提醒。
 const STORAGE_KEY = 'lite_mode_choice'
-const JANK_THRESHOLD_MS = 2500 // 主线程阻塞超过该时长视为一次卡顿
+const JANK_THRESHOLD_MS = 5000 // 主线程阻塞超过该时长视为一次卡顿
 const HEARTBEAT_MS = 500
 const RECOMMEND_URL = '/lite'
 const PROMPT_TITLE = '页面响应缓慢'
