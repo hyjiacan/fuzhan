@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebDAV 功能审查报告 · 2026-09-12</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161d26; --panel2:#1d2733; --line:#2a3645;
+    --text:#dbe4ee; --muted:#8a97a8; --accent:#4da3ff; --brand:#58c4b6;
+    --hi:#ff6b6b; --mid:#ffb454; --low:#66c06e; --code:#0b0f14;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.7}
+  .wrap{max-width:1060px;margin:0 auto;padding:40px 32px 80px}
+  header.hero{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  h1{font-size:28px;margin:0 0 6px;letter-spacing:.5px}
+  h1 .accent{color:var(--brand)}
+  .meta{color:var(--muted);font-size:13.5px}
+  .meta b{color:var(--text);font-weight:600}
+  h2{font-size:21px;margin:44px 0 16px;padding-left:12px;border-left:4px solid var(--accent);color:#fff}
+  h3{font-size:16.5px;margin:26px 0 10px;color:#fff}
+  p{color:var(--text)}
+  code{background:var(--code);border:1px solid var(--line);padding:1px 6px;border-radius:5px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:#ffd479}
+  .verdict{display:grid;gap:10px;margin:8px 0 28px}
+  .score{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+  .score .num{font-size:42px;font-weight:800;line-height:1}
+  .score.s{color:var(--hi)} .score.s .num{color:var(--hi)}
+  .score.desc{color:var(--muted);font-size:13px}
+  .score.desc b{color:var(--text)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .sev{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border-radius:20px;letter-spacing:1px}
+  .sev.hi{background:rgba(255,107,107,.15);color:var(--hi);border:1px solid rgba(255,107,107,.35)}
+  .sev.mid{background:rgba(255,180,84,.14);color:var(--mid);border:1px solid rgba(255,180,84,.35)}
+  .sev.low{background:rgba(102,192,110,.14);color:var(--low);border:1px solid rgba(102,192,110,.35)}
+  .card h3{display:flex;align-items:center;gap:10px;margin-top:0}
+  .card ul{margin:8px 0 4px;padding-left:20px}
+  .card li{margin:6px 0}
+  .tag{color:var(--accent);font-weight:600}
+  .ok{color:var(--low);font-weight:600}
+  .loc{color:var(--muted);font-size:12.5px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#fff;font-weight:600;white-space:nowrap}
+  td code{white-space:nowrap}
+  .foot{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 8px;margin:0 3px 3px 0;font-family:ui-monospace,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1>WebDAV 功能审查报告 <span class="accent">· 2026-09-12</span></h1>
+    <div class="meta">
+      <b>审查范围：</b>WebDAV 服务端（<code>server/internal/access/webdav/</code>）、路由装配（<code>server/router.go</code>）、配置（<code>internal/appconfig</code>）、E2E（<code>server/integration/webdav_e2e_test.go</code>）、文档（<code>docs/FTP_WEBDAV_GUIDE.md</code>）
+    </div>
+    <div class="meta">
+      <b>方法：</b>源码静态审查 + 与已修复的 FTP 功能同口径对照（两次功能共用统一端点/虚拟文件系统/文档声明）
+    </div>
+  </header>
+
+  <div class="verdict">
+    <div class="score s">
+      <div class="num">高</div>
+      <div class="desc">
+        <b>总体：WebDAV 存在 3 个高危缺口。</b>核心问题在于 WebDAV 是一条<b>未接入 Web 上传/权限/索引/审计体系</b>的旁路：上传不写索引表、不触发哈希、不计入操作记录、不校验全局上传开关与配额，且配置里的 <code>Port</code> 是死配置。路径越界、公开只读语义、私有目录隔离三处安全边界本身实现良好，与 FTP 修复后水准一致。
+      </div>
+    </div>
+  </div>
+
+  <h2>一、高危问题</h2>
+
+  <div class="card">
+    <h3><span class="sev hi">H1</span>操作录制装饰器是死代码 —— WebDAV 全部操作未落审计记录</h3>
+    <p class="loc">位置：<code>server/router.go</code>:520-541 · <code>internal/access/webdav/recording.go</code></p>
+    <ul>
+      <li>路由装配直接用 <code>NewUnifiedFileSystem(publicFS, privateFS)</code> 构造 <code>webdav.NewHandler</code>，全程<b>没有包裹</b> <code>RecordingFileSystem</code>。全仓库搜索显示 <code>RecordingFileSystem</code> 仅在 <code>recording_test.go</code> 中被引用，生产代码零调用。</li>
+      <li><code>docs/FTP_WEBDAV_GUIDE.md</code> 明确声明“上传、下载、创建目录操作会自动记录到 <code>operation_records</code> 表中”，但实际 WebDAV 的 PUT / MKCOL / GET 均不产生任何操作记录，审计链路完全缺失。</li>
+      <li>即便有人误挂该装饰器，其 <code>splitPath(name)</code> 对统一路径拆分也会把 rootName 取成 <code>public</code>/<code>private</code> 而非真实共享根名（与 FTP 已修复的 M1 同源，WebDAV 侧从未接入）。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="sev hi">H2</span>上传未接入索引表 / 哈希链路 / uploader_ip（公开与私有均缺失）</h3>
+    <p class="loc">位置：<code>internal/access/webdav/public.go</code>:60-93 · <code>internal/access/webdav/private.go</code>:80-89</p>
+    <ul>
+      <li>两套文件系统对文件写操作直接走 <code>os.OpenFile</code> 落盘，<b>不写 <code>file_records_public</code> / <code>file_records_private</code></b>、不写 <code>uploader_ip</code>、不触发 <code>TriggerHash</code>。</li>
+      <li><b>公开上传</b>：仅会靠文件监听器（watcher）增量同步进索引，但 watcher 写入不置 <code>hash_status=pending</code> → 哈希要等每日全量扫描才计算（违反“所有上传路径写入索引后立即触发哈希”）；且无 <code>uploader_ip</code> → 按既定权限规则，该文件<b>任何普通用户（含上传者本人）都无法在 Web 端管理</b>，只能管理员处理。同时不进入“最近上传”“最新版本”“重复文件”检索。</li>
+      <li><b>私有上传</b>：不写 <code>file_records_private</code> → Web 私有文件页查询自数据库，看不到 WebDAV 上传的文件（只会出现子目录），也无法通过分享码分享。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="sev hi">H3</span>全局上传开关 <code>Upload.Enabled</code> 与扩展名校验被绕过</h3>
+    <p class="loc">位置：<code>internal/access/webdav/public.go</code>:39-50,60-93 · 对照 <code>internal/file/upload.go</code>:109 / <code>internal/access/ftp/virtual_fs.go</code>:264</p>
+    <ul>
+      <li>匿名用户即可用 PUT 新建公开文件、MKCOL 建目录；<code>public.go</code> 整体<b>未引用 <code>GlobalConfig.Upload.Enabled</code></b>（FTP 修复后已在 <code>Create/OpenFile</code> 校验该开关，WebDAV 全无）。<code>upload.enabled: false</code> 时 Web 端 403，但 WebDAV 照常可写。</li>
+      <li>同样未校验 <code>Storage.AllowedExtensions</code> 扩展名白名单（FTP public 上传已校验），管理员若限制了可上传类型，WebDAV 可绕过上传任意后缀。</li>
+    </ul>
+  </div>
+
+  <h2>二、中危问题</h2>
+
+  <div class="card">
+    <h3><span class="sev mid">M1</span>无磁盘空间 / 配额校验（磁盘耗尽 DoS）</h3>
+    <p class="loc">位置：<code>public.go</code> / <code>private.go</code> 全部写入口</p>
+    <ul>
+      <li>公开与私有上传入口均<b>不调用</b> <code>services.CheckDiskSpace</code> 与用户配额检查（FTP 修复后已前置 <code>CheckDiskSpace</code> 并做真实大小配额校验）。</li>
+      <li>匿名可连续 PUT（每个受 <code>MaxFileSize</code> 上限），配合公开目录可无限堆积，达到磁盘耗尽型 DoS；私有上传也绕过分区剩余空间与每用户配额。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="sev mid">M2</span>配置项 <code>server.webdav.port</code> 为死配置</h3>
+    <p class="loc">位置：<code>internal/appconfig/config.go</code>:80-84 · <code>internal/config/handler.go</code>:41-42,306-312 · <code>server/router.go</code>:520-541</p>
+    <ul>
+      <li>config / DTO / 配置 API 均读写并向前端暴露 <code>Server.WebDAV.Port</code>，但运行期 WebDAV 直接挂在主 HTTP 服务的 <code>/api/v1/webdav</code> 上，<b>没有任何独立监听该端口</b>（<code>server.go</code>/<code>main.go</code> 均无引用）。</li>
+      <li>管理员在设置页配置端口后不会产生任何行为变化，文档/UI/实现三者不一致（与 FTP 已修复的 H2 同理）。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="sev mid">M3</span>Basic 认证无失败限速</h3>
+    <p class="loc">位置：<code>internal/access/webdav/auth.go</code>:115-161</p>
+    <ul>
+      <li>WebDAV Basic Auth 无每 IP 失败计数/限速（FTP 有 <code>failCounts</code>，Web 登录亦有速率限制），仅依赖 bcrypt 计算成本被动缓释；对私有的暴力猜测在低成本并行下可被放大。</li>
+    </ul>
+  </div>
+
+  <h2>三、低危问题</h2>
+
+  <div class="card">
+    <table>
+      <tr><th style="width:72px">编号</th><th style="width:150px">问题</th><th>位置与影响</th></tr>
+      <tr><td>L1</td><td>GET 不受下载限流</td><td>WebDAV GET 未接入 <code>accessguard</code>（Web <code>/download</code> 有 1 分钟 120 次限流）。公开文件可被匿名反复拉取造成带宽 DoS。</td></tr>
+      <tr><td>L2</td><td>E2E 断言过宽且无负面用例</td><td><code>webdav_e2e_test.go</code> 多个断言接受 2xx/403/405/404 多种状态码；私有 PROPFIND 注释自认“may fail”放行。未覆盖操作记录、索引/哈希、配额、<code>Upload.Enabled</code>、symlink 逃逸、跨命名空间重命名等负面场景，无法捕获本次三类高危回归。</td></tr>
+      <tr><td>L3</td><td>公开新建存在 TOCTOU 竞态</td><td><code>public.go</code>:79-84 先 <code>os.Stat</code> 判断不存在再 <code>os.OpenFile(..., O_CREATE|O_TRUNC)</code>，并发下若文件在两者之间被他人创建，可能清空该已有文件。可改用 <code>O_EXCL</code> 原子判定。</td></tr>
+    </table>
+  </div>
+
+  <h2>四、已验证无问题 / 已核实通过</h2>
+  <div class="card">
+    <ul>
+      <li><span class="ok">✓</span> <b>公开只读/只新建语义</b>：覆盖已有文件返回 <code>ErrPermission</code>；<code>RemoveAll</code>/<code>Rename</code> 一律拒绝；<code>UnifiedFileSystem.Rename</code> 禁止 <code>public</code>↔<code>private</code> 跨命名空间移动。</li>
+      <li><span class="ok">✓</span> <b>路径越界防护</b>：公开侧 <code>PathValidator.Validate</code> 做词法边界 + <code>EvalSymlinks</code> 符号链接逃逸拦截（根内 symlink 指向根外会被拒绝）；私有侧 <code>PrivateFileSystem.validatePath</code> 解析双方 symlink 后比对真实落点。</li>
+      <li><span class="ok">✓</span> <b>私有目录隔离</b>：按 context 中用户 UUID 定位 <code>{private}/users/{uid}</code>；匿名访问 <code>/private</code> 返回 <code>ErrPermission</code>，不泄露私存存在性（优于 FTP L3 已修前状态）。</li>
+      <li><span class="ok">✓</span> <b>PROPFIND 深度限制</b>：<code>depthMiddleware</code> 拒绝 <code>infinity</code> 及非法 Depth，防止递归枚举。</li>
+      <li><span class="ok">✓</span> <b>写请求 body 封顶</b>：<code>bodyLimitMiddleware</code> 用 <code>http.MaxBytesReader</code> 按 <code>Upload.MaxFileSize</code> 限制 PUT/PROPPATCH 请求体（0 = 不限）。</li>
+      <li><span class="ok">✓</span> <b>认证缓存</b>：合并写锁二次校验 TTL，避免 TOCTOU；凭据用 xxh3 摘要作 key，不明文落缓存。</li>
+    </ul>
+  </div>
+
+  <h2>五、修复优先级建议</h2>
+  <div class="card">
+    <table>
+      <tr><th>优先级</th><th>问题</th><th>建议落点</th></tr>
+      <tr><td><b>P0</b></td><td>H3 全局开关 / 扩展名校验</td><td>统一文件系统写入口（公开 Mkdir / OpenFile-create）前置 <code>Upload.Enabled</code> 与 <code>AllowedExtensions</code> 校验。</td></tr>
+      <tr><td><b>P0</b></td><td>H2 索引 / 哈希 / uploader_ip 链路</td><td>公开上传收尾写 <code>file_records_public</code>（<code>hash_status=pending</code> + <code>uploader_ip</code>）+ <code>TriggerHash</code>；私有上传写 <code>file_records_private</code>（32 位分享码）。复用统一收尾策略。</td></tr>
+      <tr><td><b>P1</b></td><td>H1 操作录制接线</td><td>在 <code>router.go</code> 用 <code>NewRecordingFileSystem</code> 包裹 <code>unifiedFS</code>，并修正 <code>splitPath</code> 为 rootName + 带前导 <code>/</code> 相对路径。</td></tr>
+      <tr><td><b>P1</b></td><td>M1 磁盘 / 配额检查</td><td>公开与私有写入口前置 <code>services.CheckDiskSpace</code>；私有上传做真实大小配额校验。</td></tr>
+      <tr><td><b>P2</b></td><td>M2 死配置 / M3 认证限速 / L1-L3</td><td>移除或打通 <code>webdav.port</code>；Basic Auth 按 IP 失败限速；GET 接入下载限流；补负面 E2E；公开新建改 <code>O_EXCL</code>。</td></tr>
+    </table>
+  </div>
+
+  <div class="foot">
+    审查依据：<code>server/internal/access/webdav/*.go</code>、<code>server/router.go</code>、<code>internal/config/handler.go</code>、<code>internal/appconfig/config.go</code>、<code>server/integration/webdav_e2e_test.go</code>、<code>docs/FTP_WEBDAV_GUIDE.md</code>；结论与《FTP功能审查报告-2026-09-12》同口径对照。
+  </div>
+</div>
+</body>
+</html>

@@ -32,7 +32,7 @@
       <el-card class="recent-card">
         <template #header>最近下载</template>
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
-          <el-table-v2 :columns="columns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
+          <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
             row-key="id" :row-height="32" />
         </div>
         <template v-if="downloadTotal > downloads.length" #footer>
@@ -133,85 +133,114 @@ const getFileIconClass = (row) => {
 }
 
 // 表格列
-const columns = [
-  {
-    title: '文件名',
-    key: 'fileName',
-    minWidth: 220,
-    flexGrow: 1,
-    cellRenderer: ({ rowData: row }) => {
-      const fullPath = row.fullPath || row.path || ''
-      const segments = fullPath.split('/').filter(Boolean)
-      const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
-      const pathSegments = segments.slice(0, -1)
-      const iconClass = `icon-filetype ${getFileIconClass(row)}`
-      const dirPath = row.fullPath || row.path || ''
+const fileNameCol = {
+  title: '文件名',
+  key: 'fileName',
+  minWidth: 220,
+  flexGrow: 1,
+  cellRenderer: ({ rowData: row }) => {
+    const fullPath = row.fullPath || row.path || ''
+    const segments = fullPath.split('/').filter(Boolean)
+    const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
+    const pathSegments = segments.slice(0, -1)
+    const iconClass = `icon-filetype ${getFileIconClass(row)}`
+    const dirPath = row.fullPath || row.path || ''
 
-      return h('div', {
-        class: 'file-name-cell',
-        title: fileName
-      }, [
-        h('div', { class: 'file-icon-wrapper' }, [
-          h('span', { class: iconClass })
-        ]),
-        h('span', { class: 'file-path-content' }, [
-          ...pathSegments.map((seg, idx) => {
-            const segPath = '/' + pathSegments.slice(0, idx + 1).join('/')
-            return [
-              h('a', {
-                class: 'path-segment',
-                onClick: (e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  navigateToDir(segPath)
-                }
-              }, seg),
-              '/'
-            ]
-          }).flat(),
-          isDir(row)
-            ? h('a', {
-                class: 'file-link',
-                onClick: (e) => {
-                  e.preventDefault()
-                  navigateToDir(dirPath)
-                }
-              }, fileName)
-            : h('a', {
-                href: `/download/${PathUtils.encodeFilePath(fullPath)}`,
-                class: 'file-link'
-              }, fileName)
-        ])
+    return h('div', {
+      class: 'file-name-cell',
+      title: fileName
+    }, [
+      h('div', { class: 'file-icon-wrapper' }, [
+        h('span', { class: iconClass })
+      ]),
+      h('span', { class: 'file-path-content' }, [
+        ...pathSegments.map((seg, idx) => {
+          const segPath = '/' + pathSegments.slice(0, idx + 1).join('/')
+          return [
+            h('a', {
+              class: 'path-segment',
+              onClick: (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigateToDir(segPath)
+              }
+            }, seg),
+            '/'
+          ]
+        }).flat(),
+        isDir(row)
+          ? h('a', {
+              class: 'file-link',
+              onClick: (e) => {
+                e.preventDefault()
+                navigateToDir(dirPath)
+              }
+            }, fileName)
+          : h('a', {
+              href: `/download/${PathUtils.encodeFilePath(fullPath)}`,
+              class: 'file-link'
+            }, fileName)
       ])
-    }
-  },
-  {
-    title: '大小',
-    key: 'fileSize',
-    width: 100,
-    cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
-  },
-  {
-    title: '备注',
-    key: 'notes',
-    width: 150,
-    cellRenderer: ({ rowData: row }) => row.notes
-      ? h('span', { title: row.notes, style: 'color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
-      : h('span', { style: 'color:#bbb;' }, '-')
-  },
-  {
-    title: '时间',
-    key: 'createdAt',
-    width: 180,
-    cellRenderer: ({ rowData: row }) => {
-      const text = TimeUtils.formatDateTime(row.createdAt)
-      if (TimeUtils.isRecent24h(row.createdAt)) {
-        return h('span', { style: 'color: #18a058' }, text)
-      }
-      return text
-    }
+    ])
   }
-]
+}
+
+const sizeCol = {
+  title: '大小',
+  key: 'fileSize',
+  width: 100,
+  cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
+}
+
+const notesCol = {
+  title: '备注',
+  key: 'notes',
+  width: 150,
+  cellRenderer: ({ rowData: row }) => row.notes
+    ? h('span', { title: row.notes, style: 'color:#666; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
+    : h('span', { style: 'color:#bbb;' }, '-')
+}
+
+// 上传操作时间列（最近上传：即文件上传时间）
+const uploadTimeCol = {
+  title: '上传时间',
+  key: 'createdAt',
+  width: 180,
+  cellRenderer: ({ rowData: row }) => renderRecentTime(row.createdAt)
+}
+
+// 下载操作时间列（最近下载：即本次下载发生时间，固定显示，不标绿）
+const downloadTimeCol = {
+  title: '下载时间',
+  key: 'createdAt',
+  width: 180,
+  cellRenderer: ({ rowData: row }) => TimeUtils.formatDateTime(row.createdAt)
+}
+
+// 上传时间列（最近下载：索引表回填的真实上传时间，非本次下载时间）
+const fileUploadTimeCol = {
+  title: '上传时间',
+  key: 'uploadTime',
+  width: 180,
+  cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001'))
+    ? renderRecentTime(row.uploadTime)
+    : h('span', { style: 'color:#bbb;' }, '-')
+}
+
+// 最近 24h 内的新记录显示为绿色（仅上传时间应用）
+const renderRecentTime = (time) => {
+  const text = TimeUtils.formatDateTime(time)
+  if (TimeUtils.isRecent24h(time)) {
+    return h('span', { style: 'color: #18a058' }, text)
+  }
+  return text
+}
+
+// 最近上传表：文件名/大小/备注/时间
+const columns = [fileNameCol, sizeCol, notesCol, uploadTimeCol]
+
+// 最近下载表：文件名/大小/备注/下载时间/上传时间
+const downloadColumns = [fileNameCol, sizeCol, notesCol, downloadTimeCol, fileUploadTimeCol]
 
 // Pagination events
 const onUploadPageChange = (page) => {

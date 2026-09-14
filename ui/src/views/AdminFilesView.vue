@@ -89,6 +89,18 @@
       </template>
     </el-dialog>
 
+    <!-- 备注编辑弹窗（与文件页面一致） -->
+    <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px" :class="notesMaximized ? 'preview-maximized' : ''">
+      <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="4096" placeholder="输入备注内容..." />
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="notesMaximized = !notesMaximized">{{ notesMaximized ? '还原' : '最大化' }}</el-button>
+          <el-button @click="notesModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingNotes" @click="saveNotes">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 预览对话框 -->
     <el-dialog v-model="previewDialogVisible" title="文件预览" width="700px"
       :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']"
@@ -107,11 +119,14 @@
 </template>
 
 <script setup>
-import { watch, onUnmounted, onMounted } from 'vue'
+import { ref, watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import store from '@/store'
+import { FileRecordApi } from '@/api'
+import { formatErrorMessage } from '@/utils/error'
 import { useFilesTable } from './admin/useFilesTable'
 import { useFilesSearch } from './admin/useFilesSearch'
 import { useFileActions } from './admin/useFileActions'
@@ -139,9 +154,60 @@ const actions = useFileActions({
   displayList: search.displayList
 })
 
+// ============ 备注编辑 ============
+const notesModalVisible = ref(false)
+const notesMaximized = ref(false)
+const editNotes = ref('')
+const editNotesRow = ref(null)
+const savingNotes = ref(false)
+
+const openNotesEditor = (row) => {
+  editNotesRow.value = row
+  editNotes.value = row.notes || ''
+  notesModalVisible.value = true
+}
+
+const saveNotes = async () => {
+  const row = editNotesRow.value
+  if (!row) {
+    ElMessage.warning('无法获取文件记录')
+    return
+  }
+  savingNotes.value = true
+  try {
+    let recordId = row.recordId
+    if (!recordId) {
+      const fullPath = row.path || ''
+      const rootName = row.rootName || ''
+      const fileName = row.name || ''
+      const indexPath = rootName ? fullPath.slice(rootName.length + 1) : fullPath
+      const findRes = await FileRecordApi.findRecord(fileName, rootName, indexPath)
+      if (!findRes.success || !findRes.data?.record) {
+        ElMessage.warning('未找到文件索引记录，请稍后重试')
+        return
+      }
+      recordId = findRes.data.record.id
+    }
+    const res = await FileRecordApi.updateNotes(recordId, editNotes.value)
+    if (res.success) {
+      ElMessage.success('备注已更新')
+      row.notes = editNotes.value
+      store.setFileNotes(row.path, editNotes.value, recordId)
+      notesModalVisible.value = false
+    } else {
+      ElMessage.error(res.message || '更新备注失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '更新备注失败'))
+  } finally {
+    savingNotes.value = false
+  }
+}
+
 // 列定义由独立模块构建，渲染回调从复合式取用
 const columns = buildFileColumns({
-  ...table, ...search, ...actions, router
+  ...table, ...search, ...actions, router,
+  openNotesEditor
 })
 
 // 解构给模板使用的绑定（<script setup> 仅顶层绑定可被模板访问）

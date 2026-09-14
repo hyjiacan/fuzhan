@@ -19,6 +19,9 @@ docs/.archive/
 node_modules/
 .yarn/
 
+# Trae HTML 分享临时打包目录（不入库）
+.trae-html-share-packages/
+
 # 本地诊断/临时脚本（不入库）
 check_*.py
 dl_exe_urllib.py

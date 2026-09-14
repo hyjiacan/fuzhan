@@ -139,7 +139,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { SetupApi, SystemApi } from '@/api'
+import { SystemApi } from '@/api'
 
 const props = defineProps({
   settings: { type: Object, required: true }
@@ -148,10 +148,10 @@ const props = defineProps({
 const message = ElMessage
 const ipOptions = ref([])
 
-// 加载网络接口列表
+// 加载网络接口列表（初始化后使用管理员接口，避免 setup 路由返回 404）
 const loadNetworkInterfaces = async () => {
   try {
-    const res = await SetupApi.getNetworkInterfaces()
+    const res = await SystemApi.getNetworkInterfaces()
     if (res.success && res.data) {
       ipOptions.value = res.data.map(item => ({
         label: `${item.name} (${item.ip})`,

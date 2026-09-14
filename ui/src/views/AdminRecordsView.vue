@@ -115,9 +115,13 @@
 
 <script setup>
 import { ref, h, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElButton } from 'element-plus'
 import { FileApi, AdminApi } from '@/api'
 import { NumberUtils, TimeUtils } from '@/utils'
+
+const route = useRoute()
+const router = useRouter()
 
 // ============ 状态 ============
 
@@ -188,10 +192,66 @@ const formatSize = (bytes) => NumberUtils.formatFileSize(bytes || 0)
 
 const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
+// 最近 24h 内的新记录显示为绿色（仅上传时间列应用；下载时间固定显示，不标绿）
+const renderRecentTime = (time) => {
+  if (!time) return h('span', { style: 'color:#bbb;' }, '-')
+  const text = TimeUtils.formatDateTime(time)
+  if (TimeUtils.isRecent24h(time)) {
+    return h('span', { style: 'color: #18a058' }, text)
+  }
+  return text
+}
+
 // 长文本列渲染：超出列宽时省略号截断，并保留完整内容 title 提示
 const formatTypeText = (text) => h('div', { class: 'file-name-cell', title: text || '' }, [
   h('span', { class: 'file-link' }, text || '-')
 ])
+
+// 依据文件名末位扩展名取文件类型图标类名
+const getFileIconClass = (fullPath) => {
+  const name = fullPath.split('/').filter(Boolean).pop() || ''
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  return `icon-filetype-${ext}`
+}
+
+// 记录管理页文件路径列：与"最近"页一致，把路径段拆分渲染，目录段可点击，
+// 但跳转目标是「文件管理」页（/admin/files/<目录>）而非公共文件页。
+const renderRecordPathCell = (row) => {
+  const fullPath = row.fullPath || ''
+  const segments = fullPath.split('/').filter(Boolean)
+  const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
+  const dirSegments = segments.slice(0, -1)
+  const iconClass = `icon-filetype ${getFileIconClass(fullPath)}`
+  const navigateToFileDir = (dirPath) => {
+    router.push('/admin/files/' + dirPath.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/'))
+  }
+
+  return h('div', {
+    class: 'file-name-cell',
+    title: fileName
+  }, [
+    h('div', { class: 'file-icon-wrapper' }, [
+      h('span', { class: iconClass })
+    ]),
+    h('span', { class: 'file-path-content' }, [
+      ...dirSegments.map((seg, idx) => {
+        const dirPath = '/' + dirSegments.slice(0, idx + 1).join('/')
+        return [
+          h('a', {
+            class: 'path-segment',
+            onClick: (e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              navigateToFileDir(dirPath)
+            }
+          }, seg),
+          '/'
+        ]
+      }).flat(),
+      h('span', { class: 'file-link', style: 'cursor:default;' }, fileName)
+    ])
+  ])
+}
 
 // 每条记录的操作列（单条删除）
 const deleteRecordColumn = (action) => ({
@@ -215,25 +275,30 @@ const deleteRecordColumn = (action) => ({
 })
 
 const uploadColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.fullPath) },
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
   { title: '大小', key: 'fileSize', width: 100,
     cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
   { title: '上传时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+    cellRenderer: ({ rowData: row }) => renderRecentTime(row.createdAt)
   },
   deleteRecordColumn('upload')
 ]
 
 const downloadColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.fullPath) },
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
   { title: '大小', key: 'fileSize', width: 100,
     cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
   },
   { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '下载时间', key: 'uploadTime', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.uploadTime || row.createdAt)
+  { title: '下载时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  },
+  { title: '上传时间', key: 'uploadTime', dataKey: 'uploadTime', width: 170,
+    cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001'))
+      ? renderRecentTime(row.uploadTime)
+      : h('span', { style: 'color:#bbb;' }, '-')
   },
   deleteRecordColumn('download')
 ]
@@ -347,7 +412,11 @@ onMounted(() => {
   if (uploadWrapRef.value) tableResizeObs.observe(uploadWrapRef.value)
   if (downloadWrapRef.value) tableResizeObs.observe(downloadWrapRef.value)
   if (searchWrapRef.value) tableResizeObs.observe(searchWrapRef.value)
-  loadRecords('upload')
+  // 支持从看板等入口通过 ?tab=xxx 直接定位到对应 tab
+  const tabQuery = route.query.tab
+  const initialTab = ['upload', 'download', 'search'].includes(tabQuery) ? tabQuery : 'upload'
+  activeTab.value = initialTab
+  loadRecords(initialTab)
 })
 
 onUnmounted(() => {

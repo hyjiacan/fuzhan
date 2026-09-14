@@ -35,7 +35,7 @@ func getTestDB(t *testing.T) *gorm.DB {
 func TestRecentHandler_GetRecent(t *testing.T) {
 	db := getTestDB(t)
 	recordRepo := repositories.NewRecordRepository(db)
-	handler := file.NewRecentHandler(recordRepo)
+	handler := file.NewRecentHandler(recordRepo, db)
 
 	router := gin.New()
 	router.GET("/api/v1/files/recent", handler.GetRecent)
@@ -93,7 +93,7 @@ func TestRecentHandler_GetRecent(t *testing.T) {
 func TestRecentHandler_GetRecentCarousel(t *testing.T) {
 	db := getTestDB(t)
 	recordRepo := repositories.NewRecordRepository(db)
-	handler := file.NewRecentHandler(recordRepo)
+	handler := file.NewRecentHandler(recordRepo, db)
 
 	router := gin.New()
 	router.GET("/api/v1/files/recent/carousel", handler.GetRecentCarousel)

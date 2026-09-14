@@ -75,11 +75,23 @@ function Build-Frontend {
     Write-Host "=== Build Frontend ===" -ForegroundColor Cyan
     Push-Location $uiDir
     try {
-        # build:frontend = 主应用 + scalar（已存在则自动跳过，避免每次全量重建）
-        & yarn.cmd build:frontend
+        # 主应用构建（总会重建）
+        & yarn.cmd build
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Frontend build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
             exit 1
+        }
+        # scalar 按需构建：产物已存在则跳过，缺失才生成（存在性判定用 Test-Path，不用 js）
+        $scalarFile = Join-Path $rootDir "server\scalar\scalar.html"
+        if (Test-Path $scalarFile) {
+            Write-Host "scalar.html 已存在，跳过 scalar 构建" -ForegroundColor Gray
+        } else {
+            Write-Host "scalar.html 缺失，构建 scalar..." -ForegroundColor Yellow
+            & yarn.cmd build:scalar
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Scalar build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
+                exit 1
+            }
         }
     } finally {
         Pop-Location

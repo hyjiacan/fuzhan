@@ -166,20 +166,14 @@ const downloadColumns = [
     key: 'notes',
     width: 150,
     cellRenderer: ({ rowData: row }) => row.notes
-      ? h('span', { title: row.notes, style: 'color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
+      ? h('span', { title: row.notes, style: 'color:#666; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
       : h('span', { style: 'color:#bbb;' }, '-')
   },
   {
-    title: '时间',
+    title: '上传时间',
     key: 'uploadTime',
     width: 180,
-    cellRenderer: ({ rowData: row }) => {
-      const text = TimeUtils.formatDateTime(row.uploadTime)
-      if (TimeUtils.isRecent24h(row.uploadTime)) {
-        return h('span', { style: 'color: #18a058' }, text)
-      }
-      return text
-    }
+    cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001')) ? renderUploadTime(row.uploadTime) : '-'
   },
   {
     title: '下载次数',
@@ -188,6 +182,15 @@ const downloadColumns = [
     cellRenderer: ({ rowData: row }) => row.count || 0
   }
 ]
+
+// 上传时间列渲染：最近 24h 内的新记录显示为绿色
+const renderUploadTime = (time) => {
+  const text = TimeUtils.formatDateTime(time)
+  if (TimeUtils.isRecent24h(time)) {
+    return h('span', { style: 'color: #18a058' }, text)
+  }
+  return text
+}
 
 // 分页事件
 const onPageChange = (page) => {

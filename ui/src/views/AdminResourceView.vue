@@ -192,10 +192,11 @@ function gaugeBaseOption() {
     series: [{
       type: 'gauge', min: 0, max: 100, startAngle: 200, endAngle: -20,
       radius: '95%', center: ['50%', '62%'],
-      progress: { show: true, roundCap: true, width: 12 },
-      axisLine: { lineStyle: { width: 12 } },
+      progress: { show: true, roundCap: true, width: 10 },
+      axisLine: { lineStyle: { width: 10 } },
       axisTick: { show: false }, splitLine: { show: false },
-      axisLabel: { show: false }, pointer: { show: false },
+      axisLabel: { show: false },
+      pointer: { show: true, length: '70%', width: 5, itemStyle: { color: 'auto' } },
       detail: { show: false }, title: { show: false }
     }]
   }
@@ -589,7 +590,7 @@ onUnmounted(() => {
 
     .chart-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      grid-template-columns: repeat(2, 1fr);
       gap: 16px;
 
       .chart-card { :deep(.el-card__body) { padding: 12px; } }
@@ -601,6 +602,7 @@ onUnmounted(() => {
 @media (@tablet) {
   .admin-resource {
     .metric-grid { grid-template-columns: repeat(2, 1fr); }
+    .chart-grid { grid-template-columns: 1fr; }
   }
 }
 </style>

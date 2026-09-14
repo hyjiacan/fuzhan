@@ -176,7 +176,9 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 		})
 	}
 
-	// 按完整路径回填当前文件的备注（从权威索引表读取，保证移动/重命名后仍能关联最新备注）
+	// 按完整路径回填当前文件的备注与真实上传时间（从权威索引表读取，
+	// 保证移动/重命名后仍能关联最新备注；索引表的 created_at 才是文件上传时间，
+	// 而下载记录里的 created_at 是最新一次下载时间）
 	if len(fullPathIndex) > 0 {
 		paths := make([]string, 0, len(fullPathIndex))
 		for p := range fullPathIndex {
@@ -188,6 +190,7 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 			for _, f := range fres {
 				if idx, ok := fullPathIndex[f.FullPath]; ok {
 					result[idx].Notes = f.Notes
+					result[idx].UploadTime = f.CreatedAt
 				}
 			}
 		}

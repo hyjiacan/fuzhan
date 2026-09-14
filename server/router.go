@@ -599,6 +599,7 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	apiKeyHandler := rt.apiKeyHandler
 	indexHandler := rt.indexHandler
 	depHandler := rt.depHandler
+	setupHandler := rt.setupHandler
 
 	// 全量/触发扫描（需管理员鉴权，防止匿名资源耗尽 DoS）
 	admin.POST("/index/scan", indexHandler.TriggerScan)
@@ -620,6 +621,9 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	// TLS 证书上传路由
 	admin.POST("/upload-cert", adminHandler.UploadCertHandler)
 	admin.POST("/upload-key", adminHandler.UploadKeyHandler)
+
+	// 网络接口列表（初始化后由设置页使用，需管理员鉴权）
+	admin.GET("/network-interfaces", setupHandler.GetNetworkInterfaces)
 
 	// 文件管理路由
 	admin.GET("/files/list", fileHandlers.ListDirectories)

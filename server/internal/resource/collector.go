@@ -3,6 +3,9 @@ package resource
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,8 +26,10 @@ const (
 
 	// maxBufferPoints 每个 scope 内存中保留的最大采样点（5 秒间隔约 1 小时），仅用于实时曲线
 	maxBufferPoints = 720
-	// footprintRefreshInterval 程序托管存储占用刷新间隔（秒），依赖索引表求和，采集节奏刷新即可
+	// footprintRefreshInterval 程序磁盘占用刷新间隔（秒），依赖磁盘遍历求和，采集节奏刷新即可
 	footprintRefreshInterval = 60
+	// footprintWalkTimeout 单个目录磁盘占用遍历超时，超大目录超时后按已统计部分估算
+	footprintWalkTimeout = 30 * time.Second
 	// retentionCheckInterval 历史数据清理检查间隔
 	retentionCheckInterval = 1 * time.Hour
 )
@@ -184,7 +189,7 @@ func (c *Collector) sample(now time.Time) {
 		}
 	}
 
-	// 程序磁盘占用：托管存储占用按采集节奏刷新，避免高频查询索引表
+	// 程序磁盘占用：按采集节奏刷新（磁盘遍历求和），避免高频遍历大目录
 	if now.Sub(c.lastFootprint) >= time.Duration(footprintRefreshInterval)*time.Second {
 		c.programFootprint = c.queryFootprint()
 		c.lastFootprint = now
@@ -333,22 +338,91 @@ func (c *Collector) cleanup(retentionDays int) {
 	}
 }
 
-// queryFootprint 查询程序托管存储占用（三张索引表 active 记录的文件大小之和）
+// queryFootprint 计算程序实际磁盘占用（字节）。
+// 口径：本程序本身（可执行文件所在目录）、相关配置（工作目录）、日志目录，
+// 以及配置的各个存储根目录占用之和。重叠路径（如日志/数据/存储根在工作目录内）
+// 只统计一次，避免重复计算。
 func (c *Collector) queryFootprint() uint64 {
-	db := c.getDB()
-	if db == nil {
-		return 0
-	}
 	var total uint64
-	for _, table := range []string{"file_records_public", "file_records_temp", "file_records_private"} {
-		var s int64
-		if err := db.Raw("SELECT COALESCE(SUM(file_size),0) FROM "+table+
-			" WHERE status = ? AND deleted_at IS NULL", models.FileStatusActive).Scan(&s).Error; err != nil {
-			utils.Warn("查询程序托管存储占用失败", utils.String("table", table), utils.Err(err))
-			continue
-		}
-		total += uint64(s)
+	for _, root := range programFootprintDirs() {
+		total += dirDiskUsage(root, footprintWalkTimeout)
 	}
+	return total
+}
+
+// programFootprintDirs 归并本程序占用统计的顶层目录（去重叠）
+func programFootprintDirs() []string {
+	var candidates []string
+	if exe, err := os.Executable(); err == nil {
+		if d, aerr := filepath.Abs(filepath.Dir(exe)); aerr == nil {
+			candidates = append(candidates, filepath.Clean(d))
+		}
+	}
+	// 工作目录：含主配置文件（对应“相关配置”）
+	candidates = append(candidates, appconfig.WorkDir)
+	// 日志目录
+	logDir := appconfig.ExpandWorkDirPath(appconfig.GlobalConfig.Log.Directory)
+	if logDir == "" {
+		logDir = filepath.Join(appconfig.WorkDir, "logs")
+	}
+	if a, err := filepath.Abs(logDir); err == nil {
+		candidates = append(candidates, filepath.Clean(a))
+	}
+	// 数据目录（数据库、检索索引、临时/私有落盘等）
+	candidates = append(candidates, appconfig.GetDataDir())
+	// 配置的各个存储根目录
+	for _, p := range appconfig.RootNames {
+		if a, err := filepath.Abs(p); err == nil {
+			candidates = append(candidates, filepath.Clean(a))
+		}
+	}
+
+	// 去重叠：短路径在前，仅保留不被已保留路径覆盖的顶层目录
+	sort.Slice(candidates, func(i, j int) bool { return len(candidates[i]) < len(candidates[j]) })
+	var kept []string
+	for _, cand := range candidates {
+		covered := false
+		for _, base := range kept {
+			if pathCoveredBy(base, cand) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			kept = append(kept, cand)
+		}
+	}
+	return kept
+}
+
+// pathCoveredBy 判断 sub 是否为 base 自身或其子路径（带目录边界，忽略大小写）
+func pathCoveredBy(base, sub string) bool {
+	rel, err := filepath.Rel(strings.ToLower(base), strings.ToLower(sub))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
+// dirDiskUsage 统计目录实际占用的常规文件字节数（符号链接不跟随，含单目录超时保护）
+func dirDiskUsage(root string, timeout time.Duration) uint64 {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var total uint64
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if err != nil {
+			return nil // 跳过不可读路径
+		}
+		if !info.IsDir() && info.Mode().IsRegular() {
+			total += uint64(info.Size())
+		}
+		return nil
+	})
 	return total
 }
 

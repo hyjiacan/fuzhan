@@ -46,6 +46,7 @@ func readConfig() {
 		Log      utils.LogConfig `yaml:"log"`
 		OpenAPI  OpenAPIConfig   `yaml:"open_api"`
 		Index    IndexConfig     `yaml:"index"`
+		Resource ResourceConfig  `yaml:"resource"`
 	}
 
 	if err := yaml.Unmarshal(data, &tempConfig); err != nil {
@@ -80,6 +81,9 @@ func readConfig() {
 
 	// 加载索引配置
 	GlobalConfig.Index = tempConfig.Index
+
+	// 加载服务器资源监控配置
+	GlobalConfig.Resource = tempConfig.Resource
 
 	// 转换私有文件配额
 	var globalQuota, perUserQuota int64

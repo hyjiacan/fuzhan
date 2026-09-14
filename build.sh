@@ -78,8 +78,17 @@ fi
 build_ui() {
     echo "=== Build Frontend ==="
     cd "$SCRIPT_DIR/ui"
-    # build:frontend = 主应用 + scalar（已存在则自动跳过，避免每次全量重建）
-    yarn build:frontend
+    # 主应用构建（总会重建）
+    yarn build
+    if [ $? -ne 0 ]; then exit 1; fi
+    # scalar 按需构建：产物已存在则跳过，缺失才生成（存在性判定用 [[ -f ]]，不用 js）
+    if [ -f "$SCRIPT_DIR/server/scalar/scalar.html" ]; then
+        echo "scalar.html 已存在，跳过 scalar 构建"
+    else
+        echo "scalar.html 缺失，构建 scalar..."
+        yarn build:scalar
+        if [ $? -ne 0 ]; then exit 1; fi
+    fi
     cd "$SCRIPT_DIR"
     echo "Frontend built to: $SCRIPT_DIR/server/web (scalar: $SCRIPT_DIR/server/scalar)"
 }

@@ -112,7 +112,12 @@
           </div>
           <div class="bottom-right">
             <el-card class="chart-card" shadow="never">
-              <template #header>热门搜索词</template>
+              <template #header>
+                <div class="card-header">
+                  <span>热门搜索词</span>
+                  <el-link type="primary" :underline="false" @click="goToRecords('search')">查看全部 &rsaquo;</el-link>
+                </div>
+              </template>
               <div v-if="keywords.length > 0" class="keyword-badges">
                 <el-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
                   <el-tag>{{ kw.word }}</el-tag>
@@ -121,7 +126,12 @@
               <el-empty v-else description="暂无搜索记录" />
             </el-card>
             <el-card class="chart-card" shadow="never">
-              <template #header>最近上传</template>
+              <template #header>
+                <div class="card-header">
+                  <span>最近上传</span>
+                  <el-link type="primary" :underline="false" @click="goToRecords('upload')">查看全部 &rsaquo;</el-link>
+                </div>
+              </template>
               <div v-if="rankings.recentUploads.length > 0" class="rank-list">
                 <div v-for="(item, index) in rankings.recentUploads" :key="'u' + index" class="rank-item">
                   <el-icon :size="16" class="rank-icon upload"><component :is="UploadIcon" /></el-icon>
@@ -132,7 +142,12 @@
               <el-empty v-else description="暂无上传记录" />
             </el-card>
             <el-card class="chart-card" shadow="never">
-              <template #header>最近下载</template>
+              <template #header>
+                <div class="card-header">
+                  <span>最近下载</span>
+                  <el-link type="primary" :underline="false" @click="goToRecords('download')">查看全部 &rsaquo;</el-link>
+                </div>
+              </template>
               <div v-if="rankings.recentDownloads.length > 0" class="rank-list">
                 <div v-for="(item, index) in rankings.recentDownloads" :key="'d' + index" class="rank-item">
                   <el-icon :size="16" class="rank-icon download"><component :is="DownloadIcon" /></el-icon>
@@ -149,9 +164,12 @@
 
 <script setup>
 import { ref, reactive, h, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { AdminApi, MonitorApi, IndexApi } from '@/api'
+
+const router = useRouter()
 
 // ============ 概览部分 ============
 
@@ -235,6 +253,11 @@ const getUsagePercent = (root) => {
 
 const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
+// 跳转到记录管理页对应 tab
+const goToRecords = (tab) => {
+  router.push({ path: '/admin/records', query: { tab } })
+}
+
 // ============ 概览数据加载 ============
 
 const loadStats = async () => {
@@ -243,7 +266,7 @@ const loadStats = async () => {
       AdminApi.getUsers().catch((e) => { console.error('获取用户数据失败:', e); return { success: false } }),
       MonitorApi.getStorage().catch((e) => { console.error('获取存储数据失败:', e); return { success: false } }),
       MonitorApi.getAccess().catch((e) => { console.error('获取访问数据失败:', e); return { success: false } }),
-      MonitorApi.getKeywords(30).catch((e) => { console.error('获取关键词数据失败:', e); return { success: false } }),
+      MonitorApi.getKeywords(20).catch((e) => { console.error('获取关键词数据失败:', e); return { success: false } }),
       MonitorApi.getRankings(30).catch((e) => { console.error('获取排行数据失败:', e); return { success: false } }),
       IndexApi.getStats().catch((e) => { console.error('获取索引统计失败:', e); return { success: false } })
     ])
@@ -274,7 +297,7 @@ const loadStats = async () => {
     }
 
     if (keywordsData.success) {
-      keywords.value = keywordsData.data || []
+      keywords.value = (keywordsData.data || []).slice(0, 20)
     }
 
     if (rankingsData.success) {
@@ -285,8 +308,8 @@ const loadStats = async () => {
         seen.add(key)
         return true
       })
-      rankings.value.recentUploads = dedup(rankingsData.data?.recentUploads)
-      rankings.value.recentDownloads = dedup(rankingsData.data?.recentDownloads)
+      rankings.value.recentUploads = dedup(rankingsData.data?.recentUploads).slice(0, 10)
+      rankings.value.recentDownloads = dedup(rankingsData.data?.recentDownloads).slice(0, 10)
     }
 
     if (indexStatsData.success) {
@@ -368,6 +391,16 @@ onMounted(() => {
 
   .stat-grid :deep(.el-col) {
     display: flex;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    &:deep(.el-link) {
+      font-size: 12px;
+    }
   }
 
   .stat-grid {

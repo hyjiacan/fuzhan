@@ -665,6 +665,11 @@ export const SystemApi = {
     return request.post('/admin/upload-key', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
+  },
+
+  // 获取本机网络接口列表（初始化后使用，替代仅初始化阶段可用的 setup 接口）
+  getNetworkInterfaces() {
+    return request.get('/admin/network-interfaces')
   }
 }
 

@@ -7,8 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "build:scalar": "vite build --config scalar.vite.config.js",
-    "build:scalar:if-needed": "node scripts/build-scalar-if-needed.mjs",
-    "build:frontend": "vite build && node scripts/build-scalar-if-needed.mjs",
     "build:all": "vite build && vite build --config scalar.vite.config.js",
     "preview": "vite preview"
   },

@@ -405,7 +405,7 @@ func main() {
 	openAPIStatsHandler := openapi.NewStatsHandler(openAPICallStat)
 
 	// 最近上传记录处理器 (无需认证)
-	recentHandler := file.NewRecentHandler(recordRepo)
+	recentHandler := file.NewRecentHandler(recordRepo, db)
 
 	// 系统监测处理器 (无需认证)
 	monitorService := services.NewMonitorService(recordRepo, db)

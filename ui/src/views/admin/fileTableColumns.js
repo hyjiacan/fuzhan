@@ -36,7 +36,7 @@ export const buildFileColumns = ({
   toggleSelectAll, handleSingleCheck, currentPath, router,
   highlightKeyword, adminDownloadHref, previewFile,
   isSearching, searchCompleted, navigateToDir,
-  openMoveModal, handleDelete
+  openMoveModal, handleDelete, openNotesEditor
 }) => {
   return [
     {
@@ -159,6 +159,17 @@ export const buildFileColumns = ({
         }
         return text
       }
+    },
+    {
+      title: '备注',
+      key: 'notes',
+      width: 150,
+      cellRenderer: ({ rowData: row }) => h(ElButton, {
+        size: 'small', link: true,
+        class: ['notes-link', { 'is-empty': !row.notes }],
+        title: row.notes || '',
+        onClick: () => openNotesEditor(row)
+      }, () => h('span', { class: 'notes-text' }, row.notes || '添加备注'))
     },
     {
       title: '操作',
