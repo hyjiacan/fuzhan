@@ -2,11 +2,15 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
+	"github.com/zeebo/xxh3"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -33,6 +37,14 @@ type UserItem struct {
 type SessionListResult struct {
 	Sessions []SessionItem `json:"sessions"`
 	Total    int64         `json:"total"`
+	Stats    SessionStats  `json:"stats"`
+}
+
+// SessionStats 会话的全局聚合统计（与分页无关，用于统计卡片）
+type SessionStats struct {
+	TotalSessions  int64 `json:"totalSessions"`
+	ZombieSessions int64 `json:"zombieSessions"`
+	TotalSize      int64 `json:"totalSize"`
 }
 
 // SessionItem 会话列表项
@@ -227,6 +239,23 @@ func (s *AdminService) ListSessions(page, pageSize int) (*SessionListResult, err
 
 	s.db.Model(&models.UploadSession{}).Count(&total)
 
+	// 全局聚合统计（与分页无关）：总会话数、僵尸会话数、已占空间
+	stats := SessionStats{TotalSessions: total}
+	var zombieCount int64
+	s.db.Model(&models.UploadSession{}).Where(
+		"status IN ?", []string{
+			string(models.UploadStatusPending),
+			string(models.UploadStatusInProgress),
+			string(models.UploadStatusExpired),
+		},
+	).Count(&zombieCount)
+	stats.ZombieSessions = zombieCount
+	if err := s.db.Model(&models.UploadedChunk{}).
+		Select("COALESCE(SUM(chunk_size), 0)").
+		Scan(&stats.TotalSize).Error; err != nil {
+		utils.Error("统计会话占用空间失败", utils.Err(err))
+	}
+
 	if page < 1 {
 		page = 1
 	}
@@ -261,10 +290,10 @@ func (s *AdminService) ListSessions(page, pageSize int) (*SessionListResult, err
 	}
 
 	utils.Info("获取会话列表成功", utils.Int("page", page), utils.Int("page_size", pageSize), utils.Int64("total", total))
-	return &SessionListResult{Sessions: items, Total: total}, nil
+	return &SessionListResult{Sessions: items, Total: total, Stats: stats}, nil
 }
 
-// CleanupSessions 清理指定的会话（含分片文件和数据库记录）
+// CleanupSessions 清理指定的会话（含分片文件、数据库记录及残留的落盘上传中文件）
 func (s *AdminService) CleanupSessions(sessionIDs []uint) (int, error) {
 	cleanedCount := 0
 	var errs []error
@@ -272,6 +301,13 @@ func (s *AdminService) CleanupSessions(sessionIDs []uint) (int, error) {
 		var session models.UploadSession
 		if err := s.db.First(&session, sessionID).Error; err != nil {
 			continue
+		}
+
+		// 清理落盘的 uploadin 残留文件（按 targetType 推导真实路径）
+		if uploadingPath, perr := resolveUploadingPath(&session); perr == nil {
+			if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				errs = append(errs, fmt.Errorf("删除上传中残留文件失败(session=%d): %w", sessionID, rmErr))
+			}
 		}
 
 		// 删除分片记录
@@ -297,4 +333,95 @@ func (s *AdminService) CleanupSessions(sessionIDs []uint) (int, error) {
 
 	utils.Info("清理会话完成", utils.Int("count", cleanedCount), utils.Int("session_ids", len(sessionIDs)))
 	return cleanedCount, nil
+}
+
+// resolveUploadingPath 按会话的上传类型推导 uploadin 残留文件的落盘路径。
+// 与各存储策略的命名规则一致：公开/私有为目标文件同目录下的 `.{basename}.uploading`，
+// 临时为 `.{码哈希}.uploading`。路径推导失败时返回 error（由调用方决定是否忽略）。
+func resolveUploadingPath(session *models.UploadSession) (string, error) {
+	switch session.TargetType {
+	case models.TargetTypePrivate:
+		basePath := appconfig.GlobalConfig.Storage.Private.Path
+		if basePath == "" {
+			return "", fmt.Errorf("私有存储未配置")
+		}
+		userDir := filepath.Join(basePath, "users", session.UserID)
+		dir := joinUnderRoot(userDir, session.TargetPath)
+		if dir == "" {
+			return "", fmt.Errorf("私有路径越界")
+		}
+		return filepath.Join(dir, "."+session.FileName+".uploading"), nil
+	case models.TargetTypeTemp:
+		basePath := appconfig.GlobalConfig.Storage.Temp.Path
+		if basePath == "" || session.Code == "" {
+			return "", fmt.Errorf("临时存储未配置或缺少访问码")
+		}
+		dir := joinUnderRoot(basePath, session.TargetPath)
+		if dir == "" {
+			return "", fmt.Errorf("临时路径越界")
+		}
+		hash := xxh3.Hash([]byte(session.Code + "fuzhan-secret"))
+		safeFilename := fmt.Sprintf("%016x", hash)
+		return filepath.Join(dir, "."+safeFilename+".uploading"), nil
+	default: // 公开（包含历史无 target_type 的遗留会话）
+		_, uploadingPath, perr := (PublicStorage{}).Paths(session)
+		if perr != nil {
+			return "", perr
+		}
+		return uploadingPath, nil
+	}
+}
+
+// joinUnderRoot 将会话的相对子目录安全拼接到根目录下，返回空字符串表示越界/非法。
+// 拒绝绝对路径、上级跳转及包含路径分隔符陷阱的相对片段。
+func joinUnderRoot(root, rel string) string {
+	rel = strings.TrimSpace(rel)
+	rel = strings.Trim(rel, `/\`)
+	cleaned := filepath.Clean(rel)
+	if cleaned == "." || cleaned == "" {
+		return root
+	}
+	if filepath.IsAbs(cleaned) || cleaned == ".." ||
+		strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) ||
+		strings.Contains(cleaned, ".."+string(os.PathSeparator)) {
+		return ""
+	}
+	joined := filepath.Join(root, cleaned)
+	absRoot, _ := filepath.Abs(root)
+	absJoined, _ := filepath.Abs(joined)
+	if absRoot == "" || absJoined == "" ||
+		(absJoined != absRoot && !strings.HasPrefix(absJoined, absRoot+string(os.PathSeparator))) {
+		return ""
+	}
+	return joined
+}
+
+// CleanupAllZombieSessions 后台重新查询全部僵尸（过期/待处理/上传中）会话并清理。
+// 与按 ID 清理不同，由后端决定具体清理哪些，前端无需关心分页。
+func (s *AdminService) CleanupAllZombieSessions() (int, error) {
+	var ids []uint
+	if err := s.db.Model(&models.UploadSession{}).
+		Where("status IN ?", []string{
+			string(models.UploadStatusPending),
+			string(models.UploadStatusInProgress),
+			string(models.UploadStatusExpired),
+		}).
+		Pluck("id", &ids).Error; err != nil {
+		utils.Error("查询僵尸会话失败", utils.Err(err))
+		return 0, fmt.Errorf("查询僵尸会话失败: %w", err)
+	}
+	if len(ids) == 0 {
+		utils.Info("一键清理：没有需要清理的僵尸会话")
+		return 0, nil
+	}
+
+	cleaned, err := s.CleanupSessions(ids)
+	if err != nil {
+		utils.Error("一键清理僵尸会话失败",
+			utils.Int("matched", len(ids)),
+			utils.Int("cleaned", cleaned),
+			utils.Err(err))
+		return cleaned, err
+	}
+	return cleaned, nil
 }

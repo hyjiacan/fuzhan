@@ -57,8 +57,16 @@
           </el-collapse-item>
       </el-collapse>
 
-      <div style="display: flex; justify-content: center; margin-top: 16px;" v-if="dupTotal > dupPageSize">
-        <el-button @click="dupPage++" :loading="dupLoading">加载更多</el-button>
+      <div class="dup-pagination" v-if="dupTotal > 0">
+        <el-pagination
+          background
+          layout="total, prev, pager, next"
+          :total="dupTotal"
+          :page-size="dupPageSize"
+          :current-page="dupPage"
+          :disabled="dupLoading"
+          @current-change="onPageChange"
+        />
       </div>
     </div>
   </div>
@@ -133,6 +141,11 @@ const groupTitle = (group, idx) => {
   return base
 }
 
+const onPageChange = (page) => {
+  dupPage.value = page
+  loadDuplicates()
+}
+
 async function loadDuplicates() {
   dupLoading.value = true
   try {
@@ -141,13 +154,11 @@ async function loadDuplicates() {
       pageSize: dupPageSize
     })
     if (res.success) {
-      if (dupPage.value === 1) {
-        duplicateGroups.value = res.data.groups || []
-        // 重置分页/刷新时清空各组的展开状态
-        groupExpand.value = new Map()
-      } else {
-        duplicateGroups.value = [...duplicateGroups.value, ...(res.data.groups || [])]
-      }
+      // 分页模式：每次请求直接替换当前页数据
+      duplicateGroups.value = res.data.groups || []
+      // 切页/刷新时清空各组的展开状态
+      groupExpand.value = new Map()
+      openGroups.value = []
       dupTotal.value = res.data.total || 0
     }
   } catch (err) {
@@ -234,6 +245,12 @@ onMounted(() => {
     &:hover {
       box-shadow: @shadow-md;
     }
+  }
+
+  .dup-pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 16px;
   }
 
   .dup-path-cell {

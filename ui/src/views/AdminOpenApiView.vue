@@ -87,6 +87,17 @@
           row-key="id"
         />
       </div>
+      <div class="pagination-wrap" v-if="pagination.itemCount > 0">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.itemCount"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
     </el-card>
 
     <!-- 创建 API Key 弹窗 -->
@@ -358,6 +369,15 @@ async function saveConfig() {
   }
 }
 
+function handlePageChange() {
+  loadApiKeys()
+}
+
+function handlePageSizeChange() {
+  pagination.value.page = 1
+  loadApiKeys()
+}
+
 async function loadApiKeys() {
   loading.value = true
   try {
@@ -377,7 +397,7 @@ async function loadCurrentUser() {
   try {
     const res = await AuthApi.getUserInfo()
     if (res.success && res.data?.uuid) {
-      const usersRes = await (await import('@/api')).AdminApi.getUsers()
+      const usersRes = await (await import('@/api')).AdminApi.getUsers(1, 1000)
       if (usersRes.success) {
         const user = usersRes.data?.users?.find(u => u.uuid === res.data.uuid)
         if (user) currentUserId.value = user.id
@@ -510,6 +530,12 @@ onUnmounted(() => {
 
   .table-v2-wrap {
     height: 420px;
+  }
+
+  .pagination-wrap {
+    display: flex;
+    justify-content: flex-end;
+    padding: 12px 0 0;
   }
 }
 

@@ -72,6 +72,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	admin.DELETE("/users/:uuid", dummy)
 	admin.GET("/sessions", dummy)
 	admin.POST("/sessions/cleanup", dummy)
+	admin.POST("/sessions/cleanup-all", dummy)
 	admin.POST("/records/clear", dummy)
 	admin.POST("/upload-cert", dummy)
 	admin.POST("/upload-key", dummy)

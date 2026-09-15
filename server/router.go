@@ -613,6 +613,7 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.DELETE("/users/:uuid", adminHandler.DeleteUserHandler)
 	admin.GET("/sessions", adminHandler.SessionsHandler)
 	admin.POST("/sessions/cleanup", adminHandler.CleanupSessionsHandler)
+	admin.POST("/sessions/cleanup-all", adminHandler.CleanupAllZombieSessionsHandler)
 
 	// 在线 IP 统计路由（与登录无关，依据最近请求判定在线）
 	admin.GET("/online-ips", adminHandler.OnlineIPs)

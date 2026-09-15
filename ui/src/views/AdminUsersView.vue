@@ -7,7 +7,7 @@
 
     <el-card class="filter-card" shadow="never">
       <el-space>
-        <el-input v-model="searchQuery" :maxlength="200" placeholder="过滤用户名..." clearable style="width: 200px" />
+        <el-input v-model="searchQuery" :maxlength="200" placeholder="过滤用户名..." clearable style="width: 200px" @keydown.enter="onSearch" @clear="onSearch" />
         <el-button @click="loadUsers" :loading="loading">
           <el-icon><RefreshIcon /></el-icon>
           刷新
@@ -19,11 +19,22 @@
       <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
         <el-table-v2
           :columns="columns"
-          :data="filteredUsers"
+          :data="users"
           :width="tableWidth"
           :height="tableHeight"
           :row-height="32"
           row-key="uuid"
+        />
+      </div>
+      <div class="pagination-wrap" v-if="total > 0">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="loadUsers"
+          @size-change="onPageSizeChange"
         />
       </div>
     </el-card>
@@ -65,7 +76,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, h } from 'vue'
+import { ref, onMounted, onUnmounted, h } from 'vue'
 import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress } from 'element-plus'
 import { AuthApi, AdminApi } from '@/api'
 import { TimeUtils } from '@/utils'
@@ -77,6 +88,9 @@ const RefreshIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBo
 const loading = ref(false)
 const users = ref([])
 const searchQuery = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 const resetPasswordModalVisible = ref(false)
 const resettingPassword = ref(false)
 const resetFormRef = ref(null)
@@ -87,13 +101,15 @@ const resetPasswordForm = ref({
   confirmPassword: ''
 })
 
-const filteredUsers = computed(() => {
-  if (!searchQuery.value) return users.value
-  const query = searchQuery.value.toLowerCase()
-  return users.value.filter(user =>
-    user.username.toLowerCase().includes(query)
-  )
-})
+const onSearch = () => {
+  page.value = 1
+  loadUsers()
+}
+
+const onPageSizeChange = () => {
+  page.value = 1
+  loadUsers()
+}
 
 const formatSize = (bytes) => {
   if (!bytes) return '0 B'
@@ -202,9 +218,10 @@ const columns = [
 const loadUsers = async () => {
   loading.value = true
   try {
-    const data = await AdminApi.getUsers()
+    const data = await AdminApi.getUsers(page.value, pageSize.value, searchQuery.value)
     if (data.success) {
       users.value = (data.data && data.data.users) || []
+      total.value = data.data?.total || 0
     } else {
       ElMessage.error(data.message || '获取用户列表失败')
     }
@@ -345,6 +362,12 @@ onUnmounted(() => {
   .table-card {
     .table-v2-wrap {
       height: 480px;
+    }
+
+    .pagination-wrap {
+      display: flex;
+      justify-content: flex-end;
+      padding: 12px 0 0;
     }
   }
 }

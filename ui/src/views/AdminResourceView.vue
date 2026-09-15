@@ -65,7 +65,7 @@
             </div>
             <span class="disk-pct">{{ diskPercent(program) }}%</span>
           </div>
-          <div class="disk-note">服务器 {{ fmtBytes(server.diskUsed) }} / {{ fmtBytes(server.diskTotal) }} · 本程序 {{ fmtBytes(program.diskUsed) }}</div>
+          <div class="disk-note">服务器 {{ fmtBytes(server.diskUsed) }} / {{ fmtBytes(server.diskTotal) }} · 本程序占整个存储 {{ fmtBytes(program.diskUsed) }} / {{ fmtBytes(program.diskTotal) }}</div>
         </div>
       </el-card>
 
@@ -204,14 +204,14 @@ function gaugeBaseOption() {
 
 function renderGauges() {
   const cpuData = [
-    { value: +Number(server.cpu || 0).toFixed(1), name: '服务器', itemStyle: { color: ORANGE } },
-    { value: +Number(program.cpu || 0).toFixed(1), name: '本程序', itemStyle: { color: BLUE } }
+    { value: +Number(server.cpu || 0).toFixed(1), name: '服务器', itemStyle: { color: ORANGE }, pointer: { itemStyle: { color: ORANGE } } },
+    { value: +Number(program.cpu || 0).toFixed(1), name: '本程序', itemStyle: { color: BLUE }, pointer: { itemStyle: { color: BLUE } } }
   ]
   gaugeCpu.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: cpuData }] }, { notMerge: true })
 
   const memData = [
-    { value: memPercent(server), name: '服务器', itemStyle: { color: ORANGE } },
-    { value: memPercent(program), name: '本程序', itemStyle: { color: BLUE } }
+    { value: memPercent(server), name: '服务器', itemStyle: { color: ORANGE }, pointer: { itemStyle: { color: ORANGE } } },
+    { value: memPercent(program), name: '本程序', itemStyle: { color: BLUE }, pointer: { itemStyle: { color: BLUE } } }
   ]
   gaugeMem.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: memData }] }, { notMerge: true })
 }

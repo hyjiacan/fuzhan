@@ -9,7 +9,7 @@
       </div>
       <div class="header-right">
         <span class="online-summary">
-          当前在线 <b>{{ onlineList.length }}</b> 个 IP
+          当前在线 <b>{{ total }}</b> 个 IP
         </span>
         <el-button type="primary" size="small" :loading="loading" @click="loadData">
           <el-icon><Refresh /></el-icon>
@@ -25,23 +25,55 @@
       title="判定规则：某 IP 在空闲超时内发出过任一元请求即视为在线，距上次请求超过该时长自动离线。"
     />
 
-    <div ref="wrapRef" class="table-v2-wrap" v-loading="loading">
-      <el-table-v2
-        v-if="onlineList.length > 0"
-        :columns="columns"
+    <div ref="wrapRef" class="table-wrap" v-loading="loading">
+      <el-table
         :data="onlineList"
-        :width="tableWidth"
-        :height="tableHeight"
-        :row-height="32"
-        row-key="ip"
-      />
-      <el-empty v-else-if="!loading" description="当前没有在线 IP" :image-size="80" />
+        size="small"
+        :border="false"
+        stripe
+        :max-height="tableHeight"
+      >
+        <el-table-column label="IP 地址" min-width="180">
+          <template #default="{ row }">
+            <span style="font-family: monospace; font-weight: 500;">{{ row.ip }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="在线时长" width="150" sortable prop="onlineSeconds">
+          <template #default="{ row }">{{ formatDuration(row.onlineSeconds) }}</template>
+        </el-table-column>
+        <el-table-column label="上次请求" width="220">
+          <template #default="{ row }">{{ formatTime(row.lastSeen) }}</template>
+        </el-table-column>
+        <el-table-column label="首次请求" width="220">
+          <template #default="{ row }">{{ formatTime(row.firstSeen) }}</template>
+        </el-table-column>
+        <el-table-column label="请求次数" width="120" sortable prop="requestCount">
+          <template #default="{ row }">{{ row.requestCount || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="User-Agent" min-width="300">
+          <template #default="{ row }">
+            <span class="ua-cell" :title="row.userAgent || ''">{{ row.userAgent || '-' }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!loading && onlineList.length === 0" description="当前没有在线 IP" :image-size="80" />
+      <div class="pagination-wrap" v-if="total > 0">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="loadData"
+          @size-change="onPageSizeChange"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, h, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { AdminApi } from '@/api'
 
@@ -49,8 +81,24 @@ import { AdminApi } from '@/api'
 const loading = ref(false)
 const onlineList = ref([])
 const idleTimeoutSeconds = ref(180)
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 
-// ============ 列 ============
+// 普通 el-table 需要通过容器测量提供 max-height，实现受控的高度内滚动
+const wrapRef = ref(null)
+const tableHeight = ref(400)
+let tableResizeObs = null
+const updateTableSize = () => {
+  const el = wrapRef.value
+  if (el) {
+    const height = el.clientHeight || 400
+    // 预留分页高度，避免表格把分页挤出可视区
+    tableHeight.value = height > 60 ? height - 61 : height
+  }
+}
+
+// ============ 格式化 ============
 const formatDuration = (seconds) => {
   if (!seconds && seconds !== 0) return '-'
   const s = Math.max(0, seconds)
@@ -71,58 +119,14 @@ const formatTime = (iso) => {
   }
 }
 
-const columns = [
-  {
-    title: 'IP 地址', key: 'ip', width: 200,
-    cellRenderer: ({ rowData: row }) => h('span', { style: 'font-family: monospace; font-weight: 500;' }, row.ip)
-  },
-  {
-    title: '在线时长', key: 'onlineSeconds', width: 140,
-    sortable: true, sortBy: 'onlineSeconds',
-    cellRenderer: ({ rowData: row }) => formatDuration(row.onlineSeconds)
-  },
-  {
-    title: '上次请求', key: 'lastSeen', width: 220,
-    cellRenderer: ({ rowData: row }) => formatTime(row.lastSeen)
-  },
-  {
-    title: '首次请求', key: 'firstSeen', width: 220,
-    cellRenderer: ({ rowData: row }) => formatTime(row.firstSeen)
-  },
-  {
-    title: '请求次数', key: 'requestCount', width: 110,
-    sortable: true, sortBy: 'requestCount',
-    cellRenderer: ({ rowData: row }) => row.requestCount || 0
-  },
-  {
-    title: 'User-Agent', key: 'userAgent', width: 320,
-    cellRenderer: ({ rowData: row }) => h('span', {
-      style: 'display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
-      title: row.userAgent || ''
-    }, row.userAgent || '-')
-  }
-]
-
-// ============ el-table-v2 尺寸测量 ============
-const wrapRef = ref(null)
-const tableWidth = ref(800)
-const tableHeight = ref(400)
-let tableResizeObs = null
-const updateTableSize = () => {
-  const el = wrapRef.value
-  if (el) {
-    tableWidth.value = el.clientWidth || 800
-    tableHeight.value = el.clientHeight || 400
-  }
-}
-
 // ============ 数据加载 ============
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await AdminApi.getOnlineIps()
+    const res = await AdminApi.getOnlineIps(page.value, pageSize.value)
     if (res.success && res.data) {
       onlineList.value = Array.isArray(res.data.online) ? res.data.online : []
+      total.value = res.data.total || 0
       if (res.data.idleTimeoutSeconds > 0) {
         idleTimeoutSeconds.value = res.data.idleTimeoutSeconds
       }
@@ -134,14 +138,19 @@ const loadData = async () => {
   }
 }
 
+const onPageSizeChange = () => {
+  page.value = 1
+  loadData()
+}
+
 // 手动刷新：进入页面时加载一次，之后由用户点击「刷新」按钮触发（不再自动轮询）
-onMounted(async () => {
+onMounted(() => {
   updateTableSize()
   tableResizeObs = new ResizeObserver(updateTableSize)
   if (wrapRef.value) {
     tableResizeObs.observe(wrapRef.value)
   }
-  await loadData()
+  loadData()
 })
 
 onUnmounted(() => {
@@ -198,14 +207,36 @@ onUnmounted(() => {
     margin-bottom: 12px;
   }
 
-  .table-v2-wrap {
+  .table-wrap {
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     background: #fff;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     overflow: hidden;
     position: relative;
+
+    :deep(.el-table) {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .ua-cell {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pagination-wrap {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: flex-end;
+      padding: 12px 16px;
+      border-top: 1px solid #f0f0f0;
+    }
   }
 }
 </style>

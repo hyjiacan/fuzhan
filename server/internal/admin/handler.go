@@ -36,17 +36,36 @@ func NewHandler(adminService *services.AdminService, db *gorm.DB) *Handler {
 }
 
 // OnlineIPs 获取当前在线 IP 列表（依据最近请求判定，与登录无关）
-// 支持可选 limit 参数（在线 IP 较多时避免一次性返回全量），未传则不限制。
+// 采用统一分页模式（page/pageSize + total），与其它管理列表接口保持一致。
 func (h *Handler) OnlineIPs(c *gin.Context) {
 	now := utils.Now()
 	entries := online.Default.Snapshot(now)
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(entries) {
-			entries = entries[:limit]
-		}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if page < 1 {
+		page = 1
 	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	total := len(entries)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	paged := entries[start:end]
+
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"online":             entries,
+		"online":             paged,
+		"total":              total,
+		"page":               page,
+		"pageSize":           pageSize,
 		"idleTimeoutSeconds": int(online.IdleTimeout.Seconds()),
 		"serverTime":         now.Format(time.RFC3339),
 	})
@@ -202,6 +221,19 @@ func (h *Handler) CleanupSessionsHandler(c *gin.Context) {
 	}
 
 	middleware.LogOperation(c, "admin.session.cleanup", fmt.Sprintf("cleaned %d sessions", cleanedCount), nil)
+	response.HandleSuccess(c, http.StatusOK, fmt.Sprintf("成功清理 %d 个会话", cleanedCount), nil)
+}
+
+// CleanupAllZombieSessionsHandler 一键清理全部僵尸会话（由后端重新查询决定清理哪些）
+func (h *Handler) CleanupAllZombieSessionsHandler(c *gin.Context) {
+	cleanedCount, err := h.adminService.CleanupAllZombieSessions()
+	if err != nil {
+		middleware.LogOperation(c, "admin.session.cleanup_all", "all", err)
+		response.HandleInternalServerError(c, "清理会话失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.session.cleanup_all", fmt.Sprintf("cleaned %d sessions", cleanedCount), nil)
 	response.HandleSuccess(c, http.StatusOK, fmt.Sprintf("成功清理 %d 个会话", cleanedCount), nil)
 }
 

@@ -25,9 +25,14 @@ export const useZombieSessions = () => {
   const zombieLoading = ref(false)
   const zombieCleaning = ref(false)
   const zombieConfirmVisible = ref(false)
+  // 清理模式：selected=清理所选；single=单条删除；all=一键清理全部僵尸
+  const zombieCleanMode = ref('selected')
   const zombieSelectedRowKeys = ref([])
   const zombieSelectedSessions = ref([])
   const zombieSessions = ref([])
+  const zombiePage = ref(1)
+  const zombiePageSize = ref(20)
+  const zombieTotal = ref(0)
 
   const zombieStats = reactive({
     zombieSessions: 0,
@@ -138,19 +143,38 @@ export const useZombieSessions = () => {
   const loadZombieSessions = async () => {
     zombieLoading.value = true
     try {
-      const data = await AdminApi.getSessions()
+      const data = await AdminApi.getSessions(zombiePage.value, zombiePageSize.value)
       if (data.success) {
-        const sessionList = (data.data && data.data.sessions) || []
-        zombieSessions.value = sessionList
-        zombieStats.totalSessions = sessionList.length
-        zombieStats.zombieSessions = sessionList.filter(s => ZOMBIE_STATES.includes(s.status)).length
-        zombieStats.totalSize = sessionList.reduce((sum, s) => sum + (s.uploadedSize || 0), 0)
+        zombieSessions.value = (data.data && data.data.sessions) || []
+        zombieTotal.value = data.data?.total || 0
+        const stats = data.data?.stats
+        if (stats) {
+          zombieStats.totalSessions = stats.totalSessions || 0
+          zombieStats.zombieSessions = stats.zombieSessions || 0
+          zombieStats.totalSize = stats.totalSize || 0
+        } else {
+          // 后端未返回聚合统计时退化为当前页估算
+          zombieStats.totalSessions = zombieTotal.value
+          zombieStats.zombieSessions = zombieSessions.value.filter(s => ZOMBIE_STATES.includes(s.status)).length
+          zombieStats.totalSize = zombieSessions.value.reduce((sum, s) => sum + (s.uploadedSize || 0), 0)
+        }
       }
     } catch (e) {
       console.error('加载会话列表失败', e)
     } finally {
       zombieLoading.value = false
     }
+  }
+
+  const onZombiePageChange = () => {
+    zombieSelectedRowKeys.value = []
+    loadZombieSessions()
+  }
+
+  const onZombiePageSizeChange = () => {
+    zombiePage.value = 1
+    zombieSelectedRowKeys.value = []
+    loadZombieSessions()
   }
 
   const zombieCleanSelected = () => {
@@ -160,28 +184,41 @@ export const useZombieSessions = () => {
     }
     const selected = zombieSessions.value.filter(s => zombieSelectedRowKeys.value.includes(s.id))
     zombieSelectedSessions.value = selected
+    zombieCleanMode.value = 'selected'
     zombieConfirmVisible.value = true
   }
 
   const zombieCleanSession = (session) => {
     zombieSelectedSessions.value = [session]
+    zombieCleanMode.value = 'single'
     zombieConfirmVisible.value = true
   }
 
+  // 一键清理：不依赖当前分页，由后端重新查询全部僵尸会话决定清理哪些
   const zombieCleanAllExpired = () => {
-    const expiredSessions = zombieSessions.value.filter(s => ZOMBIE_STATES.includes(s.status))
-    if (expiredSessions.length === 0) {
-      ElMessage.info('没有需要清理的过期会话')
-      return
-    }
-    zombieSelectedRowKeys.value = expiredSessions.map(s => s.id)
-    zombieSelectedSessions.value = expiredSessions
+    zombieSelectedRowKeys.value = []
+    zombieSelectedSessions.value = []
+    zombieCleanMode.value = 'all'
     zombieConfirmVisible.value = true
   }
 
   const zombieConfirmClean = async () => {
     zombieCleaning.value = true
     try {
+      if (zombieCleanMode.value === 'all') {
+        const data = await AdminApi.cleanupAllZombieSessions()
+        if (data.success) {
+          ElMessage.success(data.message || '清理完成')
+          zombieConfirmVisible.value = false
+          zombieSelectedRowKeys.value = []
+          zombieSelectedSessions.value = []
+          loadZombieSessions()
+        } else {
+          ElMessage.error(data.message || '清理失败')
+        }
+        return
+      }
+
       const sessionIds = zombieSelectedSessions.value.map(s => s.id)
       const data = await AdminApi.cleanupSessions(sessionIds)
       if (data.success) {
@@ -202,8 +239,11 @@ export const useZombieSessions = () => {
 
   return {
     zombieLoading, zombieCleaning, zombieConfirmVisible,
+    zombieCleanMode,
     zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats,
+    zombiePage, zombiePageSize, zombieTotal,
     zombieColumns, loadZombieSessions,
+    onZombiePageChange, onZombiePageSizeChange,
     zombieCleanSelected, zombieCleanAllExpired, zombieConfirmClean
   }
 }

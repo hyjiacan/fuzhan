@@ -307,7 +307,7 @@ async function loadCurrentUser() {
     const res = await AuthApi.getUserInfo()
     if (res.success && res.data?.uuid) {
       // 获取用户列表来找到 userId
-      const usersRes = await (await import('../api')).AdminApi.getUsers()
+      const usersRes = await (await import('../api')).AdminApi.getUsers(1, 1000)
       if (usersRes.success) {
         const user = usersRes.data?.users?.find(u => u.uuid === res.data.uuid)
         if (user) {

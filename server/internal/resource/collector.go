@@ -76,14 +76,13 @@ type Collector struct {
 	server Point
 	prog   Point
 
-	prevServerCPU      []cpu.TimesStat
-	prevServerDiskIO   map[string]disk.IOCountersStat
-	prevProgDiskIO     *process.IOCountersStat
-	lastSample         time.Time
-	lastCollect        time.Time
-	lastFootprint      time.Time
-	programFootprint   uint64
-	programVolumeTotal uint64
+	prevServerCPU    []cpu.TimesStat
+	prevServerDiskIO map[string]disk.IOCountersStat
+	prevProgDiskIO   *process.IOCountersStat
+	lastSample       time.Time
+	lastCollect      time.Time
+	lastFootprint    time.Time
+	programFootprint uint64
 }
 
 // resolveConfig 读取配置；未配置时使用默认值
@@ -195,10 +194,8 @@ func (c *Collector) sample(now time.Time) {
 		c.lastFootprint = now
 	}
 	prog.DiskUsed = c.programFootprint
-	if c.programVolumeTotal == 0 {
-		c.programVolumeTotal = programVolumeTotal()
-	}
-	prog.DiskTotal = c.programVolumeTotal
+	// 本程序磁盘占用分母取整个存储总量，与服务器同口径，展示本程序占"整个存储"的百分比
+	prog.DiskTotal = server.DiskTotal
 
 	c.setSnapshot(ScopeServer, server)
 	c.setSnapshot(ScopeProgram, prog)
@@ -447,16 +444,6 @@ func (c *Collector) serverDiskUsage() (used, total uint64) {
 		}
 	}
 	return used, total
-}
-
-// programVolumeTotal 程序磁盘总量：数据目录所在卷的容量
-func programVolumeTotal() uint64 {
-	dataDir := appconfig.GetDataDir()
-	u, err := disk.Usage(dataDir)
-	if err != nil {
-		return 0
-	}
-	return u.Total
 }
 
 // ioRates 计算服务器磁盘 IO 速率（字节/秒）

@@ -407,8 +407,8 @@ export const FileRecordApi = {
 
 // ========== 管理员 API ==========
 export const AdminApi = {
-  getUsers() {
-    return request.get('/admin/users')
+  getUsers(page = 1, pageSize = 20, query = '') {
+    return request.get('/admin/users', { params: { page, pageSize, query } })
   },
 
   resetPassword(uuid, newPassword) {
@@ -423,7 +423,7 @@ export const AdminApi = {
     return request.delete(`/admin/users/${uuid}`)
   },
 
-  getSessions(page = 1, pageSize = 100) {
+  getSessions(page = 1, pageSize = 20) {
     return request.get('/admin/sessions', { params: { page, pageSize } })
   },
 
@@ -431,10 +431,14 @@ export const AdminApi = {
     return request.post('/admin/sessions/cleanup', { sessionIds })
   },
 
-  // 当前在线 IP（与登录无关，依据最近请求判定）——限制单次返回条数，
-  // 避免在线 IP 较多时一次性拉全量到前端。
-  getOnlineIps(limit = 500) {
-    return request.get('/admin/online-ips', { params: { limit } })
+  // 一键清理全部僵尸（过期/待处理/上传中）会话——由后端重新查询决定清理哪些
+  cleanupAllZombieSessions() {
+    return request.post('/admin/sessions/cleanup-all')
+  },
+
+  // 当前在线 IP（与登录无关，依据最近请求判定）——统一分页模式
+  getOnlineIps(page = 1, pageSize = 20) {
+    return request.get('/admin/online-ips', { params: { page, pageSize } })
   },
 
   // 文件管理

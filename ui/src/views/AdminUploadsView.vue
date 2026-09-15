@@ -72,11 +72,25 @@
               row-key="id"
             />
           </div>
+          <div class="pagination-wrap" v-if="zombieTotal > 0">
+            <el-pagination
+              v-model:current-page="zombiePage"
+              v-model:page-size="zombiePageSize"
+              :total="zombieTotal"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="onZombiePageChange"
+              @size-change="onZombiePageSizeChange"
+            />
+          </div>
         </el-card>
 
         <!-- 确认清理对话框 -->
         <el-dialog v-model="zombieConfirmVisible" title="确认清理" width="400px">
-          <el-alert type="warning" :closable="false">
+          <el-alert v-if="zombieCleanMode === 'all'" type="warning" :closable="false">
+            确定要一键清理全部过期/待处理/上传中的会话吗？系统将从后台重新查询，此操作将删除相关的残留文件，且不限于当前显示的这一页。
+          </el-alert>
+          <el-alert v-else type="warning" :closable="false">
             确定要清理这 {{ zombieSelectedSessions.length }} 个会话吗？此操作将删除相关的残留文件。
           </el-alert>
           <template #footer>
@@ -267,8 +281,11 @@ const updateTableSize = () => {
 const zombie = useZombieSessions()
 const {
   zombieLoading, zombieCleaning, zombieConfirmVisible,
+  zombieCleanMode,
   zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats,
+  zombiePage, zombiePageSize, zombieTotal,
   zombieColumns, loadZombieSessions,
+  onZombiePageChange, onZombiePageSizeChange,
   zombieCleanSelected, zombieCleanAllExpired, zombieConfirmClean
 } = zombie
 

@@ -278,7 +278,7 @@ const loadStats = async () => {
     }
 
     if (usersData.success) {
-      stats.value.totalUsers = (usersData.data || []).length
+      stats.value.totalUsers = usersData.data?.total ?? (usersData.data || []).length ?? 0
     }
 
     if (storageData.success) {
