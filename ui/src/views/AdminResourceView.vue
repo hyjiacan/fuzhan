@@ -112,14 +112,15 @@
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
-import * as echarts from 'echarts/core'
-import { GaugeChart, LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, TitleComponent, LegendComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import * as echarts from 'echarts/lib/echarts'
+import 'echarts/lib/chart/gauge'
+import 'echarts/lib/chart/line'
+import 'echarts/lib/component/grid'
+import 'echarts/lib/component/tooltip'
+import 'echarts/lib/component/title'
+import 'echarts/lib/component/legend'
 import { Refresh } from '@element-plus/icons-vue'
 import { ConfigApi, ResourceApi } from '@/api'
-
-echarts.use([GaugeChart, LineChart, GridComponent, TooltipComponent, TitleComponent, LegendComponent, CanvasRenderer])
 
 // ============ 状态 ============
 const loading = ref(false)
@@ -192,11 +193,10 @@ function gaugeBaseOption() {
     series: [{
       type: 'gauge', min: 0, max: 100, startAngle: 200, endAngle: -20,
       radius: '95%', center: ['50%', '62%'],
-      progress: { show: true, roundCap: true, width: 10 },
       axisLine: { lineStyle: { width: 10 } },
       axisTick: { show: false }, splitLine: { show: false },
       axisLabel: { show: false },
-      pointer: { show: true, length: '70%', width: 5, itemStyle: { color: 'auto' } },
+      pointer: { show: true, length: '70%', width: 5 },
       detail: { show: false }, title: { show: false }
     }]
   }
@@ -204,16 +204,16 @@ function gaugeBaseOption() {
 
 function renderGauges() {
   const cpuData = [
-    { value: +Number(server.cpu || 0).toFixed(1), name: '服务器', itemStyle: { color: ORANGE }, pointer: { itemStyle: { color: ORANGE } } },
-    { value: +Number(program.cpu || 0).toFixed(1), name: '本程序', itemStyle: { color: BLUE }, pointer: { itemStyle: { color: BLUE } } }
+    { value: +Number(server.cpu || 0).toFixed(1), name: '服务器', itemStyle: { color: ORANGE } },
+    { value: +Number(program.cpu || 0).toFixed(1), name: '本程序', itemStyle: { color: BLUE } }
   ]
-  gaugeCpu.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: cpuData }] }, { notMerge: true })
+  gaugeCpu.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: cpuData }] }, true)
 
   const memData = [
-    { value: memPercent(server), name: '服务器', itemStyle: { color: ORANGE }, pointer: { itemStyle: { color: ORANGE } } },
-    { value: memPercent(program), name: '本程序', itemStyle: { color: BLUE }, pointer: { itemStyle: { color: BLUE } } }
+    { value: memPercent(server), name: '服务器', itemStyle: { color: ORANGE } },
+    { value: memPercent(program), name: '本程序', itemStyle: { color: BLUE } }
   ]
-  gaugeMem.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: memData }] }, { notMerge: true })
+  gaugeMem.value?.setOption({ series: [{ ...gaugeBaseOption().series[0], data: memData }] }, true)
 }
 
 // ============ 曲线（实时+历史整合，服务器与程序同图，动态追加刷新） ============
@@ -285,7 +285,6 @@ function mkOption({ title, yMax, yName, yFormatter, valueFormatter, customToolti
     yAxis: { type: 'value', min: 0, max: yMax, name: yName, axisLabel: { fontSize: 10, formatter: yFormatter } },
     tooltip: {
       trigger: 'axis', confine: true,
-      valueFormatter: valueFormatter,
       formatter: customTooltip || ((params) => mkTooltip(params, valueFormatter))
     },
     series

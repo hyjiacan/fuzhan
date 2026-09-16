@@ -151,7 +151,7 @@
         </div>
       </template>
       <div class="agg-wrap">
-        <div ref="aggregateEl" class="chart-box half"></div>
+        <div ref="aggregateEl" class="chart-box stack-chart"></div>
         <el-table :data="aggregate" border size="small" class="agg-table">
           <el-table-column type="index" label="#" width="44" align="center" />
           <el-table-column prop="key" :label="aggDim === 'dir' ? '目录' : '扩展名'" min-width="180" show-overflow-tooltip />
@@ -165,7 +165,7 @@
     <el-card shadow="never" class="chart-card">
       <template #header><span class="card-title">失败 / 异常情况</span></template>
       <div class="fail-wrap">
-        <div ref="failEl" class="chart-box half"></div>
+        <div ref="failEl" class="chart-box stack-chart"></div>
         <el-table :data="failures" border size="small" class="fail-table">
           <el-table-column prop="reason" label="失败原因" min-width="160" />
           <el-table-column prop="count" label="次数" width="110" align="right" />
@@ -206,13 +206,16 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
-import * as echarts from 'echarts/core'
-import { LineChart, BarChart, HeatmapChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, TitleComponent, LegendComponent, VisualMapComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import * as echarts from 'echarts/lib/echarts'
+import 'echarts/lib/chart/line'
+import 'echarts/lib/chart/bar'
+import 'echarts/lib/chart/heatmap'
+import 'echarts/lib/component/grid'
+import 'echarts/lib/component/tooltip'
+import 'echarts/lib/component/legend'
+import 'echarts/lib/component/visualMap'
+import 'echarts/lib/component/graphic'
 import { DownloadAnalyticsApi } from '../api'
-
-echarts.use([LineChart, BarChart, HeatmapChart, GridComponent, TooltipComponent, TitleComponent, LegendComponent, VisualMapComponent, CanvasRenderer])
 
 const loading = ref(false)
 const preset = ref('30d')
@@ -287,6 +290,12 @@ function axisColors() {
 
 function baseGridOpt() {
   return { left: 16, right: 24, top: 32, bottom: 8, containLabel: true }
+}
+
+// echarts 4.x 不支持 axisLabel 的 width/overflow 截断，用 formatter 实现
+function truncateLabel(v, max) {
+  v = v == null ? '' : String(v)
+  return v.length > max ? v.slice(0, max - 1) + '…' : v
 }
 
 // 横向柱状图空态：无数据时仍渲染坐标轴并居中提示"暂无数据"，避免整个图表区域空白。
@@ -435,11 +444,11 @@ function renderTopFilesChart(list) {
       type: 'category',
       inverse: true,
       data: rows.map((r) => r.fileName),
-      axisLabel: { color: c.text, width: 130, overflow: 'truncate' },
+      axisLabel: { color: c.text, formatter: (v) => truncateLabel(v, 130) },
       axisLine: { show: false }
     },
     series: [{
-      type: 'bar', barMaxWidth: 18, itemStyle: { borderRadius: [0, 4, 4, 0] },
+      type: 'bar', barMaxWidth: 18,
       data: rows.map((r) => (topSort.value === 'spread' ? r.spread : r.count))
     }]
   }, true)
@@ -459,8 +468,8 @@ function renderSourcesChart(list, by) {
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
     xAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, width: 120, overflow: 'truncate' }, axisLine: { show: false } },
-    series: [{ type: 'bar', barMaxWidth: 18, itemStyle: { borderRadius: [0, 4, 4, 0] }, data: rows.map((r) => r.count) }]
+    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, formatter: (v) => truncateLabel(v, 120) }, axisLine: { show: false } },
+    series: [{ type: 'bar', barMaxWidth: 18, data: rows.map((r) => r.count) }]
   }, true)
 }
 
@@ -478,8 +487,8 @@ function renderFailChart(list) {
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
     xAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.reason), axisLabel: { color: c.text, width: 130, overflow: 'truncate' }, axisLine: { show: false } },
-    series: [{ type: 'bar', barMaxWidth: 18, itemStyle: { borderRadius: [0, 4, 4, 0] }, data: rows.map((r) => r.count) }]
+    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.reason), axisLabel: { color: c.text, formatter: (v) => truncateLabel(v, 130) }, axisLine: { show: false } },
+    series: [{ type: 'bar', barMaxWidth: 18, data: rows.map((r) => r.count) }]
   }, true)
 }
 
@@ -555,8 +564,8 @@ function renderAggregateChart(list, dim) {
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
     xAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, width: 180, overflow: 'truncate', formatter: (v) => (dim === 'type' ? '.' + v : v) }, axisLine: { show: false } },
-    series: [{ name: label, type: 'bar', barMaxWidth: 18, itemStyle: { borderRadius: [0, 4, 4, 0] }, data: rows.map((r) => r.count) }]
+    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, formatter: (v) => truncateLabel(dim === 'type' ? '.' + v : v, 180) }, axisLine: { show: false } },
+    series: [{ name: label, type: 'bar', barMaxWidth: 18, data: rows.map((r) => r.count) }]
   }, true)
 }
 
@@ -683,10 +692,10 @@ onUnmounted(() => {
 .chart-box.small {
   height: 260px;
 }
-.chart-box.half {
+.chart-box.stack-chart {
+  width: 100%;
   height: 300px;
-  flex: 1;
-  min-width: 0;
+  flex: none;
 }
 .two-col {
   display: grid;
@@ -699,21 +708,19 @@ onUnmounted(() => {
 }
 .agg-wrap {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
 }
 .agg-table {
-  width: 460px;
-  flex-shrink: 0;
+  width: 100%;
 }
 .fail-wrap {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
 }
 .fail-table {
-  width: 420px;
-  flex-shrink: 0;
+  width: 100%;
 }
 .source-list {
   padding: 4px 8px;
