@@ -121,6 +121,39 @@ func SubmitRecord(rec *models.OperationRecord) bool {
 	return w.Submit(rec)
 }
 
+// SubmitFailedRecord 记录一次失败的操作（用于下载行为分析失败/异常维度）。
+// 复用全局有界记录器；携带失败原因，避免各下载入口重复初始化。
+func SubmitFailedRecord(rec *models.OperationRecord, failReason string) {
+	if rec == nil {
+		return
+	}
+	rec.Status = models.RecordStatusFailed
+	rec.FailReason = failReason
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = utils.Now()
+	}
+	SubmitRecord(rec)
+}
+
+// SubmitDownloadRecord 提交一条下载操作记录（成功或失败），默认补齐 Action=download、
+// SourceType=public 与 CreatedAt。供公开/私有/临时下载入口统一复用。
+// 返回是否已交给全局有界记录器；调用方在其返回 false 时可回退为同步写库（configPkg.GetDB().Create）。
+func SubmitDownloadRecord(op *models.OperationRecord) bool {
+	if op == nil {
+		return false
+	}
+	if op.Action == "" {
+		op.Action = "download"
+	}
+	if op.SourceType == "" {
+		op.SourceType = models.SourceTypePublic
+	}
+	if op.CreatedAt.IsZero() {
+		op.CreatedAt = utils.Now()
+	}
+	return SubmitRecord(op)
+}
+
 // StopRecordWriter 停止全局有界记录器。
 func StopRecordWriter() {
 	defaultWriterMu.RLock()

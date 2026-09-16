@@ -428,6 +428,23 @@ Content-Type: application/json
 | GET | `/api/v1/monitor/hot-downloads` | `monitor.Handler.HotDownloads` | 热门下载排行 | 无 |
 | GET | `/api/v1/system/shutdown` | `ShutdownHandler` | 关闭服务 | 本地 |
 
+### 下载行为分析（管理端）
+
+基于 `operation_records` 中**公开**文件下载（`action=download/download-by-hash`）记录聚合，`from`/`to` 为 RFC3339，缺省近 30 天。
+分析层统一按公共来源（`source_type=public` 或空）过滤，私有/临时下载记录不在口径内。
+
+| HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
+|----------|------|---------|----------|------|
+| GET | `/api/v1/admin/download-analytics/summary` | `downloadanalytics.Handler.SummaryHandle` | 区间总览（成功/文件数/IP/用户/体积/失败） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/trend` | `downloadanalytics.Handler.TrendHandle` | 下载趋势（granularity=day/week/month，可选 id 单文件） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/top-files` | `downloadanalytics.Handler.TopFilesHandle` | Top 下载文件榜（limit，sort=count/spread，含独立IP/扩散比） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/sources` | `downloadanalytics.Handler.SourcesHandle` | 来源分布（by=ip/user，limit） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/failures` | `downloadanalytics.Handler.FailuresHandle` | 失败原因分布（limit） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/file` | `downloadanalytics.Handler.FileDetailHandle` | 单文件明细（id，趋势+IP/用户拆分） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/heatmap` | `downloadanalytics.Handler.HeatmapHandle` | 时段热度分布（周几×24小时，weekday=1..7 周一为1） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/aggregate` | `downloadanalytics.Handler.AggregateHandle` | 目录/类型聚合（dimension=dir/type，limit） | JWT+Admin |
+| GET | `/api/v1/admin/download-analytics/lifecycle` | `downloadanalytics.Handler.LifecycleHandle` | 生命周期/衰减曲线（自上传第 capDays 天，上限90，关联权威索引表上传时间） | JWT+Admin |
+
 ### 存储统计响应
 
 ```json

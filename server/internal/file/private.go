@@ -13,6 +13,7 @@ import (
 	configPkg "fuzhan/internal/appconfig"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -267,6 +268,10 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	// 下载访问限流：per-IP 频率限制 + 失败计数锁定，防在线枚举爆破
 	ip := utils.GetClientIP(c)
 	if !accessguard.Acquire(accessguard.SCOPE_SHARE, ip) {
+		// 仅在尚未锁定时记录限流拦截，避免已锁定 IP 高频探活刷爆操作记录
+		if !accessguard.IsLocked(accessguard.SCOPE_SHARE, ip) {
+			recordShareDownload(ip, "", "", 0, models.RecordStatusFailed, "限流拦截", 0)
+		}
 		utils.HandleErrorCompat(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
 		return
 	}
@@ -274,6 +279,7 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	code := c.Param("code")
 	if !isValidShareCode(code) {
 		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
+		recordShareDownload(ip, code, "", 0, models.RecordStatusFailed, "无效分享码格式", 0)
 		utils.HandleBadRequest(c, "无效的分享码格式", nil)
 		return
 	}
@@ -286,6 +292,7 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	rec, err := resolveShareCodeRecord(db, code, true)
 	if err != nil {
 		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
+		recordShareDownload(ip, code, "", 0, models.RecordStatusFailed, "文件不存在", 0)
 		utils.HandleNotFound(c, "文件不存在")
 		return
 	}
@@ -294,12 +301,14 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	p, err := privateFileRealPath(basePath, rec.OwnerID, rec)
 	if err != nil {
 		accessguard.Fail(accessguard.SCOPE_SHARE, ip)
+		recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusFailed, "文件不存在", rec.ID)
 		utils.HandleNotFound(c, "文件不存在")
 		return
 	}
 
 	file, err := os.Open(p)
 	if err != nil {
+		recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusFailed, "无法打开文件", rec.ID)
 		utils.HandleInternalServerError(c, "无法打开文件")
 		return
 	}
@@ -310,7 +319,41 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, rec.FileName, safeFilename))
 	c.Header("Content-Type", "application/octet-stream")
 	middleware.LogOperation(c, "private.download", rec.FileName, nil)
+	recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusSuccess, "", rec.ID)
 	if _, err := io.Copy(c.Writer, file); err != nil {
 		utils.Error("文件下载失败", utils.Err(err))
 	}
+}
+
+// recordShareDownload 记录一条私有分享下载（成功或失败）到操作记录表
+func recordShareDownload(ip, fileName, fullPath string, fileSize int64, status, failReason string, sourceID uint) {
+	op := &models.OperationRecord{
+		FileName:   truncateStr(fileName, 255),
+		FilePath:   truncateStr(fullPath, 512),
+		FullPath:   truncateStr(fullPath, 1024),
+		RootName:   privateRootName,
+		FileSize:   fileSize,
+		ClientIP:   truncateStr(ip, 45),
+		Status:     status,
+		FailReason: truncateStr(failReason, 255),
+		SourceType: models.SourceTypePrivate,
+		SourceID:   sourceID,
+		UploadType: models.TargetTypePrivate,
+		UploadTime: utils.Now(),
+		CreatedAt:  utils.Now(),
+	}
+	if !services.SubmitDownloadRecord(op) {
+		if db := configPkg.GetDB(); db != nil {
+			db.Create(op)
+		}
+	}
+}
+
+// truncateStr 按 rune 截断字符串到 maxLen
+func truncateStr(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
 }

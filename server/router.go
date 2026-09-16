@@ -12,6 +12,7 @@ import (
 	"fuzhan/internal/auth"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
+	"fuzhan/internal/downloadanalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/ftp"
 	"fuzhan/internal/health"
@@ -48,33 +49,34 @@ type runCtx struct {
 	authService     *services.AuthService
 	taskService     *services.TaskService
 
-	baseHandler             *file.BaseHandler
-	fileHandlers            *file.FileHandlers
-	downloadHandlers        *file.DownloadHandlers
-	searchHandlers          *file.SearchHandlers
-	cliHandlers             *cli.CLIHandlers
-	bindingExampleHandler   *configh.BindingExampleHandler
-	configHandler           *configh.Handler
-	authHandler             *auth.Handler
-	healthHandler           *health.HealthHandler
-	setupHandler            *setup.SetupHandler
-	uploadSessionHandler    *file.UploadSessionHandler
-	privateUploadHandler    *file.PrivateUploadHandler
-	privateStorageHandler   *file.PrivateStorageHandlers
-	adminHandler            *admin.Handler
-	notificationHandler     *notification.Handler
-	adminURLDownloadHandler *admin.URLDownloadHandler
-	taskHandler             *admin.TaskHandler
-	tempHandler             *temph.Handler
-	indexHandler            *index.Handler
-	depHandler              *index.DependencyHandler
-	apiKeyHandler           *auth.ApiKeyHandler
-	openAPIHandler          *openapi.Handler
-	suggestHandler          *search.Handler
-	recentHandler           *file.RecentHandler
-	monitorHandler          *monitor.Handler
-	resourceHandler         *resource.Handler
-	previewHandler          *file.PreviewHandler
+	baseHandler              *file.BaseHandler
+	fileHandlers             *file.FileHandlers
+	downloadHandlers         *file.DownloadHandlers
+	searchHandlers           *file.SearchHandlers
+	cliHandlers              *cli.CLIHandlers
+	bindingExampleHandler    *configh.BindingExampleHandler
+	configHandler            *configh.Handler
+	authHandler              *auth.Handler
+	healthHandler            *health.HealthHandler
+	setupHandler             *setup.SetupHandler
+	uploadSessionHandler     *file.UploadSessionHandler
+	privateUploadHandler     *file.PrivateUploadHandler
+	privateStorageHandler    *file.PrivateStorageHandlers
+	adminHandler             *admin.Handler
+	notificationHandler      *notification.Handler
+	adminURLDownloadHandler  *admin.URLDownloadHandler
+	taskHandler              *admin.TaskHandler
+	tempHandler              *temph.Handler
+	indexHandler             *index.Handler
+	depHandler               *index.DependencyHandler
+	apiKeyHandler            *auth.ApiKeyHandler
+	openAPIHandler           *openapi.Handler
+	suggestHandler           *search.Handler
+	recentHandler            *file.RecentHandler
+	monitorHandler           *monitor.Handler
+	resourceHandler          *resource.Handler
+	previewHandler           *file.PreviewHandler
+	downloadAnalyticsHandler *downloadanalytics.Handler
 
 	authMiddleware *middleware.AuthMiddleware
 	rbacService    *auth.RBACService
@@ -621,6 +623,19 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	// 操作记录清空/删除路由
 	admin.POST("/records/clear", adminHandler.ClearRecordsHandler)
 	admin.POST("/records/delete", adminHandler.DeleteRecordHandler)
+
+	// 下载行为分析路由（基于 operation_records 公开下载聚合）
+	if h := rt.downloadAnalyticsHandler; h != nil {
+		admin.GET("/download-analytics/summary", h.SummaryHandle)
+		admin.GET("/download-analytics/trend", h.TrendHandle)
+		admin.GET("/download-analytics/top-files", h.TopFilesHandle)
+		admin.GET("/download-analytics/sources", h.SourcesHandle)
+		admin.GET("/download-analytics/failures", h.FailuresHandle)
+		admin.GET("/download-analytics/file", h.FileDetailHandle)
+		admin.GET("/download-analytics/heatmap", h.HeatmapHandle)
+		admin.GET("/download-analytics/aggregate", h.AggregateHandle)
+		admin.GET("/download-analytics/lifecycle", h.LifecycleHandle)
+	}
 
 	// TLS 证书上传路由
 	admin.POST("/upload-cert", adminHandler.UploadCertHandler)

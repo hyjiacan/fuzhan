@@ -150,6 +150,11 @@ func EnsureOperationRecordIndexes(db *gorm.DB) {
 		columns string
 	}{
 		{name: "action_created_at", columns: "`action`, created_at"},
+		// 下载行为分析：按 dl_event 等值 + created_at 区间过滤，dl_ok 作覆盖列做成功/失败分支，
+		// 使 summary/trend/heatmap/top-files/sources/aggregate 等均命中该覆盖索引。
+		{name: "dl_event_created_at_dl_ok", columns: "dl_event, created_at, dl_ok"},
+		// 分析缓存水位：判定「自某水位以来是否新增公开下载事件/inline 取最大 id」，用 (dl_event, id) 快速命中。
+		{name: "dl_event_id", columns: "dl_event, id"},
 	}
 	for _, idx := range compositeIndexes {
 		indexName := "idx__operation_records__" + idx.name
@@ -158,4 +163,22 @@ func EnsureOperationRecordIndexes(db *gorm.DB) {
 			db.Logger.Warn(nil, "创建索引失败: %v, SQL: %s", err, sql)
 		}
 	}
+}
+
+// CleanupOperationRecordIndexes 幂等清理 operation_records 上的历史冗余索引。
+// 目标：删除 migrations/005 遗留的 idx_operation_records_action_created，其列与 Ensure 新建的
+// idx__operation_records__action_created_at 完全一致（action, created_at），导致每次 INSERT 维护两棵
+// 相同 B-tree（写放大）。删除对象被保留索引完全覆盖，零查询退化；仅存在于手动执行过 005.sql 的存量库。
+// 用 GORM Migrator 做 HasIndex 探测 + DropIndex，规避 MySQL 不支持 DROP INDEX IF EXISTS 的方言差异，
+// 跨库幂等；必须先于本函数调用 EnsureOperationRecordIndexes（确保保留索引已建好）。
+func CleanupOperationRecordIndexes(db *gorm.DB) {
+	dup := "idx_operation_records_action_created"
+	if !db.Migrator().HasIndex(&OperationRecord{}, dup) {
+		return
+	}
+	if err := db.Migrator().DropIndex(&OperationRecord{}, dup); err != nil {
+		db.Logger.Warn(nil, "清理 operation_records 冗余索引失败: %v, index: %s", err, dup)
+		return
+	}
+	db.Logger.Info(nil, "已清理 operation_records 冗余索引 %s", dup)
 }

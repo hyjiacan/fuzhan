@@ -74,6 +74,38 @@ func (ds *DownloadService) attachFileID(rec *models.OperationRecord, rootName, f
 	rec.FileRecordID = fid
 }
 
+// truncate 截断字符串到 maxLen 个字符（默认按 rune 截，避免拆散中文），用于防止越界列长度。
+func truncate(s string, maxLen int) string {
+	s = strings.TrimSpace(s)
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
+}
+
+// recordDownloadFailure 记录一次失败的下载尝试（下载行为分析失败/异常维度）。
+// 失败的尝试同样复用 recordDownload 的全局有界记录器 + 同步回退写入。
+func (ds *DownloadService) recordDownloadFailure(fileName, subPath, rootName, fullPath, ip, reason string) {
+	if ds.recordRepo == nil {
+		return
+	}
+	rec := &models.OperationRecord{
+		Action:     "download",
+		FileName:   truncate(fileName, 255),
+		FilePath:   truncate(subPath, 512),
+		FullPath:   truncate(fullPath, 1024),
+		RootName:   truncate(rootName, 64),
+		FileSize:   0,
+		ClientIP:   truncate(ip, 45),
+		CreatedAt:  utils.Now(),
+		Status:     models.RecordStatusFailed,
+		FailReason: truncate(reason, 255),
+		SourceType: models.SourceTypePublic,
+	}
+	recordDownload(ds.recordRepo, rec)
+}
+
 // isNewDownloadRequest 判断请求是否代表一次新的下载（而非续传/分段延续）：
 // - 不带 Range 头的完整请求（浏览器普通下载、curl/wget 等）
 // - 带 Range 头但起始偏移为 0 的请求（Chrome 并行下载、aria2/IDM 等多连接下载器的首段）
@@ -110,6 +142,7 @@ func isNewDownloadRequest(r *http.Request) bool {
 // DownloadByHash 根据 xxh3 哈希下载文件
 func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request) {
 	utils.PrintRequestInfo(r)
+	ip := utils.GetRealIP(r)
 
 	// 获取 hash 从路径: /api/v1/download/<hash> 或 /download/<hash>
 	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/download/")
@@ -118,6 +151,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	if hash == "" {
 		utils.Warn("下载请求缺少哈希值")
+		ds.recordDownloadFailure(hash, hash, "", "", ip, "哈希值不能为空")
 		utils.EncodeResponse(w, nil, "哈希值不能为空", http.StatusBadRequest)
 		return
 	}
@@ -126,6 +160,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	fullPath, rootName, err := ds.searchService.FindFilePathByHash(hash)
 	if err != nil {
 		utils.Warn("未找到对应文件", utils.String("hash", hash), utils.Err(err))
+		ds.recordDownloadFailure(hash, "", rootName, "", ip, "未找到对应文件")
 		utils.EncodeResponse(w, nil, "未找到对应文件", http.StatusNotFound)
 		return
 	}
@@ -134,6 +169,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	rootPath, exists := appconfig.RootNames[rootName]
 	if !exists {
 		utils.Warn("根目录不存在", utils.String("rootName", rootName))
+		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "根目录不存在")
 		utils.EncodeResponse(w, nil, "根目录不存在", http.StatusBadRequest)
 		return
 	}
@@ -143,6 +179,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	absTargetPath, _ := filepath.Abs(fullPath)
 	if !strings.HasPrefix(absTargetPath, absRootPath) {
 		utils.Warn("检测到路径越权尝试", utils.String("path", absTargetPath))
+		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "路径越权")
 		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
 		return
 	}
@@ -152,6 +189,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	info, err := os.Stat(targetPath)
 	if err != nil || info.IsDir() {
 		utils.Warn("指定文件不存在", utils.String("path", targetPath))
+		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "文件不存在")
 		utils.EncodeResponse(w, nil, "指定的文件不存在", http.StatusBadRequest)
 		return
 	}
@@ -159,16 +197,18 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	// 记录下载操作（非阻塞，仅记录 GET 请求）
 	if ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
-			Action:    "download-by-hash",
-			FileName:  filepath.Base(targetPath),
-			FilePath:  filepath.Dir(fullPath),
-			FullPath:  "/" + rootName + "/" + fullPath,
-			FileSize:  info.Size(),
-			RootName:  rootName,
-			ClientIP:  utils.GetRealIP(r),
-			CreatedAt: utils.Now(),
+			Action:     "download-by-hash",
+			FileName:   filepath.Base(targetPath),
+			FilePath:   filepath.Dir(fullPath),
+			FullPath:   "/" + rootName + "/" + fullPath,
+			FileSize:   info.Size(),
+			RootName:   rootName,
+			ClientIP:   ip,
+			CreatedAt:  utils.Now(),
+			SourceType: models.SourceTypePublic,
 		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
+		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
 	}
 
@@ -207,6 +247,7 @@ func (ds *DownloadService) AdminDownloadFile(w http.ResponseWriter, r *http.Requ
 
 func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, record bool) {
 	utils.PrintRequestInfo(r)
+	ip := utils.GetRealIP(r)
 
 	// 路径格式: /api/v1/download/根目录名/子路径
 	// 管理页面路径格式: /api/v1/admin/download/根目录名/子路径
@@ -226,6 +267,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	parts := strings.SplitN(filename, "/", 2)
 	if len(parts) < 2 {
 		utils.Warn("指定路径格式不正确，应为 '根目录名/子路径'", utils.String("path", filename))
+		if record {
+			ds.recordDownloadFailure(filepath.Base(filename), filename, "", filename, ip, "路径格式错误")
+		}
 		utils.EncodeResponse(w, nil, "路径格式错误", http.StatusBadRequest)
 		return
 	}
@@ -236,6 +280,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	rootPath, exists := appconfig.RootNames[rootName]
 	if !exists {
 		utils.Warn("指定的根目录名不存在", utils.String("root_name", rootName))
+		if record {
+			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "目录不存在")
+		}
 		utils.EncodeResponse(w, nil, "指定的目录不存在", http.StatusBadRequest)
 		return
 	}
@@ -245,6 +292,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	cleanSubPath := filepath.Clean(subPath)
 	if cleanSubPath == ".." || strings.HasPrefix(cleanSubPath, ".."+string(filepath.Separator)) {
 		utils.Warn("检测到路径越权尝试", utils.String("path", subPath))
+		if record {
+			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "路径越权")
+		}
 		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
 		return
 	}
@@ -254,6 +304,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	absTargetPath, _ := filepath.Abs(filepath.Join(rootPath, cleanSubPath))
 	if !strings.HasPrefix(absTargetPath, absRootPath) {
 		utils.Warn("检测到路径越权尝试", utils.String("path", absTargetPath))
+		if record {
+			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "路径越权")
+		}
 		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
 		return
 	}
@@ -264,6 +317,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	info, err := os.Stat(targetPath)
 	if err != nil || info.IsDir() {
 		utils.Warn("指定路径不存在", utils.String("path", targetPath))
+		if record {
+			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "文件不存在")
+		}
 		utils.EncodeResponse(w, nil, "指定的文件不存在", http.StatusBadRequest)
 		return
 	}
@@ -271,16 +327,18 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	// 记录下载操作（非阻塞，仅记录 GET 请求）
 	if record && ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
-			Action:    "download",
-			FileName:  filepath.Base(targetPath),
-			FilePath:  subPath,
-			FullPath:  "/" + rootName + "/" + strings.TrimPrefix(subPath, "/"),
-			FileSize:  info.Size(),
-			RootName:  rootName,
-			ClientIP:  utils.GetRealIP(r),
-			CreatedAt: utils.Now(),
+			Action:     "download",
+			FileName:   filepath.Base(targetPath),
+			FilePath:   subPath,
+			FullPath:   "/" + rootName + "/" + strings.TrimPrefix(subPath, "/"),
+			FileSize:   info.Size(),
+			RootName:   rootName,
+			ClientIP:   ip,
+			CreatedAt:  utils.Now(),
+			SourceType: models.SourceTypePublic,
 		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
+		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
 	}
 

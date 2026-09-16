@@ -74,6 +74,17 @@ func (UploadedChunk) TableName() string {
 	return "uploaded_chunks"
 }
 
+// OperationRecord 操作类型常量
+const (
+	RecordStatusSuccess = "success" // 操作成功
+	RecordStatusFailed  = "failed"  // 操作失败（下载行为分析失败/异常维度）
+
+	// SourceType 下载来源类型，用于下载行为分析跨来源聚合
+	SourceTypePublic  = "public"
+	SourceTypePrivate = "private"
+	SourceTypeTemp    = "temp"
+)
+
 // OperationRecord 操作记录
 type OperationRecord struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
@@ -83,6 +94,14 @@ type OperationRecord struct {
 	FullPath string `gorm:"size:1024" json:"fullPath"`         // 完整路径 rootName/filePath
 	RootName string `gorm:"size:64;not null" json:"rootName"`  // 根目录名称
 	FileType string `gorm:"size:50" json:"fileType"`           // 文件类型
+	// Status 处理状态（success/failed），默认 success；失败维度分析依据此字段
+	Status string `gorm:"size:10;not null;default:success" json:"status"`
+	// FailReason 失败原因（仅 Status=failed 时填写，如 限流拦截/无效码/文件不存在 等）
+	FailReason string `gorm:"size:255" json:"failReason"`
+	// SourceType 下载来源类型（public/private/temp），用于下载行为分析跨来源聚合
+	SourceType string `gorm:"size:16;default:public" json:"sourceType"`
+	// SourceID 来源文件记录ID（对应 file_records_public/private/temp 主键），0 表示未能关联
+	SourceID uint `gorm:"default:0" json:"sourceId"`
 	// FileRecordID 关联的公共文件索引记录 ID，用于移动/重命名后身份关联
 	FileRecordID uint           `gorm:"index" json:"fileRecordId"`     // 公共文件索引记录 ID（0 表示未关联/历史数据）
 	ClientIP     string         `gorm:"size:45;index" json:"clientIP"` // 客户端IP
@@ -93,6 +112,12 @@ type OperationRecord struct {
 	UploadTime   time.Time      `gorm:"not null;index" json:"uploadTime"`           // 上传时间
 	CreatedAt    time.Time      `gorm:"index" json:"createdAt"`                     // 创建时间（用于统计查询）
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	// DlEvent 下载统计签名：1=该记录为公开下载事件（action∈{download,download-by-hash} 且来源为公共）。
+	// 写入侧在 BeforeCreate 计算，使下载行为分析查询退化为 dl_event/dl_ok 等值过滤，命中
+	// (dl_event, created_at, dl_ok) 覆盖索引，避免每次对 action/source_type 做 OR/IN 表达式过滤。
+	DlEvent int `gorm:"default:0" json:"-"`
+	// DlOk 下载事件成功标志：仅 DlEvent=1 时有意义，1=成功，0=失败/异常（status 非法值归类为失败）。
+	DlOk int `gorm:"default:0" json:"-"`
 	// Notes 当前关联文件的备注（查询时回填，不落库）
 	Notes string `gorm:"-" json:"notes"`
 }
@@ -100,6 +125,21 @@ type OperationRecord struct {
 // TableName 指定表名
 func (OperationRecord) TableName() string {
 	return "operation_records"
+}
+
+// BeforeCreate 写库前计算下载统计签名，供下载行为分析按等值列高效过滤。
+// 覆盖所有经 GORM 写入操作记录的路径（异步有界记录器与同步回退直写）。
+func (o *OperationRecord) BeforeCreate(_ *gorm.DB) error {
+	o.DlEvent = 0
+	if (o.Action == "download" || o.Action == "download-by-hash") &&
+		(o.SourceType == SourceTypePublic || o.SourceType == "") {
+		o.DlEvent = 1
+	}
+	o.DlOk = 0
+	if o.Status == RecordStatusSuccess || o.Status == "" {
+		o.DlOk = 1
+	}
+	return nil
 }
 
 // UploadRequest 上传请求的数据结构

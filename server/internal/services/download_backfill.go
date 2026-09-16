@@ -85,3 +85,51 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 	}
 	utils.Info("操作记录 file_record_id 回填完成", utils.Int64("affected", affected))
 }
+
+// BackfillOperationRecordSource 为存量下载记录补齐下载来源身份：公开来源(source_type=public)
+// 采用 file_record_id 作为 source_id，私有/临时来源在各自下载入口新写入时已带 source_type/source_id。
+// 幂等，仅处理 source_type 为空/非法的下载记录。
+func BackfillOperationRecordSource(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if !db.Migrator().HasTable(&models.OperationRecord{}) {
+		return
+	}
+	result := db.Exec(`UPDATE operation_records
+		SET source_type = ?,
+		    source_id = COALESCE(file_record_id, 0)
+		WHERE action IN (?, ?) AND deleted_at IS NULL
+		  AND (source_type IS NULL OR source_type = '')`,
+		models.SourceTypePublic, "download", "download-by-hash")
+	if result.Error != nil {
+		utils.Warn("回填操作记录下载来源失败", utils.Err(result.Error))
+		return
+	}
+	utils.Info("操作记录下载来源回填完成", utils.Int64("affected", result.RowsAffected))
+}
+
+// BackfillDownloadSignature 为存量操作记录计算下载统计签名（dl_event/dl_ok），
+// 与 OperationRecord.BeforeCreate 的写入侧计算保持同一套规则。
+// 升级/启动时执行一次，幂等；2. 的 dl_event/dl_ok 列由 AutoMigrate 已先补齐。
+func BackfillDownloadSignature(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if !db.Migrator().HasTable(&models.OperationRecord{}) {
+		return
+	}
+	result := db.Exec(`UPDATE operation_records
+		SET dl_event = CASE
+		      WHEN deleted_at IS NULL
+		       AND action IN ('download', 'download-by-hash')
+		       AND (source_type = 'public' OR source_type = '' OR source_type IS NULL)
+		      THEN 1 ELSE 0 END,
+		    dl_ok = CASE
+		      WHEN (status = 'success' OR status = '' OR status IS NULL) THEN 1 ELSE 0 END`)
+	if result.Error != nil {
+		utils.Warn("回填操作记录下载统计签名失败", utils.Err(result.Error))
+		return
+	}
+	utils.Info("操作记录下载统计签名回填完成", utils.Int64("affected", result.RowsAffected))
+}

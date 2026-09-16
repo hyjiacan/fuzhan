@@ -155,9 +155,13 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 	for _, d := range downloadCounts {
 		var uploadTime time.Time
 		if d.UploadTime != "" {
-			// 解析完整时间文本，保留时区偏移（created_at 统一按 UTC 存储）
-			if t, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", d.UploadTime); err == nil {
-				uploadTime = t
+			// created_at 存量库存在两种序列化格式：结构体写入的空格偏移格式与参数绑定的 RFC3339，
+			// 两种都解析，任一命中即生效；避免仅按单一 layout 解析导致上传时间为空。
+			for _, layout := range []string{"2006-01-02 15:04:05.999999999-07:00", time.RFC3339Nano} {
+				if t, err := time.Parse(layout, d.UploadTime); err == nil {
+					uploadTime = t
+					break
+				}
 			}
 		}
 		fullPath := d.FullPath

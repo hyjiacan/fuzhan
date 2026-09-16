@@ -10,7 +10,7 @@
 - [TempFile 临时文件模型](#tempfile-临时文件模型)
 - [UploadSession 上传会话模型](#uploadsession-上传会话模型)
 - [UploadedChunk 已上传分片模型](#uploadedchunk-已上传分片模型)
-- [UploadRecord 上传记录模型](#uploadrecord-上传记录模型)
+- [OperationRecord 操作记录模型](#operationrecord-操作记录模型)
 - [URLDownloadTask URL下载任务模型](#urldownloadtask-url下载任务模型)
 - [Notification 通知模型](#notification-通知模型)
 - [关联关系图](#关联关系图)
@@ -139,35 +139,44 @@
 
 ---
 
-## UploadRecord 上传记录模型
+## OperationRecord 操作记录模型
 
-- **表名**: `upload_records`
-- **说明**: 上传/下载/搜索操作记录
+- **表名**: `operation_records`
+- **说明**: 上传/下载/搜索等操作审计记录。下载行为分析基于其中 `dl_event=1` 的公开下载事件聚合（私有/临时来源不计入）。
 
 | 字段名 | 类型 | 约束 | 说明 |
 |--------|------|------|------|
 | ID | uint | primaryKey | 自增主键 |
 | FileName | string(255) | not null | 文件名 |
 | FileSize | int64 | not null | 文件大小 |
-| FilePath | string(512) | not null | 存储路径 |
+| FilePath | string(512) | not null | 相对根目录的文件路径（带前导 /） |
+| FullPath | string(1024) | - | 完整路径 rootName/filePath |
 | RootName | string(64) | not null | 根目录名称 |
 | FileType | string(50) | - | 文件类型 |
+| Status | string(10) | not null, default:"success" | 处理状态 (success/failed) |
+| FailReason | string(255) | - | 失败原因（仅 Status=failed 时填写） |
+| SourceType | string(16) | default:"public" | 下载来源类型 (public/private/temp) |
+| SourceID | uint | default:0 | 来源文件索引记录ID（0=未能关联） |
+| FileRecordID | uint | index | 关联公共文件索引ID（移动/重命名后身份关联） |
 | ClientIP | string(45) | index | 客户端IP |
 | UserID | string(64) | index | 用户ID |
-| UploadType | TargetType | size:20, not null, default: "regular" | 上传类型 |
-| Action | string(20) | default: "upload", index | 操作类型 (upload/download/search) |
+| UploadType | TargetType | size:20, not null, default:"regular" | 上传类型 |
+| Action | string(20) | default:"upload", index | 操作类型 (upload/download/download-by-hash/search) |
 | SearchQuery | string(255) | index | 搜索关键词 |
-| UploadTime | time.Time | not null, index | 操作时间 |
+| UploadTime | time.Time | not null, index | 上传时间 |
 | CreatedAt | time.Time | index | 创建时间 |
 | DeletedAt | gorm.DeletedAt | index | 软删除 |
+| DlEvent | int | default:0 | 下载统计签名：1=公开下载事件（action∈{download,download-by-hash} 且来源 public），写库时由 BeforeCreate 计算 |
+| DlOk | int | default:0 | 下载事件成功标志：仅 DlEvent=1 有意义，1=成功，0=失败/异常 |
 
 **索引**:
-- `UploadTime`: 按时间排序
-- `Action`: 操作类型过滤
 - `ClientIP`: IP 统计
 - `UserID`: 用户统计
 - `SearchQuery`: 搜索统计
 - `DeletedAt`: 软删除查询
+- `idx__operation_records__action_created_at`: `action, created_at`（最近/热门列表）；历史冗余索引 `idx_operation_records_action_created` 已被 `CleanupOperationRecordIndexes` 幂等清理（列与之完全一致，仅存在于手动执行过 005.sql 的存量库）
+- `idx__operation_records__dl_event_created_at_dl_ok`: `dl_event, created_at, dl_ok`（下载分析覆盖索引，按 dl_event 等值 + created_at 区间过滤）
+- `idx__operation_records__dl_event_id`: `dl_event, id`（分析缓存水位判定）
 
 ---
 
@@ -247,8 +256,8 @@
 
 独立表（无外键关联）:
 ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│    User     │  │  TempFile   │  │UploadRecord │
-│  (users)    │  │ (temp_files)│  │(upload_rec) │
+│    User     │  │  TempFile   │  │ Operation   │
+│  (users)    │  │ (temp_files)│  │ (op_records)│
 └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
@@ -276,7 +285,7 @@ GORM 自动处理数据库适配，所有模型定义兼容以上三种数据库
 db.AutoMigrate(
     &models.UploadSession{},
     &models.UploadedChunk{},
-    &models.UploadRecord{},
+    &models.OperationRecord{},
     &models.User{},
     &models.TempFile{},
     &models.URLDownloadTask{},

@@ -706,6 +706,37 @@ export const MonitorApi = {
   }
 }
 
+// ========== 下载行为分析 API ==========
+export const DownloadAnalyticsApi = {
+  getSummary(params) {
+    return request.get('/admin/download-analytics/summary', { params })
+  },
+  getTrend(params) {
+    return request.get('/admin/download-analytics/trend', { params })
+  },
+  getTopFiles(params) {
+    return request.get('/admin/download-analytics/top-files', { params })
+  },
+  getSources(params) {
+    return request.get('/admin/download-analytics/sources', { params })
+  },
+  getFailures(params) {
+    return request.get('/admin/download-analytics/failures', { params })
+  },
+  getFileDetail(params) {
+    return request.get('/admin/download-analytics/file', { params })
+  },
+  getHeatmap(params) {
+    return request.get('/admin/download-analytics/heatmap', { params })
+  },
+  getAggregate(params) {
+    return request.get('/admin/download-analytics/aggregate', { params })
+  },
+  getLifecycle(params) {
+    return request.get('/admin/download-analytics/lifecycle', { params })
+  }
+}
+
 // ========== 通知 API ==========
 export const NotificationApi = {
   getNotifications() {
@@ -755,6 +786,7 @@ export default {
   SetupApi,
   SystemApi,
   MonitorApi,
+  DownloadAnalyticsApi,
   NotificationApi,
   ApiKeyApi
 }

@@ -190,6 +190,10 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	// 下载访问限流：per-IP 频率限制 + 失败计数锁定，防在线枚举爆破
 	ip := utils.GetClientIP(c)
 	if !accessguard.Acquire(accessguard.SCOPE_TEMP, ip) {
+		// 仅在尚未锁定时记录限流拦截，避免已锁定 IP 高频探活刷爆操作记录
+		if !accessguard.IsLocked(accessguard.SCOPE_TEMP, ip) {
+			recordTempDownload(ip, "", "", "", 0, 0, models.RecordStatusFailed, "限流拦截")
+		}
 		utils.HandleErrorCompat(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
 		return
 	}
@@ -197,6 +201,7 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	code := c.Param("code")
 	if !validateCode(code) {
 		accessguard.Fail(accessguard.SCOPE_TEMP, ip)
+		recordTempDownload(ip, code, code, "/temp/"+code, 0, 0, models.RecordStatusFailed, "无效访问码格式")
 		utils.HandleBadRequest(c, "无效的访问码格式", nil)
 		return
 	}
@@ -204,6 +209,15 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	tempFile, err := h.tempService.DownloadFile(code)
 	if err != nil {
 		accessguard.Fail(accessguard.SCOPE_TEMP, ip)
+		reason := "下载失败"
+		if strings.Contains(err.Error(), "已过期") {
+			reason = "已过期"
+		} else if strings.Contains(err.Error(), "已被下载") {
+			reason = "已被下载"
+		} else if strings.Contains(err.Error(), "不存在") {
+			reason = "不存在"
+		}
+		recordTempDownload(ip, code, code, "/temp/"+code, 0, 0, models.RecordStatusFailed, reason)
 		if strings.Contains(err.Error(), "已过期") {
 			utils.HandleErrorCompat(c, http.StatusGone, err.Error(), nil)
 		} else if strings.Contains(err.Error(), "已被下载") {
@@ -219,6 +233,7 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	// 打开文件
 	file, err := os.Open(tempFile.FilePath)
 	if err != nil {
+		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusFailed, "无法打开文件")
 		utils.HandleInternalServerError(c, "无法打开文件")
 		return
 	}
@@ -234,13 +249,48 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	written, err := io.Copy(c.Writer, file)
 	if err != nil {
 		middleware.LogOperation(c, "temp.download", tempFile.Filename, err)
+		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusFailed, "传输失败")
 		utils.Error("文件下载失败", utils.Err(err), utils.Int64("written", written))
 	} else {
 		middleware.LogOperation(c, "temp.download", tempFile.Filename, nil)
+		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusSuccess, "")
 	}
 
 	// 下载后处理
 	h.tempService.MarkDownloaded(tempFile, h.config.DeleteOnDownload)
+}
+
+// recordTempDownload 记录一条临时文件下载（成功或失败）到操作记录表
+func recordTempDownload(ip, code, fileName, fullPath string, fileSize int64, sourceID uint, status, reason string) {
+	op := &models.OperationRecord{
+		FileName:   truncateStr(fileName, 255),
+		FilePath:   truncateStr(code, 512),
+		FullPath:   truncateStr(fullPath, 1024),
+		RootName:   "temp",
+		FileSize:   fileSize,
+		ClientIP:   truncateStr(ip, 45),
+		Status:     status,
+		FailReason: truncateStr(reason, 255),
+		SourceType: models.SourceTypeTemp,
+		SourceID:   sourceID,
+		UploadType: models.TargetTypeTemp,
+		UploadTime: utils.Now(),
+		CreatedAt:  utils.Now(),
+	}
+	if !services.SubmitDownloadRecord(op) {
+		if db := configPkg.GetDB(); db != nil {
+			db.Create(op)
+		}
+	}
+}
+
+// truncateStr 按 rune 截断字符串到 maxLen
+func truncateStr(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
 }
 
 // DeleteHandler 处理删除文件

@@ -17,6 +17,7 @@ import (
 	"fuzhan/internal/auth"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
+	"fuzhan/internal/downloadanalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/health"
 	"fuzhan/internal/index"
@@ -198,11 +199,19 @@ func main() {
 	models.EnsureFileRecordIndexes(db)
 	// 为操作记录表创建组合索引（最近/热门列表按 action + created_at 过滤排序）
 	models.EnsureOperationRecordIndexes(db)
+	// 幂等清理 operation_records 历史冗余索引（须在 EnsureOperationRecordIndexes 之后，确保保留索引已建好）
+	models.CleanupOperationRecordIndexes(db)
 
 	// 回填公共文件下载次数（从下载记录统计，升级/启动时执行一次）
 	services.BackfillPublicDownloadCounts(db)
 	// 回填历史操作记录的 file_record_id（建立身份关联，移动/重命名后不丢）
 	services.BackfillFileRecordIDs(db)
+
+	// 回填下载来源身份（source_type/source_id），为下载行为分析跨来源聚合提供一致身份
+	services.BackfillOperationRecordSource(db)
+
+	// 回填下载统计签名（dl_event/dl_ok），供下载行为分析等值过滤并命中覆盖索引
+	services.BackfillDownloadSignature(db)
 
 	// 初始化日志记录器 (已在 appconfig.DoInit 中初始化)
 	defer utils.Sync()
@@ -411,6 +420,9 @@ func main() {
 	monitorService := services.NewMonitorService(recordRepo, db)
 	monitorHandler := monitor.NewHandler(monitorService)
 
+	// 下载行为分析处理器（需管理员认证；基于 operation_records 公开下载聚合）
+	downloadAnalyticsHandler := downloadanalytics.NewHandler(downloadanalytics.NewService(db))
+
 	// 服务器资源监控（需管理员认证；worker 在下方启动）
 	resourceCollector := resource.NewCollector(func() *gorm.DB { return appconfig.GetDB() })
 	resourceHandler := resource.NewHandler(resourceCollector)
@@ -420,52 +432,53 @@ func main() {
 
 	// 汇总运行期依赖，供路由注册与 worker 使用
 	rt := &runCtx{
-		db:                      db,
-		cfg:                     &cfg,
-		validator:               validator,
-		recordRepo:              recordRepo,
-		indexService:            indexService,
-		fileService:             fileService,
-		downloadService:         downloadService,
-		searchService:           searchService,
-		authService:             authService,
-		taskService:             taskService,
-		baseHandler:             baseHandler,
-		fileHandlers:            fileHandlers,
-		downloadHandlers:        downloadHandlers,
-		searchHandlers:          searchHandlers,
-		cliHandlers:             cliHandlers,
-		bindingExampleHandler:   bindingExampleHandler,
-		configHandler:           configHandler,
-		authHandler:             authHandler,
-		healthHandler:           healthHandler,
-		setupHandler:            setupHandler,
-		uploadSessionHandler:    uploadSessionHandler,
-		privateUploadHandler:    privateUploadHandler,
-		privateStorageHandler:   privateStorageHandler,
-		adminHandler:            adminHandler,
-		notificationHandler:     notificationHandler,
-		adminURLDownloadHandler: adminURLDownloadHandler,
-		taskHandler:             taskHandler,
-		tempHandler:             tempHandler,
-		indexHandler:            indexHandler,
-		depHandler:              depHandler,
-		apiKeyHandler:           apiKeyHandler,
-		openAPIHandler:          openAPIHandler,
-		suggestHandler:          suggestHandler,
-		recentHandler:           recentHandler,
-		monitorHandler:          monitorHandler,
-		resourceHandler:         resourceHandler,
-		previewHandler:          previewHandler,
-		authMiddleware:          authMiddleware,
-		rbacService:             rbacService,
-		openAPICfg:              openAPICfg,
-		openAPIRateLimiter:      openAPIRateLimiter,
-		openAPIIPAccessCfg:      openAPIIPAccessCfg,
-		openAPICallStat:         openAPICallStat,
-		openAPIStatsHandler:     openAPIStatsHandler,
-		idxSearch:               idxSearch,
-		resourceCollector:       resourceCollector,
+		db:                       db,
+		cfg:                      &cfg,
+		validator:                validator,
+		recordRepo:               recordRepo,
+		indexService:             indexService,
+		fileService:              fileService,
+		downloadService:          downloadService,
+		searchService:            searchService,
+		authService:              authService,
+		taskService:              taskService,
+		baseHandler:              baseHandler,
+		fileHandlers:             fileHandlers,
+		downloadHandlers:         downloadHandlers,
+		searchHandlers:           searchHandlers,
+		cliHandlers:              cliHandlers,
+		bindingExampleHandler:    bindingExampleHandler,
+		configHandler:            configHandler,
+		authHandler:              authHandler,
+		healthHandler:            healthHandler,
+		setupHandler:             setupHandler,
+		uploadSessionHandler:     uploadSessionHandler,
+		privateUploadHandler:     privateUploadHandler,
+		privateStorageHandler:    privateStorageHandler,
+		adminHandler:             adminHandler,
+		notificationHandler:      notificationHandler,
+		adminURLDownloadHandler:  adminURLDownloadHandler,
+		taskHandler:              taskHandler,
+		tempHandler:              tempHandler,
+		indexHandler:             indexHandler,
+		depHandler:               depHandler,
+		apiKeyHandler:            apiKeyHandler,
+		openAPIHandler:           openAPIHandler,
+		suggestHandler:           suggestHandler,
+		recentHandler:            recentHandler,
+		monitorHandler:           monitorHandler,
+		resourceHandler:          resourceHandler,
+		previewHandler:           previewHandler,
+		downloadAnalyticsHandler: downloadAnalyticsHandler,
+		authMiddleware:           authMiddleware,
+		rbacService:              rbacService,
+		openAPICfg:               openAPICfg,
+		openAPIRateLimiter:       openAPIRateLimiter,
+		openAPIIPAccessCfg:       openAPIIPAccessCfg,
+		openAPICallStat:          openAPICallStat,
+		openAPIStatsHandler:      openAPIStatsHandler,
+		idxSearch:                idxSearch,
+		resourceCollector:        resourceCollector,
 	}
 
 	// 服务器地址
