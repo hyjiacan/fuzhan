@@ -8,6 +8,7 @@
         <IndexStatusBar />
       </div>
       <div class="footer-right">
+          <a href="/lite/">轻量版</a> | 完整版
           <a @click="showHelp = true" class="link-button">帮助</a>
           <span class="divider">•</span>
           <a @click="showAbout = true" class="link-button">关于</a>
