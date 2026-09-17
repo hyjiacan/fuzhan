@@ -166,8 +166,8 @@ const downloadColumns = [
     key: 'notes',
     width: 150,
     cellRenderer: ({ rowData: row }) => row.notes
-      ? h('span', { title: row.notes, style: 'color:#666; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
-      : h('span', { style: 'color:#bbb;' }, '-')
+      ? h('span', { title: row.notes, style: 'color:var(--el-text-color-regular); text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
+      : h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
   },
   {
     title: '上传时间',

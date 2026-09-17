@@ -194,7 +194,7 @@ const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
 // 最近 24h 内的新记录显示为绿色（仅上传时间列应用；下载时间固定显示，不标绿）
 const renderRecentTime = (time) => {
-  if (!time) return h('span', { style: 'color:#bbb;' }, '-')
+  if (!time) return h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
   const text = TimeUtils.formatDateTime(time)
   if (TimeUtils.isRecent24h(time)) {
     return h('span', { style: 'color: #18a058' }, text)
@@ -298,7 +298,7 @@ const downloadColumns = [
   { title: '上传时间', key: 'uploadTime', dataKey: 'uploadTime', width: 170,
     cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001'))
       ? renderRecentTime(row.uploadTime)
-      : h('span', { style: 'color:#bbb;' }, '-')
+      : h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
   },
   deleteRecordColumn('download')
 ]
@@ -495,7 +495,7 @@ watch(activeTab, () => {
       flex: 1 1 auto;
       min-height: 0;
       position: relative;
-      background: #fff;
+      background: @bg-color;
       border-radius: @content-radius;
       box-shadow: @shadow-sm;
       overflow: hidden;

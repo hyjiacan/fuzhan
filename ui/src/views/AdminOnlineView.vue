@@ -181,7 +181,7 @@ onUnmounted(() => {
 
       .description {
         margin: 4px 0 0;
-        color: #999;
+        color: @text-color-placeholder;
         font-size: @font-size-sm;
       }
     }
@@ -193,7 +193,7 @@ onUnmounted(() => {
 
       .online-summary {
         font-size: 14px;
-        color: #666;
+        color: @text-color-secondary;
 
         b {
           color: @primary-color;
@@ -212,7 +212,7 @@ onUnmounted(() => {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: #fff;
+    background: @bg-color;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     overflow: hidden;

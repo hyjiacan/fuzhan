@@ -439,7 +439,7 @@ onUnmounted(() => {
   font-weight: 600;
 }
 .description {
-  color: #888;
+  color: @text-color-secondary;
   margin: 4px 0 0;
   font-size: 14px;
 }
@@ -455,11 +455,11 @@ onUnmounted(() => {
 }
 .stat-label {
   font-size: 14px;
-  color: #888;
+  color: @text-color-secondary;
 }
 .field-hint {
   font-size: 12px;
-  color: #888;
+  color: @text-color-secondary;
   line-height: 1.5;
 }
 .table-v2-wrap {

@@ -273,7 +273,7 @@ onUnmounted(() => {
       .search-status {
         flex: 1;
         font-size: 14px;
-        color: #666;
+        color: @text-color-secondary;
         display: flex;
         align-items: center;
         gap: 12px;
@@ -284,7 +284,7 @@ onUnmounted(() => {
         }
 
         .search-time {
-          color: #999;
+          color: @text-color-placeholder;
         }
       }
 
@@ -293,7 +293,7 @@ onUnmounted(() => {
 
         .breadcrumb-link {
           cursor: pointer;
-          color: #444;
+          color: @text-color;
           transition: color @transition-fast;
 
           &:hover {
@@ -340,7 +340,7 @@ onUnmounted(() => {
   .content-table {
     flex: 1;
     min-height: 0;
-    background: #fff;
+    background: @bg-color;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     transition: box-shadow @transition-smooth;
@@ -382,7 +382,7 @@ onUnmounted(() => {
     flex-shrink: 0;
 
     .icon-filetype {
-      color: #888;
+      color: @text-color-placeholder;
     }
   }
 
@@ -403,18 +403,18 @@ onUnmounted(() => {
 }
 
 .icon-filetype {
-  color: #888;
+  color: @text-color-placeholder;
   font-size: 20px;
 }
 
 .file-link {
-  color: #444;
+  color: @text-color;
   cursor: pointer;
 }
 
 .dir-link {
   cursor: pointer;
-  color: #444;
+  color: @text-color;
 
   &:hover {
     color: @primary-color;

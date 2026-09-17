@@ -104,7 +104,7 @@ defineExpose({ show, close })
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  background: #fff;
+  background: @bg-color;
   border-radius: @border-radius-lg;
   box-shadow: @shadow-lg;
   min-width: 320px;

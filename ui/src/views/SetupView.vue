@@ -685,14 +685,14 @@ onMounted(async () => {
   .setup-title-group {
     .setup-title {
       margin: 0;
-      color: #333;
+      color: @text-color;
       font-size: 24px;
       font-weight: 600;
     }
 
     .setup-subtitle {
       margin: 4px 0 0;
-      color: #666;
+      color: @text-color-secondary;
       font-size: 14px;
     }
   }
@@ -701,7 +701,7 @@ onMounted(async () => {
 .setup-section {
   margin-bottom: 32px;
   padding-bottom: 32px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid @border-color-light;
 
   &:last-of-type {
     border-bottom: none;
@@ -712,7 +712,7 @@ onMounted(async () => {
     margin: 0 0 16px;
     font-size: 18px;
     font-weight: 600;
-    color: #333;
+    color: @text-color;
     padding-left: 12px;
     border-left: 3px solid @primary-accent;
   }
@@ -725,16 +725,16 @@ onMounted(async () => {
 
   .db-option-desc {
     font-size: 12px;
-    color: #999;
+    color: @text-color-placeholder;
   }
 }
 
 .field-hint {
-  color: #999;
+  color: @text-color-placeholder;
   font-size: 12px;
 
   code {
-    background: #f0f0f0;
+    background: @bg-color-tertiary;
     padding: 2px 4px;
     border-radius: 2px;
   }
@@ -751,7 +751,7 @@ onMounted(async () => {
 .dir-item {
   margin-bottom: 16px;
   padding: 16px;
-  background: #f8f9fa;
+  background: @bg-color-secondary;
   border-radius: 12px;
 
   .dir-header {
@@ -762,7 +762,7 @@ onMounted(async () => {
 
     .dir-index {
       font-weight: 500;
-      color: #333;
+      color: @text-color;
     }
   }
 
@@ -771,7 +771,7 @@ onMounted(async () => {
   }
 
   .dir-feedback {
-    color: #999;
+    color: @text-color-placeholder;
     font-size: 12px;
 
     &.feedback-error {
@@ -780,7 +780,7 @@ onMounted(async () => {
   }
 
   .dir-hint {
-    color: #999;
+    color: @text-color-placeholder;
     font-size: 12px;
     margin-top: -4px;
     margin-bottom: 12px;

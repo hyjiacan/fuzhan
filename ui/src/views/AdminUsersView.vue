@@ -169,7 +169,7 @@ const columns = [
     key: 'quota',
     width: 200,
     cellRenderer: ({ rowData: row }) => {
-      if (!row.quota) return h('span', { style: 'color: #999; font-size: 12px' }, '无限制')
+      if (!row.quota) return h('span', { style: 'color: var(--el-text-color-secondary); font-size: 12px' }, '无限制')
       const percentage = Math.min(100, Math.round((row.usedStorage || 0) / row.quota * 100))
       const status = percentage >= 90 ? 'exception' : percentage >= 70 ? 'warning' : 'success'
       return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [

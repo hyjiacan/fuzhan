@@ -435,7 +435,7 @@ watch(
       .search-status {
         flex: 1;
         font-size: 14px;
-        color: #666;
+        color: @text-color-secondary;
         display: flex;
         align-items: center;
         gap: 12px;
@@ -446,7 +446,7 @@ watch(
         }
 
         .search-time {
-          color: #999;
+          color: @text-color-placeholder;
         }
       }
 
@@ -468,7 +468,7 @@ watch(
         flex: 1;
         font-size: 14px;
         font-weight: 500;
-        color: #333;
+        color: @text-color;
       }
 
       .header-actions {
@@ -505,7 +505,7 @@ watch(
   .content-table {
     flex: 1 1 auto;
     min-height: 0;
-    background: #fff;
+    background: @bg-color;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     transition: box-shadow @transition-smooth;
@@ -632,7 +632,7 @@ watch(
     flex-shrink: 0;
 
     .icon-filetype {
-      color: #888;
+      color: @text-color-placeholder;
     }
   }
 
@@ -653,7 +653,7 @@ watch(
 }
 
 .icon-filetype {
-  color: #888;
+  color: @text-color-placeholder;
 }
 
 .dialog-footer {
@@ -674,7 +674,7 @@ watch(
 
 .notes-cell {
   cursor: pointer;
-  color: #666;
+  color: @text-color-secondary;
   font-size: 12px;
 }
 

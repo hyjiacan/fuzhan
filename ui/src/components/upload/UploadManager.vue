@@ -39,7 +39,7 @@
             :style="{ flex: 1 }"
           />
         </div>
-        <div style="font-size: 12px; color: #999;">
+        <div style="font-size: 12px; color: var(--el-text-color-placeholder);">
           可选，留空则上传到根目录
         </div>
       </el-form-item>
@@ -71,7 +71,7 @@
                 <div style="margin-top: 8px; font-size: 14px;">
                   {{ isDragging ? '松开以上传' : '拖拽文件到此处，或点击选择' }}
                 </div>
-                <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                <div style="font-size: 12px; color: var(--el-text-color-placeholder); margin-top: 4px;">
                   支持多文件、拖放，大文件自动分片上传
                 </div>
               </div>
@@ -187,13 +187,13 @@
           </div>
 
           <!-- 未读取 -->
-          <div v-if="!clipboardRead" style="color: #999; font-size: 12px;">
+          <div v-if="!clipboardRead" style="color: var(--el-text-color-placeholder); font-size: 12px;">
             仅支持读取<strong>文本</strong>和<strong>图片</strong>格式。若剪贴板包含多种格式，您可以手动选择要读取的类型。
           </div>
 
           <!-- 已读取，未选择类型：展示可选类型 -->
           <div v-else-if="!clipboardTypeConfirmed">
-            <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: #666;">
+            <div v-if="clipboardOptions.length > 1" style="margin-bottom: 8px; font-size: 13px; color: var(--el-text-color-regular);">
               检测到剪贴板包含多种格式，请选择要读取的数据类型:
             </div>
             <el-radio-group v-model="clipboardSelectedType">
@@ -803,12 +803,12 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   .drop-zone {
     margin-top: 12px;
     padding: 24px;
-    border: 2px dashed #d9d9d9;
+    border: 2px dashed @border-color;
     border-radius: 8px;
     text-align: center;
     transition: all 0.2s;
     cursor: pointer;
-    color: #666;
+    color: @text-color-secondary;
 
     &:hover {
       border-color: @primary-color;
@@ -843,10 +843,10 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    background: #fafafa;
-    border-bottom: 1px solid #eee;
+    background: @bg-color-secondary;
+    border-bottom: 1px solid @border-color-light;
     font-size: 13px;
-    color: #333;
+    color: @text-color;
   }
 
   .queue-list {
@@ -914,7 +914,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
       .queue-item-size {
         font-size: 11px;
-        color: #999;
+        color: @text-color-placeholder;
         flex: 2;
       }
 
@@ -927,7 +927,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
       .queue-item-speed {
         font-size: 11px;
-        color: #666;
+        color: @text-color-secondary;
         margin-top: 2px;
       }
 
@@ -1001,11 +1001,11 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   .clipboard-preview-filename {
     font-weight: 500;
     font-size: 14px;
-    color: #333;
+    color: @text-color;
   }
 
   .clipboard-preview-info {
-    color: #999;
+    color: @text-color-placeholder;
     font-size: 12px;
   }
 
@@ -1057,7 +1057,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 }
 
 .upload-maximize-btn {
-  color: #666;
+  color: @text-color-secondary;
 
   &:hover {
     color: @primary-color;

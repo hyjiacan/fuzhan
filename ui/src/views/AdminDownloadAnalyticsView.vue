@@ -644,8 +644,8 @@ onUnmounted(() => {
   margin-bottom: 14px;
 }
 .metric-card {
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: @bg-color;
+  border: 1px solid @border-color;
   border-radius: 8px;
   padding: 16px;
   text-align: center;

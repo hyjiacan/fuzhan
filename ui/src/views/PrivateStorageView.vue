@@ -301,7 +301,7 @@ const columns = computed(() => [
     title: '大小',
     key: 'fileSize',
     width: 100,
-    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: #999;' }, '-') : formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: var(--el-text-color-secondary);' }, '-') : formatSize(row.fileSize)
   },
   {
     title: '访问码',
@@ -452,7 +452,7 @@ onUnmounted(() => {
     .breadcrumb-root {
       font-size: 14px;
       font-weight: 500;
-      color: #333;
+      color: @text-color;
       margin-bottom: 8px;
       display: block;
     }
@@ -513,7 +513,7 @@ onUnmounted(() => {
   }
 
   .content-table {
-    background: #fff;
+    background: @bg-color;
     border-radius: @content-radius;
     overflow: hidden;
     box-shadow: @shadow-sm;

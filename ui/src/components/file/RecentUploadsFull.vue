@@ -7,7 +7,7 @@
     >
       <el-table-column prop="uploadTime" label="上传时间" width="140">
         <template #default="{ row }">
-          <span :style="{ color: TimeUtils.isRecent24h(row.uploadTime) ? '#18a058' : '#666', fontSize: '13px' }">{{ TimeUtils.formatDateTime(row.uploadTime) }}</span>
+          <span :style="{ color: TimeUtils.isRecent24h(row.uploadTime) ? '#18a058' : 'var(--el-text-color-regular)', fontSize: '13px' }">{{ TimeUtils.formatDateTime(row.uploadTime) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="filename" label="文件名">
@@ -20,7 +20,7 @@
       </el-table-column>
       <el-table-column prop="fileSize" label="大小" width="100">
         <template #default="{ row }">
-          <span style="color:#999;font-size:13px">{{ NumberUtils.formatFileSize(row.fileSize) }}</span>
+          <span style="color:var(--el-text-color-secondary);font-size:13px">{{ NumberUtils.formatFileSize(row.fileSize) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="uploadType" label="上传方式" width="90">

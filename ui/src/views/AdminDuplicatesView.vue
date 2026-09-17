@@ -236,7 +236,7 @@ onMounted(() => {
   .content-section {
     flex: 1;
     overflow: auto;
-    background: #fff;
+    background: @bg-color;
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     padding: 16px;
