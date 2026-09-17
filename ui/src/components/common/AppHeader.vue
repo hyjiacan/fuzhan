@@ -28,6 +28,7 @@
         </router-link>
         <!-- 移动端登录/用户入口 -->
         <div class="nav-mobile-auth">
+          <ThemeToggle class="header-theme-toggle" />
           <template v-if="authState.isLoggedIn">
             <span class="username">{{ authState.username }}</span>
             <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
@@ -40,6 +41,7 @@
 
       <!-- Desktop: Right side Login/User -->
       <div class="header-actions">
+        <ThemeToggle class="header-theme-toggle" />
         <el-button text size="small" class="upload-status-btn" @click="showUploadStatus = true">
           <el-icon><UploadFilled /></el-icon>
           <span>上传状态</span>
@@ -152,6 +154,7 @@ import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
 import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
+import ThemeToggle from './ThemeToggle.vue'
 
 const router = useRouter()
 const route = useRoute()

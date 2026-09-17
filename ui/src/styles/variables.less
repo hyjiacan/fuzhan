@@ -11,27 +11,28 @@
 @primary-accent-press: #E69500;
 
 // ============================================
-// 文字颜色
+// 文字颜色（映射到 Element Plus 语义变量，随 html.dark 自动切换主题）
 // ============================================
-@text-color: #333333;
-@text-color-secondary: #666666;
-@text-color-placeholder: #999999;
-@text-color-disabled: #cccccc;
+@text-color: var(--el-text-color-primary);
+@text-color-secondary: var(--el-text-color-regular);
+@text-color-placeholder: var(--el-text-color-secondary);
+@text-color-disabled: var(--el-text-color-placeholder);
 
 // ============================================
-// 背景色
+// 背景色（映射到 Element Plus 语义变量，随 html.dark 自动切换主题）
 // ============================================
-@bg-color: #FFFFFF;
-@bg-color-secondary: #F4F4F9;
-@bg-color-tertiary: #E8E8E8;
+@bg-color: var(--el-bg-color);
+@bg-color-secondary: var(--el-bg-color-page);
+@bg-color-tertiary: var(--el-fill-color-light);
+// 顶栏/深色布局在两种主题下都保持深色，故保留字面量
 @bg-color-dark: #444444;
 @bg-color-dark-hover: #555555;
 
 // ============================================
-// 边框
+// 边框（映射到 Element Plus 语义变量）
 // ============================================
-@border-color: #E0E0E0;
-@border-color-light: #F0F0F0;
+@border-color: var(--el-border-color);
+@border-color-light: var(--el-border-color-light);
 @border-radius: 6px;
 @border-radius-sm: 4px;
 @border-radius-lg: 8px;

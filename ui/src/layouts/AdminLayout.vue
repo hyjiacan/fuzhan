@@ -30,12 +30,18 @@
     <el-main class="layout-content">
       <router-view />
     </el-main>
+
+    <!-- 主题切换（悬浮于内容区右上角） -->
+    <div class="admin-theme-toggle">
+      <ThemeToggle />
+    </div>
   </el-container>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import {
   Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts
 } from '@element-plus/icons-vue'
@@ -102,7 +108,24 @@ const handleMenuSelect = (key) => {
 @import '@/styles/variables.less';
 
 .admin-layout {
+  position: relative;
   height: 100%;
+
+  .admin-theme-toggle {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--el-bg-color-overlay);
+    box-shadow: @shadow-sm;
+    color: var(--el-text-color-regular);
+  }
 
   .layout-sider {
     background: @bg-color;

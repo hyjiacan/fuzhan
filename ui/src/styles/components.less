@@ -31,7 +31,7 @@
     position: relative;
 
     .icon-filetype {
-      color: #888;
+      color: @text-color-placeholder;
       transition: color @transition-fast;
     }
 
@@ -75,7 +75,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #444;
+      color: @text-color;
       text-decoration: none;
       cursor: pointer;
       transition: color @transition-fast;
@@ -85,7 +85,7 @@
       }
 
       &.expired {
-        color: #999;
+        color: @text-color-placeholder;
         cursor: not-allowed;
         text-decoration: line-through;
       }
@@ -102,12 +102,12 @@
 }
 
 .icon-filetype {
-  color: #888;
+  color: @text-color-placeholder;
   transition: color @transition-fast;
 }
 
 .file-link {
-  color: #444;
+  color: @text-color;
   text-decoration: none;
   cursor: pointer;
   transition: color @transition-fast;
@@ -202,7 +202,7 @@
 
 .content-table {
   flex: 1 1 auto;
-  background: #fff;
+  background: @bg-color;
   border-radius: @content-radius;
   overflow: hidden;
   box-shadow: @shadow-sm;
@@ -273,7 +273,7 @@
 .drop-zone {
   margin-top: 12px;
   padding: 24px;
-  border: 2px dashed #d9d9d9;
+  border: 2px dashed @border-color;
   border-radius: 8px;
   text-align: center;
   transition: all 0.2s;
@@ -313,7 +313,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: #fafafa;
+  background: @bg-color-secondary;
   border-bottom: 1px solid @border-color-light;
   font-size: 13px;
   color: @text-color;

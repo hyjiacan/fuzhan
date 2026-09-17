@@ -10,6 +10,9 @@ import { SetupApi, SystemApi, AuthApi, NotificationApi } from '@/api'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 
+// Element Plus 官方深色主题 CSS 变量（html.dark 下生效）
+import 'element-plus/theme-chalk/dark/css-vars.css'
+
 const app = createApp(App)
 app.use(router)
 

@@ -6,6 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>浮栈</title>
     <link rel="stylesheet" href="/assets/icons/filetype/iconfont.css" />
+    <script>
+      // 首屏渲染前应用已保存/系统的明暗主题，避免闪烁
+      ;(function () {
+        try {
+          var m = localStorage.getItem('theme_mode')
+          var dark =
+            m === 'dark' ||
+            (m !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {
+          /* 主题预判失败时保持默认浅色 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

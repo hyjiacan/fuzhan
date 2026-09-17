@@ -18,6 +18,11 @@ import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
 import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
 import { safeStorage } from '@/utils/storage'
+import { useTheme } from '@/composables/useTheme'
+
+// 初始化主题（配合 index.html 首屏脚本，跟随系统 + 手动切换 + 持久化）
+const { init: initTheme } = useTheme()
+initTheme()
 
 // 页面宽度偏好
 const STORAGE_KEY = 'page-width-preference'
