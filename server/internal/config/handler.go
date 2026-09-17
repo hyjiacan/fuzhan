@@ -3,7 +3,6 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -77,121 +76,6 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
-// ConfigResponse 配置响应结构
-type ConfigResponse struct {
-	App               AppConfig       `json:"app"`
-	Account           AccountResponse `json:"account"`
-	Server            ServerResponse  `json:"server"`
-	Database          DatabaseConfig  `json:"database"`
-	RootDirs          []RootDirConfig `json:"rootDirs"`
-	AllowedExtensions []string        `json:"allowedExtensions"`
-	TempFiles         TempFilesConfig `json:"tempFiles"`
-	Upload            UploadConfig    `json:"upload"`
-	Preview           PreviewConfig   `json:"preview"`
-}
-
-type AccountResponse struct {
-	Anonymous         AnonymousResponse `json:"anonymous"`
-	ReservedUsernames []string          `json:"reservedUsernames"`
-}
-
-type AnonymousResponse struct {
-	Username string `json:"username"`
-}
-
-type AppConfig struct {
-	Name        string `json:"name"`
-	Initialized bool   `json:"initialized"`
-}
-
-type ServerResponse struct {
-	Host   string           `json:"host"`
-	HTTP   HTTPConfigResp   `json:"http"`
-	HTTPS  HTTPConfigResp   `json:"https"`
-	FTP    FTPConfigResp    `json:"ftp"`
-	FTPS   FTPSConfigResp   `json:"ftps"`
-	WebDAV WebDAVConfigResp `json:"webdav"`
-}
-
-type HTTPConfigResp struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
-}
-
-type FTPConfigResp struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
-}
-
-type FTPSConfigResp struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
-}
-
-type WebDAVConfigResp struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
-}
-
-type DatabaseConfig struct {
-	Driver string `json:"driver"`
-	DSN    string `json:"dsn"`
-}
-
-type RootDirConfig struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	FullPath string `json:"fullPath"`
-}
-
-type PrivateFilesConfig struct {
-	Enabled      bool   `json:"enabled"`
-	Path         string `json:"path"`
-	QuotaGlobal  int64  `json:"quotaGlobal"`
-	QuotaPerUser int64  `json:"quotaPerUser"`
-}
-
-type TempFilesConfig struct {
-	Enabled           bool   `json:"enabled"`
-	Path              string `json:"path"`
-	QuotaGlobal       int64  `json:"quotaGlobal"`
-	QuotaPerIP        int64  `json:"quotaPerIP"`
-	DefaultExpireDays int    `json:"defaultExpireDays"`
-	DeleteOnDownload  bool   `json:"deleteOnDownload"`
-}
-
-type UploadConfig struct {
-	ChunkSize   int64               `json:"chunkSize"`
-	MaxFileSize int64               `json:"maxFileSize"`
-	URLUpload   URLUploadConfigResp `json:"urlUpload"`
-}
-
-type URLUploadConfigResp struct {
-	Enabled            bool     `json:"enabled"`
-	AllowedIPRanges    []string `json:"allowedIPRanges"`
-	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
-}
-
-// DownloadConfigReq 保存请求中的下载限流配置（maxRequests=0 表示不限制）
-type DownloadConfigReq struct {
-	RateLimit DownloadRateLimitConfigReq `json:"rateLimit"`
-}
-
-// DownloadRateLimitConfigReq 下载频率限制请求结构
-type DownloadRateLimitConfigReq struct {
-	WindowMinutes int `json:"windowMinutes"`
-	MaxRequests   int `json:"maxRequests"`
-	LockAfter     int `json:"lockAfter"`
-	LockMinutes   int `json:"lockMinutes"`
-}
-
-type PreviewConfig struct {
-	AllowMimes    string `json:"allowMimes"`
-	AllowExts     string `json:"allowExts"`
-	MaxInlineSize string `json:"maxInlineSize"`
-	TextChunkSize string `json:"textChunkSize"`
-}
-
 // GetConfig 获取当前配置
 func (h *Handler) GetConfig(c *gin.Context) {
 	resp := appconfig.GlobalConfig.ToDTO()
@@ -201,36 +85,21 @@ func (h *Handler) GetConfig(c *gin.Context) {
 // SaveConfigRequest 保存配置请求
 // 字段名与前端设置页提交内容严格一致，避免保存时覆盖未提交的配置项。
 type SaveConfigRequest struct {
-	App               AppConfig                   `json:"app"`
-	Account           AccountResponse             `json:"account"`
-	Server            ServerResponse              `json:"server"`
-	Database          DatabaseConfig              `json:"database"`
-	RootDirs          []RootDirInput              `json:"rootDirs"`
-	AllowedExtensions []string                    `json:"allowedExtensions"`
-	PrivateFiles      PrivateFilesConfig          `json:"privateFiles"`
-	TempFiles         TempFilesConfig             `json:"tempFiles"`
-	Upload            UploadConfig                `json:"upload"`
-	Download          DownloadConfigReq           `json:"download"`
-	Preview           PreviewConfig               `json:"preview"`
-	OpenApi           *OpenApiConfig              `json:"openApi"`
-	Index             appconfig.IndexConfigDTO    `json:"index"`
-	Resource          appconfig.ResourceConfigDTO `json:"resource"`
-	Security          appconfig.SecurityConfigDTO `json:"security"`
-}
-
-type OpenApiConfig struct {
-	Enabled           bool     `json:"enabled"`
-	IpAccessMode      string   `json:"ipAccessMode"`
-	IpWhitelist       []string `json:"ipWhitelist"`
-	IpBlacklist       []string `json:"ipBlacklist"`
-	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
-	RequestsPerMinute int      `json:"requestsPerMinute"`
-}
-
-type RootDirInput struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	FullPath string `json:"fullPath"`
+	App               appconfig.AppConfigDTO       `json:"app"`
+	Account           appconfig.AccountResponse    `json:"account"`
+	Server            appconfig.ServerResponse     `json:"server"`
+	Database          appconfig.DatabaseConfigDTO  `json:"database"`
+	RootDirs          []appconfig.RootDirConfig    `json:"rootDirs"`
+	AllowedExtensions []string                     `json:"allowedExtensions"`
+	PrivateFiles      appconfig.PrivateConfigDTO   `json:"privateFiles"`
+	TempFiles         appconfig.TempFilesConfigDTO `json:"tempFiles"`
+	Upload            appconfig.UploadConfigDTO    `json:"upload"`
+	Download          appconfig.DownloadConfigDTO  `json:"download"`
+	Preview           appconfig.PreviewConfigDTO   `json:"preview"`
+	OpenApi           *appconfig.OpenApiConfigDTO  `json:"openApi"`
+	Index             appconfig.IndexConfigDTO     `json:"index"`
+	Resource          appconfig.ResourceConfigDTO  `json:"resource"`
+	Security          appconfig.SecurityConfigDTO  `json:"security"`
 }
 
 func (h *Handler) SaveConfig(c *gin.Context) {
@@ -392,22 +261,22 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Storage.Private.Quota.PerUserQuota = req.PrivateFiles.QuotaPerUser
 		updates.Add("storage.private.enabled", req.PrivateFiles.Enabled)
 		updates.Add("storage.private.path", req.PrivateFiles.Path)
-		updates.Add("storage.private.quota.global", formatSizeToString(req.PrivateFiles.QuotaGlobal))
-		updates.Add("storage.private.quota.per_user", formatSizeToString(req.PrivateFiles.QuotaPerUser))
+		updates.Add("storage.private.quota.global", appconfig.FormatSizeString(req.PrivateFiles.QuotaGlobal))
+		updates.Add("storage.private.quota.per_user", appconfig.FormatSizeString(req.PrivateFiles.QuotaPerUser))
 	}
 
 	// —— 临时文件（前端字段名 tempFiles）——
 	if present("tempFiles") {
 		appconfig.GlobalConfig.Storage.Temp.Enabled = req.TempFiles.Enabled
 		appconfig.GlobalConfig.Storage.Temp.Path = req.TempFiles.Path
-		appconfig.GlobalConfig.Storage.Temp.Quota.Global = formatSizeToString(req.TempFiles.QuotaGlobal)
-		appconfig.GlobalConfig.Storage.Temp.Quota.PerIP = formatSizeToString(req.TempFiles.QuotaPerIP)
+		appconfig.GlobalConfig.Storage.Temp.Quota.Global = appconfig.FormatSizeString(req.TempFiles.QuotaGlobal)
+		appconfig.GlobalConfig.Storage.Temp.Quota.PerIP = appconfig.FormatSizeString(req.TempFiles.QuotaPerIP)
 		appconfig.GlobalConfig.Storage.Temp.DefaultExpireDays = req.TempFiles.DefaultExpireDays
 		appconfig.GlobalConfig.Storage.Temp.DeleteOnDownload = req.TempFiles.DeleteOnDownload
 		updates.Add("storage.temp.enabled", req.TempFiles.Enabled)
 		updates.Add("storage.temp.path", req.TempFiles.Path)
-		updates.Add("storage.temp.quota.global", formatSizeToString(req.TempFiles.QuotaGlobal))
-		updates.Add("storage.temp.quota.per_ip", formatSizeToString(req.TempFiles.QuotaPerIP))
+		updates.Add("storage.temp.quota.global", appconfig.FormatSizeString(req.TempFiles.QuotaGlobal))
+		updates.Add("storage.temp.quota.per_ip", appconfig.FormatSizeString(req.TempFiles.QuotaPerIP))
 		updates.Add("storage.temp.default_expire_days", req.TempFiles.DefaultExpireDays)
 		updates.Add("storage.temp.delete_on_download", req.TempFiles.DeleteOnDownload)
 	}
@@ -416,10 +285,10 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	if present("upload") {
 		if req.Upload.ChunkSize > 0 {
 			appconfig.GlobalConfig.Upload.ChunkSize = req.Upload.ChunkSize
-			updates.Add("upload.chunk_size", formatSizeToString(req.Upload.ChunkSize))
+			updates.Add("upload.chunk_size", appconfig.FormatSizeString(req.Upload.ChunkSize))
 		}
 		appconfig.GlobalConfig.Upload.MaxFileSize = req.Upload.MaxFileSize
-		updates.Add("upload.max_file_size", formatSizeToString(req.Upload.MaxFileSize))
+		updates.Add("upload.max_file_size", appconfig.FormatSizeString(req.Upload.MaxFileSize))
 		appconfig.GlobalConfig.Upload.URLUpload.Enabled = req.Upload.URLUpload.Enabled
 		appconfig.GlobalConfig.Upload.URLUpload.AllowedIPRanges = req.Upload.URLUpload.AllowedIPRanges
 		appconfig.GlobalConfig.Upload.URLUpload.InsecureSkipVerify = req.Upload.URLUpload.InsecureSkipVerify
@@ -561,35 +430,4 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
 	response.HandleSuccess(c, http.StatusOK, "配置已保存并生效", nil)
-}
-
-func parseOrDefault(s string, defaultVal int64) int64 {
-	if s == "" {
-		return defaultVal
-	}
-	val, err := appconfig.ParseQuotaString(s)
-	if err != nil {
-		return defaultVal
-	}
-	return val
-}
-
-func formatSizeToString(val int64) string {
-	if val >= 1024*1024*1024*1024 {
-		return formatFloat(float64(val)/(1024*1024*1024*1024), 1) + "T"
-	}
-	if val >= 1024*1024*1024 {
-		return formatFloat(float64(val)/(1024*1024*1024), 1) + "G"
-	}
-	if val >= 1024*1024 {
-		return formatFloat(float64(val)/(1024*1024), 1) + "M"
-	}
-	if val >= 1024 {
-		return formatFloat(float64(val)/1024, 1) + "K"
-	}
-	return formatFloat(float64(val), 0) + "B"
-}
-
-func formatFloat(val float64, decimals int) string {
-	return fmt.Sprintf("%.*f", decimals, val)
 }

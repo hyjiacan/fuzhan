@@ -1,4 +1,4 @@
-package cli
+package lite
 
 import (
 	"fmt"
@@ -13,14 +13,18 @@ import (
 	"time"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/filedir"
 	"fuzhan/internal/resources"
 	"fuzhan/internal/search"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 )
 
-// liteRow 简洁浏览页表格的一行
-type liteRow struct {
+// liteName 轻量版页面的展示名称，统一用于标题等处。
+const liteName = "轻量版"
+
+// row 轻量版页面表格的一行
+type row struct {
 	Name  string
 	Href  string
 	IsDir bool
@@ -29,28 +33,28 @@ type liteRow struct {
 	Notes string
 }
 
-// liteCrumb 面包屑节点；Href 为空表示当前节点（纯文本）
-type liteCrumb struct {
+// crumb 面包屑节点；Href 为空表示当前节点（纯文本）
+type crumb struct {
 	Name string
 	Href string
 }
 
-// litePage 简洁浏览页渲染数据
-type litePage struct {
+// page 轻量版页面渲染数据
+type page struct {
 	Title       string
 	AppName     string
 	LogoPath    string
 	SearchQuery string
-	Crumb       []liteCrumb
+	Crumb       []crumb
 	ResultInfo  string
 	// 检索结果上方的推荐/纠错超链接（点击即以该关键词重新搜索）
-	Recommends  []liteSuggestion
-	Corrections []liteSuggestion
-	Rows        []liteRow
+	Recommends  []suggestion
+	Corrections []suggestion
+	Rows        []row
 }
 
-// liteSuggestion 检索推荐/纠错项
-type liteSuggestion struct {
+// suggestion 检索推荐/纠错项
+type suggestion struct {
 	Keyword string
 	Href    string
 }
@@ -97,8 +101,8 @@ func encodeRelPath(rootName, rel string) string {
 	return encodeSegments(segs)
 }
 
-// formatLiteSize 将字节数格式化为易读的大小
-func formatLiteSize(n int64) string {
+// formatSize 将字节数格式化为易读的大小
+func formatSize(n int64) string {
 	const (
 		kb = int64(1024)
 		mb = kb * 1024
@@ -119,16 +123,16 @@ func formatLiteSize(n int64) string {
 	}
 }
 
-// formatLiteTime 格式化修改时间为本地可读秒级形式
-func formatLiteTime(t time.Time) string {
+// formatTime 格式化修改时间为本地可读秒级形式
+func formatTime(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}
 	return t.Local().Format("2006-01-02 15:04:05")
 }
 
-// formatModTimeText 兼容 "2006-01-02T15:04:05" 与 RFC3339 两种来源的格式化展示
-func formatModTimeText(s string) string {
+// formatModText 兼容 "2006-01-02T15:04:05" 与 RFC3339 两种来源的格式化展示
+func formatModText(s string) string {
 	if s == "" {
 		return "-"
 	}
@@ -143,8 +147,8 @@ func formatModTimeText(s string) string {
 	return s
 }
 
-// resolveLiteSegments 解析 /lite 之后的路由路径段（已解码）。
-func resolveLiteSegments(r *http.Request) []string {
+// resolveSegments 解析 /lite 之后的路由路径段（已解码）。
+func resolveSegments(r *http.Request) []string {
 	p := strings.TrimPrefix(r.URL.Path, "/lite")
 	p = strings.Trim(p, "/")
 	if p == "" {
@@ -164,50 +168,50 @@ func resolveLiteSegments(r *http.Request) []string {
 	return segs
 }
 
-// liteBrowseTitle 生成随当前路径变化的浏览页标题
-func liteBrowseTitle(head string, segs []string) string {
+// browseTitle 生成随当前路径变化的浏览页标题
+func browseTitle(head string, segs []string) string {
 	if len(segs) == 0 {
-		return head + " - 简洁浏览"
+		return head + " - " + liteName
 	}
-	return head + " - 简洁浏览 / " + strings.Join(segs, "/")
+	return head + " - " + liteName + " / " + strings.Join(segs, "/")
 }
 
-// HandleLite 处理 /lite 服务器渲染浏览/检索请求
-func HandleLite(w http.ResponseWriter, r *http.Request, svc *services.SearchService, idx *search.SearchIndex) {
+// Handle 处理 /lite 服务器渲染浏览/检索请求
+func Handle(w http.ResponseWriter, r *http.Request, svc *services.SearchService, idx *search.SearchIndex) {
 	utils.PrintRequestInfo(r)
 
 	head := appconfig.GlobalConfig.App.Name
 	if head == "" {
 		head = "Fuzhan"
 	}
-	page := litePage{
-		Title:   head + " - 简洁浏览",
+	page := page{
+		Title:   head + " - " + liteName,
 		AppName: head,
-		// logo.svg 为嵌入/磁盘资源，统一以 /assets/icons/logo.png 引用
+		// logo.png 为嵌入/磁盘资源，统一以 /assets/icons/logo.png 引用
 		LogoPath: "/assets/icons/logo.png",
 	}
 
-	segs := resolveLiteSegments(r)
+	segs := resolveSegments(r)
 
 	// 检索模式：search/?q=xxx 或 GET /lite?q=xxx
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q != "" {
 		page.SearchQuery = q
 		page.Title = head + " - 搜索: " + q
-		renderLiteSearch(w, page, svc, idx, q)
+		renderSearch(w, page, svc, idx, q)
 		return
 	}
 
 	// 根级：列出所有公开根目录
 	if len(segs) == 0 {
-		page.Crumb = []liteCrumb{{Name: "根目录"}}
+		page.Crumb = []crumb{{Name: "根目录"}}
 		var rootNames []string
 		for rn := range appconfig.RootNames {
 			rootNames = append(rootNames, rn)
 		}
 		sort.Strings(rootNames)
 		for _, rn := range rootNames {
-			row := liteRow{
+			row := row{
 				Name:  rn,
 				IsDir: true,
 				Href:  "/lite/" + escapeSeg(rn),
@@ -217,12 +221,12 @@ func HandleLite(w http.ResponseWriter, r *http.Request, svc *services.SearchServ
 			}
 			if rootPath, ok := appconfig.RootNames[rn]; ok {
 				if fi, err := os.Stat(rootPath); err == nil {
-					row.Time = formatLiteTime(fi.ModTime())
+					row.Time = formatTime(fi.ModTime())
 				}
 			}
 			page.Rows = append(page.Rows, row)
 		}
-		renderLite(w, page)
+		render(w, page)
 		return
 	}
 
@@ -262,35 +266,35 @@ func HandleLite(w http.ResponseWriter, r *http.Request, svc *services.SearchServ
 		return
 	}
 
-	page.Title = liteBrowseTitle(head, segs)
+	page.Title = browseTitle(head, segs)
 
 	// 面包屑：根目录 -> ... -> 当前（当前为纯文本）
-	page.Crumb = []liteCrumb{{Name: "根目录", Href: "/lite"}}
+	page.Crumb = []crumb{{Name: "根目录", Href: "/lite"}}
 	acc := make([]string, 0, len(segs))
 	for i, seg := range segs {
 		acc = append(acc, seg)
 		if i == len(segs)-1 {
-			page.Crumb = append(page.Crumb, liteCrumb{Name: seg})
+			page.Crumb = append(page.Crumb, crumb{Name: seg})
 		} else {
-			page.Crumb = append(page.Crumb, liteCrumb{Name: seg, Href: "/lite/" + encodeSegments(acc)})
+			page.Crumb = append(page.Crumb, crumb{Name: seg, Href: "/lite/" + encodeSegments(acc)})
 		}
 	}
 
-	// 枚举目录内容（复用 CLI 过滤：忽略 .uploading、限制扩展名）
-	items := GetDirectoryItems(targetPath, rootName, nil)
+	// 枚举目录内容（复用统一过滤：忽略 .uploading、限制扩展名）
+	items := filedir.GetDirectoryItems(targetPath, rootName, nil)
 
 	for _, it := range items {
 		// it.Path 为 "<rootName>/<相对路径>"，去掉前缀后即带单个前导 "/" 的相对路径，
 		// 与 LoadDirectoryNotes 的 map 键格式一致；encodeRelPath 会 trim 前导斜杠所以 Href 不受影响
 		rel := strings.TrimPrefix(it.Path, rootName)
-		row := liteRow{Name: it.Name, Time: formatModTimeText(it.ModifiedTime), Notes: "-"}
+		row := row{Name: it.Name, Time: formatModText(it.ModifiedTime), Notes: "-"}
 		if it.Type == "directory" {
 			row.IsDir = true
 			row.Href = "/lite/" + encodeRelPath(rootName, rel)
 			row.Size = "-"
 		} else {
 			row.Href = "/download/" + encodeRelPath(rootName, rel)
-			row.Size = formatLiteSize(it.Size)
+			row.Size = formatSize(it.Size)
 		}
 		page.Rows = append(page.Rows, row)
 	}
@@ -301,60 +305,60 @@ func HandleLite(w http.ResponseWriter, r *http.Request, svc *services.SearchServ
 		if a.IsDir != b.IsDir {
 			return a.IsDir
 		}
-		return compareLiteName(a.Name, b.Name)
+		return compareName(a.Name, b.Name)
 	})
 
-	renderLite(w, page)
+	render(w, page)
 }
 
-// renderLiteSearch 渲染检索结果（关键词写法复用 SearchService.SearchFiles，与文件页一致），
+// renderSearch 渲染检索结果（关键词写法复用 SearchService.SearchFiles，与文件页一致），
 // 并在结果上方渲染基于检索索引的推荐（自动补全）与纠错（模糊匹配）超链接。
-func renderLiteSearch(w http.ResponseWriter, page litePage, svc *services.SearchService, idx *search.SearchIndex, q string) {
-	page.Crumb = []liteCrumb{
+func renderSearch(w http.ResponseWriter, page page, svc *services.SearchService, idx *search.SearchIndex, q string) {
+	page.Crumb = []crumb{
 		{Name: "根目录", Href: "/lite"},
 		{Name: "搜索 " + q},
 	}
-	page.Recommends, page.Corrections = buildLiteSuggestions(idx, q)
+	page.Recommends, page.Corrections = buildSuggestions(idx, q)
 	if svc == nil {
 		page.ResultInfo = "检索服务不可用"
-		renderLite(w, page)
+		render(w, page)
 		return
 	}
 	results, err := svc.SearchFiles(q, appconfig.GlobalConfig.Storage.Public.RootDirs, 30*time.Second)
 	if err != nil {
-		utils.Error("简洁页检索失败", utils.String("query", q), utils.Err(err))
+		utils.Error("轻量版检索失败", utils.String("query", q), utils.Err(err))
 		page.ResultInfo = "检索失败：" + err.Error()
-		renderLite(w, page)
+		render(w, page)
 		return
 	}
 	page.ResultInfo = fmt.Sprintf("搜索“%s”，共 %d 个结果", q, len(results))
 	for _, res := range results {
 		rootName := res.RootName
-		rel := liteSearchRel(res.Path, rootName)
+		rel := searchRel(res.Path, rootName)
 		if rel == "" {
 			continue
 		}
-		row := liteRow{Name: res.Name, Time: formatModTimeText(res.ModifiedTime), Notes: "-"}
+		row := row{Name: res.Name, Time: formatModText(res.ModifiedTime), Notes: "-"}
 		if res.Type == "directory" {
 			row.IsDir = true
 			row.Href = "/lite/" + encodeRelPath(rootName, rel)
 			row.Size = "-"
 		} else {
 			row.Href = "/download/" + encodeRelPath(rootName, rel)
-			row.Size = formatLiteSize(res.Size)
+			row.Size = formatSize(res.Size)
 		}
 		if res.Notes != "" {
 			row.Notes = res.Notes
 		}
 		page.Rows = append(page.Rows, row)
 	}
-	renderLite(w, page)
+	render(w, page)
 }
 
-// liteSearchRel 将检索结果的完整路径（"/<rootName>/<相对路径>"）还原为带前导 "/" 的相对路径。
+// searchRel 将检索结果的完整路径（"/<rootName>/<相对路径>"）还原为带前导 "/" 的相对路径。
 // 检索结果的 Path 已含 rootName，若直接交给 encodeRelPath 前置 rootName 会造成根目录名重复；
 // 还原失败（rootName 为空或前缀不匹配）时返回空串，调用方跳过该行。
-func liteSearchRel(fullPath, rootName string) string {
+func searchRel(fullPath, rootName string) string {
 	if rootName == "" {
 		return ""
 	}
@@ -365,15 +369,15 @@ func liteSearchRel(fullPath, rootName string) string {
 	return strings.TrimPrefix(fullPath, "/"+rootName)
 }
 
-// buildLiteSuggestions 基于检索索引生成关键词推荐（前缀匹配）与纠错（模糊匹配），
+// buildSuggestions 基于检索索引生成关键词推荐（前缀匹配）与纠错（模糊匹配），
 // 返回的是索引中的关键词 term 而非完整文件名。二者共用一个去重集合，且排除当前查询词。
 // 索引不可用时返回空切片。
-func buildLiteSuggestions(idx *search.SearchIndex, q string) (recommends, corrections []liteSuggestion) {
+func buildSuggestions(idx *search.SearchIndex, q string) (recommends, corrections []suggestion) {
 	if idx == nil {
 		return nil, nil
 	}
 	seen := map[string]struct{}{}
-	add := func(dst []liteSuggestion, names []string) []liteSuggestion {
+	add := func(dst []suggestion, names []string) []suggestion {
 		for _, s := range names {
 			s = strings.TrimSpace(s)
 			if s == "" || s == q {
@@ -384,7 +388,7 @@ func buildLiteSuggestions(idx *search.SearchIndex, q string) (recommends, correc
 				continue
 			}
 			seen[key] = struct{}{}
-			dst = append(dst, liteSuggestion{
+			dst = append(dst, suggestion{
 				Keyword: s,
 				Href:    "/lite?q=" + url.QueryEscape(s),
 			})
@@ -398,16 +402,16 @@ func buildLiteSuggestions(idx *search.SearchIndex, q string) (recommends, correc
 		corrections = add(nil, names)
 	}
 	if recommends == nil {
-		recommends = []liteSuggestion{}
+		recommends = []suggestion{}
 	}
 	if corrections == nil {
-		corrections = []liteSuggestion{}
+		corrections = []suggestion{}
 	}
 	return recommends, corrections
 }
 
-// compareLiteName 排序：ASCII 在前，组内按拼音
-func compareLiteName(a, b string) bool {
+// compareName 排序：ASCII 在前，组内按拼音
+func compareName(a, b string) bool {
 	aAscii := a != "" && a[0] < 0x80
 	bAscii := b != "" && b[0] < 0x80
 	if aAscii != bAscii {
@@ -416,44 +420,44 @@ func compareLiteName(a, b string) bool {
 	return strings.ToLower(a) < strings.ToLower(b)
 }
 
-// liteTemplateFuncs 简洁页模板的自定义函数
-func liteTemplateFuncs() template.FuncMap {
+// templateFuncs 页面模板的自定义函数
+func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"crumbSep": func(i, n int) bool { return i < n-1 },
 	}
 }
 
-// liteEmbedTmpl 缓存的嵌入模板解析结果；磁盘模板存在时不用缓存。
+// embedTmplOnce 缓存的嵌入模板解析结果；磁盘模板存在时不用缓存。
 var (
-	liteEmbedTmplOnce sync.Once
-	liteEmbedTmpl     *template.Template
-	liteEmbedTmplErr  error
+	embedTmplOnce sync.Once
+	embedTmpl     *template.Template
+	embedTmplErr  error
 )
 
-// loadLitePageTmpl 返回 /lite 页面模板：磁盘模板存在则每次重新解析（支持运行时免重启修改），
+// loadPageTmpl 返回 /lite 页面模板：磁盘模板存在则每次重新解析（支持运行时免重启修改），
 // 否则返回按嵌入内容缓存好的模板，避免每次请求重复解析。
-func loadLitePageTmpl() (*template.Template, error) {
+func loadPageTmpl() (*template.Template, error) {
 	content, fromDisk := resources.LitePageContent()
 	if fromDisk {
-		return template.New("lite").Funcs(liteTemplateFuncs()).Parse(content)
+		return template.New("lite").Funcs(templateFuncs()).Parse(content)
 	}
-	liteEmbedTmplOnce.Do(func() {
-		liteEmbedTmpl, liteEmbedTmplErr = template.New("lite").Funcs(liteTemplateFuncs()).Parse(content)
+	embedTmplOnce.Do(func() {
+		embedTmpl, embedTmplErr = template.New("lite").Funcs(templateFuncs()).Parse(content)
 	})
-	return liteEmbedTmpl, liteEmbedTmplErr
+	return embedTmpl, embedTmplErr
 }
 
-// renderLite 渲染 /lite 页面。模板内容优先读取磁盘上 resources/lite_page.html，
+// render 渲染 /lite 页面。模板内容优先读取磁盘上 resources/lite_page.html，
 // 无则用嵌入模板（见 resources.LitePageContent），以便运行时免重启修改模板。
-func renderLite(w http.ResponseWriter, page litePage) {
-	tmpl, err := loadLitePageTmpl()
+func render(w http.ResponseWriter, page page) {
+	tmpl, err := loadPageTmpl()
 	if err != nil {
-		utils.Error("解析简洁页模板失败", utils.Err(err))
+		utils.Error("解析轻量版模板失败", utils.Err(err))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.Execute(w, page); err != nil {
-		utils.Error("渲染简洁浏览页失败", utils.Err(err))
+		utils.Error("渲染轻量版页面失败", utils.Err(err))
 	}
 }

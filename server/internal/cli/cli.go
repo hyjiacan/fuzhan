@@ -12,21 +12,10 @@ import (
 	"sync"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/filedir"
 	"fuzhan/internal/resources"
 	"fuzhan/internal/utils"
 )
-
-// FileInfo 文件信息结构体
-type FileInfo struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Path         string `json:"path"`
-	ModifiedTime string `json:"modifiedTime"`
-	Size         int64  `json:"size"`
-	Quota        int64  `json:"quota,omitempty"`
-	Used         int64  `json:"used,omitempty"`
-	Xxh3Hash     string `json:"xxh3Hash,omitempty"`
-}
 
 // getCLIPrefix 根据请求路径获取 CLI 前缀（兼容 /cli 和 /api/v1/cli）
 func getCLIPrefix(r *http.Request) string {
@@ -135,7 +124,7 @@ func CliSearch(w http.ResponseWriter, r *http.Request, hashMap map[string]string
 	flusher.Flush()
 
 	var wg sync.WaitGroup
-	resultChan := make(chan FileInfo)
+	resultChan := make(chan appconfig.FileInfo)
 
 	// 为每个根目录启动搜索协程
 	for _, rootDir := range appconfig.GlobalConfig.Storage.Public.RootDirs {
@@ -143,7 +132,7 @@ func CliSearch(w http.ResponseWriter, r *http.Request, hashMap map[string]string
 		wg.Add(1)
 		go func(ctx context.Context, dir, q, name string) {
 			defer wg.Done()
-			dirResultChan := make(chan FileInfo)
+			dirResultChan := make(chan appconfig.FileInfo)
 			// 将 context 传递给 searchInDirectory
 			go searchInDirectory(ctx, dir, q, name, dirResultChan, hashMap) // 此处添加 go 关键字
 			for item := range dirResultChan {
@@ -223,10 +212,10 @@ func CliList(w http.ResponseWriter, r *http.Request, hashMap map[string]string) 
 	var targetPath, rootName string
 	if relativePath == "" {
 		// 没有指定路径，列出所有根目录
-		var allItems []FileInfo
+		var allItems []appconfig.FileInfo
 		for _, rootDir := range appconfig.GlobalConfig.Storage.Public.RootDirs {
 			rootName = filepath.Base(rootDir.Path)
-			items := GetDirectoryItems(rootDir.Path, rootName, hashMap)
+			items := filedir.GetDirectoryItems(rootDir.Path, rootName, hashMap)
 			allItems = append(allItems, items...)
 		}
 		// 排序，目录在前，文件在后
@@ -291,7 +280,7 @@ func CliList(w http.ResponseWriter, r *http.Request, hashMap map[string]string) 
 	}
 
 	// 获取目录内容
-	items := GetDirectoryItems(targetPath, rootName, hashMap)
+	items := filedir.GetDirectoryItems(targetPath, rootName, hashMap)
 	// 排序，目录在前，文件在后
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Type == "directory" && items[j].Type != "directory" {

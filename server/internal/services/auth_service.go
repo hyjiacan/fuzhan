@@ -46,15 +46,19 @@ type RegisterRequest struct {
 
 // LoginRequest 登录请求
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username string `json:"username" binding:"required,max=64"`
+	Password string `json:"password" binding:"required,max=128"`
 }
+
+// authTokenTTLSeconds JWT 令牌有效期（秒），与 Register/Login 生成令牌的 Duration 保持一致
+const authTokenTTLSeconds = 86400
 
 // AuthResponse 认证响应
 type AuthResponse struct {
-	Token    string `json:"token"`
-	UUID     string `json:"uuid"`
-	Username string `json:"username"`
+	Token     string `json:"token"`
+	UUID      string `json:"uuid"`
+	Username  string `json:"username"`
+	ExpiresIn int    `json:"expiresIn"`
 }
 
 // Register 用户注册
@@ -105,9 +109,10 @@ func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
 	}
 
 	return &AuthResponse{
-		Token:    token,
-		UUID:     uuid,
-		Username: req.Username,
+		Token:     token,
+		UUID:      uuid,
+		Username:  req.Username,
+		ExpiresIn: authTokenTTLSeconds,
 	}, nil
 }
 
@@ -166,9 +171,10 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 	}
 
 	return &AuthResponse{
-		Token:    token,
-		UUID:     user.UUID,
-		Username: user.Username,
+		Token:     token,
+		UUID:      user.UUID,
+		Username:  user.Username,
+		ExpiresIn: authTokenTTLSeconds,
 	}, nil
 }
 

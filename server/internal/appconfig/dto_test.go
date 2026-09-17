@@ -222,7 +222,7 @@ func TestConfigFromDTO_RootDirWithoutFullPath(t *testing.T) {
 	}
 }
 
-func TestFormatSizeToString(t *testing.T) {
+func TestFormatSizeString(t *testing.T) {
 	tests := []struct {
 		input int64
 		want  string
@@ -239,9 +239,9 @@ func TestFormatSizeToString(t *testing.T) {
 		{1099511627776, "1.0T"},
 	}
 	for _, tt := range tests {
-		got := formatSizeToString(tt.input)
+		got := FormatSizeString(tt.input)
 		if got != tt.want {
-			t.Errorf("formatSizeToString(%d) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("FormatSizeString(%d) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -258,9 +258,9 @@ func TestParseOrDefault(t *testing.T) {
 		{"invalid", 999, 999},
 	}
 	for _, tt := range tests {
-		got := parseOrDefault(tt.input, tt.def)
+		got := ParseOrDefault(tt.input, tt.def)
 		if got != tt.want {
-			t.Errorf("parseOrDefault(%q, %d) = %d, want %d", tt.input, tt.def, got, tt.want)
+			t.Errorf("ParseOrDefault(%q, %d) = %d, want %d", tt.input, tt.def, got, tt.want)
 		}
 	}
 }

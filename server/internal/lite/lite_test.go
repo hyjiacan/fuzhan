@@ -1,4 +1,4 @@
-package cli
+package lite
 
 import (
 	"net/url"

@@ -26,26 +26,7 @@ func NewHandler(authService *services.AuthService) *Handler {
 	return &Handler{authService: authService}
 }
 
-// RegisterRequest 注册请求结构体
-type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required,min=6,max=128"`
-}
-
-// LoginRequest 登录请求结构体
-type LoginRequest struct {
-	Username string `json:"username" binding:"required,max=64"`
-	Password string `json:"password" binding:"required,max=128"`
-}
-
-// AuthResponse 认证响应结构体
-type AuthResponse struct {
-	Token     string `json:"token"`
-	UUID      string `json:"uuid"`
-	Username  string `json:"username"`
-	ExpiresIn int    `json:"expiresIn"`
-}
-
+// refreshTokenIfNeeded 需要时刷新前端持有的 JWT 令牌，返回新令牌（无变化时为空串）
 func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 	newToken, err := h.authService.RefreshTokenIfNeeded(c)
 	if err != nil {
@@ -57,7 +38,7 @@ func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 
 // Register 用户注册
 func (h *Handler) Register(c *gin.Context) {
-	var req RegisterRequest
+	var req services.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
 		return
@@ -67,10 +48,7 @@ func (h *Handler) Register(c *gin.Context) {
 		handleLoginBlocked(c)
 		return
 	}
-	resp, err := h.authService.Register(&services.RegisterRequest{
-		Username: req.Username,
-		Password: req.Password,
-	})
+	resp, err := h.authService.Register(&req)
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.register", req.Username, err)
@@ -79,14 +57,12 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	middleware.LogOperation(c, "auth.register", req.Username, nil)
-	response.HandleSuccess(c, http.StatusCreated, "注册成功", AuthResponse{
-		Token: resp.Token, UUID: resp.UUID, Username: resp.Username, ExpiresIn: 86400,
-	})
+	response.HandleSuccess(c, http.StatusCreated, "注册成功", resp)
 }
 
 // Login 用户登录
 func (h *Handler) Login(c *gin.Context) {
-	var req LoginRequest
+	var req services.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
 		return
@@ -96,10 +72,7 @@ func (h *Handler) Login(c *gin.Context) {
 		handleLoginBlocked(c)
 		return
 	}
-	resp, err := h.authService.Login(&services.LoginRequest{
-		Username: req.Username,
-		Password: req.Password,
-	})
+	resp, err := h.authService.Login(&req)
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.login", req.Username, err)
@@ -108,9 +81,7 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	middleware.LogOperation(c, "auth.login", req.Username, nil)
-	response.HandleSuccess(c, http.StatusOK, "登录成功", AuthResponse{
-		Token: resp.Token, UUID: resp.UUID, Username: resp.Username, ExpiresIn: 86400,
-	})
+	response.HandleSuccess(c, http.StatusOK, "登录成功", resp)
 }
 
 // GetCurrentUser 获取当前用户信息

@@ -21,6 +21,7 @@ import (
 	"fuzhan/internal/file"
 	"fuzhan/internal/health"
 	"fuzhan/internal/index"
+	"fuzhan/internal/lite"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/monitor"
@@ -369,8 +370,9 @@ func main() {
 	}
 	// 文件名检索提示处理器（索引未打开时为 nil，搜索联想/纠错不可用）
 	suggestHandler := search.NewHandler(idxSearch)
-	// /lite 简洁浏览页检索的推荐/纠错同样依赖检索索引
-	cliHandlers.SearchIndex = idxSearch
+	// /lite 轻量版页面检索的推荐/纠错同样依赖检索索引
+	liteHandlers := lite.NewHandlers(searchService)
+	liteHandlers.SearchIndex = idxSearch
 
 	// 临时文件处理器 (基于IP，无需认证)
 	tempSvcConfig := services.TempServiceConfig{
@@ -447,6 +449,7 @@ func main() {
 		downloadHandlers:         downloadHandlers,
 		searchHandlers:           searchHandlers,
 		cliHandlers:              cliHandlers,
+		liteHandlers:             liteHandlers,
 		bindingExampleHandler:    bindingExampleHandler,
 		configHandler:            configHandler,
 		authHandler:              authHandler,

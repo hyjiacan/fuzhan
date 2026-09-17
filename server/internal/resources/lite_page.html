@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style type="text/css">
+/* 主色使用品牌可读橙 #B25A00（对白字对比度 4.8:1，达 WCAG AA），与全端一致 */
 body {
   margin: 0;
   background: #f7f7f7;
@@ -15,7 +16,7 @@ body {
 
 .header {
   background: #fff;
-  border-bottom: 2px solid #FFA500;
+  border-bottom: 2px solid #B25A00;
   padding: 12px 24px;
   overflow: hidden; /* 包含内部 float，避免 header 塌陷 */
 }
@@ -30,7 +31,7 @@ body {
 .title {
   font-size: 20px;
   font-weight: bold;
-  color: #FFA500;
+  color: #B25A00;
   vertical-align: middle;
 }
 .search {
@@ -47,14 +48,26 @@ body {
   height: 40px;
   padding: 0 16px;
   margin-left: 4px;
-  background: #FFA500;
-  border: 1px solid #FFA500;
+  background: #B25A00;
+  border: 1px solid #B25A00;
   color: #fff;
   cursor: pointer;
   vertical-align: middle;
 }
 .search-btn:hover {
-  background: #FFB733;
+  background: #9C4F00;
+  border-color: #9C4F00;
+}
+.search-btn:active {
+  background: #7A3C00;
+  border-color: #7A3C00;
+}
+/* 无障碍：键盘焦点可见（与全端焦点环一致） */
+.search-txt:focus-visible,
+.search-btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid #B25A00;
+  outline-offset: 2px;
 }
 
 .wrap {
@@ -66,10 +79,11 @@ body {
   color: #888;
 }
 .crumb a {
-  color: #E69500;
+  color: #B25A00;
   text-decoration: none;
 }
-.crumb a:hover {
+.crumb a:hover,
+.crumb a:focus-visible {
   text-decoration: underline;
 }
 
@@ -88,7 +102,7 @@ body {
   padding: 2px 8px;
   background: #fff3e0;
   border: 1px solid #ffd9a3;
-  color: #E69500;
+  color: #9C4F00;
   text-decoration: none;
 }
 .suggest .tag:hover {
@@ -115,7 +129,7 @@ th, td {
 td.type {
   text-align: center;
   width: 24px;
-  color: #FFA500;
+  color: #B25A00;
   font-size: large;
 }
 td.name a {
@@ -123,7 +137,7 @@ td.name a {
   text-decoration: none;
 }
 td.name a:hover {
-  color: #E69500;
+  color: #B25A00;
   text-decoration: underline;
 }
 th.size, td.size {
@@ -141,6 +155,39 @@ td.time {
 
 tr:hover td {
   background: #fff7ec;
+}
+
+/* 空态提示 */
+.empty {
+  padding: 32px 12px;
+  text-align: center;
+  color: #888;
+}
+.empty .empty-ops a {
+  color: #B25A00;
+  font-weight: bold;
+  text-decoration: none;
+}
+.empty .empty-ops a:hover {
+  text-decoration: underline;
+}
+
+/* 简易页脚 */
+.footer {
+  margin-top: 24px;
+  padding: 16px 24px;
+  border-top: 1px solid #e3e6ea;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.footer a {
+  color: #B25A00;
+  text-decoration: none;
+}
+.footer a:hover {
+  text-decoration: underline;
 }
 </style>
 </head>
@@ -184,9 +231,20 @@ tr:hover td {
   <td class="size">{{.Size}}</td>
   <td class="time">{{.Time}}</td>
 </tr>
+{{else}}
+<tr>
+  <td colspan="4" class="empty">
+    {{if .ResultInfo}}未找到匹配的文件，换个关键词试试吧。{{else}}此目录暂无文件。{{end}}
+    {{if .Crumb}}<div class="empty-ops"><a href="/lite">返回根目录</a></div>{{end}}
+  </td>
+</tr>
 {{end}}
 </tbody>
 </table>
+</div>
+
+<div class="footer">
+  {{.AppName}} · 轻量版 | 返回完整界面：<a href="/">完整版</a>
 </div>
 </body>
 </html>

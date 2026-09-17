@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"fuzhan/internal/appconfig"
 )
 
 // outputItems 输出排序后的文件和目录信息
-func outputItems(w http.ResponseWriter, baseUrl string, cliPrefix string, items []FileInfo) {
+func outputItems(w http.ResponseWriter, baseUrl string, cliPrefix string, items []appconfig.FileInfo) {
 	var totalCount int
 	for _, item := range items {
 		totalCount++

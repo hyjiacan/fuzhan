@@ -173,7 +173,7 @@ type ResourceConfigDTO struct {
 }
 
 // ParseOrDefault 解析配额字符串，失败时返回默认值
-func parseOrDefault(s string, defaultVal int64) int64 {
+func ParseOrDefault(s string, defaultVal int64) int64 {
 	if s == "" {
 		return defaultVal
 	}
@@ -245,8 +245,8 @@ func (c *Config) ToDTO() ConfigDTO {
 		TempFiles: TempFilesConfigDTO{
 			Enabled:           c.Storage.Temp.Enabled,
 			Path:              c.Storage.Temp.Path,
-			QuotaGlobal:       parseOrDefault(c.Storage.Temp.Quota.Global, 0),
-			QuotaPerIP:        parseOrDefault(c.Storage.Temp.Quota.PerIP, 0),
+			QuotaGlobal:       ParseOrDefault(c.Storage.Temp.Quota.Global, 0),
+			QuotaPerIP:        ParseOrDefault(c.Storage.Temp.Quota.PerIP, 0),
 			DefaultExpireDays: c.Storage.Temp.DefaultExpireDays,
 			DeleteOnDownload:  c.Storage.Temp.DeleteOnDownload,
 		},
@@ -356,8 +356,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	// 临时文件
 	cfg.Storage.Temp.Enabled = dto.TempFiles.Enabled
 	cfg.Storage.Temp.Path = dto.TempFiles.Path
-	cfg.Storage.Temp.Quota.Global = formatSizeToString(dto.TempFiles.QuotaGlobal)
-	cfg.Storage.Temp.Quota.PerIP = formatSizeToString(dto.TempFiles.QuotaPerIP)
+	cfg.Storage.Temp.Quota.Global = FormatSizeString(dto.TempFiles.QuotaGlobal)
+	cfg.Storage.Temp.Quota.PerIP = FormatSizeString(dto.TempFiles.QuotaPerIP)
 	cfg.Storage.Temp.DefaultExpireDays = dto.TempFiles.DefaultExpireDays
 	cfg.Storage.Temp.DeleteOnDownload = dto.TempFiles.DeleteOnDownload
 
@@ -407,8 +407,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	return cfg
 }
 
-// formatSizeToString 将 int64 格式化为配额字符串
-func formatSizeToString(val int64) string {
+// FormatSizeString 将 int64 格式化为配额字符串
+func FormatSizeString(val int64) string {
 	if val >= 1024*1024*1024*1024 {
 		return formatFloat(float64(val)/(1024*1024*1024*1024), 1) + "T"
 	}
