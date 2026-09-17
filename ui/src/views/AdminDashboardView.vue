@@ -461,9 +461,11 @@ onMounted(() => {
 
   .stat-info {
     .stat-value {
-      font-size: @font-size-xxl;
+      font-size: @font-size-display;
       font-weight: 600;
       color: @text-color;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.5px;
     }
 
     .stat-label {

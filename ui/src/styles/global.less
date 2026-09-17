@@ -50,6 +50,28 @@ a {
 }
 
 // ============================================
+// 无障碍：键盘焦点可见
+// ============================================
+:focus-visible {
+  outline: 2px solid @primary-color;
+  outline-offset: 2px;
+}
+
+// ============================================
+// 无障碍：用户偏好减弱动态效果
+// ============================================
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// ============================================
 // 滚动条样式
 // ============================================
 ::-webkit-scrollbar {
