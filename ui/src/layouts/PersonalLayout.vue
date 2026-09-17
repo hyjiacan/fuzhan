@@ -3,9 +3,12 @@
     <!-- Sidebar -->
     <el-aside :width="collapsed ? '64px' : '200px'" class="layout-sider">
       <!-- User info at top of sidebar -->
-      <div class="sider-header" @click="collapsed = !collapsed">
-        <span v-if="!collapsed" class="sider-title">个人中心</span>
-        <el-icon v-else :size="20"><User /></el-icon>
+      <div class="sider-header" @click="collapsed = !collapsed" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">
+        <span class="sider-brand-dot" :class="{ 'is-collapsed': collapsed }"></span>
+        <transition name="fade">
+          <span v-if="!collapsed" class="sider-title">个人中心</span>
+        </transition>
+        <el-icon v-if="collapsed" :size="20"><User /></el-icon>
       </div>
 
       <el-menu
@@ -24,7 +27,11 @@
 
     <!-- Content -->
     <el-main class="layout-content">
-      <router-view />
+      <div class="layout-router">
+        <transition name="page-fade" mode="out-in">
+          <router-view />
+        </transition>
+      </div>
     </el-main>
   </el-container>
 </template>
@@ -72,8 +79,12 @@ const handleMenuSelect = (key) => {
     height: 100%;
     border-right: 1px solid @border-color-light;
     transition: width @transition-normal;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
 
     .sider-header {
+      flex: 0 0 auto;
       padding: 16px;
       border-bottom: 1px solid @border-color-light;
       font-weight: 600;
@@ -84,6 +95,39 @@ const handleMenuSelect = (key) => {
       gap: 8px;
       cursor: pointer;
       user-select: none;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: background-color @transition-fast;
+
+      &:hover {
+        background-color: var(--el-fill-color-light);
+      }
+
+      .sider-brand-dot {
+        flex: 0 0 auto;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: @primary-accent;
+        box-shadow: 0 0 6px fade(@primary-accent, 60%);
+        transition: transform @transition-smooth;
+
+        &.is-collapsed {
+          transform: scale(1.15);
+        }
+      }
+
+      .sider-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .layout-menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px 0 16px;
     }
   }
 
@@ -96,6 +140,20 @@ const handleMenuSelect = (key) => {
     height: 100%;
     overflow: auto;
     padding: 0;
+
+    .layout-router {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+
+      & > * {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+    }
   }
 }
 </style>

@@ -1,8 +1,10 @@
 <template>
   <el-dropdown trigger="click" class="theme-toggle" @command="setMode">
     <el-icon class="theme-toggle-icon" :size="18">
-      <Moon v-if="isDark" />
-      <Sunny v-else />
+      <transition name="theme-icon" mode="out-in">
+        <Moon v-if="isDark" key="moon" />
+        <Sunny v-else key="sun" />
+      </transition>
     </el-icon>
     <template #dropdown>
       <el-dropdown-menu>
@@ -33,5 +35,27 @@ const { isDark, setMode } = useTheme()
 .theme-toggle-icon {
   cursor: pointer;
   transition: color @transition-fast;
+
+  &:hover {
+    color: @primary-accent;
+  }
+}
+
+.theme-icon-enter-active {
+  transition: opacity @transition-smooth, transform @transition-bounce;
+}
+
+.theme-icon-leave-active {
+  transition: opacity @transition-fast, transform @transition-fast;
+}
+
+.theme-icon-enter-from {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+.theme-icon-leave-to {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
 }
 </style>

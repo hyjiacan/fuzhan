@@ -1,7 +1,7 @@
 <template>
   <el-dialog v-model="visible" title="文件依赖树" width="960px" :close-on-click-modal="false">
     <!-- 当前文件 -->
-    <div v-if="rootNode" :style="{ marginBottom: '12px', padding: '12px', background: '#f6f8fa', borderRadius: '8px' }">
+    <div v-if="rootNode" :style="{ marginBottom: '12px', padding: '12px', background: 'var(--el-fill-color-light)', borderRadius: '8px' }">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-weight: 600;">{{ rootNode.fileName }}</span>

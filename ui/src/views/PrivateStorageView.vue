@@ -448,7 +448,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   padding: @container-padding;
-  animation: slideUp 0.4s ease-out;
 
   .header-section {
     .breadcrumb-row {

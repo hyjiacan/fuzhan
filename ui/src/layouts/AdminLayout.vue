@@ -2,9 +2,12 @@
   <el-container class="admin-layout">
     <!-- Sidebar -->
     <el-aside :width="collapsed ? '64px' : '200px'" class="layout-sider">
-      <div class="sider-header" @click="collapsed = !collapsed">
-        <span v-if="!collapsed" class="sider-title">系统管理</span>
-        <el-icon v-else :size="20"><Setting /></el-icon>
+      <div class="sider-header" @click="collapsed = !collapsed" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">
+        <span class="sider-brand-dot" :class="{ 'is-collapsed': collapsed }"></span>
+        <transition name="fade">
+          <span v-if="!collapsed" class="sider-title">系统管理</span>
+        </transition>
+        <el-icon v-if="collapsed" :size="20"><Setting /></el-icon>
       </div>
 
       <el-menu
@@ -33,7 +36,11 @@
         <span class="wide-tip-text">部分管理页表格在窄屏幕下可能显示不完整，建议使用更宽的屏幕以获得最佳体验</span>
         <el-icon class="wide-tip-close" @click="dismissWideTip" title="关闭提示"><Close /></el-icon>
       </div>
-      <router-view />
+      <div class="layout-router">
+        <transition name="page-fade" mode="out-in">
+          <router-view />
+        </transition>
+      </div>
     </el-main>
 
     <!-- 主题切换（悬浮于内容区右上角） -->
@@ -144,6 +151,14 @@ const handleMenuSelect = (key) => {
     background: var(--el-bg-color-overlay);
     box-shadow: @shadow-sm;
     color: var(--el-text-color-regular);
+    cursor: pointer;
+    transition: transform @transition-smooth, box-shadow @transition-smooth, color @transition-fast;
+
+    &:hover {
+      transform: rotate(15deg) scale(1.08);
+      box-shadow: @shadow-md;
+      color: @primary-color;
+    }
   }
 
   .layout-sider {
@@ -151,8 +166,12 @@ const handleMenuSelect = (key) => {
     height: 100%;
     border-right: 1px solid @border-color-light;
     transition: width @transition-normal;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
 
     .sider-header {
+      flex: 0 0 auto;
       padding: 16px;
       border-bottom: 1px solid @border-color-light;
       font-weight: 600;
@@ -163,6 +182,39 @@ const handleMenuSelect = (key) => {
       gap: 8px;
       cursor: pointer;
       user-select: none;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: background-color @transition-fast;
+
+      &:hover {
+        background-color: var(--el-fill-color-light);
+      }
+
+      .sider-brand-dot {
+        flex: 0 0 auto;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: @primary-accent;
+        box-shadow: 0 0 6px fade(@primary-accent, 60%);
+        transition: transform @transition-smooth;
+
+        &.is-collapsed {
+          transform: scale(1.15);
+        }
+      }
+
+      .sider-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .layout-menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 4px 0 16px;
     }
   }
 
@@ -175,10 +227,23 @@ const handleMenuSelect = (key) => {
       font-weight: 500;
       color: @text-color-placeholder;
       letter-spacing: 1px;
+      transition: color @transition-fast;
+
+      &:hover {
+        color: @text-color-secondary;
+      }
     }
 
     :deep(.el-menu-item-group:first-child .el-menu-item-group__title) {
       padding-top: 8px;
+    }
+
+    // 折叠态：隐藏分组标题，避免残留空白
+    :deep(.el-menu--collapse .el-menu-item-group__title) {
+      padding: 0;
+      height: 0;
+      overflow: hidden;
+      opacity: 0;
     }
   }
 
@@ -187,6 +252,20 @@ const handleMenuSelect = (key) => {
     height: 100%;
     overflow: auto;
     padding: 0;
+
+    .layout-router {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+
+      & > * {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+    }
   }
 
   // 窄屏宽屏提示（仅窄屏显示）

@@ -2,7 +2,11 @@
   <div class="app-shell">
     <app-header />
     <div class="app-body">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="page-fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </div>
     <app-footer />
   </div>
@@ -18,7 +22,7 @@ import AppFooter from '@/components/common/AppFooter.vue'
 
 .app-shell {
   height: 100%;
-  width: var(--app-width);
+  width: 100%;
   position: relative;
 }
 

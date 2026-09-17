@@ -581,7 +581,7 @@ onUnmounted(() => {
         .disk-label { width: 46px; flex: none; font-size: 12px; color: @text-color-secondary; }
         .disk-bar {
           flex: 1; height: 14px; border-radius: 7px;
-          background: #f0f2f5; overflow: hidden;
+          background: var(--el-fill-color-light); overflow: hidden;
         }
         .disk-fill { height: 100%; border-radius: 7px; transition: width .4s ease; }
         .disk-pct { width: 42px; text-align: right; font-size: 13px; font-weight: 600; color: @text-color; }

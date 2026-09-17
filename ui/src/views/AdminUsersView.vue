@@ -170,20 +170,26 @@ const columns = [
     width: 200,
     cellRenderer: ({ rowData: row }) => {
       if (!row.quota) return h('span', { style: 'color: var(--el-text-color-secondary); font-size: 12px' }, '无限制')
-      const percentage = Math.min(100, Math.round((row.usedStorage || 0) / row.quota * 100))
+      const used = row.usedStorage || 0
+      const percentage = Math.min(100, Math.round(used / row.quota * 100))
       const status = percentage >= 90 ? 'exception' : percentage >= 70 ? 'warning' : 'success'
-      return h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+      return h('div', {
+        style: 'display: flex; flex-direction: column; gap: 4px; justify-content: center; width: 100%;'
+      }, [
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: baseline; gap: 8px;' }, [
+          h('span', { style: 'font-size: 12px; white-space: nowrap;' },
+            formatSize(used) + ' / ' + formatSize(row.quota)),
+          h('span', { style: 'font-size: 12px; color: var(--el-text-color-secondary); white-space: nowrap;' },
+            percentage + '%')
+        ]),
         h(ElProgress, {
           type: 'line',
           status,
           percentage,
-          textInside: true,
-          strokeWidth: 18,
-          style: 'flex: 1; min-width: 100px;'
-        }),
-        h('span', { style: 'font-size: 12px; white-space: nowrap;' },
-          formatSize(row.usedStorage) + ' / ' + formatSize(row.quota)
-        )
+          showText: false,
+          strokeWidth: 8,
+          style: 'width: 100%;'
+        })
       ])
     }
   },
@@ -341,7 +347,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   padding: @container-padding;
-  animation: slideUp 0.4s ease-out;
 
   .header-section {
     margin-bottom: 8px;

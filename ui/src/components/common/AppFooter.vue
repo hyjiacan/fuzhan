@@ -1,7 +1,10 @@
 <template>
   <footer class="app-footer">
       <div class="footer-left">
-        <a @click="showPreferences = true" class="link-button">偏好设置</a>
+        <button class="link-button" @click="showUploadStatus = true">
+          <el-icon><UploadFilled /></el-icon>
+          <span>上传状态</span>
+        </button>
         <IndexStatusBar />
       </div>
       <div class="footer-right">
@@ -14,22 +17,7 @@
           <span>hyjiacan © 2025</span>
         </div>
 
-      <el-dialog v-model="showPreferences" title="偏好设置" width="400px">
-        <div class="preference-item">
-          <span class="preference-label">页面宽度</span>
-          <el-select v-model="pageWidth" @change="savePreferences">
-            <el-option
-              v-for="opt in widthOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-        </div>
-        <template #footer>
-          <el-button type="primary" @click="showPreferences = false">关闭</el-button>
-        </template>
-      </el-dialog>
+      <UploadStatusDialog v-model:show="showUploadStatus" />
 
       <el-dialog v-model="showHelp" title="帮助" width="720px">
           <div class="help-content">
@@ -151,12 +139,16 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { UploadFilled } from '@element-plus/icons-vue'
 import store from '@/store'
 import IndexStatusBar from './IndexStatusBar.vue'
+import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 
 const openApiEnabled = computed(() => store.state.config.openApiEnabled)
 
 const cliBase = computed(() => window.location.origin)
+
+const showUploadStatus = ref(false)
 
 const showHelp = ref(false)
 const activeHelpTab = ref('basic')
@@ -191,34 +183,7 @@ const fetchRuntimeInfo = async () => {
   }
 }
 
-const STORAGE_KEY = 'page-width-preference'
-
-const showPreferences = ref(false)
-const pageWidth = ref('80%')
-
-const widthOptions = [
-  { label: '50%', value: '50%' },
-  { label: '60%', value: '60%' },
-  { label: '70%', value: '70%' },
-  { label: '80%', value: '80%' },
-  { label: '90%', value: '90%' },
-  { label: '100%', value: '100%' },
-]
-
-const loadPreferences = () => {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved) {
-    pageWidth.value = saved
-  }
-}
-
-const savePreferences = (value) => {
-  localStorage.setItem(STORAGE_KEY, value)
-  document.body.style.setProperty('--app-width', value)
-}
-
 onMounted(() => {
-    loadPreferences()
     fetchRuntimeInfo()
   })
 </script>
@@ -243,8 +208,15 @@ onMounted(() => {
 
     .link-button {
       cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
       color: @text-color-secondary;
       font-size: @font-size-sm;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       transition: color 0.2s;
 
       &:hover {
@@ -273,21 +245,6 @@ onMounted(() => {
       margin: 0 8px;
     }
   }
-
-  .preference-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0;
-
-      .preference-label {
-        font-weight: 500;
-      }
-
-      .el-select {
-        width: 120px;
-      }
-    }
 
     .help-content {
       h4 {

@@ -436,7 +436,6 @@ watch(activeTab, () => {
   flex-direction: column;
   height: 100%;
   padding: @container-padding;
-  animation: slideUp 0.4s ease-out;
 
   .header-section {
     display: flex;

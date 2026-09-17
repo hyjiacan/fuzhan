@@ -830,7 +830,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
   .upload-queue {
     margin-top: 16px;
-    border: 1px solid #eee;
+    border: 1px solid @border-color-light;
     border-radius: 8px;
     overflow: hidden;
     width: 100%;
@@ -902,7 +902,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 
       .rename-error {
         font-size: 11px;
-        color: #d03050;
+        color: @error-color;
         margin-top: 2px;
       }
 
@@ -983,7 +983,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
       max-height: 300px;
       border-radius: 4px;
       object-fit: contain;
-      border: 1px solid #eee;
+      border: 1px solid @border-color-light;
     }
   }
 
@@ -993,7 +993,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     align-items: center;
     gap: 6px;
     padding: 20px;
-    border: 1px dashed #d9d9d9;
+    border: 1px dashed @border-color;
     border-radius: 8px;
     text-align: center;
   }

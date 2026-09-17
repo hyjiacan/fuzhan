@@ -54,7 +54,8 @@ a {
 // ============================================
 :focus-visible {
   outline: 2px solid @primary-color;
-  outline-offset: 2px;
+  outline-offset: @focus-ring-offset;
+  box-shadow: @focus-ring;
 }
 
 // ============================================
@@ -187,6 +188,155 @@ a {
 // ============================================
 .el-form-item {
   margin-top: 10px;
+}
+
+// ============================================
+// 路由页面切换过渡（配合各 Layout 中 <transition name="page-fade">）
+// 短促、轻微上移，避免生硬切换；配合 prefers-reduced-motion 自动关闭
+// ============================================
+.page-fade-enter-active {
+  transition: opacity @transition-smooth, transform @transition-smooth;
+}
+
+.page-fade-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+// ============================================
+// 按钮统一微交互：主操作轻微上浮 + 品牌色辉光
+// 覆盖各页面内联重复实现的 hover 效果，全局生效
+// ============================================
+.el-button {
+  transition: transform @transition-smooth, box-shadow @transition-smooth,
+    background-color @transition-fast, border-color @transition-fast, color @transition-fast;
+
+  &:hover:not(.is-loading):not(.is-disabled) {
+    transform: translateY(-1px);
+  }
+
+  &:active:not(.is-loading):not(.is-disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+}
+
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):hover:not(.is-loading):not(.is-disabled) {
+  box-shadow: @button-hover-shadow;
+}
+
+// ============================================
+// 卡片统一微交互：hover 轻微上浮（供 el-card 与自定义卡片共用）
+// 需要 hover 效果的卡片直接使用 .interactive-card 或本类
+// ============================================
+.el-card.interactive-card {
+  transition: transform @transition-smooth, box-shadow @transition-smooth, border-color @transition-smooth;
+
+  &:hover {
+    transform: @hover-lift;
+    box-shadow: @card-hover-shadow;
+    border-color: fade(@primary-accent, 35%);
+  }
+
+  &:active {
+    transform: @active-scale;
+  }
+}
+
+// ============================================
+// el-menu 菜单统一微交互（侧边栏）
+// 激活项左侧品牌色指示条 + 浅橙背景，hover 圆角背景
+// ============================================
+.el-menu {
+  .el-menu-item {
+    border-radius: @menu-item-radius;
+    margin: 0 @menu-item-margin-x;
+    transition: background-color @transition-fast, color @transition-fast, padding @transition-normal;
+
+    &:hover {
+      background-color: var(--el-fill-color-light);
+    }
+
+    &.is-active {
+      position: relative;
+      background-color: fade(@primary-accent, 14%);
+      color: @primary-color;
+      font-weight: 500;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: @menu-active-bar-width;
+        height: 60%;
+        border-radius: 0 @border-radius-sm @border-radius-sm 0;
+        background-color: @primary-accent;
+        transition: height @transition-smooth, opacity @transition-smooth;
+      }
+
+      &:hover {
+        background-color: fade(@primary-accent, 20%);
+      }
+    }
+  }
+}
+
+// 折叠态：去掉横向外边距，避免图标被挤偏
+.el-menu--collapse {
+  .el-menu-item {
+    margin: 0 6px;
+  }
+}
+
+// ============================================
+// el-table 表头与行微交互
+// ============================================
+.el-table th.el-table__cell {
+  background-color: var(--el-fill-color-light) !important;
+  font-weight: 600;
+  color: @text-color;
+}
+
+.el-table .el-table__row {
+  transition: background-color @transition-fast;
+}
+
+// ============================================
+// 弹窗过渡统一：仅补齐 overlay 背景渐变，内容动画由 Element Plus 自带 dialog-fade 承担
+// ============================================
+.el-overlay {
+  transition: background-color 0.2s ease;
+}
+
+// ============================================
+// 输入框 focus 态：品牌色边框 + 柔和光环
+// ============================================
+.el-input__wrapper {
+  transition: box-shadow @transition-fast, border-color @transition-fast;
+
+  &.is-focus {
+    box-shadow: 0 0 0 1px @primary-color inset, 0 0 0 2px fade(@primary-accent, 22%);
+  }
+}
+
+// ============================================
+// 标签 hover 微交互（热门搜索词等场景）
+// ============================================
+.el-tag {
+  transition: transform @transition-fast, box-shadow @transition-fast;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
 }
 
 // ============================================

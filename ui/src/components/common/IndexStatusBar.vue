@@ -4,7 +4,7 @@
     <el-tooltip v-if="status.isScanning">
       <template #default>
         <span class="status-item scanning">
-          <span class="icon">⏳</span>
+          <el-icon class="icon is-spinning"><Loading /></el-icon>
           正在扫描 {{ status.scanScope }}
           <span v-if="status.scanTotal > 0" class="progress">
             {{ status.scanProgress }} / {{ status.scanTotal }}
@@ -17,7 +17,7 @@
     <!-- 空闲状态 -->
     <template v-else>
       <span class="status-item idle">
-        <span class="icon">📋</span>
+        <el-icon class="icon"><FolderChecked /></el-icon>
         索引:
         <span v-if="status.lastScanTime" class="time">
           上次 {{ formatTime(status.lastScanTime) }}
@@ -36,6 +36,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { Loading, FolderChecked } from '@element-plus/icons-vue'
 import { IndexApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
@@ -84,6 +85,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
 
+  @keyframes index-status-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .status-item {
     font-size: 12px;
     color: @text-color-secondary;
@@ -93,6 +103,12 @@ onMounted(() => {
 
     .icon {
       font-size: 13px;
+      flex-shrink: 0;
+
+      &.is-spinning {
+        animation: index-status-spin 1s linear infinite;
+        color: @primary-accent;
+      }
     }
 
     .time {

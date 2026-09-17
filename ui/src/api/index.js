@@ -12,7 +12,8 @@ const request = axios.create({
   timeout: 30000
 })
 
-// 写入类请求的 success 反馈（去重，避免与组件内已有的同文案提示重复）
+// 写入类请求的 success 反馈。组件内已有显式提示的调用方通过 skipSuccessToast 跳过，
+// 避免与组件文案重复；未显式提示的操作（如后台任务）由这里统一兜底。
 const MUTATING_METHODS = ['post', 'put', 'patch', 'delete']
 let lastSuccessMsg = ''
 let lastSuccessTime = 0
@@ -144,15 +145,17 @@ export const AuthApi = {
   },
 
   register(username, password) {
-    return request.post('/auth/register', { username, password })
+    // 注册反馈由组件内显式提示（含后续引导文案），跳过拦截器自动 toast 避免重复
+    return request.post('/auth/register', { username, password }, { skipSuccessToast: true })
   },
 
   login(username, password) {
-    return request.post('/auth/login', { username, password })
+    // 登录成功的反馈由组件内显式提示，跳过拦截器自动 toast 避免重复
+    return request.post('/auth/login', { username, password }, { skipSuccessToast: true })
   },
 
   changePassword(oldPassword, newPassword) {
-    return request.put('/auth/password', { oldPassword, newPassword })
+    return request.put('/auth/password', { oldPassword, newPassword }, { skipSuccessToast: true })
   }
 }
 
@@ -163,7 +166,7 @@ export const ConfigApi = {
   },
 
   save(config) {
-    return request.post('/config', config)
+    return request.post('/config', config, { skipSuccessToast: true })
   }
 }
 
@@ -237,7 +240,7 @@ export const UploadApi = {
       return request.post(`/uploads/session/${id}/resume`)
     },
     cancel(id) {
-      return request.delete(`/uploads/session/${id}`)
+      return request.delete(`/uploads/session/${id}`, { skipSuccessToast: true })
     }
   },
 
@@ -268,15 +271,15 @@ export const UploadApi = {
   },
 
   cancelURLTask(taskId) {
-    return request.post(`/uploads/url-tasks/${taskId}/cancel`)
+    return request.post(`/uploads/url-tasks/${taskId}/cancel`, null, { skipSuccessToast: true })
   },
 
   retryURLTask(taskId) {
-    return request.post(`/uploads/url-tasks/${taskId}/retry`)
+    return request.post(`/uploads/url-tasks/${taskId}/retry`, null, { skipSuccessToast: true })
   },
 
   deleteURLTask(taskId) {
-    return request.delete(`/uploads/url-tasks/${taskId}`)
+    return request.delete(`/uploads/url-tasks/${taskId}`, { skipSuccessToast: true })
   },
 }
 
@@ -294,12 +297,12 @@ export const IndexApi = {
 
   // 触发全量扫描
   triggerScan() {
-    return request.post('/admin/index/scan')
+    return request.post('/admin/index/scan', null, { skipSuccessToast: true })
   },
 
   // 触发全量扫描（所有 scope）
   triggerFullScan() {
-    return request.post('/admin/index/scan/trigger')
+    return request.post('/admin/index/scan/trigger', null, { skipSuccessToast: true })
   },
 
   // 获取扫描进度
@@ -319,7 +322,7 @@ export const IndexApi = {
 
   // 更新备注
   updateNotes(id, notes) {
-    return request.put(`/admin/index/records/${id}/notes`, { notes })
+    return request.put(`/admin/index/records/${id}/notes`, { notes }, { skipSuccessToast: true })
   },
   // 搜索文件记录（用于 autocomplete）
   searchRecords(query) {
@@ -338,7 +341,7 @@ export const IndexApi = {
 
   // 保留指定文件，自动删除同哈希的其他重复文件
   keepDuplicate(id) {
-    return request.post(`/admin/index/duplicates/${id}/keep`)
+    return request.post(`/admin/index/duplicates/${id}/keep`, null, { skipSuccessToast: true })
   }
 }
 
@@ -393,7 +396,7 @@ export const FileRecordApi = {
   },
   // 公开更新备注
   updateNotes(recordId, notes) {
-    return request.put(`/files/records/${recordId}/notes`, { notes })
+    return request.put(`/files/records/${recordId}/notes`, { notes }, { skipSuccessToast: true })
   },
   // 搜索文件记录（用于 autocomplete）
   searchFiles(query) {
@@ -412,15 +415,15 @@ export const AdminApi = {
   },
 
   resetPassword(uuid, newPassword) {
-    return request.put(`/admin/users/${uuid}/reset-password`, { newPassword })
+    return request.put(`/admin/users/${uuid}/reset-password`, { newPassword }, { skipSuccessToast: true })
   },
 
   setUserDisabled(uuid, disabled) {
-    return request.put(`/admin/users/${uuid}/disabled`, { disabled })
+    return request.put(`/admin/users/${uuid}/disabled`, { disabled }, { skipSuccessToast: true })
   },
 
   deleteUser(uuid) {
-    return request.delete(`/admin/users/${uuid}`)
+    return request.delete(`/admin/users/${uuid}`, { skipSuccessToast: true })
   },
 
   getSessions(page = 1, pageSize = 20) {
@@ -428,12 +431,12 @@ export const AdminApi = {
   },
 
   cleanupSessions(sessionIds) {
-    return request.post('/admin/sessions/cleanup', { sessionIds })
+    return request.post('/admin/sessions/cleanup', { sessionIds }, { skipSuccessToast: true })
   },
 
   // 一键清理全部僵尸（过期/待处理/上传中）会话——由后端重新查询决定清理哪些
   cleanupAllZombieSessions() {
-    return request.post('/admin/sessions/cleanup-all')
+    return request.post('/admin/sessions/cleanup-all', null, { skipSuccessToast: true })
   },
 
   // 当前在线 IP（与登录无关，依据最近请求判定）——统一分页模式
@@ -447,11 +450,11 @@ export const AdminApi = {
   },
 
   move(oldPath, newPath) {
-    return request.post('/admin/files/move', { oldPath, newPath })
+    return request.post('/admin/files/move', { oldPath, newPath }, { skipSuccessToast: true })
   },
 
   delete(path) {
-    return request.delete('/admin/files', { params: { path } })
+    return request.delete('/admin/files', { params: { path }, skipSuccessToast: true })
   },
 
   // URL 下载任务管理
@@ -462,11 +465,11 @@ export const AdminApi = {
   },
 
   retryURLTask(id) {
-    return request.post(`/admin/url-tasks/${id}/retry`)
+    return request.post(`/admin/url-tasks/${id}/retry`, null, { skipSuccessToast: true })
   },
 
   deleteURLTask(id) {
-    return request.delete(`/admin/url-tasks/${id}`)
+    return request.delete(`/admin/url-tasks/${id}`, { skipSuccessToast: true })
   },
 
   // 任务管理
@@ -495,12 +498,12 @@ export const AdminApi = {
 
   // 清空操作记录
   clearRecords(action) {
-    return request.post('/admin/records/clear', { action })
+    return request.post('/admin/records/clear', { action }, { skipSuccessToast: true })
   },
 
   // 删除单条操作记录
   deleteRecord(id, action) {
-    return request.post('/admin/records/delete', { id, action })
+    return request.post('/admin/records/delete', { id, action }, { skipSuccessToast: true })
   }
 }
 
@@ -522,7 +525,7 @@ export const PrivateApi = {
   },
 
   delete(code) {
-    return request.delete(`/private/files/${code}`)
+    return request.delete(`/private/files/${code}`, { skipSuccessToast: true })
   },
 
   getQuota() {
@@ -585,7 +588,7 @@ export const TempApi = {
   },
 
   delete(code) {
-    return request.delete(`/temp/${code}`)
+    return request.delete(`/temp/${code}`, { skipSuccessToast: true })
   },
 
   // 分片上传
@@ -624,7 +627,7 @@ export const SetupApi = {
   },
 
   save(config) {
-    return request.post('/setup/save', config)
+    return request.post('/setup/save', config, { skipSuccessToast: true })
   },
 
   validateDir(path) {
@@ -763,15 +766,15 @@ export const ApiKeyApi = {
   },
 
   create(data) {
-    return request.post('/admin/api-keys', data)
+    return request.post('/admin/api-keys', data, { skipSuccessToast: true })
   },
 
   updateStatus(id, status) {
-    return request.put(`/admin/api-keys/${id}/status`, { status })
+    return request.put(`/admin/api-keys/${id}/status`, { status }, { skipSuccessToast: true })
   },
 
   delete(id) {
-    return request.delete(`/admin/api-keys/${id}`)
+    return request.delete(`/admin/api-keys/${id}`, { skipSuccessToast: true })
   }
 }
 

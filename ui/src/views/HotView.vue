@@ -26,8 +26,18 @@
             :data="hotDownloads"
             :width="tableWidth"
             :height="tableHeight"
-            :row-key="(row) => row.fullPath || row.fileName || row.id || row.storageKey"
-          :row-height="TableConst.ROW_HEIGHT" />
+            :row-height="TableConst.ROW_HEIGHT">
+            <template #empty>
+              <div class="empty-state">
+                <el-empty description="暂无热门下载" :image-size="72">
+                  <el-button type="primary" plain @click="goFiles">
+                    <el-icon><component :is="SearchIcon" /></el-icon>
+                    去文件页看看
+                  </el-button>
+                </el-empty>
+              </div>
+            </template>
+          </el-table-v2>
         </div>
         <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
           <el-pagination
@@ -278,7 +288,6 @@ onUnmounted(() => {
 
 .hot-view {
   padding: @container-padding;
-  animation: slideUp 0.4s ease-out;
 
   .hot-cards {
     display: flex;

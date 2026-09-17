@@ -15,7 +15,7 @@
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
         <template #header><span>共享目录配置</span></template>
-        <div v-for="(dir, index) in settings.rootDirs" :key="index" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+        <div v-for="(dir, index) in settings.rootDirs" :key="index" style="margin-bottom: 12px; padding: 12px; background: var(--el-fill-color-light); border-radius: 8px;">
           <el-form label-width="100px">
             <el-form-item label="目录路径">
               <el-input v-model="dir.path" :maxlength="1024" placeholder="目录路径" />

@@ -34,7 +34,7 @@
             <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
           </template>
           <template v-else>
-            <el-button type="primary" size="small" @click="showLoginModal = true">登录</el-button>
+            <a class="login-link" href="javascript:void(0)" @click="showLoginModal = true">登录</a>
           </template>
         </div>
       </nav>
@@ -42,16 +42,12 @@
       <!-- Desktop: Right side Login/User -->
       <div class="header-actions">
         <ThemeToggle class="header-theme-toggle" />
-        <el-button text size="small" class="upload-status-btn" @click="showUploadStatus = true">
-          <el-icon><UploadFilled /></el-icon>
-          <span>上传状态</span>
-        </el-button>
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
           <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" size="small" @click="showLoginModal = true">登录</el-button>
+          <a class="login-link" href="javascript:void(0)" @click="showLoginModal = true">登录</a>
         </template>
       </div>
     </div>
@@ -141,26 +137,19 @@
     </template>
   </el-dialog>
 
-  <!-- 上传管理弹框 -->
-  <UploadStatusDialog v-model:show="showUploadStatus" />
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
-import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 import ThemeToggle from './ThemeToggle.vue'
 
 const router = useRouter()
 const route = useRoute()
-
-// Upload manager dialog
-const showUploadStatus = ref(false)
 
 // Config
 const appName = computed(() => store.state.config.appName)
@@ -405,6 +394,7 @@ export default {
   position: sticky;
   top: 0;
   z-index: @zindex-sticky;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
 }
 
 .header-content {
@@ -533,6 +523,18 @@ export default {
     .nav-item {
       padding: 14px 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0;
+      transition: background-color 0.2s, color 0.2s;
+
+      &:hover {
+        transform: none;
+      }
+
+      &.active {
+        background: @primary-color;
+        box-shadow: none;
+        border-left: 3px solid @primary-accent;
+      }
     }
 
     .nav-mobile-auth {
@@ -560,21 +562,25 @@ export default {
 .nav-item {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 6px 16px;
   color: rgba(255, 255, 255, 0.7);
   text-decoration: none;
-  border-radius: @border-radius-sm;
-  transition: all 0.2s;
+  border-radius: 999px;
+  transition: background-color 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
   font-size: @font-size-base;
+  position: relative;
 
   &:hover {
     color: #fff;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
   }
 
   &.active {
     color: #fff;
-    background: fade(@primary-accent, 30%);
+    background: @primary-color;
+    box-shadow: 0 2px 10px fade(@primary-color, 40%);
+    font-weight: 500;
   }
 }
 
@@ -592,6 +598,19 @@ export default {
 
   &:hover {
     color: #fff;
+  }
+}
+
+.login-link {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: @font-size-base;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #fff;
+    text-decoration: underline;
   }
 }
 

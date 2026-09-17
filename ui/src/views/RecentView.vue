@@ -22,7 +22,18 @@
         <template #header>最近上传</template>
         <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
-            row-key="id" :row-height="TableConst.ROW_HEIGHT" />
+            row-key="id" :row-height="TableConst.ROW_HEIGHT">
+            <template #empty>
+              <div class="empty-state">
+                <el-empty description="暂无上传记录" :image-size="72">
+                  <el-button type="primary" plain @click="router.push('/files')">
+                    <el-icon><component :is="SearchIcon" /></el-icon>
+                    去文件页上传
+                  </el-button>
+                </el-empty>
+              </div>
+            </template>
+          </el-table-v2>
         </div>
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
@@ -38,7 +49,18 @@
         <template #header>最近下载</template>
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
-            row-key="id" :row-height="TableConst.ROW_HEIGHT" />
+            row-key="id" :row-height="TableConst.ROW_HEIGHT">
+            <template #empty>
+              <div class="empty-state">
+                <el-empty description="暂无下载记录" :image-size="72">
+                  <el-button type="primary" plain @click="router.push('/files')">
+                    <el-icon><component :is="SearchIcon" /></el-icon>
+                    去文件页看看
+                  </el-button>
+                </el-empty>
+              </div>
+            </template>
+          </el-table-v2>
         </div>
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
@@ -87,13 +109,13 @@ const downloadPageSize = ref(5)
 const makeTableResize = () => {
   const wrapRef = ref(null)
   const width = ref(600)
-  const height = ref(260)
+  const height = ref(360)
   let resizeObs = null
   const update = () => {
     const el = wrapRef.value
     if (el) {
       width.value = el.clientWidth || 600
-      height.value = el.clientHeight || 260
+      height.value = el.clientHeight || 360
     }
   }
   const bind = () => {
@@ -346,7 +368,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   padding: @container-padding;
-  animation: slideUp 0.4s ease-out;
 
   .recent-cards {
     display: flex;
@@ -363,7 +384,7 @@ onUnmounted(() => {
   }
 
   .table-v2-wrap {
-    height: 260px;
+    height: 360px;
   }
 
   .keyword-tags {

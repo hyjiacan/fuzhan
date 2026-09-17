@@ -13,36 +13,14 @@ import '@/styles/global.less'
 import AppShell from '@/components/common/AppShell.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue'
-import store from '@/store'
 import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
 import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
-import { safeStorage } from '@/utils/storage'
 import { useTheme } from '@/composables/useTheme'
 
 // 初始化主题（配合 index.html 首屏脚本，跟随系统 + 手动切换 + 持久化）
 const { init: initTheme } = useTheme()
 initTheme()
-
-// 页面宽度偏好
-const STORAGE_KEY = 'page-width-preference'
-const pageWidth = ref('100%')
-
-const loadPageWidth = () => {
-  const saved = safeStorage.get(STORAGE_KEY)
-  if (saved) {
-    pageWidth.value = saved
-    document.body.style.setProperty('--app-width', saved)
-  }
-}
-
-// 监听 localStorage 变化（跨标签页同步）
-window.addEventListener('storage', (e) => {
-  if (e.key === STORAGE_KEY && e.newValue) {
-    pageWidth.value = e.newValue
-    document.body.style.setProperty('--app-width', e.newValue)
-  }
-})
 
 // 设置全局错误处理器
 const toast = useToast()
@@ -82,8 +60,6 @@ onMounted(() => {
     setTimeout(runHealthCheck, 8000)
   }
 })
-
-loadPageWidth()
 </script>
 
 <style lang="less">
@@ -95,10 +71,6 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-}
-
-body {
-  --app-width: 100%;
 }
 
 /* element-plus 主色主题覆盖（可读主色加深以满足 WCAG AA：白色文字对比度 ≥4.5:1） */
