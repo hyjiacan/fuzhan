@@ -9,12 +9,14 @@
           </el-breadcrumb-item>
         </el-breadcrumb>
         <span v-else class="breadcrumb-root">临时文件</span>
-        <span class="temp-description">无需登录即可上传分享，文件到期自动删除</span>
+        <span class="temp-description">
+          <span>个人的临时文件，仅自己可见，文件到期自动删除，</span>
+          <span>根据你的IP</span>
+          <span class="ip-badge">{{ clientIP || '加载中...' }}</span>
+          <span>执行数据隔离</span>
+        </span>
       </div>
       <div class="breadcrumb-right">
-        <span>临时文件根据你的IP</span>
-        <span class="ip-badge">{{ clientIP || '加载中...' }}</span>
-        <span>执行数据隔离</span>
         <span class="quota-badge">用量: {{ formatSize(used) }} / {{ quota > 0 ? formatSize(quota) : '无限制' }}</span>
       </div>
     </div>
@@ -616,23 +618,24 @@ onUnmounted(() => {
     gap: 8px;
     font-size: @font-size-sm;
     color: @text-color-secondary;
+  }
 
-    .ip-badge,
-    .quota-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0 8px;
-      height: 22px;
-      background: @bg-color-secondary;
-      border: 1px solid @border-color-light;
-      border-radius: @border-radius-sm;
-      font-size: @font-size-xs;
-      color: @text-color-secondary;
-    }
+  .ip-badge,
+  .quota-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    height: 22px;
+    background: @bg-color-secondary;
+    border: 1px solid @border-color-light;
+    border-radius: @border-radius-sm;
+    font-size: @font-size-xs;
+    color: @text-color-secondary;
+  }
 
-    .ip-badge {
-      font-family: monospace;
-    }
+  .ip-badge {
+    font-family: monospace;
+    margin: 0 5px;
   }
 
   .toolbar-row {
