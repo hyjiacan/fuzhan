@@ -11,7 +11,7 @@
             <div class="field-hint">服务器监听的 IP 地址。<code>0.0.0.0</code> 表示监听所有网卡</div>
           </el-form-item>
           <el-divider />
-          <span style="font-weight: 600; color: #909399;">HTTP</span>
+          <span style="font-weight: 600; color: var(--el-text-color-placeholder);">HTTP</span>
           <div style="width: 100%;">
             <el-form-item label="启用 HTTP">
               <el-switch v-model="settings.server.http.enabled" />
@@ -23,7 +23,7 @@
             </el-form-item>
           </div>
           <el-divider />
-          <span style="font-weight: 600; color: #909399;">HTTPS</span>
+          <span style="font-weight: 600; color: var(--el-text-color-placeholder);">HTTPS</span>
           <div style="width: 100%;">
             <el-form-item label="启用 HTTPS">
               <el-switch v-model="settings.server.https.enabled" />

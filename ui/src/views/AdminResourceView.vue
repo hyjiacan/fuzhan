@@ -111,7 +111,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts/lib/echarts'
 import 'echarts/lib/chart/gauge'
 import 'echarts/lib/chart/line'
@@ -121,6 +121,7 @@ import 'echarts/lib/component/title'
 import 'echarts/lib/component/legend'
 import { Refresh } from '@element-plus/icons-vue'
 import { ConfigApi, ResourceApi } from '@/api'
+import { useTheme } from '@/composables/useTheme'
 
 // ============ 状态 ============
 const loading = ref(false)
@@ -167,6 +168,7 @@ function fmtRate(bytesPerSec) {
 
 const ORANGE = '#FFA500'
 const BLUE = '#2080f0'
+const { isDark } = useTheme()
 
 // ============ ECharts 实例 ============
 const cpuGaugeEl = ref(null)
@@ -276,13 +278,20 @@ function lineSeries(name, data, color) {
   }
 }
 
+function axisTheme() {
+  return isDark.value
+    ? { tick: '#8a8f98', line: '#3a3f45', text: '#c8ccd2' }
+    : { tick: '#909399', line: '#e4e7ed', text: '#606266' }
+}
+
 function mkOption({ title, yMax, yName, yFormatter, valueFormatter, customTooltip, series }) {
+  const t = axisTheme()
   return {
-    title: { text: title, textStyle: { fontSize: 13, fontWeight: 600, color: '#333' }, left: 4, top: 2 },
-    legend: { top: 2, right: 8, itemWidth: 12, itemHeight: 8, textStyle: { fontSize: 11 } },
+    title: { text: title, textStyle: { fontSize: 13, fontWeight: 600, color: t.text }, left: 4, top: 2 },
+    legend: { top: 2, right: 8, itemWidth: 12, itemHeight: 8, textStyle: { fontSize: 11, color: t.text } },
     grid: { left: 52, right: 16, top: 36, bottom: 28 },
-    xAxis: { type: 'time', min: () => Date.now() - rangeMs(hiRange.value), max: () => Date.now(), axisLabel: { fontSize: 10 } },
-    yAxis: { type: 'value', min: 0, max: yMax, name: yName, axisLabel: { fontSize: 10, formatter: yFormatter } },
+    xAxis: { type: 'time', min: () => Date.now() - rangeMs(hiRange.value), max: () => Date.now(), axisLine: { lineStyle: { color: t.line } }, axisLabel: { fontSize: 10, color: t.tick } },
+    yAxis: { type: 'value', min: 0, max: yMax, name: yName, axisLine: { lineStyle: { color: t.line } }, axisLabel: { fontSize: 10, color: t.tick, formatter: yFormatter }, splitLine: { lineStyle: { color: t.line } } },
     tooltip: {
       trigger: 'axis', confine: true,
       formatter: customTooltip || ((params) => mkTooltip(params, valueFormatter))
@@ -370,6 +379,9 @@ function drawAll() {
   buildChartOpt()
   for (const name of ['cpu', 'mem', 'disk', 'io']) chartRefs[name].value?.setOption(chartOpt[name])
 }
+
+// 主题切换时重建 option（series.data 仍引用 seriesData 数组，不中断动态推流）
+watch(isDark, () => drawAll())
 
 function lastTs(arr) {
   let m = -Infinity

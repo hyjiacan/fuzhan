@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="admin-download-analytics">
     <div class="header-section">
       <div class="header-left">
@@ -621,7 +621,7 @@ onUnmounted(() => {
 }
 .header-left .description {
   margin: 0;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 13px;
 }
 .filter-card {
@@ -634,7 +634,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 .filter-label {
-  color: #606266;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
 }
 .metric-grid {
@@ -644,8 +644,8 @@ onUnmounted(() => {
   margin-bottom: 14px;
 }
 .metric-card {
-  background: @bg-color;
-  border: 1px solid @border-color;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   padding: 16px;
   text-align: center;
@@ -662,7 +662,7 @@ onUnmounted(() => {
 .metric-card .metric-title {
   margin-top: 6px;
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 .chart-card {
   margin-bottom: 14px;
@@ -676,7 +676,7 @@ onUnmounted(() => {
 }
 .card-title .sub {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-weight: 400;
   margin-left: 8px;
 }
@@ -727,7 +727,7 @@ onUnmounted(() => {
 }
 .source-list h4 {
   margin: 6px 0;
-  color: #606266;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
 }
 .source-list ul {
@@ -740,11 +740,11 @@ onUnmounted(() => {
 .source-list li {
   padding: 4px 0;
   font-size: 13px;
-  color: @text-color-secondary;
-  border-bottom: 1px dashed @border-color;
+  color: var(--el-text-color-secondary);
+  border-bottom: 1px dashed var(--el-border-color);
 }
 .source-list li.empty {
-  color: @text-color-placeholder;
+  color: var(--el-text-color-placeholder);
 }
 
 @media (max-width: 1100px) {

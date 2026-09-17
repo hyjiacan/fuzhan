@@ -115,7 +115,7 @@
               :maxlength="255"
               placeholder="输入保存的文件名"
             />
-            <span style="color: #909399; font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
+            <span style="color: var(--el-text-color-placeholder); font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
           </el-form-item>
           <!-- URL 备注 -->
           <el-form-item v-if="urlFileInfo.name" label="备注:">
