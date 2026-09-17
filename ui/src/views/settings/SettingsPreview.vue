@@ -27,14 +27,14 @@
           <el-form-item label="最大内联大小">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="maxInlineSizeDisplay" :maxlength="32" placeholder="如 1m, 2m" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.preview.maxInlineSize) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.preview.maxInlineSize) }}</span>
             </div>
             <div class="field-hint">浏览器直接预览的文件大小上限</div>
           </el-form-item>
           <el-form-item label="文本分块大小">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="textChunkSizeDisplay" placeholder="如 100k, 200k" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.preview.textChunkSize) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.preview.textChunkSize) }}</span>
             </div>
             <div class="field-hint">预览大文本文件时分块读取的大小</div>
           </el-form-item>
@@ -75,7 +75,7 @@ const textChunkSizeDisplay = computed({
 }
 
 .field-hint {
-  color: #999;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
 }
 </style>

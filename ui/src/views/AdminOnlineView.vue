@@ -235,7 +235,7 @@ onUnmounted(() => {
       display: flex;
       justify-content: flex-end;
       padding: 12px 16px;
-      border-top: 1px solid #f0f0f0;
+      border-top: 1px solid @border-color-light;
     }
   }
 }

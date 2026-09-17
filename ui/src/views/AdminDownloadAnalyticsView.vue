@@ -740,11 +740,11 @@ onUnmounted(() => {
 .source-list li {
   padding: 4px 0;
   font-size: 13px;
-  color: #606266;
-  border-bottom: 1px dashed #f0f0f0;
+  color: @text-color-secondary;
+  border-bottom: 1px dashed @border-color;
 }
 .source-list li.empty {
-  color: #c0c4cc;
+  color: @text-color-placeholder;
 }
 
 @media (max-width: 1100px) {

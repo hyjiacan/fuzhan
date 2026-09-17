@@ -684,7 +684,7 @@ watch(
       .notes-cell {
         &:empty:after {
           content: '点击填写备注';
-          color: #bbb;
+          color: @text-color-placeholder;
         }
       }
     }

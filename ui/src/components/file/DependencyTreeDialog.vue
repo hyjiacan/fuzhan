@@ -11,7 +11,7 @@
           下载
         </el-button>
       </div>
-      <div v-if="recordInfo" :style="{ marginTop: '4px', fontSize: '12px', color: '#999' }">
+      <div v-if="recordInfo" :style="{ marginTop: '4px', fontSize: '12px', color: 'var(--el-text-color-placeholder)' }">
         路径: {{ recordInfo.fullPath }}
       </div>
     </div>
@@ -26,7 +26,7 @@
         node-key="key"
       >
         <template #default="{ data }">
-          <span v-if="data._raw === null" style="font-weight: bold; color: #888; font-size: 12px;">{{ data.label }}</span>
+          <span v-if="data._raw === null" style="font-weight: bold; color: var(--el-text-color-placeholder); font-size: 12px;">{{ data.label }}</span>
           <div v-else style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0;">
             <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ data.label }}</span>
             <el-button v-if="data._raw?.downloadURL" size="small" link type="primary"

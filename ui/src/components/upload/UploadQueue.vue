@@ -2,7 +2,7 @@
   <div v-if="items.length > 0" class="upload-queue">
     <div class="queue-header">
       <span>上传队列 ({{ items.length }} 个)</span>
-      <span style="color: #999;">等待 {{ pendingCount }} 个</span>
+      <span style="color: var(--el-text-color-placeholder);">等待 {{ pendingCount }} 个</span>
     </div>
     <div class="queue-list" style="max-height: 160px; overflow-y: auto;">
       <template v-for="(item, index) in items" :key="item.id">

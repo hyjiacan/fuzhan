@@ -47,14 +47,14 @@
           <el-form-item label="全局配额">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="privateQuotaGlobalDisplay" :maxlength="32" placeholder="如 500m, 10g, 1t" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.privateQuotaGlobal) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.privateQuotaGlobal) }}</span>
             </div>
             <div class="field-hint">所有私有文件的总存储上限</div>
           </el-form-item>
           <el-form-item label="用户配额">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="privateQuotaUserDisplay" :maxlength="32" placeholder="如 100m, 5g" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.privateQuotaUser) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.privateQuotaUser) }}</span>
             </div>
             <div class="field-hint">每个用户的私有文件存储上限</div>
           </el-form-item>
@@ -77,14 +77,14 @@
           <el-form-item label="全局配额">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="tempQuotaGlobalDisplay" :maxlength="32" placeholder="如 10g, 100g" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaGlobal) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.tempFilesQuotaGlobal) }}</span>
             </div>
             <div class="field-hint">所有临时文件的总存储上限</div>
           </el-form-item>
           <el-form-item label="IP 配额">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="tempQuotaPerIPDisplay" :maxlength="32" placeholder="如 500m, 2g" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.tempFilesQuotaPerIP) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.tempFilesQuotaPerIP) }}</span>
             </div>
             <div class="field-hint">每个 IP 的临时文件存储上限</div>
           </el-form-item>
@@ -107,14 +107,14 @@
           <el-form-item label="分片大小">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="chunkSizeDisplay" :maxlength="32" placeholder="如 10m, 1g" style="width: 200px;" />
-              <span style="color: #999;">{{ formatSize(settings.upload.chunkSize) }}</span>
+              <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.upload.chunkSize) }}</span>
             </div>
             <div class="field-hint">文件分块上传的块大小，建议 5m-10m</div>
           </el-form-item>
           <el-form-item label="最大文件大小">
             <div style="display: flex; align-items: center; gap: 12px;">
               <el-input v-model="maxFileSizeDisplay" :maxlength="32" placeholder="如 2g, 10g, 无限制" style="width: 200px;" />
-              <span style="color: #999;">
+              <span style="color: var(--el-text-color-placeholder);">
                 {{ settings.upload.maxFileSize === 0 ? '无限制' : formatSize(settings.upload.maxFileSize) }}
               </span>
             </div>
@@ -216,7 +216,7 @@ const removeDir = (index) => {
 }
 
 .field-hint {
-  color: #999;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
 }
 </style>

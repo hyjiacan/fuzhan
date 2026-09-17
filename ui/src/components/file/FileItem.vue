@@ -59,11 +59,11 @@ const fileIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--el-border-color-light);
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: #f5f7fa;
+    background-color: var(--el-fill-color-light);
   }
 
   .file-icon {
@@ -78,7 +78,7 @@ const fileIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
 
     .file-name {
       font-size: 14px;
-      color: #333;
+      color: var(--el-text-color-primary);
       margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
@@ -88,7 +88,7 @@ const fileIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
     .file-meta {
       display: flex;
       font-size: 12px;
-      color: #999;
+      color: var(--el-text-color-placeholder);
 
       .file-size {
         margin-right: 16px;

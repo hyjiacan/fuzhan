@@ -859,7 +859,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
       align-items: center;
       gap: 12px;
       padding: 10px 12px;
-      border-bottom: 1px solid #f5f5f5;
+      border-bottom: 1px solid @border-color-light;
 
       &:last-child {
         border-bottom: none;
@@ -870,7 +870,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
         flex-shrink: 0;
         text-align: center;
         font-size: 12px;
-        color: #bbb;
+        color: @text-color-placeholder;
         font-variant-numeric: tabular-nums;
       }
 

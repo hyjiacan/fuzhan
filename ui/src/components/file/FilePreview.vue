@@ -60,10 +60,10 @@
 
     <!-- 不支持预览的文件 -->
     <div v-else style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 300px;">
-      <el-icon :size="64" style="color: #999">
+      <el-icon :size="64" style="color: var(--el-text-color-placeholder)">
         <component :is="FileIcon" />
       </el-icon>
-      <p style="font-size: 16px; color: #666; margin: 20px 0;">{{ errorMessage || '该文件类型不支持预览' }}</p>
+      <p style="font-size: 16px; color: var(--el-text-color-regular); margin: 20px 0;">{{ errorMessage || '该文件类型不支持预览' }}</p>
       <el-button type="primary" @click="downloadFile">下载文件</el-button>
     </div>
 
@@ -279,13 +279,13 @@ watch(() => props.file, () => {
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: #f5f7fa;
-    border-bottom: 1px solid #e8e8e8;
+    background: var(--el-fill-color-light);
+    border-bottom: 1px solid var(--el-border-color-light);
     margin-bottom: 8px;
 
     .chunk-info {
       font-size: 13px;
-      color: #666;
+      color: var(--el-text-color-regular);
     }
   }
 }
