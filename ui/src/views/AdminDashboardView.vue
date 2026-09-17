@@ -43,7 +43,7 @@
           <el-col :span="6">
             <el-card class="stat-card" shadow="never">
               <div class="stat-content">
-                <el-icon :size="32"><component :is="AccessIcon" /></el-icon>
+                <el-icon :size="32"><component :is="UserIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ stats.activeUsers }}</div>
                   <div class="stat-label">活跃用户</div>
@@ -220,9 +220,6 @@ const FileIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: 
 ])
 const StorageIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z' })
-])
-const AccessIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
-  h('path', { d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' })
 ])
 const DuplicateIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z' })
