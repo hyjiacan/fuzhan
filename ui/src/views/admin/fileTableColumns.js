@@ -1,6 +1,7 @@
 import { h } from 'vue'
 import { ElButton, ElCheckbox } from 'element-plus'
 import { TimeUtils, NumberUtils } from '@/utils'
+import { keyNav } from '@/utils/a11y'
 import { isPreviewable } from '@/config/preview'
 
 // 是否为目录（统一兼容 dir/directory 两种类型标识）
@@ -75,6 +76,8 @@ export const buildFileColumns = ({
           isDir(row)
             ? h('a', {
               class: 'file-link dir-link',
+              tabindex: '0',
+              onKeydown: keyNav(() => router.push('/admin/files/' + encodePath(dirPath))),
               onClick: (e) => {
                 e.preventDefault()
                 router.push('/admin/files/' + encodePath(dirPath))
@@ -110,6 +113,8 @@ export const buildFileColumns = ({
                 return [
                   h('a', {
                     class: 'path-segment',
+                    tabindex: '0',
+                    onKeydown: keyNav(navigateToDir, segPath),
                     onClick: (e) => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -122,6 +127,8 @@ export const buildFileColumns = ({
               isDir(row)
                 ? h('a', {
                   class: 'file-link dir-link',
+                  tabindex: '0',
+                  onKeydown: keyNav(navigateToDir, dirPath),
                   onClick: (e) => {
                     e.preventDefault()
                     navigateToDir(dirPath)
@@ -155,7 +162,7 @@ export const buildFileColumns = ({
       cellRenderer: ({ rowData: row }) => {
         const text = TimeUtils.formatDateTime(row.modifiedTime)
         if (TimeUtils.isRecent24h(row.modifiedTime)) {
-          return h('span', { style: 'color: #18a058' }, text)
+          return h('span', { class: 'recent-time', title: '近 24 小时内有更新' }, text)
         }
         return text
       }

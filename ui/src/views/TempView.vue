@@ -66,7 +66,20 @@
           :width="tableWidth"
           :height="tableHeight"
           row-key="_key"
-        :row-height="32" />
+        :row-height="TableConst.ROW_HEIGHT">
+          <template #empty>
+            <div class="empty-state">
+              <el-empty description="暂无临时文件" :image-size="72">
+                <template #default>
+                  <el-button type="primary" @click="showUploadDialog = true">
+                    <el-icon><component :is="UploadIcon" /></el-icon>
+                    上传临时文件
+                  </el-button>
+                </template>
+              </el-empty>
+            </div>
+          </template>
+        </el-table-v2>
       </div>
       <div v-if="tableData.length > pageSize" class="table-pagination">
         <el-pagination
@@ -141,7 +154,8 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { ElMessage, ElButton, ElTag, ElIcon } from 'element-plus'
 import { TempApi } from '@/api'
-import { NumberUtils, TimeUtils } from '@/utils'
+import { TableConst, NumberUtils, TimeUtils } from '@/utils'
+import { keyNav } from '@/utils/a11y'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 
@@ -330,6 +344,9 @@ const columns = computed(() => [
           h('span', {
             class: 'file-link',
             style: 'color: #2080f0;',
+            role: 'link',
+            tabindex: '0',
+            onKeydown: keyNav(() => navigateToDir(currentDir.value ? currentDir.value + '/' + row.dirName : row.dirName)),
             onClick: () => navigateToDir(currentDir.value ? currentDir.value + '/' + row.dirName : row.dirName)
           }, row.dirName)
         ])

@@ -1,6 +1,13 @@
 // xxh3 哈希工具
 export { xxh3Hash } from './xxhash'
 
+// ============================================
+// 表格全局配置（el-table-v2 数值类 prop，统一为单一常量便于调整）
+// ============================================
+export const TableConst = {
+  ROW_HEIGHT: 32
+}
+
 // 字符串工具函数
 export const StringUtils = {
   // 转义HTML特殊字符

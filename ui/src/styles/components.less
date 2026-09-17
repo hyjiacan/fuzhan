@@ -106,6 +106,101 @@
   transition: color @transition-fast;
 }
 
+// 文件类型按分类着色（图片/视频/音频/文档/代码/表格/压缩包/程序），
+// 未命中的扩展名保留浅灰色兜底。中色调在浅/深主题下均清晰。
+.icon-filetype-folder { color: @primary-accent; }
+
+// 图片
+.icon-filetype-png,
+.icon-filetype-jpg,
+.icon-filetype-jpeg,
+.icon-filetype-gif,
+.icon-filetype-bmp,
+.icon-filetype-webp,
+.icon-filetype-svg,
+.icon-filetype-ico,
+.icon-filetype-psd,
+.icon-filetype-ai { color: @ft-image; }
+
+// 视频
+.icon-filetype-mp4,
+.icon-filetype-mov,
+.icon-filetype-avi,
+.icon-filetype-mkv,
+.icon-filetype-wmv,
+.icon-filetype-flv,
+.icon-filetype-webm,
+.icon-filetype-m4a,
+.icon-filetype-rmvb,
+.icon-filetype-3gp,
+.icon-filetype-ts { color: @ft-video; }
+
+// 音频
+.icon-filetype-mp3,
+.icon-filetype-wav,
+.icon-filetype-flac,
+.icon-filetype-aac,
+.icon-filetype-ogg,
+.icon-filetype-m4v,
+.icon-filetype-wma,
+.icon-filetype-amr { color: @ft-audio; }
+
+// 文本/文档
+.icon-filetype-txt,
+.icon-filetype-md,
+.icon-filetype-doc,
+.icon-filetype-docx,
+.icon-filetype-pdf,
+.icon-filetype-rtf,
+.icon-filetype-odt,
+.icon-filetype-wps { color: @ft-doc; }
+
+// 代码
+.icon-filetype-js,
+.icon-filetype-ts,
+.icon-filetype-py,
+.icon-filetype-html,
+.icon-filetype-css,
+.icon-filetype-json,
+.icon-filetype-go,
+.icon-filetype-java,
+.icon-filetype-c,
+.icon-filetype-cpp,
+.icon-filetype-jsx,
+.icon-filetype-vue,
+.icon-filetype-sh,
+.icon-filetype-bash,
+.icon-filetype-xml,
+.icon-filetype-yaml,
+.icon-filetype-yml,
+.icon-filetype-sql { color: @ft-code; }
+
+// 表格
+.icon-filetype-xls,
+.icon-filetype-xlsx,
+.icon-filetype-csv,
+.icon-filetype-ods { color: @ft-sheet; }
+
+// 压缩包/归档
+.icon-filetype-zip,
+.icon-filetype-rar,
+.icon-filetype-7z,
+.icon-filetype-tar,
+.icon-filetype-gz,
+.icon-filetype-bz2,
+.icon-filetype-xz,
+.icon-filetype-iso,
+.icon-filetype-jar { color: @ft-archive; }
+
+// 程序/可执行
+.icon-filetype-exe,
+.icon-filetype-msi,
+.icon-filetype-apk,
+.icon-filetype-app,
+.icon-filetype-dmg,
+.icon-filetype-deb,
+.icon-filetype-rpm { color: @ft-app; }
+
 .file-link {
   color: @text-color;
   text-decoration: none;

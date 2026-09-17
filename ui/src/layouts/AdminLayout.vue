@@ -28,6 +28,11 @@
 
     <!-- Content -->
     <el-main class="layout-content">
+      <div v-if="showWideTip" class="wide-tip">
+        <el-icon class="wide-tip-icon"><Monitor /></el-icon>
+        <span class="wide-tip-text">部分管理页表格在窄屏幕下可能显示不完整，建议使用更宽的屏幕以获得最佳体验</span>
+        <el-icon class="wide-tip-close" @click="dismissWideTip" title="关闭提示"><Close /></el-icon>
+      </div>
       <router-view />
     </el-main>
 
@@ -39,16 +44,30 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import { safeStorage } from '@/utils/storage'
 import {
-  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts
+  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Close
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
+
+// 窄屏宽屏提示（可关闭，持久化到本地）
+const WIDE_TIP_KEY = 'admin_wide_tip_closed'
+const showWideTip = ref(true)
+
+onMounted(() => {
+  showWideTip.value = !safeStorage.get(WIDE_TIP_KEY)
+})
+
+const dismissWideTip = () => {
+  showWideTip.value = false
+  safeStorage.set(WIDE_TIP_KEY, '1')
+}
 
 const menuGroups = [
   {
@@ -168,6 +187,42 @@ const handleMenuSelect = (key) => {
     height: 100%;
     overflow: auto;
     padding: 0;
+  }
+
+  // 窄屏宽屏提示（仅窄屏显示）
+  .wide-tip {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin: 8px 12px 0;
+    font-size: @font-size-sm;
+    color: @text-color-secondary;
+    background: @bg-color-tertiary;
+    border-radius: @border-radius;
+    border: 1px solid @border-color-light;
+
+    .wide-tip-icon {
+      color: @warning-color;
+      flex-shrink: 0;
+    }
+
+    .wide-tip-close {
+      margin-left: auto;
+      cursor: pointer;
+      color: @text-color-placeholder;
+      flex-shrink: 0;
+
+      &:hover {
+        color: @text-color;
+      }
+    }
+  }
+
+  @media (max-width: 768px) {
+    .wide-tip {
+      display: flex;
+    }
   }
 }
 </style>

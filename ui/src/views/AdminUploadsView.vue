@@ -68,7 +68,7 @@
               :data="zombieSessions"
               :width="zombieTableWidth"
               :height="zombieTableHeight"
-              :row-height="32"
+              :row-height="TableConst.ROW_HEIGHT"
               row-key="id"
             />
           </div>
@@ -190,7 +190,7 @@
               :data="urlTasks"
               :width="urlTableWidth"
               :height="urlTableHeight"
-              :row-height="32"
+              :row-height="TableConst.ROW_HEIGHT"
               row-key="id"
             />
           </div>
@@ -238,6 +238,7 @@
 </template>
 
 <script setup>
+import { TableConst } from '@/utils'
 import { ref, h, onMounted, onUnmounted, nextTick } from 'vue'
 import { useZombieSessions } from './admin/useZombieSessions'
 import { useUrlTasks } from './admin/useUrlTasks'

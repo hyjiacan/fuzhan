@@ -98,101 +98,107 @@ defineExpose({ show, close })
 .toast-container {
   position: fixed;
   top: 20px;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: @zindex-notification;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
-  background: @bg-color;
-  border-radius: @border-radius-lg;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--el-bg-color-overlay);
+  border-radius: var(--el-border-radius-base);
   box-shadow: @shadow-lg;
-  min-width: 320px;
-  max-width: 420px;
+  min-width: 280px;
+  max-width: 480px;
+  font-size: var(--el-font-size-base);
+  line-height: var(--el-font-line-height-primary);
+  color: var(--el-text-color-primary);
   transition: transform @transition-bounce, box-shadow @transition-fast;
 }
 
 .toast-container:hover {
-  transform: translateX(-4px);
+  transform: translateX(-50%) translateY(-2px);
   box-shadow: @card-hover-shadow;
 }
 
-.toast-info { border-left: 4px solid @info-color; }
-.toast-success { border-left: 4px solid @success-color; }
-.toast-warning { border-left: 4px solid @warning-color; }
-.toast-error { border-left: 4px solid @error-color; }
-
 .toast-icon {
-  font-size: 20px;
-  line-height: 1;
+  font-size: @font-size-lg;
+  line-height: var(--el-font-line-height-primary);
+  flex-shrink: 0;
+  margin-top: 1px;
   transition: transform @transition-bounce;
 }
 
-.toast-container:hover .toast-icon {
-  transform: scale(1.2);
-}
-
-.toast-info .toast-icon { color: @info-color; }
-.toast-success .toast-icon { color: @success-color; }
-.toast-warning .toast-icon { color: @warning-color; }
-.toast-error .toast-icon { color: @error-color; }
+.toast-info .toast-icon { color: var(--el-color-info); }
+.toast-success .toast-icon { color: var(--el-color-success); }
+.toast-warning .toast-icon { color: var(--el-color-warning); }
+.toast-error .toast-icon { color: var(--el-color-danger); }
 
 .toast-content { flex: 1; }
 
 .toast-message {
-  font-size: @font-size-base;
-  color: @text-color;
-  line-height: 1.5;
+  font-size: var(--el-font-size-base);
+  color: var(--el-text-color-primary);
+  line-height: var(--el-font-line-height-primary);
+  word-break: break-word;
 }
 
 .toast-suggestion {
-  font-size: @font-size-xs;
-  color: @text-color-placeholder;
+  font-size: var(--el-font-size-small);
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
 .toast-action {
-  padding: 4px 12px;
-  background: @info-color;
-  color: #fff;
+  flex-shrink: 0;
+  margin-top: -2px;
+  padding: 3px 12px;
+  background: var(--el-color-primary);
   border: none;
-  border-radius: @border-radius-sm;
+  border-radius: var(--el-border-radius-base);
   cursor: pointer;
-  font-size: @font-size-xs;
+  font-size: var(--el-font-size-base);
+  color: #fff;
+  line-height: 1.4;
+  align-self: flex-start;
   transition: background @transition-fast, transform @transition-fast;
-}
 
-.toast-action:hover {
-  background: @info-color-hover;
-  transform: translateY(-1px);
+  &:hover {
+    background: var(--el-color-primary-dark-2);
+    transform: translateY(-1px);
+  }
 }
 
 .toast-close {
+  flex-shrink: 0;
+  align-self: flex-start;
   background: none;
   border: none;
   font-size: @font-size-lg;
-  color: @text-color-placeholder;
+  color: var(--el-text-color-secondary);
   cursor: pointer;
   padding: 0;
-  line-height: 1;
+  line-height: var(--el-font-line-height-primary);
   transition: color @transition-fast, transform @transition-fast;
-}
 
-.toast-close:hover {
-  color: @text-color-secondary;
-  transform: scale(1.2);
+  &:hover {
+    color: var(--el-text-color-primary);
+    transform: scale(1.2);
+  }
 }
 
 .toast-enter-active { animation: toastSlideIn @transition-bounce; }
 .toast-leave-active { animation: toastSlideOut @transition-normal forwards; }
 
+// 容器居中依赖 translateX(-50%)，带动画的 keyframes 必须保留该变换，
+// 因此仅对 opacity/translateY 做位移动画，避免覆盖居中定位
 @keyframes toastSlideIn {
-  from { opacity: 0; transform: translateX(100%) scale(0.8); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
+  from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
 @keyframes toastSlideOut {
-  from { opacity: 1; transform: translateX(0) scale(1); }
-  to { opacity: 0; transform: translateX(100%) scale(0.8); }
+  from { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  to { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.96); }
 }
 </style>

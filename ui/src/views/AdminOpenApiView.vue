@@ -83,7 +83,7 @@
           :data="apiKeys"
           :width="tableWidth"
           :height="tableHeight"
-          :row-height="32"
+          :row-height="TableConst.ROW_HEIGHT"
           row-key="id"
         />
       </div>
@@ -175,7 +175,7 @@
 import { ref, computed, h, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElButton, ElTag } from 'element-plus'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
-import { TimeUtils } from '@/utils'
+import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 

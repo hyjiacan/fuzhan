@@ -54,7 +54,7 @@
           :data="displayList"
           :width="tableWidth"
           :height="tableHeight"
-          :row-height="32"
+          :row-height="TableConst.ROW_HEIGHT"
           row-key="path"
           @row-dblclick="handleDblClick"
         />
@@ -119,6 +119,7 @@
 </template>
 
 <script setup>
+import { TableConst } from '@/utils'
 import { ref, watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'

@@ -51,7 +51,7 @@
           :width="tableWidth"
           :height="tableHeight"
           row-key="id"
-        :row-height="32" />
+        :row-height="TableConst.ROW_HEIGHT" />
         <div v-if="loading" class="table-loading-mask">
           <el-icon class="is-loading" :size="22"><Loading /></el-icon>
         </div>
@@ -147,7 +147,7 @@ import { ref, computed, h, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox, ElTag, ElButton, ElPopconfirm } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { ApiKeyApi, AuthApi } from '../api'
-import { TimeUtils } from '@/utils'
+import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 
 // Icons

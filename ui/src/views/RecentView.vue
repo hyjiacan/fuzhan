@@ -9,7 +9,12 @@
             {{ kw.word }}
           </el-tag>
         </div>
-        <el-empty v-else description="暂无搜索记录" />
+        <el-empty v-else description="暂无搜索记录">
+          <el-button type="primary" plain @click="router.push('/files')">
+            <el-icon><component :is="SearchIcon" /></el-icon>
+            去搜索文件
+          </el-button>
+        </el-empty>
       </el-card>
 
       <!-- 最近上传 -->
@@ -17,7 +22,7 @@
         <template #header>最近上传</template>
         <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
-            row-key="id" :row-height="32" />
+            row-key="id" :row-height="TableConst.ROW_HEIGHT" />
         </div>
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
@@ -33,7 +38,7 @@
         <template #header>最近下载</template>
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
-            row-key="id" :row-height="32" />
+            row-key="id" :row-height="TableConst.ROW_HEIGHT" />
         </div>
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
@@ -52,9 +57,15 @@ import { ref, onMounted, onUnmounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { FileApi, MonitorApi } from '@/api'
-import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { TableConst, NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { keyNav } from '@/utils/a11y'
 
 const router = useRouter()
+
+// 搜索图标
+const SearchIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
+  h('path', { d: 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z' })
+])
 
 // State
 const loading = ref(false)
@@ -159,6 +170,8 @@ const fileNameCol = {
           return [
             h('a', {
               class: 'path-segment',
+              tabindex: '0',
+              onKeydown: keyNav(navigateToDir, segPath),
               onClick: (e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -171,6 +184,8 @@ const fileNameCol = {
         isDir(row)
           ? h('a', {
               class: 'file-link',
+              tabindex: '0',
+              onKeydown: keyNav(navigateToDir, dirPath),
               onClick: (e) => {
                 e.preventDefault()
                 navigateToDir(dirPath)

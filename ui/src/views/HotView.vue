@@ -9,7 +9,12 @@
             <el-tag @click="searchKeyword(kw.word)" style="cursor: pointer">{{ kw.word }}</el-tag>
           </el-badge>
         </div>
-        <el-empty v-else description="暂无搜索数据" />
+        <el-empty v-else description="暂无搜索数据">
+          <el-button type="primary" plain @click="goFiles">
+            <el-icon><component :is="SearchIcon" /></el-icon>
+            去文件页搜索
+          </el-button>
+        </el-empty>
       </el-card>
 
       <!-- 热门下载文件 -->
@@ -22,7 +27,7 @@
             :width="tableWidth"
             :height="tableHeight"
             :row-key="(row) => row.fullPath || row.fileName || row.id || row.storageKey"
-          :row-height="32" />
+          :row-height="TableConst.ROW_HEIGHT" />
         </div>
         <div v-if="hotDownloads.length > 0" class="pagination-wrapper">
           <el-pagination
@@ -46,9 +51,20 @@ import { ref, h, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { MonitorApi } from '@/api'
-import { TimeUtils, PathUtils } from '@/utils'
+import { TableConst, TimeUtils, PathUtils } from '@/utils'
+import { keyNav } from '@/utils/a11y'
 
 const router = useRouter()
+
+// 搜索图标
+const SearchIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
+  h('path', { d: 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z' })
+])
+
+// 跳转到文件页搜索
+const goFiles = () => {
+  router.push('/files')
+}
 
 // 热门搜索关键词
 const keywords = ref([])
@@ -130,6 +146,8 @@ const downloadColumns = [
             return [
               h('a', {
                 class: 'path-segment',
+                tabindex: '0',
+                onKeydown: keyNav(() => router.push('/files/' + segPath.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/'))),
                 onClick: (e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -142,6 +160,8 @@ const downloadColumns = [
           isDir(row)
             ? h('a', {
                 class: 'file-link',
+                tabindex: '0',
+                onKeydown: keyNav(() => router.push('/files/' + dirPath.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/'))),
                 onClick: (e) => {
                   e.preventDefault()
                   router.push('/files/' + dirPath.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/'))

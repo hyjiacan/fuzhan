@@ -110,6 +110,40 @@ body {
   --el-color-primary-light-8: #f0decc;
   --el-color-primary-light-9: #f7efe6;
   --el-color-primary-dark-2: #8f4800;
+
+  /* 品牌状态色语义统一：覆盖 Element Plus 默认 success/warning/danger/info，
+  避免 el-tag / el-badge / el-progress 出现两套绿/橙/红/蓝 */
+  --el-color-success: #18a058;
+  --el-color-success-light-3: #5dbd8a;
+  --el-color-success-light-5: #8cd0ac;
+  --el-color-success-light-7: #bae3cd;
+  --el-color-success-light-8: #d1ecde;
+  --el-color-success-light-9: #e8f6ee;
+  --el-color-success-dark-2: #138046;
+
+  --el-color-warning: #f0a020;
+  --el-color-warning-light-3: #f5bd63;
+  --el-color-warning-light-5: #f8d090;
+  --el-color-warning-light-7: #fbe3bc;
+  --el-color-warning-light-8: #fcecd2;
+  --el-color-warning-light-9: #fef6e9;
+  --el-color-warning-dark-2: #c0801a;
+
+  --el-color-danger: #d03050;
+  --el-color-danger-light-3: #de6e85;
+  --el-color-danger-light-5: #e898a8;
+  --el-color-danger-light-7: #f1c1cb;
+  --el-color-danger-light-8: #f6d6dc;
+  --el-color-danger-light-9: #faeeee;
+  --el-color-danger-dark-2: #a62640;
+
+  --el-color-info: #2080f0;
+  --el-color-info-light-3: #63a6f5;
+  --el-color-info-light-5: #90c0f8;
+  --el-color-info-light-7: #bcd9fb;
+  --el-color-info-light-8: #d2e6fc;
+  --el-color-info-light-9: #e9f2fe;
+  --el-color-info-dark-2: #1a66c0;
 }
 
 /* 主按钮：hover/active 加深而非变浅，保证白色文字在 AA 对比度线上 */

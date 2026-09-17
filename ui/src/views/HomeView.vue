@@ -54,11 +54,32 @@
           :data="sortedFileList"
           :width="tableWidth"
           :height="tableHeight"
-          :row-height="32"
+          :row-height="TableConst.ROW_HEIGHT"
           row-key="path"
           :sort-state="sortState"
           @column-sort="onColumnSort"
-        />
+        >
+          <template #empty>
+            <div class="table-empty">
+              <el-empty v-if="isSearching || searchCompleted" description="未找到匹配的文件" :image-size="72">
+                <template #default>
+                  <el-button type="primary" plain @click="clearSearch">
+                    <el-icon><component :is="BackIcon" /></el-icon>
+                    清除搜索
+                  </el-button>
+                </template>
+              </el-empty>
+              <el-empty v-else description="当前目录暂无文件" :image-size="72">
+                <template #default>
+                  <el-button type="primary" @click="showUploadDialog">
+                    <el-icon><component :is="UploadIcon" /></el-icon>
+                    上传第一个文件
+                  </el-button>
+                </template>
+              </el-empty>
+            </div>
+          </template>
+        </el-table-v2>
       </div>
     </div>
 
@@ -118,7 +139,7 @@ import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
-import { PathUtils } from '@/utils'
+import { TableConst, PathUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import store from '@/store'
 import { FileRecordApi } from '@/api'
@@ -144,6 +165,11 @@ const route = useRoute()
 // 上传图标
 const UploadIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
   h('path', { d: 'M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z' })
+])
+
+// 返回/清除搜索图标
+const BackIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
+  h('path', { d: 'M11.67 3.87L9.9 2.1 0 12l9.9 9.9 1.77-1.77L3.54 12z' })
 ])
 
 // ===== 搜索逻辑 =====
@@ -519,6 +545,10 @@ watch(
       height: 100%;
       width: 100%;
     }
+
+    .table-empty {
+      padding: 24px 0;
+    }
   }
 
   // 页面级拖放上传遮罩
@@ -670,6 +700,16 @@ watch(
 .file-link.latest-version {
   color: @success-color;
   font-weight: 700;
+  // 叠加下划线，避免仅凭绿色加粗传达"最新版本"，方便色弱用户识别
+  text-decoration-line: underline;
+  text-decoration-color: @success-color;
+  text-underline-offset: 2px;
+}
+
+// 无 href 的自定义目录链接/路径段：鼠标手型，键盘焦点环交给全局 :focus-visible
+.file-link:not([href]),
+.path-segment {
+  cursor: pointer;
 }
 
 .notes-cell {

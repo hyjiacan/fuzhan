@@ -1,6 +1,7 @@
 import { h } from 'vue'
 import { ElButton } from 'element-plus'
 import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { keyNav } from '@/utils/a11y'
 import { isPreviewable } from '@/config/preview'
 import { highlightKeyword } from './highlight'
 
@@ -56,6 +57,8 @@ export function createColumns(ctx) {
       isDir(row)
         ? h('a', {
           class: 'file-link',
+          tabindex: '0',
+          onKeydown: keyNav(navigateToDir, dirPath),
           onClick: (e) => {
             e.preventDefault()
             navigateToDir(dirPath)
@@ -88,6 +91,8 @@ export function createColumns(ctx) {
           return [
             h('a', {
               class: 'path-segment',
+              tabindex: '0',
+              onKeydown: keyNav(navigateToDir, segPath),
               onClick: (e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -100,6 +105,8 @@ export function createColumns(ctx) {
         isDir(row)
           ? h('a', {
             class: 'file-link',
+            tabindex: '0',
+            onKeydown: keyNav(navigateToDir, dirPath),
             onClick: (e) => {
               e.preventDefault()
               navigateToDir(dirPath)
@@ -145,7 +152,7 @@ export function createColumns(ctx) {
       cellRenderer: ({ rowData: row }) => {
         const text = TimeUtils.formatDateTime(row.modifiedTime)
         if (TimeUtils.isRecent24h(row.modifiedTime)) {
-          return h('span', { style: 'color: #18a058' }, text)
+          return h('span', { class: 'recent-time', title: '近 24 小时内有更新' }, text)
         }
         return text
       }

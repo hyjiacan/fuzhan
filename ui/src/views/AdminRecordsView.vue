@@ -51,7 +51,7 @@
             :data="uploadRecords"
             :width="uploadWidth"
             :height="uploadHeight"
-            :row-height="32"
+            :row-height="TableConst.ROW_HEIGHT"
             row-key="id"
           />
         </div>
@@ -73,7 +73,7 @@
             :data="downloadRecords"
             :width="downloadWidth"
             :height="downloadHeight"
-            :row-height="32"
+            :row-height="TableConst.ROW_HEIGHT"
             row-key="id"
           />
         </div>
@@ -95,7 +95,7 @@
             :data="searchRecords"
             :width="searchWidth"
             :height="searchHeight"
-            :row-height="32"
+            :row-height="TableConst.ROW_HEIGHT"
             row-key="id"
           />
         </div>
@@ -118,7 +118,7 @@ import { ref, h, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElButton } from 'element-plus'
 import { FileApi, AdminApi } from '@/api'
-import { NumberUtils, TimeUtils } from '@/utils'
+import { TableConst, NumberUtils, TimeUtils } from '@/utils'
 
 const route = useRoute()
 const router = useRouter()

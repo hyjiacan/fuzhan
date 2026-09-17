@@ -7,9 +7,9 @@
 
     <!-- 统计卡片 -->
         <el-row :gutter="16" class="stat-grid">
-          <el-col :span="6">
+          <el-col :xs="24" :sm="12" :md="6">
             <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
+              <div class="stat-content stat-storage">
                 <el-icon :size="32"><component :is="StorageIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ formatSize(storageStats.usedSpace) }}</div>
@@ -18,9 +18,9 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :xs="24" :sm="12" :md="6">
             <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
+              <div class="stat-content stat-files">
                 <el-icon :size="32"><component :is="FileIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ indexStats.totalFiles.toLocaleString('zh-CN') }}</div>
@@ -29,9 +29,9 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :xs="24" :sm="12" :md="6">
             <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
+              <div class="stat-content stat-dups">
                 <el-icon :size="32"><component :is="DuplicateIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ indexStats.duplicateGroups }}</div>
@@ -40,9 +40,9 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :xs="24" :sm="12" :md="6">
             <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
+              <div class="stat-content stat-users">
                 <el-icon :size="32"><component :is="UserIcon" /></el-icon>
                 <div class="stat-info">
                   <div class="stat-value">{{ stats.activeUsers }}</div>
@@ -447,12 +447,28 @@ onMounted(() => {
     gap: 16px;
 
     .el-icon {
-      color: @primary-accent;
       transition: transform @transition-bounce;
     }
 
     &:hover .el-icon {
       transform: scale(1.1);
+    }
+
+    // 卡片类型语义色：与下方对应状态色统一
+    &.stat-storage .el-icon {
+      color: @primary-accent;
+    }
+
+    &.stat-files .el-icon {
+      color: @info-color;
+    }
+
+    &.stat-dups .el-icon {
+      color: @warning-color;
+    }
+
+    &.stat-users .el-icon {
+      color: @success-color;
     }
   }
 
