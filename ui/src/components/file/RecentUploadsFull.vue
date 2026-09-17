@@ -14,7 +14,7 @@
         <template #default="{ row }">
           <div style="display:flex;align-items:center;gap:8px">
             <span :class="`icon-filetype icon-filetype-${getFileExt(row.filename)}`" style="font-size:16px"></span>
-            <span style="color:#FFA500;cursor:pointer" @click="emit('go-to', row)">{{ row.filename }}</span>
+            <span style="color:#b25a00;cursor:pointer" @click="emit('go-to', row)">{{ row.filename }}</span>
           </div>
         </template>
       </el-table-column>

@@ -714,7 +714,7 @@ onMounted(async () => {
     font-weight: 600;
     color: #333;
     padding-left: 12px;
-    border-left: 3px solid @primary-color;
+    border-left: 3px solid @primary-accent;
   }
 }
 

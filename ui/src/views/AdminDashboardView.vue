@@ -450,7 +450,7 @@ onMounted(() => {
     gap: 16px;
 
     .el-icon {
-      color: @primary-color;
+      color: @primary-accent;
       transition: transform @transition-bounce;
     }
 
@@ -511,7 +511,7 @@ onMounted(() => {
       top: 0;
       left: 0;
       height: 100%;
-      background: fade(@primary-color, 10%);
+      background: fade(@primary-accent, 12%);
       pointer-events: none;
       transition: width @transition-smooth;
       z-index: 0;

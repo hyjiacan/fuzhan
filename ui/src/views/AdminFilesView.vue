@@ -366,12 +366,12 @@ onUnmounted(() => {
 
   &:hover {
     .icon-filetype {
-      color: #e98b4c;
+      color: @primary-accent;
     }
 
     .path-segment,
     .file-link {
-      color: #FF6600;
+      color: @primary-color;
     }
   }
 
@@ -428,7 +428,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   background: @bg-color-secondary;
   border-radius: 4px;
-  border-left: 3px solid @primary-color;
+  border-left: 3px solid @primary-accent;
   margin-top: 8px;
 
   p {

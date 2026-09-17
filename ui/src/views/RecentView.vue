@@ -364,7 +364,7 @@ onUnmounted(() => {
 
       &:hover {
         transform: translateY(-2px) scale(1.05);
-        box-shadow: 0 2px 8px fade(@primary-color, 30%);
+        box-shadow: 0 2px 8px fade(@primary-accent, 30%);
       }
 
       &:active {

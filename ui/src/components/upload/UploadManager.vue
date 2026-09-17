@@ -795,6 +795,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
 </script>
 
 <style lang="less">
+@import '@/styles/variables.less';
 .upload-manager {
   height: 65vh;
   overflow: auto;
@@ -810,15 +811,15 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     color: #666;
 
     &:hover {
-      border-color: #FF6600;
-      color: #FF6600;
+      border-color: @primary-color;
+      color: @primary-color;
     }
   }
 
   .drop-zone-active {
-    border-color: #FF6600;
-    background: rgba(255, 102, 0, 0.05);
-    color: #FF6600;
+    border-color: @primary-color;
+    background: fade(@primary-color, 5%);
+    color: @primary-color;
   }
 
   .drop-zone-content {
@@ -890,7 +891,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
           cursor: pointer;
 
           &:hover {
-            color: #FF6600;
+            color: @primary-color;
           }
         }
       }
@@ -950,7 +951,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 102, 0, 0.9);
+    background: fade(@primary-accent, 90%);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1059,7 +1060,7 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   color: #666;
 
   &:hover {
-    color: #FF6600;
+    color: @primary-color;
   }
 }
 

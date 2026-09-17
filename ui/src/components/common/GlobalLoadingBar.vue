@@ -26,7 +26,7 @@ const { isLoading } = useRequestLoading()
   .loading-bar-inner {
     height: 100%;
     width: 40%;
-    background: var(--el-color-primary, #ffa500);
+    background: var(--el-color-primary, #b25a00);
     border-radius: 2px;
     animation: global-loading-slide 1.1s ease-in-out infinite;
   }

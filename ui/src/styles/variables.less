@@ -1,9 +1,14 @@
 // ============================================
-// 品牌色 (适配 172.16.53.2 风格)
+// 主色（可读主色满足 WCAG AA ≥4.5:1；品牌亮橙仅用于图标/进度/装饰等非文字图形）
 // ============================================
-@primary-color: #FFA500;
-@primary-color-hover: #FFB733;
-@primary-color-pressed: #E69500;
+@primary-color: #B25A00;            // 文字/链接/按钮底/强调，550 orange，对白对比度 4.8:1
+@primary-color-hover: #9C4F00;
+@primary-color-pressed: #7A3C00;
+
+// 品牌亮橙：图标/进度条/描边/发光等非文字场景，保留品牌亮度
+@primary-accent: #FFA500;
+@primary-accent-hover: #FFB733;
+@primary-accent-press: #E69500;
 
 // ============================================
 // 文字颜色
@@ -98,7 +103,7 @@
 @hover-scale: scale(1.02);
 @active-scale: scale(0.98);
 @card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-@button-hover-shadow: 0 4px 12px rgba(255, 165, 0, 0.3);
+@button-hover-shadow: 0 4px 12px fade(@primary-accent, 30%);
 
 // ============================================
 // 响应式断点

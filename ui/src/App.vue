@@ -96,14 +96,27 @@ body {
   --app-width: 100%;
 }
 
-/* element-plus 主色主题覆盖（原 naive-ui 橙色主题） */
+/* element-plus 主色主题覆盖（可读主色加深以满足 WCAG AA：白色文字对比度 ≥4.5:1） */
 :root {
-  --el-color-primary: #ffa500;
-  --el-color-primary-light-3: #ffb733;
-  --el-color-primary-light-5: #ffca73;
-  --el-color-primary-light-7: #ffdda3;
-  --el-color-primary-light-8: #ffe8c6;
-  --el-color-primary-light-9: #fff4e4;
-  --el-color-primary-dark-2: #e69500;
+  --el-color-primary: #b25a00;
+  --el-color-primary-light-3: #c98c4d;
+  --el-color-primary-light-5: #d8ad80;
+  --el-color-primary-light-7: #e8ceb3;
+  --el-color-primary-light-8: #f0decc;
+  --el-color-primary-light-9: #f7efe6;
+  --el-color-primary-dark-2: #8f4800;
+}
+
+/* 主按钮：hover/active 加深而非变浅，保证白色文字在 AA 对比度线上 */
+.el-button--primary {
+  --el-button-bg-color: #b25a00;
+  --el-button-border-color: #b25a00;
+  --el-button-hover-bg-color: #9c4f00;
+  --el-button-hover-border-color: #9c4f00;
+  --el-button-active-bg-color: #7a3c00;
+  --el-button-active-border-color: #7a3c00;
+  --el-button-text-color: #ffffff;
+  --el-button-hover-text-color: #ffffff;
+  --el-button-active-text-color: #ffffff;
 }
 </style>

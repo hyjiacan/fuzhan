@@ -15,7 +15,7 @@
 
   &:hover {
     .icon-filetype {
-      color: #e98b4c;
+      color: @primary-accent;
     }
 
     .path-segment,
@@ -288,7 +288,7 @@
 
 .drop-zone-active {
   border-color: @primary-color;
-  background: rgba(255, 165, 0, 0.05);
+  background: fade(@primary-color, 5%);
   color: @primary-color;
 }
 
@@ -383,7 +383,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 102, 0, 0.9);
+  background: fade(@primary-accent, 90%);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -517,7 +517,7 @@
 
       &:hover {
         transform: translateY(-2px) scale(1.05);
-        box-shadow: 0 2px 8px fade(@primary-color, 30%);
+        box-shadow: 0 2px 8px fade(@primary-accent, 30%);
       }
 
       &:active {

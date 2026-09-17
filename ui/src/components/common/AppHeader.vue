@@ -571,7 +571,7 @@ export default {
 
   &.active {
     color: #fff;
-    background: rgba(255, 102, 0, 0.3);
+    background: fade(@primary-accent, 30%);
   }
 }
 
