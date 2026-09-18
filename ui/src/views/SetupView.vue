@@ -250,6 +250,11 @@
                     <el-input v-model="dir.quota" placeholder="0" size="large" />
                   </el-form-item>
                   <div class="dir-hint">配额留空或0表示无限制，支持 K / M / G / T 单位</div>
+
+                  <el-form-item label="允许上传" :show-message="false">
+                    <el-switch v-model="dir.uploadEnabled" />
+                  </el-form-item>
+                  <div class="dir-hint">关闭后上传界面无法选择该目录，web / FTP / WebDAV / URL 上传以及移动、复制文件进入该目录都会被拒绝</div>
                 </div>
                 <el-button type="primary" plain block @click="addDir" size="large" class="add-dir-btn">
                   <el-icon style="margin-right: 4px;"><component :is="PlusIcon" /></el-icon>
@@ -418,7 +423,7 @@ const form = reactive({
   postgresPassword: '',
   postgresDatabase: 'fuzhan',
   // Root dirs
-  rootDirs: [{ name: '共享文件', path: '', quota: '0', validating: false, validated: null, error: '' }],
+  rootDirs: [{ name: '共享文件', path: '', quota: '0', uploadEnabled: true, validating: false, validated: null, error: '' }],
   // HTTPS 配置
   https: {
     enabled: false,
@@ -435,7 +440,7 @@ const form = reactive({
 const requiredRule = { required: true, message: '此项为必填' }
 
 // Directory operations
-const addDir = () => form.rootDirs.push({ name: '', path: '', quota: '0', validating: false, validated: null, error: '' })
+const addDir = () => form.rootDirs.push({ name: '', path: '', quota: '0', uploadEnabled: true, validating: false, validated: null, error: '' })
 const removeDir = (index) => {
   const dir = form.rootDirs[index]
   dialog.warning({
@@ -544,7 +549,8 @@ const submitConfig = async () => {
       rootDirs: form.rootDirs.filter(d => d.path).map(d => ({
         name: d.name || '共享文件',
         path: d.path,
-        quota: NumberUtils.parseFileSize(d.quota)
+        quota: NumberUtils.parseFileSize(d.quota),
+        uploadEnabled: d.uploadEnabled !== false
       })),
       database: {
         driver: form.dbDriver,

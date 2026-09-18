@@ -106,9 +106,16 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 	}
 
 	// 检查公共目录上传开关（非临时/私有文件）
-	if (req.TargetType != models.TargetTypeTemp && req.TargetType != models.TargetTypePrivate) && !appconfig.GlobalConfig.Upload.Enabled {
-		utils.HandleErrorCompat(c, http.StatusForbidden, "公共目录上传已关闭", nil)
-		return
+	if req.TargetType != models.TargetTypeTemp && req.TargetType != models.TargetTypePrivate {
+		if !appconfig.GlobalConfig.Upload.Enabled {
+			utils.HandleErrorCompat(c, http.StatusForbidden, "公共目录上传已关闭", nil)
+			return
+		}
+		// 按目录检查：允许单独为某个共享目录关闭上传
+		if !appconfig.PublicDirUploadAllowed(req.RootName) {
+			utils.HandleErrorCompat(c, http.StatusForbidden, "该共享目录不允许上传文件", nil)
+			return
+		}
 	}
 
 	// 检查目标文件是否已存在（仅针对公开共享目录）

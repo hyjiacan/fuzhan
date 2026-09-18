@@ -30,7 +30,7 @@
             placeholder="选择共享目录"
             :style="{ width: '180px' }"
           >
-            <el-option v-for="opt in rootDirOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            <el-option v-for="opt in rootDirOptions" :key="opt.value" :label="opt.label" :value="opt.value" :disabled="opt.disabled" />
           </el-select>
           <el-input
             v-model="form.uploadDir"
@@ -456,8 +456,9 @@ const extractRootAndPath = (path) => {
   }
 
   if (rootDirOptions.value.length > 0) {
+    const fallback = rootDirOptions.value.find(r => !r.disabled) || rootDirOptions.value[0]
     return {
-      rootName: rootDirOptions.value[0].value,
+      rootName: fallback.value,
       dir: '/' + pathWithoutSlash
     }
   }
@@ -726,13 +727,17 @@ const handleFileSelect = (e) => {
 }
 
 // ===== 共享目录加载 =====
+// 返回第一个允许上传的根目录选项
+const firstUploadableRoot = (opts) => opts.find(o => !o.disabled) || null
+
 const loadRootDirs = async () => {
   try {
     const data = await SetupApi.getStatus()
     if (data.success && data.data?.rootDirs) {
       rootDirOptions.value = data.data.rootDirs.map(dir => ({
         label: dir.name,
-        value: dir.name
+        value: dir.name,
+        disabled: dir.uploadEnabled === false
       }))
 
       if (!needsRootSelection.value) {
@@ -746,11 +751,22 @@ const loadRootDirs = async () => {
         const currentPath = store.state.currentPath
         const { rootName, dir } = extractRootAndPath(currentPath)
         if (rootName) {
-          form.rootName = rootName
-          form.uploadDir = dir
-        } else if (rootDirOptions.value.length > 0) {
-          form.rootName = rootDirOptions.value[0].value
-          form.uploadDir = '/'
+          // 若当前目录不允许上传，则回退到第一个允许上传的目录
+          const currentOpt = rootDirOptions.value.find(o => o.value === rootName)
+          if (currentOpt && currentOpt.disabled) {
+            const fallback = firstUploadableRoot(rootDirOptions.value)
+            form.rootName = fallback ? fallback.value : ''
+            form.uploadDir = '/'
+          } else {
+            form.rootName = rootName
+            form.uploadDir = dir
+          }
+        } else {
+          const fallback = firstUploadableRoot(rootDirOptions.value)
+          if (fallback) {
+            form.rootName = fallback.value
+            form.uploadDir = '/'
+          }
         }
       }
     }

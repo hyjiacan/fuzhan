@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/net/webdav"
 
+	"fuzhan/internal/appconfig"
 	"fuzhan/internal/utils"
 )
 
@@ -45,13 +46,17 @@ func (fs *PublicFileSystem) SetBackend(backend Backend) {
 	fs.backend = backend
 }
 
-// canCreatePublic 校验公开写入口：全局上传开关 + 扩展名白名单 + 磁盘空间。
+// canCreatePublic 校验公开写入口：全局上传开关 + 按目录上传开关 + 扩展名白名单 + 磁盘空间。
 // backend 为 nil 时保持旧行为（不校验），用于单元测试。
-func (fs *PublicFileSystem) canCreatePublic(location, filename string) error {
+func (fs *PublicFileSystem) canCreatePublic(rootName, location, filename string) error {
 	if fs.backend == nil {
 		return nil
 	}
 	if !fs.backend.UploadEnabled() {
+		return os.ErrPermission
+	}
+	// 按目录检查：允许单独为某个共享目录关闭上传
+	if !appconfig.PublicDirUploadAllowed(rootName) {
 		return os.ErrPermission
 	}
 	if filename != "" {
@@ -75,7 +80,7 @@ func (fs *PublicFileSystem) Mkdir(ctx context.Context, name string, perm os.File
 	if err := fs.validators[rootName].Validate(fullPath); err != nil {
 		return os.ErrPermission
 	}
-	if err := fs.canCreatePublic(filepath.Dir(fullPath), ""); err != nil {
+	if err := fs.canCreatePublic(rootName, filepath.Dir(fullPath), ""); err != nil {
 		return err
 	}
 	return os.MkdirAll(fullPath, perm)
@@ -111,7 +116,7 @@ func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int,
 	// TOCTOU race against a concurrent PUT to the same path.
 	isCreate := flag&os.O_CREATE != 0
 	if isCreate {
-		if err := fs.canCreatePublic(filepath.Dir(fullPath), subPath); err != nil {
+		if err := fs.canCreatePublic(rootName, filepath.Dir(fullPath), subPath); err != nil {
 			return nil, err
 		}
 		f, err := os.OpenFile(fullPath, flag|os.O_EXCL, perm)

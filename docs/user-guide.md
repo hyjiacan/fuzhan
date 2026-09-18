@@ -73,9 +73,17 @@ storage:
     root_dirs:
       - path: "./data/share1"
         quota: "10GB"   # 配额限制，如 "10GB"、"500MB"
+        allow_upload: true   # 是否允许向该目录上传（默认 true）
       - path: "./data/photos"
         quota: "50GB"
+        allow_upload: false  # 设为 false 后该目录仅可浏览/下载，无法上传
 ```
+
+> `allow_upload` 可单独控制每个共享目录是否允许上传（默认允许）。设为 `false` 后：
+> - 上传界面中该目录不可选择；
+> - Web 上传、FTP、WebDAV、URL 上传的上传请求都会被后端拒绝；
+> - 将文件**移动/复制**进该目录的操作也会被拒绝（旧版移动接口、文件管理移动、FTP 重命名、WebDAV 写入均受限）。<br>
+> 不影响该目录的浏览与下载。
 
 ### 临时文件分享
 

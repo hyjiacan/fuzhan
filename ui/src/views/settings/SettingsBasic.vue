@@ -25,6 +25,10 @@
               <el-input v-model="dir.name" :maxlength="255" placeholder="显示名称" />
               <div class="field-hint">在界面上显示的目录名称</div>
             </el-form-item>
+            <el-form-item label="允许上传">
+              <el-switch v-model="dir.uploadEnabled" />
+              <div class="field-hint">关闭后上传界面无法选择该目录，web / FTP / WebDAV / URL 上传以及移动、复制文件进入该目录都会被拒绝（仅影响写入，不影响浏览与下载）</div>
+            </el-form-item>
           </el-form>
           <el-button type="danger" size="small" @click="removeDir(index)">删除</el-button>
         </div>
@@ -196,7 +200,7 @@ const allowedIPRangesDisplay = computed({
 })
 
 const addDir = () => {
-  props.settings.rootDirs.push({ path: '', name: '' })
+  props.settings.rootDirs.push({ path: '', name: '', uploadEnabled: true })
 }
 
 const removeDir = (index) => {

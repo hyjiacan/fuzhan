@@ -253,7 +253,7 @@ const loadSettings = async () => {
       if (settings.database.driver === 'postgres' && cfg.database?.dsn) {
         parsePostgresDsn(cfg.database.dsn)
       }
-      settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name })) || []
+      settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name, uploadEnabled: d.uploadEnabled !== false })) || []
       settings.allowedExtensions = cfg.allowedExtensions || []
 
       // 私有文件配置

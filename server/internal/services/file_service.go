@@ -135,6 +135,11 @@ func (fs *FileService) MoveFile(oldPath, newPath string) error {
 		return fmt.Errorf("目标路径必须以根目录名开头，如 documents/、photos/ 等")
 	}
 
+	// 目标目录不允许上传时，禁止移动/复制文件进入该目录
+	if !appconfig.PublicDirUploadAllowed(rootName) {
+		return fmt.Errorf("目标目录不允许上传文件，无法移动/复制到该目录")
+	}
+
 	// 解析旧路径
 	realOldPath, err := fs.resolvePath(oldPath)
 	if err != nil {

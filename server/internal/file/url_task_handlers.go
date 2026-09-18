@@ -174,6 +174,11 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 			utils.HandleBadRequest(c, "缺少根目录名称", nil)
 			return
 		}
+		// 按目录检查：与普通上传一致，禁止向不允许上传的共享目录发 URL 上传
+		if !appconfig.PublicDirUploadAllowed(req.RootName) {
+			utils.HandleErrorCompat(c, http.StatusForbidden, "该共享目录不允许上传文件", nil)
+			return
+		}
 		session := &models.UploadSession{
 			FileName:  filename,
 			FileSize:  fileSize,

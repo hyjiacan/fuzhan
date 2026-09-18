@@ -74,8 +74,9 @@ func readConfig() {
 		}
 
 		GlobalConfig.Storage.Public.RootDirs = append(GlobalConfig.Storage.Public.RootDirs, DirectoryConfig{
-			Path:  dirConfig.Path,
-			Quota: quota,
+			Path:        dirConfig.Path,
+			Quota:       quota,
+			AllowUpload: dirConfig.AllowUpload,
 		})
 	}
 

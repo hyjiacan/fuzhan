@@ -229,8 +229,16 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 				p = dir.FullPath
 			}
 			quota := existingQuotas[p]
-			dirs[i] = appconfig.DirectoryConfig{Path: p, Quota: quota}
-			fileDirs[i] = map[string]interface{}{"path": p, "quota": quota}
+			dirs[i] = appconfig.DirectoryConfig{
+				Path:        p,
+				Quota:       quota,
+				AllowUpload: appconfig.BoolPtrFalseWhenDisabled(dir.UploadEnabled),
+			}
+			fileDirs[i] = map[string]interface{}{
+				"path":         p,
+				"quota":        quota,
+				"allow_upload": dir.UploadEnabled,
+			}
 			if name := filepath.Base(p); name != "" && name != "." && name != string(filepath.Separator) {
 				newRootNames[name] = p
 			}

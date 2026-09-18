@@ -226,10 +226,14 @@ func (fs *MultiRootFs) validateExtension(filename string) error {
 
 // ---- permission helpers ----
 
-// canCreatePublic 公共目录上传总开关校验（与 Web 上传一致，不豁免管理员）。
-// backend 为 nil 时保持旧行为（不校验）。
-func (fs *MultiRootFs) canCreatePublic() bool {
-	return fs.backend == nil || fs.backend.UploadEnabled()
+// canCreatePublic 公共目录上传总开关 + 按目录开关校验（与 Web 上传一致，不豁免管理员）。
+// backend 为 nil 时保留旧行为（不校验全局开关），但仍校验按目录配置。
+// 注意：允许上传的子目录（如 /public/photos）在配置关闭上传时同样不可写。
+func (fs *MultiRootFs) canCreatePublic(rootName string) bool {
+	if fs.backend != nil && !fs.backend.UploadEnabled() {
+		return false
+	}
+	return appconfig.PublicDirUploadAllowed(rootName)
 }
 
 // canManagePublic 判定对 public 下已有文件执行覆盖/删除/重命名是否允许：
@@ -283,7 +287,7 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 	isPublic := fs.isPublicPath(name)
 	isPrivate := fs.isPrivatePath(name)
 	if isPublic {
-		if !fs.canCreatePublic() {
+		if !fs.canCreatePublic(ftpRootName(name)) {
 			return nil, os.ErrPermission
 		}
 		if err := fs.validateExtension(filepath.Base(name)); err != nil {
@@ -365,7 +369,7 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 
 	if isWrite {
 		if isPublic {
-			if !fs.canCreatePublic() {
+			if !fs.canCreatePublic(ftpRootName(name)) {
 				return nil, os.ErrPermission
 			}
 			if err := fs.validateExtension(filepath.Base(name)); err != nil {
@@ -534,6 +538,10 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 	newRoot, newRel := fs.recordPath(newName)
 
 	if oldNS == "public" {
+		// 目标根不允许上传时，禁止重命名/移动进入该目录
+		if !fs.canCreatePublic(newRoot) {
+			return os.ErrPermission
+		}
 		// 仅同根内重命名；匿名一律禁止；管理员/上传者本人放行
 		if oldRoot != newRoot {
 			return os.ErrPermission

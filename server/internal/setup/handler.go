@@ -39,7 +39,8 @@ func (h *SetupHandler) IsInitialized(c *gin.Context) {
 			name = name[idx+1:]
 		}
 		rootDirs[i] = gin.H{
-			"name": name,
+			"name":          name,
+			"uploadEnabled": dir.UploadAllowed(),
 		}
 	}
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{

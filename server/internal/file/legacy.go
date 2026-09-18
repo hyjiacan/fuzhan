@@ -298,6 +298,13 @@ func HandleMoveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 目标目录不允许上传时，禁止移动文件进入该目录
+	dstRoot := strings.TrimPrefix(strings.SplitN(requestData.NewPath, "/", 2)[0], "/")
+	if dstRoot != "" && !appconfig.PublicDirUploadAllowed(dstRoot) {
+		response.EncodeResponse(w, nil, "目标目录不允许上传文件，无法移动/复制到该目录", http.StatusForbidden)
+		return
+	}
+
 	// 检查目标路径是否已存在同名文件
 	if _, err := os.Stat(dstPath); err == nil {
 		response.EncodeResponse(w, nil, "目标路径已存在同名文件", http.StatusBadRequest)

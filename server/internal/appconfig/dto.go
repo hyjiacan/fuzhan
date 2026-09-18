@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+// BoolPtrFalseWhenDisabled 将上传开关 bool 转为首选的 *bool：
+// 禁止上传（enabled=false）时返回指向 false 的指针；允许上传时返回 nil（默认允许，写配置更简洁）。
+func BoolPtrFalseWhenDisabled(enabled bool) *bool {
+	if !enabled {
+		v := false
+		return &v
+	}
+	return nil
+}
+
 // ConfigDTO 配置 API 响应/请求 DTO，与前端字段保持一致（JSON camelCase）
 type ConfigDTO struct {
 	App               AppConfigDTO       `json:"app"`
@@ -53,9 +63,10 @@ type DatabaseConfigDTO struct {
 
 // RootDirConfig 根目录 DTO
 type RootDirConfig struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	FullPath string `json:"fullPath"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	FullPath      string `json:"fullPath"`
+	UploadEnabled bool   `json:"uploadEnabled"`
 }
 
 // PrivateConfigDTO 私有存储 DTO（API 中字段名为 "temp"，兼容前端）
@@ -195,9 +206,10 @@ func (c *Config) ToDTO() ConfigDTO {
 			name = name[idx+1:]
 		}
 		rootDirs[i] = RootDirConfig{
-			Name:     name,
-			Path:     name,
-			FullPath: dir.Path,
+			Name:          name,
+			Path:          name,
+			FullPath:      dir.Path,
+			UploadEnabled: dir.UploadAllowed(),
 		}
 	}
 
@@ -341,6 +353,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 			}
 			cfg.Storage.Public.RootDirs[i] = DirectoryConfig{
 				Path: path,
+				// 仅当明确禁止上传时写入 false；允许时保持 nil，回写 YAML 更简洁且与默认一致
+				AllowUpload: BoolPtrFalseWhenDisabled(dir.UploadEnabled),
 			}
 		}
 	}

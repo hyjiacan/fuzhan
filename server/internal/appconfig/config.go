@@ -98,12 +98,21 @@ type ServerConfig struct {
 type DirectoryConfig struct {
 	Path  string `yaml:"path"`
 	Quota int64  `yaml:"quota,omitempty"`
+	// AllowUpload 是否允许向该公共目录上传文件。空（nil）表示允许（默认值）。
+	// 前端 JSON 字段为 uploadEnabled；设置页未配置时保持 nil 即允许上传。
+	AllowUpload *bool `yaml:"allow_upload,omitempty" json:"uploadEnabled"`
+}
+
+// UploadAllowed 返回该公共目录是否允许上传文件（未配置时默认允许）。
+func (d DirectoryConfig) UploadAllowed() bool {
+	return d.AllowUpload == nil || *d.AllowUpload
 }
 
 // DirectoryConfigWithStringQuota 支持字符串格式配额的目录配置结构体
 type DirectoryConfigWithStringQuota struct {
-	Path  string `yaml:"path"`
-	Quota string `yaml:"quota,omitempty"`
+	Path        string `yaml:"path"`
+	Quota       string `yaml:"quota,omitempty"`
+	AllowUpload *bool  `yaml:"allow_upload,omitempty"`
 }
 
 // PrivateQuotaConfig 临时文件配额配置结构体
@@ -433,6 +442,19 @@ func RLockConfig() { configMu.RLock() }
 
 // RUnlockConfig 释放读锁
 func RUnlockConfig() { configMu.RUnlock() }
+
+// PublicDirUploadAllowed 判断指定公共目录（rootName 为目录路径最后一段）是否允许上传文件。
+// 未找到该目录（未知 rootName）时按允许处理，避免误伤已存在的上传能力。
+func PublicDirUploadAllowed(rootName string) bool {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	for _, d := range GlobalConfig.Storage.Public.RootDirs {
+		if filepath.Base(d.Path) == rootName {
+			return d.UploadAllowed()
+		}
+	}
+	return true
+}
 
 // GetDownloadRateLimit 返回下载频率限制配置（供下载限流器每个请求实时读取，
 // 支持配置热更新；MaxRequests <= 0 表示不限制）。
