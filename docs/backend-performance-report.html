@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后端性能深入分析报告 · 浮栈 Fuzhan</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a24; --panel2:#1e222e; --line:#2a2f3d;
+    --text:#e6e8ee; --muted:#9aa1b0; --accent:#5b8cff;
+    --high:#ff6b6b; --mid:#ffc46b; --low:#6bd48e; --info:#5b8cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7}
+  .wrap{max-width:1060px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:.5px}
+  h2{font-size:22px;margin:44px 0 14px;padding-left:12px;border-left:4px solid var(--accent)}
+  h3{font-size:16px;margin:0 0 10px}
+  p{color:var(--text)}
+  .sub{color:var(--muted)}
+  .hero{background:linear-gradient(135deg,#1a2030,#141724);border:1px solid var(--line);border-radius:14px;padding:28px 30px;margin-bottom:26px}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:13px}
+  .meta b{color:var(--accent);font-weight:600}
+  /* 计分 */
+  .score-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0 6px}
+  .score{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;text-align:center}
+  .score .num{font-size:30px;font-weight:700;line-height:1.2}
+  .score .lbl{color:var(--muted);font-size:12px;margin-top:4px}
+  .score.high .num{color:var(--high)} .score.mid .num{color:var(--mid)}
+  .score.low .num{color:var(--low)} .score.ok .num{color:var(--info)}
+  /* 分类图例 */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:6px 0 20px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  /* 模块分布 bars */
+  .bars{margin:10px 0 4px}
+  .bar-row{display:grid;grid-template-columns:150px 1fr 56px;align-items:center;gap:12px;margin-bottom:10px;font-size:13px}
+  .bar-row .nm{color:var(--muted);text-align:right}
+  .bar-track{background:var(--panel2);border-radius:6px;height:14px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:6px}
+  .bar-row .v{color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+  /* 发现卡片 */
+  .issue{border:1px solid var(--line);border-radius:12px;margin:16px 0;overflow:hidden;background:var(--panel)}
+  .issue>header{display:flex;align-items:center;gap:12px;padding:13px 18px;background:var(--panel2);border-bottom:1px solid var(--line);cursor:default}
+  .issue .sev{font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .sev.high{background:rgba(255,107,107,.15);color:var(--high)}
+  .sev.mid{background:rgba(255,196,107,.15);color:var(--mid)}
+  .sev.low{background:rgba(107,212,142,.15);color:var(--low)}
+  .issue .title{font-weight:600;font-size:15px}
+  .issue .ref{color:var(--muted);font-size:12px;font-family:ui-monospace,Consolas,monospace;margin-left:auto}
+  .issue .body{padding:14px 18px;font-size:14px}
+  .issue .body p{margin:0 0 8px}
+  .issue .body p:last-child{margin-bottom:0}
+  .issue code{background:#0c0e14;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12px;font-family:ui-monospace,Consolas,monospace;color:#ffd479;word-break:break-all}
+  .issue pre{background:#0c0e14;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12px;font-family:ui-monospace,Consolas,monospace;color:#b7c3e8;line-height:1.5;margin:6px 0}
+  .field{display:grid;grid-template-columns:84px 1fr;column-gap:12px;margin:7px 0}
+  .field .k{color:var(--muted);font-size:12px;padding-top:2px}
+  .field .v{font-size:13px}
+  .fix{color:var(--low)}
+  .impact{color:var(--high)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600;white-space:nowrap}
+  td code{background:#0c0e14;border-radius:4px;padding:0 5px;font-size:12px}
+  tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+  .roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+  .phase{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .phase h3{margin:0 0 8px}
+  .phase ul{margin:0;padding-left:18px}
+  .phase li{margin:5px 0;color:var(--text);font-size:13px}
+  .phase .tag{font-size:11px;color:var(--muted);display:block;margin-bottom:6px}
+  .tip{padding:14px 18px;border-radius:10px;background:rgba(91,140,255,.08);border:1px solid rgba(91,140,255,.25);font-size:14px;margin:16px 0}
+  blockquote{margin:14px 0;padding:12px 16px;border-left:4px solid var(--accent);background:var(--panel);border-radius:0 8px 8px 0;color:var(--muted)}
+  footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+  .rd-footer{color:var(--info);font-weight:600}
+  /* 实施状态 */
+  .status-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px}
+  .sgroup{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .sgroup h3{margin:0 0 10px;font-size:15px}
+  .sitem{display:flex;align-items:flex-start;gap:8px;margin:7px 0;font-size:13px;line-height:1.55}
+  .sitem .txt{color:var(--muted)}
+  .sitem code{background:#0c0e14;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:12px}
+  .pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;flex:none;margin-top:2px}
+  .pill.done{background:rgba(107,212,142,.15);color:var(--low)}
+  .pill.skip{background:rgba(154,161,176,.15);color:var(--text)}
+  .pill.todo{background:rgba(91,140,255,.15);color:var(--info)}
+  @media(max-width:760px){
+    .score-grid{grid-template-columns:repeat(2,1fr)}
+    .roadmap{grid-template-columns:1fr}
+    .status-cols{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:96px 1fr 48px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>后端性能深入分析报告</h1>
+    <p class="sub">浮栈 (Fuzhan) — 基于 Go + Gin + SQLite/GORM 的轻量文件共享服务器</p>
+    <div class="meta">
+      <span>目标后端：<b>server/</b></span>
+      <span>分析类型：<b>静态代码审阅</b></span>
+      <span>路径：<b>./server</b></span>
+      <span>全文证据：<b>文件:行号</b></span>
+    </div>
+  </div>
+
+  <h2>1. 结论速览</h2>
+  <p>整体架构<b style="color:var(--info)">健康且成熟</b>，作者对 SQLite 单写者模型、watch 事件去抖、有界异步审计、覆盖索引等约束有充分考量。下载主路径已使用 <code>http.ServeFile</code> 流式传输（支持 Range / 206 / sendfile），URL 转存采用分块预分配。主要性能欠账集中在<b style="color:var(--high)">两条热路径</b>：<b>数据库通配符全文搜索</b>与<b>串行目录全量索引扫描</b>，其余为可优化的常量因子与写放大开销。</p>
+
+  <div class="score-grid">
+    <div class="score high"><div class="num">5</div><div class="lbl">高风险</div></div>
+    <div class="score mid"><div class="num">8</div><div class="lbl">中风险</div></div>
+    <div class="score low"><div class="num">8</div><div class="lbl">低风险</div></div>
+  </div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--high)"></i>高 · 吞吐/稳定影响大</span>
+    <span><i class="dot" style="background:var(--mid)"></i>中 · 影响面局部</span>
+    <span><i class="dot" style="background:var(--low)"></i>低 · 常数因子</span>
+  </div>
+
+  <h2>2. 风险模块分布</h2>
+  <p class="sub">按受影响的子系统归纳的问题密度与严重度示意：</p>
+  <div class="bars">
+    <div class="bar-row"><div class="nm">文件搜索</div><div class="bar-track"><div class="bar-fill" style="width:90%;background:var(--high)"></div></div><div class="v">严重</div></div>
+    <div class="bar-row"><div class="nm">索引/扫描</div><div class="bar-track"><div class="bar-fill" style="width:72%;background:var(--high)"></div></div><div class="v">严重</div></div>
+    <div class="bar-row"><div class="nm">上传链路</div><div class="bar-track"><div class="bar-fill" style="width:58%;background:var(--mid)"></div></div><div class="v">中高</div></div>
+    <div class="bar-row"><div class="nm">监控/分析</div><div class="bar-track"><div class="bar-fill" style="width:44%;background:var(--mid)"></div></div><div class="v">中</div></div>
+    <div class="bar-row"><div class="nm">认证/API</div><div class="bar-track"><div class="bar-fill" style="width:36%;background:var(--mid)"></div></div><div class="v">中</div></div>
+    <div class="bar-row"><div class="nm">文件 I/O</div><div class="bar-track"><div class="bar-fill" style="width:28%;background:var(--low)"></div></div><div class="v">中低</div></div>
+    <div class="bar-row"><div class="nm">数据库层</div><div class="bar-track"><div class="bar-fill" style="width:22%;background:var(--low)"></div></div><div class="v">低</div></div>
+  </div>
+
+  <h2>3. 高风险问题</h2>
+
+  <div class="issue">
+    <header><span class="sev high">高</span><span class="title">数据库搜索通配符全表扫描，<code>file_name</code> 无索引可用</span><span class="ref">services/search_service.go:117 · models/file_record.go:87-142</span></header>
+    <div class="body">
+      <div class="field"><div class="k">现象</div><div class="v">关键词过滤使用前导通配的 <code>LIKE '%kw%'</code>（同时匹配文件名与备注），且三张索引表建立的全部单列/复合索引均<b>不含 <code>file_name</code> 列</b>（见 file_record.go:91-141）。即便存在 file_name 索引，前导通配符也无法命中。</div></div>
+      <div class="field"><div class="k">影响</div><div class="v">文件量增大后每次搜索都要对 filtered 结果集做整表级扫表，占用 SQLite 读锁；为缓解并发已回退为单查询（避免多 goroutine 加剧锁竞争，见 :103-104），但这只是抑制了并发放大，未能降低单次扫描成本。</div></div>
+      <div class="field"><div class="k">方向</div><div class="v fix">改为前缀匹配（<code>name LIKE 'kw%'</code>）+ <code>(root_name,status,file_name)</code> 覆盖索引；或引入词项检索 / SQLite FTS5（已内置，可作为 <code>file_records_*</code> 的外置词表），从根本上消除前导通配扫表。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev high">高</span><span class="title">全量索引扫描双重 Walk + 单协程顺序递归</span><span class="ref">internal/index/scanner_public.go:35,239 · scanner.go</span></header>
+    <div class="body">
+      <div class="field"><div class="k">现象</div><div class="v">先 <code>countFiles</code> 完整 Walk 整棵目录树做纯统计，随后 <code>scanRootDir</code> 再 <code>filepath.Walk</code> 第二次；且 <code>filepath.Walk</code> 为单协程深度优先，仅在多个根目录之间并行。</div></div>
+      <div class="field"><div class="k">影响</div><div class="v">大而深的目录树全量扫描成为单点瓶颈，首次建索引 / 重启重建耗时随文件数线性增长且无法利用多核（哈希 worker 虽并发，但被串行的目录遍历拖住）。</div></div>
+      <div class="field"><div class="k">方向</div><div class="v fix">用平面 <code>ReadDir</code> + 并发 worker 池遍历；“计数”与“扫描”合并为单趟遍历，扫描进度用计数器累加。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev high">高</span><span class="title"><code>suggest</code> 联想/纠错词表过滤 O(n²)</span><span class="ref">internal/search/search.go:402,411 · search.go:44</span></header>
+    <div class="body">
+      <div class="field"><div class="k">现象</div><div class="v"><code>filterTermFragments → containsIn</code> 对全量缓存词表做嵌套循环子串判定；N-gram（2~4）分词使词表规模巨大，每个联想/纠错请求都冷循环一次缓存词表；<code>enumSuggestTerms</code> 虽缓存了词表，但过滤逻辑每次全量执行。</div></div>
+      <div class="field"><div class="k">影响</div><div class="v">高频搜索联想请求的 CPU 成本随词表规模平方增长。</div></div>
+      <div class="field"><div class="k">方向</div><div class="v fix">对候选词建立倒排字典（子串 → 词），或仅对短词做子串映射，把过滤降到接近 O(候选数)。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev high">高</span><span class="title">监控接口未认证暴露全盘扫描与全表统计</span><span class="ref">router.go:344-349 · internal/monitor/… · monitorservice 路径</span></header>
+    <div class="body">
+      <div class="field"><div class="k">现象</div><div class="v"><code>/monitor/storage|access|keywords|…|hot-downloads</code> 全部<b>无认证</b>；其中存储统计每次请求对全部根目录 <code>filepath.Walk</code> 做整盘扫描，另有对 <code>operation_records</code> 的 <code>COUNT(*)</code> 全表统计（服务层 :229-250 / :364）。</div></div>
+      <div class="field"><div class="k">影响</div><div class="v">未授权者可反复触发磁盘 IO 与全表统计，形成廉价 DoS；属“性能 + 安全”双重欠账。</div></div>
+      <div class="field"><div class="k">方向</div><div class="v fix">至少添加 <code>AuthRequired</code> + 请求限流；存储统计加带 TTL 的缓存，避免每次请求实时 Walk。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev high">高</span><span class="title">OpenAPI 每请求 bcrypt + goroutine 写库</span><span class="ref">internal/auth/api_key.go:120 · 中间件“…C”</span></header>
+    <div class="body">
+      <div class="field"><div class="k">现象</div><div class="v">每次 OpenAPI 调用在 <code>ValidateApiKey</code> 中执行 <code>bcrypt.CompareHashAndPassword</code>（cost 10，约 50–80ms）+ 一次 <code>users</code>/<code>api_keys</code> 查库（先 read 回源），且每请求另起 goroutine 更新 <code>last_used_at</code>（go routine 无界堆积）。</div></div>
+      <div class="field"><div class="k">影响</div><div class="v">在未开启或不充足限流时，OpenAPI 吞吐被每次 50ms+ 的 bcrypt 串死死扣住；无界 goroutine 冲击内存。</div></div>
+      <div class="field"><div class="k">方向</div><div class="v fix">加短 TTL 哈希校验缓存，合并 <code>last_used_at</code> 的异步写（队列化或去抖）。</div></div>
+    </div>
+  </div>
+
+  <h2>4. 中风险问题</h2>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">上传分片整块读入堆内存</span><span class="ref">internal/services/upload_session.go:207</span></header>
+    <div class="body">
+      <div class="field"><div class="v"><code>io.ReadAll(io.LimitReader(req.ChunkData, chunkSize+1))</code> 将整个分片一次性读入 <code>[]byte</code>，再 xxh3 校验 + <code>WriteAt</code>；每片按 chunkSize(默认 10MB) 全量分配并隐性二次拷贝。并发大文件上传时<b style="color:var(--mid)">堆内存随请求线性增长</b>，产生 GC 压力。</div></div>
+      <div class="field"><div class="v fix">改为固定 64KB buffer 流式落盘，xxh3 走 <code>io.TeeReader</code> 增量哈希，不再持有整片缓冲。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">每分片独立 GORM 事务（2 UPDATE + 1 INSERT）</span><span class="ref">internal/services/upload_session.go:250-271</span></header>
+    <div class="body">
+      <div class="field"><div class="v">每个分片提交一次事务：刷新会话状态、刷新过期时间、插入分片记录。千级分片 = 千次事务，在 SQLite 单写锁下为串行化写热点。</div></div>
+      <div class="field"><div class="v fix">分片记录异步批量/去抖写入，仅在关键节点（finalize、resume）落库，减少写放大。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">哈希写库逐条 UPDATE</span><span class="ref">internal/index/hashworker.go:325-339</span></header>
+    <div class="body">
+      <div class="field"><div class="v">哈希完成批次仍对每个 id 单独 <code>WHERE id=? Updates</code>（最多 500 条独立 UPDATE），仅靠 <code>lockWrite</code> 串行；SQLite 写繁重。</div></div>
+      <div class="field"><div class="v fix">改用 <code>CASE WHEN id …</code> 合并成单条批量 UPDATE，显著降低写放大。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">一致性校验在 Walk 回调内逐条修复</span><span class="ref">internal/index/consistency.go:183,197,252</span></header>
+    <div class="body">
+      <div class="field"><div class="v">在遍历回调中直接调用 <code>fixMismatched</code>（单条 UPDATE，未走 <code>lockWrite</code>），背离“先收集后批量”的意图，且可能与扫描写并发竞争。</div></div>
+      <div class="field"><div class="v fix">像 pendingCreate 一样先收集差异，mbatch后再统一批量更新。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">xxh3 小文件整读 + 并行放大</span><span class="ref">internal/pkg/xxh3/xxh3.go:44-50</span></header>
+    <div class="body">
+      <div class="field"><div class="v">≤64MB 文件 <code>io.ReadAll</code> 全量读入内存哈希；HashWorker 并发数为 GOMAXPROCS，多个 64MB 同时整读可占数百 MB 堆。</div></div>
+      <div class="field"><div class="v fix">统一 64KB 分块流式哈希，或降低“整读”阈值。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">检索索引重建与增量/查询互斥</span><span class="ref">internal/search/indexer.go:22,66 · search.go:44</span></header>
+    <div class="body">
+      <div class="field"><div class="v"><code>RebuildFromDB</code>/<code>ReconcileIndex</code> 与 watcher 增量共用 <code>SearchIndex.mu</code>；重建（如启动全量）期间增量写入与联想查询（读端）都会被阻塞。</div></div>
+      <div class="field"><div class="v fix">内存态原子指针热替换索引，或对重建进行并发隔离。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">SQLite 缺少 <code>synchronous=NORMAL</code>（写满 fsync）</span><span class="ref">internal/appconfig/database.go:206-221</span></header>
+    <div class="body">
+      <div class="field"><div class="v">已正确启用 WAL + busy_timeout(2000)，但未设置 <code>synchronous=NORMAL</code>，默认 FULL 下每次提交 fsync；配合默认 8 连接，WAL 下写放大明显。</div></div>
+      <div class="field"><div class="v fix">追加 <code>synchronous(NORMAL)</code>（WAL 下 NORMAL 已提供足够的崩溃安全）；可将 SQLite <code>MaxOpenConns</code> 收敛到 2–4 以降低写锁碰撞。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">审计/记录 worker 逐条落库，缓冲满会阻塞请求</span><span class="ref">internal/services/record_writer.go:35-69 · repositories/upload_repo.go:167</span></header>
+    <div class="body">
+      <div class="field"><div class="v">异步队列（4 worker / 256 缓冲）背压合理，但 worker 仍逐条 <code>Create</code>，未批量事务提交；缓冲打满时 <code>Submit</code> 阻塞回退同步，拖慢请求线程。</div></div>
+      <div class="field"><div class="v fix">worker 攒批后单事务批量 insert。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev mid">中</span><span class="title">下载统计与认证回源开销</span><span class="ref">internal/services/download_service.go:65,210,317</span></header>
+    <div class="body">
+      <div class="field"><div class="v">每次下载<b>同步</b>执行 <code>attachFileID</code>/<code>IncrementPublicDownloadCount</code>（阻塞 DB 查询），<code>os.Stat</code> 后 <code>http.ServeFile</code> 内部再 stat 一次；认证中间件只缓存“禁用”用户，正常用户每请求仍回源 <code>SELECT disabled WHERE uuid=?</code>。</div></div>
+      <div class="field"><div class="v fix">下载统计关联查询异步化/去抖，去冗余 stat；非禁用态加短 TTL 缓存。</div></div>
+    </div>
+  </div>
+
+  <h2>5. 低风险 & 优化建议</h2>
+
+  <table>
+    <tr><th style="width:190px">位置</th><th>说明</th><th style="width:130px">建议</th></tr>
+    <tr><td><code>internal/file/preview.go:105</code></td><td>文本预览 <code>os.ReadFile</code> 整份读入上限 50MB，再 <code>string()</code> 二次拷贝，瞬时 ~100MB/请求</td><td style="color:var(--mid)">内联上限降 ≤4MB 或流式首块</td></tr>
+    <tr><td><code>internal/temp/handler.go:249</code></td><td>临时下载用裸 <code>io.Copy</code>，无 Range/206/续传；主下载路径 <code>ServeFile</code> 已良好</td><td style="color:var(--low)">改用 <code>c.File</code> 复用 Range/sendfile</td></tr>
+    <tr><td><code>internal/auth/middleware.go:292</code></td><td><code>RequestIDMiddleware</code> 每请求 <code>crypto/rand.Read</code>（毫秒级）</td><td style="color:var(--low)">可换原子计数器/伪随机</td></tr>
+    <tr><td><code>internal/openapi/middleware.go:165</code></td><td>限流 map 无淘汰，去重 IP 越多内存越涨</td><td style="color:var(--low)">加 LRU / 周期清理</td></tr>
+    <tr><td><code>internal/downloadanalytics/…</code></td><td>Heatmap/Aggregate/Trend 命中即删除重算，窗口内全量行 <code>Scan</code> 入内存</td><td style="color:var(--low)">延长兜底 TTL、SQL 侧聚合</td></tr>
+    <tr><td><code>internal/repositories/audit_store.go:360</code></td><td><code>GetAll</code> 全表 <code>Find</code> 无 limit</td><td style="color:var(--low)">加 limit 或告警统计</td></tr>
+    <tr><td><code>internal/uploadutil/uploadutil.go:20</code></td><td><code>io.ReadAll(srcFile)</code> 无长度限制（当前无调用方，死代码）</td><td style="color:var(--low)">删除或限读</td></tr>
+    <tr><td><code>internal/services/file_service.go:38</code></td><td><code>append([]rec, records...)</code> 每次前插 + O(n) 拷贝（上限100）</td><td style="color:var(--low)">头插/环形缓冲</td></tr>
+  </table>
+
+  <h2>6. 优化路线图</h2>
+  <div class="roadmap">
+    <div class="phase">
+      <span class="tag">阶段一 · 高收益 / 低风险</span>
+      <h3>快速见效</h3>
+      <ul>
+        <li>监控接口加认证 + 存储统计缓存</li>
+        <li>OpenAPI 校验结果短 TTL 缓存</li>
+        <li>SQLite 加 <code>synchronous=NORMAL</code>、收敛连接数</li>
+        <li>record/hash 写库批量 <code>CASE</code> 更新</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <span class="tag">阶段二 · 中等改动</span>
+      <h3>热路径重构</h3>
+      <ul>
+        <li>搜索改前缀/词项/FTS5，为 file_name 建覆盖索引</li>
+        <li>上传整片缓冲 → 64KB 流式 + TeeReader 增量哈希</li>
+        <li>temp 下载改用 <code>c.File</code>（Range/sendfile）</li>
+        <li>全量扫描合并双重 Walk 为单趟 + 并发池</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <span class="tag">阶段三 · 结构性</span>
+      <h3>深度优化</h3>
+      <ul>
+        <li>suggest 词表倒排化，去 O(n²)</li>
+        <li>检索索引内存热替换，隔离重建与查询</li>
+        <li>下载统计/认证回源异步化</li>
+        <li>前台每秒 ± 周期指标可观测</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>7. 实施状态（按路线图跟踪）</h2>
+  <p class="sub">以下为按路线图推进后的落地情况，随迭代更新。状态标注：<span class="pill done">已完成</span><span class="pill skip">跳过</span><span class="pill todo">待实施</span></p>
+  <div class="status-cols">
+    <div class="sgroup">
+      <h3>阶段一 · 快速见效</h3>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">监控接口加认证 + 存储统计缓存（<code>monitor_service.go</code>）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">OpenAPI 校验结果短 TTL 缓存（<code>auth/api_key.go</code>）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">SQLite 加 <code>synchronous=NORMAL</code>、收敛连接数（<code>appconfig/database.go</code>）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">record/hash 写库 <code>CASE</code> 批量更新（<code>index/hashworker.go</code>、<code>services/record_writer.go</code>）</span></div>
+    </div>
+    <div class="sgroup">
+      <h3>阶段二 · 热路径重构</h3>
+      <div class="sitem"><span class="pill skip">跳过</span><span class="txt">搜索改前缀/词项/FTS5 与 file_name 覆盖索引——按数据量判断维持现状（文件管理 ≤10 万，<code>LIKE '%kw%'</code> 扫表可控）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">上传 64KB 流式 + <code>io.TeeReader</code> 增量哈希（<code>services/upload_session.go</code>）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">temp 下载改 <code>http.ServeContent</code>（Range/206/sendfile，<code>internal/temp/handler.go</code>）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">全量扫描合并双重 Walk 为<b>单趟</b> + <b>并发 worker 池</b>（本次，见下）</span></div>
+    </div>
+    <div class="sgroup">
+      <h3>阶段三 · 深度优化</h3>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">suggest 词表倒排化，去 O(n²)（缓存 + 倒排子串过滤 + 编辑距离剪枝，见下）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">检索索引热替换：影子目录重建 + <code>rwMu</code> 原子切换，隔离重建与查询（见下）</span></div>
+      <div class="sitem"><span class="pill done">已完成</span><span class="txt">下载统计/认证回源异步化：计数攒批批量落库 + 用户禁用状态正反 TTL 缓存</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev low">已优化</span><span class="title">全量扫描单趟 + 并发池实施记录</span><span class="ref">internal/index/walker.go · scanner_public.go</span></header>
+    <div class="body">
+      <div class="field"><div class="k">落地</div><div class="v">新增 <code>walkConcurrent</code>（固定 worker 池并行 <code>ReadDir</code>，<code>sync.Cond</code>+<code>inflight</code> 驱动终止，ctx 取消安全无泄漏）；目录/文件条目经 channel 交给<b>单消费者协程</b>串行去重、批量写库（仍走 <code>lockWrite</code>），在并行读磁盘的同时保持 SQLite 单写者语义。</div></div>
+      <div class="field"><div class="k">合并计数</div><div class="v">删除 <code>countFiles</code> 第二次整树 Walk；总文件数以数据库活跃记录 <code>Count</code> 为基线，扫描中新条目经 <code>ScanProgress.IncTotal()</code> 递增，进度依旧准确。</div></div>
+      <div class="field"><div class="k">安全</div><div class="v">并行 ReadDir 采用 lstat 语义（与 <code>filepath.Walk</code> 一致，含符号链接与目录项投递）；批量写库失败或外部取消即终止并按失败结束、不误删索引，磁盘读取级错误照旧跳过。</div></div>
+      <div class="field"><div class="k">验证</div><div class="v"><code>go build ./...</code> 与 <code>go vet</code> 全绿；新增 <code>walker_test.go</code>（完整性/并发度无关/取消不挂起，连跑 5 次稳定）。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev low">已优化</span><span class="title">阶段三实施记录（一）suggest 词表倒排化</span><span class="ref">internal/search/search.go · fragment_test.go</span></header>
+    <div class="body">
+      <div class="field"><div class="k">倒排过滤</div><div class="v"><code>filterTermFragments</code> 先对“更长 ASCII 宿主词”生成 2~4 长度连续子串入 <code>covered</code> 集合，再据此 O(n) 剔除 N-gram 碎片，取代原先对每个 term 全表扫宿主（O(n²)）；新老实现已用等值测试（含随机词表）核对语义一致。</div></div>
+      <div class="field"><div class="k">编辑距离剪枝</div><div class="v"><code>SuggestCorrectKeywords</code> 先按首字符 + 长度差（|Δlen|≤2）粗筛候选，跳过后注定不能命中（d>2）的 DP 计算；词表频率排序不变。</div></div>
+      <div class="field"><div class="k">缓存</div><div class="v">过滤后的词表缓存（<code>enumSuggestTerms</code>）只在首次读取或写后节流窗口过后重建，高频键入直接复用，倒排扫描开销由“每次调用”降为“每次失效一次”。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev low">已优化</span><span class="title">阶段三实施记录（二）检索索引热替换</span><span class="ref">internal/search/indexer.go · search.go</span></header>
+    <div class="body">
+      <div class="field"><div class="k">影子重建</div><div class="v"><code>RebuildFromDB</code> 在 <code>&lt;dir&gt;.rebuild.&lt;nano&gt;</code> 用独立 writer 全量写盘，全程不触碰线上 writer——重建期间 <code>AutoComplete/SpellCheck/suggest</code> 始终命中旧索引（完整、一致、零写锁阻塞），彻底隔离“重建”与“查询”。</div></div>
+      <div class="field"><div class="k">原子切换</div><div class="v">新增 <code>rwMu</code>：读方法与增删改持 <code>RLock</code>（读共享），切换在 <code>Lock</code> 下关闭旧 writer → 删除旧目录 → 影子目录提升为规范目录 → 重新打开并重置词表缓存，一份数据集合整体更换，避免中途读到半重建态。</div></div>
+      <div class="field"><div class="k">共享化</div><div class="v"><code>buildSearchDoc</code>/<code>writeEntries</code>/<code>openBlugeWriter</code> 抽为与实例解耦的函数，线上批量写入与影子重建共用同一套构建逻辑，并用热替换测试（改名/删除/新增、重复重建、缓存放陪后续换）与全量测试套件校验。</div></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <header><span class="sev low">已优化</span><span class="title">阶段三实施记录（三）异步化统计 + 认证回源</span><span class="ref">internal/services/download_count.go · internal/middleware/auth.go</span></header>
+    <div class="body">
+      <div class="field"><div class="k">下载计数攒批</div><div class="v">下载热路径不再同步 UPDATE 索引表：<code>SubmitDownloadCountIncrement</code> 仅非阻塞入队，后台 worker 周期（2s）或达 256 条映射上限时，用单条 <code>CASE full_path WHEN...END</code> 批量 UPDATE 落库，消除每次下载的写放大与请求线程阻塞（缓冲满仅丢弃计数并告警，背压保护）；关闭时排空落库，并有批量落库测试校验计数正确。</div></div>
+      <div class="field"><div class="k">认证回源</div><div class="v">用户禁用状态缓存由“仅缓存禁用用户”改为正反两面短 TTL（30s）：命中即免 <code>SELECT disabled</code>，正常用户不再每请求回源；管理员禁用/恢复在 TTL 内生效，记录不存在视为正常并同样入缓存，避免重复查库。</div></div>
+    </div>
+  </div>
+
+  <div class="tip"><b>最重要的两项</b>：优先处理<b>文件搜索通配符扫表</b>与<b>监控接口未认证 + 实时整盘扫描</b>——前者决定大库下的查询体验，后者是无需登录即可触发的资源耗尽面。二者均为“性价比最高”的改动点。</div>
+
+  <h2>8. 方法说明与局限</h2>
+  <blockquote>
+    本次分析方式为<b>静态代码审阅</b>：通过人工 Read 与三路并行子代理分别审查 <b>(1) 文件 I/O / 上传下载存储</b>、<b>(2) 搜索 / 索引 / 扫描 / 哈希</b>、<b>(3) 数据库 / 中间件 / 监控 / 认证</b> 三个簇，并对全部“高”结论做二次 Read 逐条核验行号。部分运行时论断（如 bcrypt 耗时、扫描耗时、内存峰值）为经验估值，未经真实压测校准。<br><br>
+    <span class="rd-footer">后续建议：基于 <code>/api/v1/health</code>、内置 <code>/api/v1/metrics</code>（Prometheus）与 pprof 补充实测数据；如需，可在正式压测后回填数值。</span>
+  </blockquote>
+
+  <footer>
+    生成时间：2026-09-18 ｜ 范围：<code>server/</code>（Go + Gin） ｜ 分析方法：静态代码审阅 + 证据核验 ｜ 报告编号：fuzhan-backend-perf-01 ｜ 含路线图实施状态（阶段一已完成、阶段二搜索项按数据量跳过、阶段三三项全部完成）
+  </footer>
+</div>
+</body>
+</html>

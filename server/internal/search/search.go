@@ -37,14 +37,23 @@ const (
 )
 
 // SearchIndex 封装 Bluge 索引 Writer，负责文件名的写入与检索。
-// writer 不支持并发写，因此所有写操作必须经 mutex 串行化。
+// writer 不支持并发写，因此所有写操作必须经 mu 串行化。
+//
+// 热替换隔离（rebuild 与查询解耦）：
+//   - rwMu 保护 writer 字段的生命周期。读（AutoComplete/SpellCheck/enumSuggestTerms/AllFileIDs）
+//     持有 rwMu.RLock（读共享），全量重建完成后的原子切换持有 rwMu.Lock（写独占）。
+//   - RebuildFromDB 在影子目录用独立 writer 全量重建，不触碰线上 writer，因此重建全程
+//     查询都命中旧索引（完整、一致、零阻塞）；最后一次性原子替换。
 type SearchIndex struct {
 	writer *bluge.Writer
+	dir    string // 本索引的磁盘目录（用于计算影子重建目录）
 	seg    *gse.Segmenter
 	mu     sync.Mutex // 串行化写操作
+	rwMu   sync.RWMutex // 保护 writer 字段生命周期：读共享 / 热替换写独占
 
 	// 词表缓存：建议接口（SuggestKeywords/SuggestCorrectKeywords）基于去重后的 term 词表工作，
 	// 直接每次枚举全词表开销大，这里在写入后节流（debounce）重建一次，后续读复用。
+	// 缓存中保存的是"已剔除 N-gram 碎片"的过滤词表，过滤开销（倒排子串扫描）仅在建缓存时执行一次。
 	termCacheMu       sync.Mutex // 保护 termCacheTerms 及 lastWriteAt/loaded 的重建
 	lastWriteAt       int64      // 最近一次索引写入的 UnixNano 时间，用于节流判定
 	termCacheLoaded   bool
@@ -54,29 +63,67 @@ type SearchIndex struct {
 
 // OpenIndex 打开（或创建）位于 dir 的搜索索引，并加载 gse 分词词典。
 func OpenIndex(dir string) (*SearchIndex, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("创建索引目录失败: %w", err)
-	}
-
 	// 加载 gse 中文分词器；优先使用内嵌词典，避免依赖外部字典文件
 	seg, err := gse.NewEmbed()
 	if err != nil {
 		return nil, fmt.Errorf("加载 gse 词典失败: %w", err)
 	}
 
+	writer, err := openBlugeWriter(dir, &seg)
+	if err != nil {
+		return nil, err
+	}
+	return &SearchIndex{
+		writer:            writer,
+		dir:               dir,
+		seg:               &seg,
+		suggestDebounceNs: int64(suggestRebuildDebounce), // 写后重建节流窗口
+	}, nil
+}
+
+// openBlugeWriter 在 dir 打开（或创建）Bluge 写端并套用自定义分析器。
+// 影子重建也复用本函数在临时目录构建全新索引。
+func openBlugeWriter(dir string, seg *gse.Segmenter) (*bluge.Writer, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("创建索引目录失败: %w", err)
+	}
 	config := bluge.DefaultConfig(dir)
 	config.DefaultSearchField = FieldFileName
-	config.DefaultSearchAnalyzer = newMixedAnalyzer(&seg)
-
+	config.DefaultSearchAnalyzer = newMixedAnalyzer(seg)
 	writer, err := bluge.OpenWriter(config)
 	if err != nil {
 		return nil, fmt.Errorf("打开 Bluge 索引失败: %w", err)
 	}
-	return &SearchIndex{
-		writer:            writer,
-		seg:               &seg,
-		suggestDebounceNs: int64(suggestRebuildDebounce), // 写后重建节流窗口
-	}, nil
+	return writer, nil
+}
+
+// buildSearchDoc 以给定分析器构建一条文档（file_name 开启 store）。与 s 无耦合，供线上与影子重建共用。
+func buildSearchDoc(id, fileName string, seg *gse.Segmenter) *bluge.Document {
+	doc := bluge.NewDocument(id)
+	f := bluge.NewTextField(FieldFileName, fileName).
+		StoreValue().
+		WithAnalyzer(newMixedAnalyzer(seg))
+	doc.AddField(f)
+	return doc
+}
+
+// writeEntries 将一批条目写入指定 writer（不涉及锁与词表缓存，供线上 IndexBatch 与影子重建共用）。
+func writeEntries(w *bluge.Writer, seg *gse.Segmenter, entries []IndexEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	b := bluge.NewBatch()
+	for _, e := range entries {
+		if strings.TrimSpace(e.FileName) == "" {
+			continue
+		}
+		id := fmt.Sprintf("%d", e.ID)
+		b.Update(bluge.Identifier(id), buildSearchDoc(id, e.FileName, seg))
+	}
+	if err := w.Batch(b); err != nil {
+		return fmt.Errorf("批量写入检索索引失败: %w", err)
+	}
+	return nil
 }
 
 // newMixedAnalyzer 构造组合分析器：
@@ -169,6 +216,8 @@ func isASCIIWord(s string) bool {
 func (s *SearchIndex) IndexFile(fileID int64, fileName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 
 	if s.writer == nil {
 		return fmt.Errorf("索引未打开")
@@ -178,7 +227,7 @@ func (s *SearchIndex) IndexFile(fileID int64, fileName string) error {
 	}
 
 	id := fmt.Sprintf("%d", fileID)
-	if err := s.writer.Update(bluge.Identifier(id), s.buildDoc(id, fileName)); err != nil {
+	if err := s.writer.Update(bluge.Identifier(id), buildSearchDoc(id, fileName, s.seg)); err != nil {
 		return fmt.Errorf("写入索引失败: %w", err)
 	}
 	s.invalidateTermCache()
@@ -198,39 +247,25 @@ func (s *SearchIndex) IndexBatch(entries []IndexEntry) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 
 	if s.writer == nil {
 		return fmt.Errorf("索引未打开")
 	}
-	b := bluge.NewBatch()
-	for _, e := range entries {
-		if strings.TrimSpace(e.FileName) == "" {
-			continue
-		}
-		id := fmt.Sprintf("%d", e.ID)
-		b.Update(bluge.Identifier(id), s.buildDoc(id, e.FileName))
-	}
-	if err := s.writer.Batch(b); err != nil {
-		return fmt.Errorf("批量写入索引失败: %w", err)
+	if err := writeEntries(s.writer, s.seg, entries); err != nil {
+		return err
 	}
 	s.invalidateTermCache()
 	return nil
-}
-
-// buildDoc 构建文档：file_name 字段开启 store，供检索后直接返回；索引端使用自定义分析器
-func (s *SearchIndex) buildDoc(id, fileName string) *bluge.Document {
-	doc := bluge.NewDocument(id)
-	f := bluge.NewTextField(FieldFileName, fileName).
-		StoreValue().
-		WithAnalyzer(newMixedAnalyzer(s.seg))
-	doc.AddField(f)
-	return doc
 }
 
 // Delete 从索引删除指定 fileID 的文档（文件删除/移动后需同步调用）。
 func (s *SearchIndex) Delete(fileID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 
 	if s.writer == nil {
 		return nil
@@ -250,6 +285,8 @@ func (s *SearchIndex) DeleteBatch(fileIDs []int64) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 
 	if s.writer == nil {
 		return nil
@@ -267,9 +304,12 @@ func (s *SearchIndex) DeleteBatch(fileIDs []int64) error {
 
 // AllFileIDs 枚举当前索引中全部文档的 fileID（用于与索引表对齐，判定缺失/孤儿）。
 func (s *SearchIndex) AllFileIDs() ([]int64, error) {
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 	if s.writer == nil {
 		return nil, nil
 	}
+
 	reader, err := s.writer.Reader()
 	if err != nil {
 		return nil, fmt.Errorf("打开读端失败: %w", err)
@@ -321,11 +361,14 @@ func (s *SearchIndex) invalidateTermCache() {
 	s.lastWriteAt = time.Now().UnixNano()
 }
 
-// enumSuggestTerms 返回去重后的全部索引 term（含频率），供建议接口复用。
+// enumSuggestTerms 返回去重后的建议词表（已剔除 N-gram 碎片，含频率），供建议接口复用。
 // 带惰性+节流缓存：首读重建一次；写入后不立即重建，待节流窗口（suggestRebuildDebounce）
 // 过后再重建，窗口内的高频读直接复用旧缓存，避免每次键入都枚举全词表。
 // termCacheMu 互斥串行化所有读与重建，保证同一时刻仅一个 goroutine 枚举词表。
 func (s *SearchIndex) enumSuggestTerms() ([]suggestTerm, error) {
+	// RLock 与热替换互斥：重建期间词表缓存不被替换，保证缓存数据与当前 writer 一致。
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 	if s.writer == nil {
 		return nil, nil
 	}
@@ -347,11 +390,12 @@ func (s *SearchIndex) enumSuggestTerms() ([]suggestTerm, error) {
 		s.lastWriteAt = 0 // 允许后续本次重建被接住后再判定
 	}
 
-	terms, err := s.enumSuggestTermsUncached()
+	raw, err := s.enumSuggestTermsUncached()
 	if err != nil {
 		return nil, err
 	}
-	s.termCacheTerms = terms
+	// 倒排子串过滤在此一次性完成，后续读直接复用过滤结果
+	s.termCacheTerms = filterTermFragments(raw)
 	s.termCacheLoaded = true
 	s.lastWriteAt = 0
 	return s.termCacheTerms, nil
@@ -394,43 +438,53 @@ func (s *SearchIndex) enumSuggestTermsUncached() ([]suggestTerm, error) {
 }
 
 // filterTermFragments 过滤 N-gram 碎片（英文/数字片段被索引为 2~4 长度的子串）。
-// 规则：仅当某 ASCII term 是某更长 ASCII term 的连续子串（即更完整词的碎片）时判定为碎片并丢弃，
+// 规则：仅当某 ASCII term 是某"更长 ASCII term"（长度 >= len(term)+2）的连续子串时判定为碎片并丢弃，
 // 中文词汇不受影响。完整词（如 readme、mate60pro）因无更长宿主不会被误删。
+//
+// 倒排化：先用宿主子串建索引，把原先对每个 term 全表扫宿主（O(n²)）降为近线性。
+// 覆盖集 covered 只收录"宿主长度 >= 子串长度+2"的子串，与规则语义完全等价，仅保留在
+// 确有意义时把碎片判为丢弃的判定项。过滤仍只执行一次（见 enumSuggestTerms 缓存）。
 func filterTermFragments(terms []suggestTerm) []suggestTerm {
+	// 第一遍：对每个 ASCII 宿主词，把其长度为 2..maxN 的连续子串写入 covered 集合。
+	// 宿主为长度 >= len(s)+2 的词，即长度分别不低于 4/5/6（对应碎片长 2/3/4）。
+	covered := make(map[string]struct{}, len(terms))
+	for _, t := range terms {
+		if !isASCIIWord(t.term) || len(t.term) < 4 {
+			continue
+		}
+		word := t.term
+		L := len(word)
+		maxN := L - 2 // 所需宿主长度 >= 子串长+2
+		if maxN > ngramMax {
+			maxN = ngramMax
+		}
+		for n := 2; n <= maxN; n++ {
+			for i := 0; i+n <= L; i++ {
+				covered[word[i:i+n]] = struct{}{}
+			}
+		}
+	}
+
+	// 第二遍：长度 < ngramMax+1（即 <5）的 ASCII term 若命中覆盖集，即为其更长宿主词的碎片，丢弃。
 	out := make([]suggestTerm, 0, len(terms))
 	for _, t := range terms {
-		if isASCIIWord(t.term) && len(t.term) < 5 && containsIn(t.term, terms) {
-			continue
+		if isASCIIWord(t.term) && len(t.term) < ngramMax+1 {
+			if _, ok := covered[t.term]; ok {
+				continue
+			}
 		}
 		out = append(out, t)
 	}
 	return out
 }
 
-// containsIn 判断 s（ASCII 词）是否作为另一更长 ASCII 词（长度 >= len(s)+2）的连续子串出现。
-func containsIn(s string, terms []suggestTerm) bool {
-	for _, t := range terms {
-		if !isASCIIWord(t.term) || len(t.term) <= len(s) {
-			continue
-		}
-		if strings.Contains(t.term, s) {
-			return true
-		}
-	}
-	return false
-}
-
 // SuggestKeywords 自动补全关键词：返回以 prefix 开头的最常见关键词（term），而非完整文件名。
-// 基于词表枚举，按出现频率排序；返回最多 limit 个。英文为小写，中文为语义词。
+// 基于词表枚举（已剔除 N-gram 碎片），按出现频率排序；返回最多 limit 个。英文为小写，中文为语义词。
 func (s *SearchIndex) SuggestKeywords(prefix string, limit int) ([]string, error) {
-	if s.writer == nil {
-		return nil, nil
-	}
 	terms, err := s.enumSuggestTerms()
 	if err != nil {
 		return nil, err
 	}
-	terms = filterTermFragments(terms)
 
 	want := strings.ToLower(strings.TrimSpace(prefix))
 	var cand []suggestTerm
@@ -451,9 +505,6 @@ func (s *SearchIndex) SuggestKeywords(prefix string, limit int) ([]string, error
 // SuggestCorrectKeywords 拼写纠错关键词：在词表中做编辑距离模糊匹配（fuzziness=2、prefix_length=1），
 // 返回最相似的关键词，按（距离升序→频率降序）排序，最多 limit 个。
 func (s *SearchIndex) SuggestCorrectKeywords(word string, limit int) ([]string, error) {
-	if s.writer == nil {
-		return nil, nil
-	}
 	terms, err := s.enumSuggestTerms()
 	if err != nil {
 		return nil, err
@@ -463,16 +514,19 @@ func (s *SearchIndex) SuggestCorrectKeywords(word string, limit int) ([]string, 
 		return []string{}, nil
 	}
 
-	// 先过滤碎片后再做距离比较，避免把 N-gram 碎片当作纠错候选
-	clean := filterTermFragments(terms)
+	// 词表已剔除 N-gram 碎片，直接用于距离比较。
 	firstChar := want[0]
 	type scored struct {
 		suggestTerm
 		dist int
 	}
 	var cand []scored
-	for _, t := range clean {
+	for _, t := range terms {
 		if len(t.term) == 0 || t.term[0] != firstChar {
+			continue
+		}
+		// 编辑距离 <=2 必然要求长度差 <=2，先按长度剪枝，跳过注定不能命中的候选，省去较贵的 DP
+		if len(t.term) > len(want)+2 || len(t.term) < len(want)-2 {
 			continue
 		}
 		d := editDistance(want, t.term)
@@ -533,9 +587,12 @@ func min3(a, b, c int) int {
 // AutoComplete 自动补全：基于前缀查询。
 // 返回最多 limit 个匹配的 file_name。前缀为人正常输入的内容，会经分析器处理。
 func (s *SearchIndex) AutoComplete(prefix string, limit int) ([]string, error) {
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 	if s.writer == nil {
 		return nil, nil
 	}
+
 	reader, err := s.writer.Reader()
 	if err != nil {
 		return nil, fmt.Errorf("打开读端失败: %w", err)
@@ -557,9 +614,12 @@ func (s *SearchIndex) AutoComplete(prefix string, limit int) ([]string, error) {
 // 设置 fuzziness=2、prefix_length=1（首字符必须精确，减少误纠音近词），
 // 返回最多 limit 个最相似的文件名候选。
 func (s *SearchIndex) SpellCheck(word string, limit int) ([]string, error) {
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
 	if s.writer == nil {
 		return nil, nil
 	}
+
 	reader, err := s.writer.Reader()
 	if err != nil {
 		return nil, fmt.Errorf("打开读端失败: %w", err)
@@ -582,8 +642,8 @@ func (s *SearchIndex) SpellCheck(word string, limit int) ([]string, error) {
 // CloseWriter 优雅关闭，确保内存索引数据安全刷盘后关闭句柄。
 // 程序退出前必须调用，否则可能丢失最近写入的数据。
 func (s *SearchIndex) CloseWriter() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.rwMu.Lock()
+	defer s.rwMu.Unlock()
 
 	if s.writer == nil {
 		return nil

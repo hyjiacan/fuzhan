@@ -340,9 +340,12 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	// 监控指标路由（需要认证，防止信息泄露）
 	api.GET("/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())
 
-	// 系统监测路由（无需认证）
-	api.GET("/monitor/storage", monitorHandler.Storage)
-	api.GET("/monitor/access", monitorHandler.Access)
+	// 系统监测路由
+	// 存储与访问统计是重查询（整盘 Walk / operation_records 计数），仅管理面板使用，
+	// 加管理员认证避免未授权者反复触发磁盘 IO/全表统计（廉价 DoS）。
+	// keywords/recent/rankings/hot-downloads 被公开的 /hot、/recent 页使用，保持可匿名访问。
+	api.GET("/monitor/storage", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Storage)
+	api.GET("/monitor/access", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Access)
 	api.GET("/monitor/keywords", monitorHandler.Keywords)
 	api.GET("/monitor/recent", monitorHandler.RecentKeywords)
 	api.GET("/monitor/rankings", monitorHandler.Rankings)

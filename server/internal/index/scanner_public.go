@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -27,34 +26,24 @@ func (s *Scanner) runScan(ctx context.Context, trigger string) {
 		}
 	}
 
-	// 先统计文件数（可能耗时，每10秒报告进度）
-	utils.Info("全量扫描开始: 正在统计文件总数...")
+	// 不再预先完整 Walk 目录树统计文件数，改用数据库现有活跃索引数作为总文件数基线，
+	// 单趟扫描中随新增条目递增（见 scanRootDir 的 IncTotal），消除双重遍历带来的二次 I/O。
+	utils.Info("全量扫描开始: 以数据库活跃记录为基线估算文件总数...")
 	var totalFiles int64
 	countStart := utils.Now()
-	countDone := make(chan struct{}, 1)
-	go func() {
-		for _, rootPath := range s.rootNames {
-			count, _ := countFiles(rootPath)
-			totalFiles += count
-		}
-		countDone <- struct{}{}
-	}()
-	countTicker := time.NewTicker(3 * time.Second)
-	defer countTicker.Stop()
-	select {
-	case <-countDone:
-	case <-countTicker.C:
-		utils.Info("文件总数统计中, 已耗时 " + time.Since(countStart).Round(time.Second).String())
-		// 等待统计完成
-		<-countDone
+	if err := s.db.Model(&models.FileRecordPublic{}).
+		Where("status = ?", models.FileStatusActive).
+		Count(&totalFiles).Error; err != nil {
+		utils.Warn("统计数据库基线文件数失败, 总文件数将从 0 递增", utils.Err(err))
+		totalFiles = 0
 	}
-	utils.Info("全量扫描文件总数统计完成",
-		utils.Int64("total_files", totalFiles),
-		utils.Duration("count_elapsed", time.Since(countStart)))
 	s.getOrCreateProgress(ScanScopePublic).SetTotalFiles(totalFiles)
 	s.updateScanRecord(scanRecord.ID, map[string]interface{}{
 		"TotalFiles": totalFiles,
 	})
+	utils.Info("全量扫描文件总数基线已就绪",
+		utils.Int64("db_active", totalFiles),
+		utils.Duration("count_elapsed", time.Since(countStart)))
 
 	// 按名称排序根目录保证顺序
 	names := make([]string, 0, len(s.rootNames))
@@ -215,9 +204,8 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		existing[r.FilePath] = r.ID
 	}
 
-	// 批量插入缓冲区
+	// 批量插入缓冲区（仅在下方向量器消费协程中访问，天然串行，不承受并发竞争）
 	var batch []models.FileRecordPublic
-
 	flushBatch := func() error {
 		if len(batch) == 0 {
 			return nil
@@ -225,115 +213,109 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		// 写入 file_records_public（批量写加写锁，避免与 HashWorker 抢占写锁）
 		release := lockWrite()
 		defer release()
-		if err := s.db.CreateInBatches(batch, s.batchSize).Error; err != nil {
-			return err
-		}
-		return nil
+		return s.db.CreateInBatches(batch, s.batchSize).Error
 	}
 
 	var scanned int64 // 当前根目录已扫描文件数
 	var added int64   // 当前根目录新增索引数
+	progress := s.getOrCreateProgress(ScanScopePublic)
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
 
-	walkErr := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			utils.Warn("扫描跳过无法访问的文件",
-				utils.String("path", path),
-				utils.Err(err))
-			return nil
-		}
+	// 单趟并发遍历：目录 ReadDir 并行执行；条目经 channel 交给下方消费者协程串行入库，
+	// 从而在并发出读磁盘的同时保持写库顺序收敛为单写者。
+	scanCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	entryCh := make(chan walkEntry, 256)
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		relPath, relErr := filepath.Rel(rootPath, path)
-		if relErr != nil || relPath == "." {
-			return nil
-		}
-		relPath = filepath.ToSlash(relPath)
-		// 标准化 file_path：确保有前导 /，FullPath 格式：/rootName/path
-		if !strings.HasPrefix(relPath, "/") {
-			relPath = "/" + relPath
-		}
-
-		modTime := info.ModTime()
-		scanned++
-
-		// 定期输出进度
-		select {
-		case <-progressTicker.C:
-			p := s.getOrCreateProgress(ScanScopePublic).Get()
-			utils.Info("扫描进度",
-				utils.String("root_name", rootName),
-				utils.Int64("root_scanned", scanned),
-				utils.Int64("total_scanned", p.ScannedFiles),
-				utils.Int64("total_files", p.TotalFiles),
-				utils.String("current", path))
-		default:
-		}
-
-		// 检查是否已在索引中
-		if _, exists := existing[relPath]; exists {
-			// 已存在, 从待处理集合中移除
-			delete(existing, relPath)
-			s.getOrCreateProgress(ScanScopePublic).IncScanned()
-			s.getOrCreateProgress(ScanScopePublic).SetCurrentFile(path)
-			return nil
-		}
-
-		// 新增记录（hash 留空，由 HashWorker 后续处理）
-		added++
-
-		now := utils.Now()
-		rec := models.FileRecordPublic{
-			FileRecordBase: models.FileRecordBase{
-				FileName:     info.Name(),
-				FilePath:     relPath,
-				RootName:     rootName,
-				FullPath:     "/" + rootName + relPath,
-				FileSize:     fileSizeFromInfo(info),
-				IsDir:        info.IsDir(),
-				ModTime:      modTime,
-				Status:       models.FileStatusActive,
-				LastSyncedAt: now,
-			},
-		}
-		batch = append(batch, rec)
-
-		if len(batch) >= s.batchSize {
-			if ferr := flushBatch(); ferr != nil {
-				return ferr
+	consumerDone := make(chan struct{})
+	var consumerErr error
+	go func() {
+		defer close(consumerDone)
+		for e := range entryCh {
+			// 已在索引中：从待处理集合移除
+			if _, exists := existing[e.relPath]; exists {
+				delete(existing, e.relPath)
+				scanned++
+				progress.IncScanned()
+				progress.SetCurrentFile(e.relPath)
+				continue
 			}
-			batch = batch[:0]
+
+			// 新增记录（hash 留空，由 HashWorker 后续处理）
+			added++
+			now := utils.Now()
+			batch = append(batch, models.FileRecordPublic{
+				FileRecordBase: models.FileRecordBase{
+					FileName:     e.info.Name(),
+					FilePath:     e.relPath,
+					RootName:     rootName,
+					FullPath:     "/" + rootName + e.relPath,
+					FileSize:     fileSizeFromInfo(e.info),
+					IsDir:        e.info.IsDir(),
+					ModTime:      e.info.ModTime(),
+					Status:       models.FileStatusActive,
+					LastSyncedAt: now,
+				},
+			})
+			scanned++
+			progress.IncScanned()
+			progress.IncTotal() // 单趟扫描：总文件数随新增条目递增，避免预先整树统计
+			progress.SetCurrentFile(e.relPath)
+
+			if len(batch) >= s.batchSize {
+				if ferr := flushBatch(); ferr != nil {
+					consumerErr = ferr
+					cancel() // 中止剩余遍历，避免写库失败后继续无意义扫描
+					return
+				}
+				batch = batch[:0]
+			}
+
+			// 定期输出进度
+			select {
+			case <-progressTicker.C:
+				utils.Info("扫描进度",
+					utils.String("root_name", rootName),
+					utils.Int64("root_scanned", scanned),
+					utils.Int64("total_scanned", progress.Get().ScannedFiles),
+					utils.Int64("total_files", progress.Get().TotalFiles),
+					utils.String("current", e.relPath))
+			default:
+			}
 		}
 
-		s.getOrCreateProgress(ScanScopePublic).IncScanned()
-		s.getOrCreateProgress(ScanScopePublic).SetCurrentFile(path)
-		return nil
-	})
-
-	// 刷新剩余批次
-	if len(batch) > 0 {
-		if ferr := flushBatch(); ferr != nil && walkErr == nil {
-			walkErr = ferr
+		// 刷新剩余批次
+		if len(batch) > 0 {
+			if ferr := flushBatch(); ferr != nil && consumerErr == nil {
+				consumerErr = ferr
+			}
 		}
-	}
+	}()
+
+	// walkErr 仅反映磁盘读取层面的可跳过错误（与旧实现"跳过无法访问的文件"保持一致，不视为致命）
+	_ = walkConcurrent(scanCtx, rootPath, defaultWalkWorkers(), entryCh)
+	<-consumerDone
 
 	result.Scanned = scanned
 	result.Added = added
 
-	if walkErr != nil {
-		result.Error = walkErr.Error()
+	// 致命条件：批量写库失败，或外部上下文被取消
+	var failErr error
+	switch {
+	case consumerErr != nil:
+		failErr = consumerErr
+	case scanCtx.Err() != nil:
+		failErr = scanCtx.Err()
+	}
+	if failErr != nil {
+		result.Error = failErr.Error()
 		utils.Warn("根目录扫描异常结束",
 			utils.String("root_name", rootName),
 			utils.Int64("scanned", scanned),
 			utils.Int64("added", added),
-			utils.Err(walkErr))
-		return result, walkErr
+			utils.Err(failErr))
+		return result, failErr
 	}
 
 	// 仅在扫描无错误时处理已删除的文件标记
@@ -373,31 +355,4 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		utils.Int("deleted", deleted))
 
 	return result, nil
-}
-
-// countFiles 统计目录下文件数（用于进度估算）
-func countFiles(rootPath string) (int64, error) {
-	var count int64
-	countStart := utils.Now()
-	countTicker := time.NewTicker(10 * time.Second)
-	defer countTicker.Stop()
-
-	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() {
-			count++
-		}
-		select {
-		case <-countTicker.C:
-			utils.Info("文件统计中",
-				utils.String("root", rootPath),
-				utils.Int64("files", count),
-				utils.Duration("elapsed", time.Since(countStart)))
-		default:
-		}
-		return nil
-	})
-	return count, err
 }

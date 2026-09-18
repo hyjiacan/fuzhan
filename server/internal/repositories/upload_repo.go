@@ -168,6 +168,14 @@ func (r *RecordRepository) Create(record *models.OperationRecord) error {
 	return r.db.Create(record).Error
 }
 
+// CreateBatch 批量创建操作记录（单事务分片写入，降低高写流量下的逐条 insert 开销）
+func (r *RecordRepository) CreateBatch(records []*models.OperationRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	return r.db.CreateInBatches(records, 200).Error
+}
+
 // ResolvePublicFileID 按路径反查公共文件索引记录 ID（仅 active）。
 // fullPath 允许带或不带前导斜杠，两种格式都能命中。
 func (r *RecordRepository) ResolvePublicFileID(rootName, fullPath string) (uint, error) {

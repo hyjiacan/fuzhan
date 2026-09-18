@@ -529,6 +529,8 @@ func (rt *runCtx) run() {
 			}
 			// 停止有界记录器，排空并写完全部排队操作记录
 			services.StopRecordWriter()
+			// 停止下载计数批量记录器，排空未落库的计数
+			services.StopDownloadCountRecorder()
 			utils.Info("服务器已关闭")
 			return
 		case <-configCh:

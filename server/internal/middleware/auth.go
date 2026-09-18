@@ -19,17 +19,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// disabledCache 缓存已禁用用户的 UUID，避免每请求都查库
-type disabledCache struct {
-	mu      sync.RWMutex
-	entries map[string]time.Time // uuid -> 缓存过期时间
+// userStatusEntry 一条用户禁用状态缓存记录
+type userStatusEntry struct {
+	disabled bool
+	expire   time.Time
 }
 
-var userDisabledCache = &disabledCache{entries: make(map[string]time.Time)}
+// userStatusCache 缓存用户禁用状态（正反两面），避免正常用户每个请求都回源查库。
+// 禁用与正常结果统一走短 TTL：命中即免查库，管理员禁用/恢复在 TTL(30s) 内生效。
+type userStatusCache struct {
+	mu      sync.RWMutex
+	entries map[string]userStatusEntry // uuid -> 禁用状态 + 过期时间
+}
+
+var userDisabledCache = &userStatusCache{entries: make(map[string]userStatusEntry)}
 
 const disabledCacheTTL = 30 * time.Second
 
-// init 启动 disabledCache 后台清理协程
+// init 启动缓存后台清理协程
 func init() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -40,30 +47,32 @@ func init() {
 	}()
 }
 
-func (dc *disabledCache) isDisabled(uuid string) (bool, bool) {
-	dc.mu.RLock()
-	expire, ok := dc.entries[uuid]
-	dc.mu.RUnlock()
-	if !ok || utils.Now().After(expire) {
+// isDisabled 返回缓存的禁用状态；未命中或已过期时 cached=false。
+func (sc *userStatusCache) isDisabled(uuid string) (disabled, cached bool) {
+	sc.mu.RLock()
+	e, ok := sc.entries[uuid]
+	sc.mu.RUnlock()
+	if !ok || utils.Now().After(e.expire) {
 		return false, false
 	}
-	return true, true // 已缓存为禁用状态
+	return e.disabled, true
 }
 
-func (dc *disabledCache) setDisabled(uuid string) {
-	dc.mu.Lock()
-	dc.entries[uuid] = utils.Now().Add(disabledCacheTTL)
-	dc.mu.Unlock()
+// set 写入一次用户禁用状态（正反结果均可缓存）。
+func (sc *userStatusCache) set(uuid string, disabled bool) {
+	sc.mu.Lock()
+	sc.entries[uuid] = userStatusEntry{disabled: disabled, expire: utils.Now().Add(disabledCacheTTL)}
+	sc.mu.Unlock()
 }
 
-// cleanExpired 定期清理过期条目，防止禁用用户积累
-func (dc *disabledCache) cleanExpired() {
-	dc.mu.Lock()
-	defer dc.mu.Unlock()
+// cleanExpired 定期清理过期条目，防止用户积累
+func (sc *userStatusCache) cleanExpired() {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	now := utils.Now()
-	for uuid, expire := range dc.entries {
-		if now.After(expire) {
-			delete(dc.entries, uuid)
+	for uuid, e := range sc.entries {
+		if now.After(e.expire) {
+			delete(sc.entries, uuid)
 		}
 	}
 }
@@ -101,7 +110,7 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// 检查用户是否被禁用（优先查缓存，未命中则查库）
+		// 检查用户是否被禁用（优先查缓存，未命中则查库，正反结果都写短 TTL 缓存）
 		if disabled, cached := userDisabledCache.isDisabled(claims.UUID); disabled {
 			utils.HandleForbidden(c, "账号已被禁用")
 			c.Abort()
@@ -116,8 +125,9 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
+			// 记录不存在视为正常，统一写入缓存，避免正常用户重复回源
+			userDisabledCache.set(claims.UUID, user.Disabled)
 			if user.Disabled {
-				userDisabledCache.setDisabled(claims.UUID)
 				utils.HandleForbidden(c, "账号已被禁用")
 				c.Abort()
 				return
@@ -191,16 +201,18 @@ func (am *AuthMiddleware) AuthOptional() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// 实时查库检查禁用状态
+		// 实时查库检查禁用状态（正反结果都写短 TTL 缓存）
 		if disabled, cached := userDisabledCache.isDisabled(claims.UUID); disabled {
 			c.Next()
 			return
 		} else if !cached && am.db != nil {
 			var user models.User
-			if err := am.db.Select("disabled").Where("uuid = ?", claims.UUID).First(&user).Error; err == nil && user.Disabled {
-				userDisabledCache.setDisabled(claims.UUID)
-				c.Next()
-				return
+			if err := am.db.Select("disabled").Where("uuid = ?", claims.UUID).First(&user).Error; err == nil || errors.Is(err, gorm.ErrRecordNotFound) {
+				userDisabledCache.set(claims.UUID, user.Disabled)
+				if user.Disabled {
+					c.Next()
+					return
+				}
 			}
 		}
 		c.Set(string(constants.ContextKeyUsername), claims.Username)

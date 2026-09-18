@@ -322,25 +322,49 @@ func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, rec
 
 	if len(succIDs) > 0 {
 		release := lockWrite()
-		for i, id := range succIDs {
-			if err := w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{
-				"xxh3_hash":    succHashes[i],
-				"hash_status":  "done",
-				"hash_error":   "",
-				"hash_retries": 0,
-			}).Error; err != nil {
-				utils.Warn("更新哈希记录失败",
-					utils.Int("id", int(id)),
-					utils.String("table", tableName),
-					utils.Err(err))
-				continue
-			}
-			done++
+		if err := w.batchUpdateHashes(tableName, succIDs, succHashes); err != nil {
+			utils.Warn("批量更新哈希记录失败",
+				utils.Int("count", len(succIDs)),
+				utils.String("table", tableName),
+				utils.Err(err))
+		} else {
+			done += int64(len(succIDs))
 		}
 		release()
 	}
 
 	return done, failed
+}
+
+// batchUpdateHashes 用单条 "CASE id WHEN ... THEN ..." 批量写入哈希结果，
+// 取代逐条 UPDATE，降低 SQLite 写放大与多次取写锁的交替成本。
+// SQL 形态：UPDATE <table> SET xxh3_hash = CASE id WHEN ? THEN ? ... END,
+//   hash_status=? , hash_error=?, hash_retries=? WHERE id IN (?,...)
+func (w *HashWorker) batchUpdateHashes(tableName string, ids []uint, hashes []string) error {
+	var sb strings.Builder
+	sb.WriteString("xxh3_hash = CASE id ")
+	args := make([]interface{}, 0, len(ids)*2+3+len(ids))
+	for i, id := range ids {
+		sb.WriteString("WHEN ? THEN ? ")
+		args = append(args, id, hashes[i])
+	}
+	sb.WriteString("END, hash_status = ?, hash_error = ?, hash_retries = ?")
+	args = append(args, "done", "", 0)
+
+	sb.WriteString(" WHERE id IN (")
+	for i := range ids {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("?")
+	}
+	sb.WriteString(")")
+
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	return w.db.Exec(sb.String(), args...).Error
 }
 
 // classifyHashError 将哈希计算错误归类为失败统计类别（fileNotFound/permissionDenied/fileLocked/otherError）

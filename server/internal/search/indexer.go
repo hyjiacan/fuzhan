@@ -2,10 +2,13 @@ package search
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"gorm.io/gorm"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/utils"
 )
 
 // ReconcileResult 对齐结果统计
@@ -16,18 +19,10 @@ type ReconcileResult struct {
 	OrphansRemoved int64 `json:"orphansRemoved"` // 索引有而 DB 无、已清理的条数
 }
 
-// RebuildFromDB 从数据库索引表全量构建检索索引。
-// 读取 file_records_public 中 status=active 的全部记录（ID + 文件名），
-// 分批调用 IndexBatch（按 ID 覆盖，幂等），可用于启动时的全量回填。
-func (s *SearchIndex) RebuildFromDB(db *gorm.DB) error {
-	if s.writer == nil {
-		return fmt.Errorf("索引未打开")
-	}
-	if db == nil {
-		return fmt.Errorf("数据库未初始化")
-	}
-
+// listActiveFiles 分页读取 file_records_public 中 status=active 的全部（ID + 文件名）。
+func listActiveFiles(db *gorm.DB) ([]IndexEntry, error) {
 	const pageSize = 500
+	var out []IndexEntry
 	var lastID uint
 	for {
 		var records []models.FileRecordPublic
@@ -36,26 +31,100 @@ func (s *SearchIndex) RebuildFromDB(db *gorm.DB) error {
 			Order("id").
 			Limit(pageSize).
 			Find(&records).Error; err != nil {
-			return fmt.Errorf("读取文件记录失败: %w", err)
+			return nil, fmt.Errorf("读取文件记录失败: %w", err)
 		}
 		if len(records) == 0 {
 			break
 		}
-
-		entries := make([]IndexEntry, 0, len(records))
 		for _, r := range records {
-			entries = append(entries, IndexEntry{ID: int64(r.ID), FileName: r.FileName})
+			out = append(out, IndexEntry{ID: int64(r.ID), FileName: r.FileName})
 		}
-		if err := s.IndexBatch(entries); err != nil {
-			return fmt.Errorf("批量写入检索索引失败: %w", err)
-		}
-
 		lastID = records[len(records)-1].ID
 		if len(records) < pageSize {
 			break
 		}
 	}
+	return out, nil
+}
+
+// RebuildFromDB 从数据库索引表全量重建检索索引，并在完成后原子热替换。
+//
+// 重建全程在影子目录（<dir>.rebuild.<nano>）用独立 writer 进行，不触碰线上索引，
+// 因此重建期间的查询始终命中旧索引（完整、一致、零写锁阻塞）。全部写盘成功后，
+// 在 rwMu 写锁下关闭旧 writer、删除旧目录、将影子目录重命名为规范目录并重新打开，
+// 一次完成切换。
+func (s *SearchIndex) RebuildFromDB(db *gorm.DB) error {
+	if s == nil || s.writer == nil {
+		return fmt.Errorf("索引未打开")
+	}
+	if db == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
+
+	entries, err := listActiveFiles(db)
+	if err != nil {
+		return err
+	}
+
+	// 影子目录与规范目录同前缀不同后缀，避免与线上索引竞争文件锁。
+	shadowDir := fmt.Sprintf("%s.rebuild.%d", s.dir, time.Now().UnixNano())
+	shadowWriter, err := openBlugeWriter(shadowDir, s.seg)
+	if err != nil {
+		return fmt.Errorf("打开影子重建索引失败: %w", err)
+	}
+
+	// 一次性写入全部条目；空库则影子索引为空（等价清空线上索引）。
+	if err := writeEntries(shadowWriter, s.seg, entries); err != nil {
+		_ = shadowWriter.Close()
+		_ = os.RemoveAll(shadowDir)
+		return fmt.Errorf("写入影子索引失败: %w", err)
+	}
+	if err := shadowWriter.Close(); err != nil {
+		_ = os.RemoveAll(shadowDir)
+		return fmt.Errorf("刷新影子索引失败: %w", err)
+	}
+
+	// 原子热替换：写锁持有期仅做近距离换盘，查询全程要么读旧、要么读新。
+	s.rwMu.Lock()
+	defer s.rwMu.Unlock()
+
+	oldWriter := s.writer
+	oldDir := s.dir
+	if oldWriter != nil {
+		if cerr := oldWriter.Close(); cerr != nil {
+			_ = os.RemoveAll(shadowDir)
+			return fmt.Errorf("关闭旧索引失败: %w", cerr)
+		}
+		s.writer = nil
+	}
+	// 将影子目录提升为规范目录。先移除旧目录内容，再原地改名。
+	if err := os.RemoveAll(oldDir); err != nil {
+		// 删除失败不致命，继续尝试把影子目录改名为规范目录（若 rename 目标存在会冲突）。
+		_ = err
+	}
+	if err := os.Rename(shadowDir, oldDir); err != nil {
+		// 规范目录可能仍存在（删除失败），回退为打开影子目录并以它作规范目录。
+		oldDir = shadowDir
+		utils.Warn("检索索引热替换目录提升失败，将以影子目录作为索引目录", utils.Err(err))
+	}
+	nw, oerr := openBlugeWriter(oldDir, s.seg)
+	if oerr != nil {
+		return fmt.Errorf("热替换后重新打开索引失败: %w", oerr)
+	}
+	s.writer = nw
+	s.dir = oldDir
+	// 数据集合已整体更换，词表缓存整表失效，下次读重建。
+	s.resetTermCache()
 	return nil
+}
+
+// resetTermCache 使词表缓存彻底失效（须已持有 rwMu）。
+func (s *SearchIndex) resetTermCache() {
+	s.termCacheMu.Lock()
+	s.lastWriteAt = 0
+	s.termCacheLoaded = false
+	s.termCacheTerms = nil
+	s.termCacheMu.Unlock()
 }
 
 // ReconcileIndex 将检索索引与索引表对齐（本质是两集合求差，而非全量重建）：

@@ -226,16 +226,6 @@ func (s *SearchService) LoadDirectoryNotes(rootName, prefix string) map[string]s
 	return m
 }
 
-// IncrementPublicDownloadCount 公共文件下载次数 +1（按完整路径定位，非阻塞返回错误）
-func (s *SearchService) IncrementPublicDownloadCount(fullPath string) error {
-	if fullPath == "" {
-		return nil
-	}
-	return s.db.Model(&models.FileRecordPublic{}).
-		Where("full_path = ? AND status = ? AND is_dir = ?", fullPath, models.FileStatusActive, false).
-		UpdateColumn("download_count", gorm.Expr("download_count + 1")).Error
-}
-
 // FindFilePathByHash 根据 xxh3 哈希值查找文件路径
 func (s *SearchService) FindFilePathByHash(hash string) (string, string, error) {
 	var record models.FileRecordPublic

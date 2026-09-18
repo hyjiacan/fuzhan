@@ -297,6 +297,9 @@ func main() {
 	// 初始化全局有界操作记录器（固定 worker + 有界缓冲），
 	// 让下载/搜索/FTP 等记录点都走有界异步，避免每次操作起新协程造成瞬态尖峰
 	services.InitRecordWriter(recordRepo, services.RecordWriterWorkers, services.RecordWriterBuffer)
+	// 初始化下载计数批量记录器：下载热路径只入队（非阻塞），后台周期攒批批量落库，
+	// 消除每次下载同步 UPDATE 索引表造成的写放大与请求线程阻塞
+	services.InitDownloadCountRecorder(db)
 
 	// LDAP 认证服务（v3 Phase 2）
 	ldapService := auth.NewLDAPService(db, &auth.LDAPConfig{

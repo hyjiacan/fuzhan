@@ -39,7 +39,7 @@ type PoolConfig struct {
 func DefaultPoolConfig() PoolConfig {
 	return PoolConfig{
 		MaxIdleConns:    2,
-		MaxOpenConns:    8,
+		MaxOpenConns:    4, // SQLite 单写者，4 足矣且写锁碰撞更低；MySQL/PG 按需在配置里上调
 		ConnMaxLifetime: 3600, // 1小时
 	}
 }
@@ -207,6 +207,7 @@ func appendSQLitePragmas(dsn string) string {
 	const (
 		busyTimeout    = "busy_timeout(2000)"
 		journalModeWAL = "journal_mode(WAL)"
+		synchronousN   = "synchronous(NORMAL)"
 	)
 
 	sep := "?"
@@ -215,9 +216,9 @@ func appendSQLitePragmas(dsn string) string {
 	}
 	// 避免对已存在的 pragma 重复追加
 	if strings.Contains(dsn, "busy_timeout") {
-		return dsn + sep + "_pragma=" + journalModeWAL
+		return dsn + sep + "_pragma=" + journalModeWAL + "&_pragma=" + synchronousN
 	}
-	return dsn + sep + "_pragma=" + busyTimeout + "&_pragma=" + journalModeWAL
+	return dsn + sep + "_pragma=" + busyTimeout + "&_pragma=" + journalModeWAL + "&_pragma=" + synchronousN
 }
 
 // InitDBWithAutoMigrate 初始化数据库并执行自动迁移

@@ -140,6 +140,13 @@ func (p *ScanProgress) SetTotalFiles(n int64) {
 	p.TotalFiles = n
 }
 
+// IncTotal 增加总文件数。用于单趟扫描中估算总文件数随新增条目递增的进度。
+func (p *ScanProgress) IncTotal() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.TotalFiles++
+}
+
 // SetCurrentFile 设置当前正在扫描的文件名
 func (p *ScanProgress) SetCurrentFile(name string) {
 	p.mu.Lock()

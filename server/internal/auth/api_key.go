@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"fuzhan/internal/models"
@@ -15,14 +16,38 @@ import (
 	"gorm.io/gorm"
 )
 
+// apiKeyCacheEntry 一次成功的 API Key 校验结果缓存
+type apiKeyCacheEntry struct {
+	userID uint
+	scopes string
+	at     time.Time
+}
+
 // ApiKeyService API Key 管理服务
 type ApiKeyService struct {
 	db *gorm.DB
+
+	// 校验结果 TTL 缓存：ValidateApiKey 每次做 bcrypt（cost 10，约几十 ms）。
+	// 缓存成功结果可显著提升 OpenAPI 认证吞吐，短 TTL 兼顾密钥禁用/过期及时性。
+	cacheMu sync.Mutex
+	cache   map[string]apiKeyCacheEntry
+	cacheTTL time.Duration
+
+	// last_used_at 写节流：避免每个请求都异步起 goroutine 更新，高并发下产生无界协程。
+	touchMu  sync.Mutex
+	lastTouch map[uint]time.Time
+	touchTTL  time.Duration
 }
 
 // NewApiKeyService 创建 API Key 服务
 func NewApiKeyService(db *gorm.DB) *ApiKeyService {
-	return &ApiKeyService{db: db}
+	return &ApiKeyService{
+		db:        db,
+		cache:     make(map[string]apiKeyCacheEntry),
+		cacheTTL:  60 * time.Second,
+		lastTouch: make(map[uint]time.Time),
+		touchTTL:  5 * time.Minute,
+	}
 }
 
 // CreateApiKeyRequest 创建 API Key 请求
@@ -94,6 +119,14 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 		return 0, "", fmt.Errorf("无效的 API Key 格式")
 	}
 
+	// 命中缓存直接返回，跳过 bcrypt 与查库
+	s.cacheMu.Lock()
+	if e, ok := s.cache[rawKey]; ok && time.Since(e.at) < s.cacheTTL {
+		s.cacheMu.Unlock()
+		return e.userID, e.scopes, nil
+	}
+	s.cacheMu.Unlock()
+
 	// 分离 keyID 和 secret
 	parts := strings.SplitN(rawKey, ":", 2)
 	if len(parts) != 2 {
@@ -122,16 +155,31 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 		return 0, "", fmt.Errorf("API Key 无效")
 	}
 
-	// 更新最后使用时间（异步非阻塞，带超时）
-	go func(kid uint, kID string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		now := utils.Now()
-		if err := s.db.WithContext(ctx).Model(&models.ApiKey{}).Where("id = ?", kid).
-			Update("last_used_at", &now).Error; err != nil {
-			utils.Warn("更新 API Key 最后使用时间失败", utils.String("key_id", kID), utils.Err(err))
-		}
-	}(key.ID, keyID)
+	// 更新最后使用时间（节流异步：仅当距上次更新超过 touchTTL 才起协程写库）
+	s.touchMu.Lock()
+	needsTouch := true
+	if last, ok := s.lastTouch[key.ID]; ok && time.Since(last) < s.touchTTL {
+		needsTouch = false
+	} else {
+		s.lastTouch[key.ID] = utils.Now()
+	}
+	s.touchMu.Unlock()
+	if needsTouch {
+		go func(kid uint, kID string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			now := utils.Now()
+			if err := s.db.WithContext(ctx).Model(&models.ApiKey{}).Where("id = ?", kid).
+				Update("last_used_at", &now).Error; err != nil {
+				utils.Warn("更新 API Key 最后使用时间失败", utils.String("key_id", kID), utils.Err(err))
+			}
+		}(key.ID, keyID)
+	}
+
+	// 缓存成功结果
+	s.cacheMu.Lock()
+	s.cache[rawKey] = apiKeyCacheEntry{userID: key.UserID, scopes: key.Scopes, at: utils.Now()}
+	s.cacheMu.Unlock()
 
 	utils.Info("API Key 认证成功", utils.String("key_id", keyID), utils.String("scopes", key.Scopes), utils.Int("user_id", int(key.UserID)))
 	return key.UserID, key.Scopes, nil

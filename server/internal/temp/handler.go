@@ -2,7 +2,6 @@ package temp
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -239,22 +238,23 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	}
 	defer file.Close()
 
+	fi, err := file.Stat()
+	if err != nil {
+		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusFailed, "无法读取文件信息")
+		utils.HandleInternalServerError(c, "无法读取文件信息")
+		return
+	}
+
 	// 设置下载响应头 - RFC 5987安全编码
 	safeFilename := url.PathEscape(tempFile.Filename)
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, tempFile.Filename, safeFilename))
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Length", fmt.Sprintf("%d", tempFile.FileSize))
 
-	// 发送文件
-	written, err := io.Copy(c.Writer, file)
-	if err != nil {
-		middleware.LogOperation(c, "temp.download", tempFile.Filename, err)
-		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusFailed, "传输失败")
-		utils.Error("文件下载失败", utils.Err(err), utils.Int64("written", written))
-	} else {
-		middleware.LogOperation(c, "temp.download", tempFile.Filename, nil)
-		recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusSuccess, "")
-	}
+	// 使用 http.ServeContent 发送文件：自动支持 Range/206 断点续传与 sendfile
+	// 零拷贝，替代裸 io.Copy；Length 与 Last-Modified 由 ServeContent 依文件信息生成。
+	http.ServeContent(c.Writer, c.Request, tempFile.Filename, fi.ModTime(), file)
+	middleware.LogOperation(c, "temp.download", tempFile.Filename, nil)
+	recordTempDownload(ip, code, tempFile.Filename, "/temp/"+code, tempFile.FileSize, tempFile.ID, models.RecordStatusSuccess, "")
 
 	// 下载后处理
 	h.tempService.MarkDownloaded(tempFile, h.config.DeleteOnDownload)

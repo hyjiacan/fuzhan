@@ -103,6 +103,13 @@ type HotDownloadResult struct {
 type MonitorService struct {
 	recordRepo repositories.AuditStore
 	db         *gorm.DB
+
+	// 存储统计缓存：GetStorageStats 会对全部根目录做整盘 filepath.Walk，
+	// 加短 TTL 缓存避免管理面板高频刷新时反复触发磁盘 IO（也规避无节制的重查询）。
+	storageMu    sync.Mutex
+	storageCache *StorageStats
+	storageAt    time.Time
+	storageTTL   time.Duration
 }
 
 // NewMonitorService 创建监控服务
@@ -110,6 +117,7 @@ func NewMonitorService(recordRepo repositories.AuditStore, db *gorm.DB) *Monitor
 	return &MonitorService{
 		recordRepo: recordRepo,
 		db:         db,
+		storageTTL: 60 * time.Second,
 	}
 }
 
@@ -205,6 +213,15 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 
 // GetStorageStats 获取存储统计
 func (s *MonitorService) GetStorageStats() (*StorageStats, error) {
+	// 命中缓存则直接返回，避免每次请求对全部根目录重新整盘 Walk。
+	s.storageMu.Lock()
+	if s.storageCache != nil && time.Since(s.storageAt) < s.storageTTL {
+		stats := s.storageCache
+		s.storageMu.Unlock()
+		return stats, nil
+	}
+	s.storageMu.Unlock()
+
 	stats := &StorageStats{
 		Roots:   []RootStorage{},
 		Temp:    TempUsage{UsedByIP: make(map[string]int64)},
@@ -353,6 +370,12 @@ func (s *MonitorService) GetStorageStats() (*StorageStats, error) {
 	}
 
 	stats.FreeSpace = stats.TotalSpace - stats.UsedSpace
+
+	// 计算成功后再写缓存；失败不缓存，避免长时间返回陈旧统计。
+	s.storageMu.Lock()
+	s.storageCache = stats
+	s.storageAt = utils.Now()
+	s.storageMu.Unlock()
 
 	return stats, nil
 }

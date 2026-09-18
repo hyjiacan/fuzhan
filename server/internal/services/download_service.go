@@ -27,6 +27,8 @@ func recordDownload(repo RecordRepository, record *models.OperationRecord) {
 // RecordRepository 接口用于记录下载
 type RecordRepository interface {
 	Create(record *models.OperationRecord) error
+	// CreateBatch 批量创建操作记录（供全局有界记录器攒批提交）
+	CreateBatch(records []*models.OperationRecord) error
 }
 
 // isHashPath 判断路径是否为单段 xxh3 64位哈希（16位十六进制字符串）
@@ -215,11 +217,10 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	// 判定是否为预览请求
 	isPreview := r.URL.Query().Get("preview") == "true"
 
-	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）
-	if !isPreview && ds.searchService != nil && isNewDownloadRequest(r) {
-		if ierr := ds.searchService.IncrementPublicDownloadCount(fullPath); ierr != nil {
-			utils.Warn("公共文件下载次数更新失败", utils.String("path", fullPath), utils.Err(ierr))
-		}
+	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
+	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
+	if !isPreview && isNewDownloadRequest(r) {
+		SubmitDownloadCountIncrement(fullPath)
 	}
 
 	if !isPreview {
@@ -342,11 +343,10 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		recordDownload(ds.recordRepo, rec)
 	}
 
-	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）
-	if record && r.URL.Query().Get("preview") != "true" && ds.searchService != nil && isNewDownloadRequest(r) {
-		if ierr := ds.searchService.IncrementPublicDownloadCount("/" + rootName + "/" + strings.TrimPrefix(subPath, "/")); ierr != nil {
-			utils.Warn("公共文件下载次数更新失败", utils.String("path", subPath), utils.Err(ierr))
-		}
+	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
+	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
+	if record && r.URL.Query().Get("preview") != "true" && isNewDownloadRequest(r) {
+		SubmitDownloadCountIncrement("/" + rootName + "/" + strings.TrimPrefix(subPath, "/"))
 	}
 
 	// 判定是否为预览请求

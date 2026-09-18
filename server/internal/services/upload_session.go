@@ -12,11 +12,21 @@ import (
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/utils"
+	xxh3pkg "fuzhan/pkg/xxh3"
 
 	"github.com/google/uuid"
-	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 )
+
+// countingWriter 统计经其写入的字节数，用于流式落盘时获取实际写入量
+type countingWriter struct {
+	n int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	cw.n += int64(len(p))
+	return len(p), nil
+}
 
 // CreateSessionReq 创建会话请求
 type CreateSessionReq struct {
@@ -203,29 +213,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 	}
 
 	// 限制读取大小；多读 1 字节以检测超大分片
-	limitedReader := io.LimitReader(req.ChunkData, expectedChunkSize+1)
-	chunkData, readErr := io.ReadAll(limitedReader)
-	req.ChunkData.Close()
-	if readErr != nil {
-		return fmt.Errorf("读取分片数据失败: %w", readErr)
-	}
-
-	written := int64(len(chunkData))
-	if written > expectedChunkSize {
-		return fmt.Errorf("分片大小 %d 超过限制 %d", written, expectedChunkSize)
-	}
-
-	// xxh3 校验
-	if req.Checksum != "" && len(chunkData) > 0 {
-		actualHash := xxh3.Hash(chunkData)
-		expectedHash, parseErr := strconv.ParseUint(req.Checksum, 16, 64)
-		if parseErr != nil {
-			return fmt.Errorf("无效的xxh3校验值: %s", req.Checksum)
-		}
-		if expectedHash != actualHash {
-			return fmt.Errorf("xxh3校验失败: 期望值=%016X, 实际值=%016X", expectedHash, actualHash)
-		}
-	}
+	limited := io.LimitReader(req.ChunkData, expectedChunkSize+1)
 
 	// 创建/打开上传文件并写入
 	if err := s.ensureUploadingFile(uploadingPath, session.FileSize); err != nil {
@@ -240,10 +228,50 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 	}
 	defer f.Close()
 
-	if _, writeErr := f.WriteAt(chunkData, offset); writeErr != nil {
+	if _, seekErr := f.Seek(offset, io.SeekStart); seekErr != nil {
+		utils.Error("定位分片写入位置失败", utils.String("path", uploadingPath), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(seekErr))
+		return fmt.Errorf("定位分片写入位置失败")
+	}
+
+	// 流式写入：以 64KB 缓冲边写边算 xxh3，避免整片读入堆内存，
+	// 并发大文件上传时显著降低峰值内存与 GC 压力。
+	cw := &countingWriter{}
+	var written int64
+	var streamErr error
+	if req.Checksum != "" {
+		tee := io.TeeReader(limited, io.MultiWriter(f, cw))
+		hashHex, herr := xxh3pkg.HashReader(tee)
+		streamErr = herr
+		written = cw.n
+		if streamErr == nil && written > 0 {
+			expectedHash, parseErr := strconv.ParseUint(req.Checksum, 16, 64)
+			if parseErr != nil {
+				streamErr = fmt.Errorf("无效的xxh3校验值: %s", req.Checksum)
+			} else {
+				actualHash, _ := strconv.ParseUint(hashHex, 16, 64)
+				if expectedHash != actualHash {
+					streamErr = fmt.Errorf("xxh3校验失败: 期望值=%016X, 实际值=%016X", expectedHash, actualHash)
+				}
+			}
+		}
+	} else {
+		buf := make([]byte, 64*1024)
+		var n int64
+		n, streamErr = io.CopyBuffer(io.MultiWriter(f, cw), limited, buf)
+		written = n
+	}
+	req.ChunkData.Close()
+
+	if streamErr != nil {
 		s.zeroOutChunk(f, offset, written)
-		utils.Error("写入分片数据失败", utils.String("path", uploadingPath), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(writeErr))
-		return fmt.Errorf("写入分片数据失败")
+		utils.Error("写入分片数据失败", utils.String("path", uploadingPath), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(streamErr))
+		return streamErr
+	}
+
+	// 检测超大分片（流式写入已多读 1 字节，超过即回滚本片）
+	if written > expectedChunkSize {
+		s.zeroOutChunk(f, offset, written)
+		return fmt.Errorf("分片大小 %d 超过限制 %d", written, expectedChunkSize)
 	}
 
 	// 记录分片（使用 DB 事务确保状态更新和分片记录原子写入）

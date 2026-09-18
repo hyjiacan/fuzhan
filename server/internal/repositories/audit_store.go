@@ -11,6 +11,8 @@ import "fuzhan/internal/models"
 // AuditStore 实现，并在构建期替换注入即可，上层 handler 无需任何改动。
 type AuditStore interface {
 	Create(record *models.OperationRecord) error
+	// CreateBatch 批量创建操作记录（用于有界记录器攒批提交，降低逐条 insert 的写放大）
+	CreateBatch(records []*models.OperationRecord) error
 	GetByID(id uint) (*models.OperationRecord, error)
 	ListByUserID(userID string, page, pageSize int) ([]models.OperationRecord, int64, error)
 	ListByIP(clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error)

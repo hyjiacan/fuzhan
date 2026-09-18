@@ -12,6 +12,8 @@ const (
 	RecordWriterWorkers = 4
 	// RecordWriterBuffer 全局有界记录器的排队缓冲上限（条）
 	RecordWriterBuffer = 256
+	// recordWriterBatchSize 单个 worker 攒批批量提交的条数，降低逐条 insert 的写放大
+	recordWriterBatchSize = 200
 )
 
 // RecordWriter 有界异步操作记录写入器。
@@ -19,11 +21,12 @@ const (
 // 从而在任何负载下都把协程数量与排队内存限制在固定上界内。
 // 缓冲写满时 Submit 会阻塞（背压），而不是无限堆积或无限起协程。
 type RecordWriter struct {
-	repo RecordRepository
-	ch   chan *models.OperationRecord
-	done chan struct{}
-	wg   sync.WaitGroup
-	once sync.Once
+	repo      RecordRepository
+	ch        chan *models.OperationRecord
+	done      chan struct{}
+	wg        sync.WaitGroup
+	once      sync.Once
+	batchSize int
 }
 
 // NewRecordWriter 创建有界记录器。workers 为固定协程数，buffer 为排队上限。
@@ -35,9 +38,10 @@ func NewRecordWriter(repo RecordRepository, workers, buffer int) *RecordWriter {
 		buffer = 64
 	}
 	w := &RecordWriter{
-		repo: repo,
-		ch:   make(chan *models.OperationRecord, buffer),
-		done: make(chan struct{}),
+		repo:      repo,
+		ch:        make(chan *models.OperationRecord, buffer),
+		done:      make(chan struct{}),
+		batchSize: recordWriterBatchSize,
 	}
 	for i := 0; i < workers; i++ {
 		w.wg.Add(1)
@@ -48,21 +52,53 @@ func NewRecordWriter(repo RecordRepository, workers, buffer int) *RecordWriter {
 
 func (w *RecordWriter) worker() {
 	defer w.wg.Done()
+	batch := make([]*models.OperationRecord, 0, w.batchSize)
+	flush := func() {
+		w.writeBatch(batch)
+		batch = batch[:0]
+	}
 	for {
 		select {
 		case rec := <-w.ch:
-			w.write(rec)
+			batch = append(batch, rec)
+			if len(batch) >= w.batchSize {
+				flush()
+			}
 		case <-w.done:
 			// 收到停止信号后，仍把缓冲中已排队的记录尽量写完再退出
 			for {
 				select {
 				case rec := <-w.ch:
-					w.write(rec)
+					batch = append(batch, rec)
+					if len(batch) >= w.batchSize {
+						flush()
+					}
 				default:
+					flush()
 					return
 				}
 			}
 		}
+	}
+}
+
+func (w *RecordWriter) writeBatch(records []*models.OperationRecord) {
+	n := 0
+	for _, rec := range records {
+		if rec != nil {
+			records[n] = rec
+			n++
+		}
+	}
+	if n == 0 {
+		return
+	}
+	if err := w.repo.CreateBatch(records[:n]); err != nil {
+		utils.Error("操作记录批量写入失败",
+			utils.Int("count", n),
+			utils.String("action", records[0].Action),
+			utils.String("file", records[0].FileName),
+			utils.Err(err))
 	}
 }
 
