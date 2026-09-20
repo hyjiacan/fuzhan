@@ -31,6 +31,7 @@ const AdminDuplicatesView = () => import(/* webpackChunkName: "views-admin-dupli
 const AdminOnlineView = () => import(/* webpackChunkName: "views-admin-online" */ '../views/AdminOnlineView.vue')
 const AdminResourceView = () => import(/* webpackChunkName: "views-admin-resource" */ '../views/AdminResourceView.vue')
 const AdminDownloadAnalyticsView = () => import(/* webpackChunkName: "views-admin-download-analytics" */ '../views/AdminDownloadAnalyticsView.vue')
+const AdminSecurityView = () => import(/* webpackChunkName: "views-admin-security" */ '../views/AdminSecurityView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
 // 登录/注册弹框触发事件
@@ -175,6 +176,12 @@ const router = createRouter({
           path: 'users',
           name: 'admin-users',
           component: AdminUsersView
+        },
+        {
+          path: 'security',
+          name: 'admin-security',
+          component: AdminSecurityView,
+          meta: { title: '安全事件' }
         },
         {
           path: 'api-keys',

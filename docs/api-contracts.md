@@ -385,6 +385,32 @@ Content-Type: application/json
 
 > 说明：判断在线时并不校验请求是否【成功】或【已登录】——任何被监控中间件记录的请求都会更新该 IP 的最近活动时间，因此查看本页的管理员自身 IP 通常也会出现在列表中。
 
+### 安全事件管理（管理端）
+
+记录被识别为攻击 / 越权 / 异常请求的风险事件，供管理员分析与处置；同时作为登录强提醒与侧边栏未读红点的数据源。
+
+| HTTP方法 | 路由 | Handler | 功能描述 |
+|----------|------|---------|----------|
+| GET | `/api/v1/admin/security/events` | `security.Handler.ListEvents` | 分页查询（支持过滤） |
+| GET | `/api/v1/admin/security/events/unread-summary` | `security.Handler.UnreadSummary` | 未读汇总（红点与登录强提醒） |
+| POST | `/api/v1/admin/security/events/read` | `security.Handler.MarkRead` | 标记已读（按 ID 或全部） |
+| GET | `/api/v1/admin/security/events/stats` | `security.Handler.Stats` | 统计（级别分布 / 近7日趋势 / TOP IP / TOP 类型 / 近期锁定） |
+
+**列表过滤参数：** `severity`、`eventType`、`clientIP`、`identity`、`result`、`guard`、`q`（目标/路径/请求ID 关键字）、`unread=1`、`from`、`to`（时间范围）及分页 `page` / `pageSize`。
+
+**未读汇总响应：**
+```json
+{
+  "success": true,
+  "message": "",
+  "data": {
+    "total": 3,
+    "high": 1,
+    "recent": [ { "id": 1, "eventType": "auth.locked", "severity": "high", "clientIP": "10.0.0.5", "target": "admin", "path": "/api/v1/auth/login", "createdAt": "..." } ]
+  }
+}
+```
+
 ### 数据迁移
 
 > 本接口文档无内置数据库迁移/备份接口。浮栈不提供跨引擎数据迁移能力，如需在 SQLite ↔ MySQL ↔ PostgreSQL 之间迁移，请使用外部工具（如 [dbswitch](https://github.com/light-art/dbswitch)）后更新配置中的 `database.driver` / `database.dsn`。

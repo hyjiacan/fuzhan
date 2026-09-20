@@ -23,7 +23,15 @@
           </template>
           <el-menu-item v-for="opt in group.items" :key="opt.key" :index="opt.key">
             <el-icon><component :is="opt.icon" /></el-icon>
-            <template #title>{{ opt.label }}</template>
+            <template #title>
+              <span class="menu-item-label">{{ opt.label }}</span>
+              <el-badge
+                v-if="opt.key === SECURITY_KEY && securityUnread > 0"
+                :value="securityUnread > 99 ? '99+' : securityUnread"
+                type="danger"
+                class="menu-badge"
+              />
+            </template>
           </el-menu-item>
         </el-menu-item-group>
       </el-menu>
@@ -51,12 +59,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { safeStorage } from '@/utils/storage'
+import { SecurityApi } from '@/api'
 import {
-  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Close
+  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Warning, Close
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -69,6 +78,12 @@ const showWideTip = ref(true)
 
 onMounted(() => {
   showWideTip.value = !safeStorage.get(WIDE_TIP_KEY)
+  loadSecurityUnread()
+  securityTimer = setInterval(loadSecurityUnread, 60000)
+})
+
+onUnmounted(() => {
+  if (securityTimer) clearInterval(securityTimer)
 })
 
 const dismissWideTip = () => {
@@ -105,6 +120,7 @@ const menuGroups = [
     title: '系统',
     items: [
       { label: '用户管理', key: '/admin/users', icon: User },
+      { label: '安全事件', key: '/admin/security', icon: Warning },
       { label: 'OpenAPI', key: '/admin/openapi', icon: Key },
       { label: '设置', key: '/admin/settings', icon: Setting }
     ]
@@ -113,6 +129,31 @@ const menuGroups = [
 
 // 扁平索引，供路由激活匹配
 const menuOptions = menuGroups.flatMap(g => g.items)
+
+// 安全事件菜单入口（用于红点标识）
+const SECURITY_KEY = '/admin/security'
+const securityUnread = ref(0)
+let securityTimer = null
+
+// 加载未读安全事件数（供侧边栏红点）
+const loadSecurityUnread = async () => {
+  try {
+    const res = await SecurityApi.unreadSummary()
+    if (res.success && res.data) {
+      securityUnread.value = res.data.total || 0
+    }
+  } catch (e) {
+    // 拉取失败时保留上次数值，静默处理
+  }
+}
+
+// 进入安全事件页或标记已读后刷新，保证红点实时一致
+watch(
+  () => route.path,
+  (p) => {
+    if (p === SECURITY_KEY) loadSecurityUnread()
+  }
+)
 
 // Active key matches current route
 const activeKey = computed(() => {
@@ -215,6 +256,22 @@ const handleMenuSelect = (key) => {
       overflow-y: auto;
       overflow-x: hidden;
       padding: 4px 0 16px;
+
+      .menu-item-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .menu-badge {
+        margin-left: 8px;
+
+        :deep(.el-badge__content) {
+          position: static;
+          transform: none;
+          line-height: 14px;
+          height: 16px;
+        }
+      }
     }
   }
 

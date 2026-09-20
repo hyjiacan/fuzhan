@@ -778,6 +778,34 @@ export const ApiKeyApi = {
   }
 }
 
+// ========== 安全事件 API ==========
+export const SecurityApi = {
+  // 分页查询安全事件（支持 severity/eventType/clientIP/identity/result/guard/unread/from/to/q 过滤）
+  list(params = {}) {
+    return request.get('/admin/security/events', { params })
+  },
+
+  // 未读汇总（管理端入口红点与登录强提醒的数据源）
+  unreadSummary() {
+    return request.get('/admin/security/events/unread-summary')
+  },
+
+  // 标记已读：传入 { ids } 或 { all: true }
+  markRead(ids) {
+    return request.post('/admin/security/events/read', { ids }, { skipSuccessToast: true })
+  },
+
+  // 全部标记已读
+  markAllRead() {
+    return request.post('/admin/security/events/read', { all: true }, { skipSuccessToast: true })
+  },
+
+  // 基础统计（严重级别分布 / 近7日趋势 / TOP IP / TOP 类型 / 近期锁定）
+  stats() {
+    return request.get('/admin/security/events/stats')
+  }
+}
+
 export default {
   AuthApi,
   ConfigApi,
@@ -791,5 +819,6 @@ export default {
   MonitorApi,
   DownloadAnalyticsApi,
   NotificationApi,
-  ApiKeyApi
+  ApiKeyApi,
+  SecurityApi
 }

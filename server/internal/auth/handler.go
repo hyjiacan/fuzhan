@@ -5,11 +5,25 @@ import (
 	"net/http"
 
 	"fuzhan/internal/middleware"
+	"fuzhan/internal/models"
+	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// recordAuthEvent 将登录/注册相关风险写入安全事件库（供暴破分析与强提醒）。
+func recordAuthEvent(c *gin.Context, eventType, operation, target, severity, reason string) {
+	security.RecordFromGin(c, &models.SecurityEvent{
+		EventType: eventType,
+		Severity:  severity,
+		Operation: operation,
+		Target:    target,
+		Reason:    reason,
+		Guard:     models.GuardAuth,
+	})
+}
 
 // handleLoginBlocked 输出爆破防护拦截结果
 func handleLoginBlocked(c *gin.Context) {
@@ -45,6 +59,7 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {
 		middleware.LogOperation(c, "auth.register", req.Username, nil)
+		recordAuthEvent(c, models.EventAuthLocked, "auth.register", req.Username, models.SeverityHigh, "尝试过于频繁，注册被频率限制锁定")
 		handleLoginBlocked(c)
 		return
 	}
@@ -52,6 +67,7 @@ func (h *Handler) Register(c *gin.Context) {
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.register", req.Username, err)
+		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.register", req.Username, models.SeverityMedium, "注册失败: "+err.Error())
 		response.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
@@ -69,6 +85,7 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {
 		middleware.LogOperation(c, "auth.login", req.Username, nil)
+		recordAuthEvent(c, models.EventAuthLocked, "auth.login", req.Username, models.SeverityHigh, "尝试过于频繁，登录被频率限制锁定")
 		handleLoginBlocked(c)
 		return
 	}
@@ -76,6 +93,7 @@ func (h *Handler) Login(c *gin.Context) {
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.login", req.Username, err)
+		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.login", req.Username, models.SeverityMedium, "登录失败: "+err.Error())
 		response.HandleUnauthorized(c, err.Error())
 		return
 	}

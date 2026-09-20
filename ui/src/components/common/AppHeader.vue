@@ -137,13 +137,60 @@
     </template>
   </el-dialog>
 
+  <!-- 安全事件强提醒（管理员登录后存在未读风险事件时弹出） -->
+  <el-dialog
+    v-model="securityAlertVisible"
+    title="安全事件提醒"
+    width="620px"
+    append-to-body
+    :close-on-click-modal="false"
+    class="security-alert-dialog"
+  >
+    <div class="security-alert-body">
+      <el-alert
+        type="error"
+        :closable="false"
+        show-icon
+        class="security-alert-summary"
+      >
+        <template #title>
+          检测到 <b>{{ securitySummary.high }}</b> 条高危、共 <b>{{ securitySummary.total }}</b> 条未读风险事件，
+          可能包含针对本系统的攻击 / 越权 / 异常请求，请尽快处理。
+        </template>
+      </el-alert>
+
+      <template v-if="securityRecent.length > 0">
+        <div class="security-alert-title">最近未读事件（高危优先）</div>
+        <div class="security-alert-list">
+          <div v-for="ev in securityRecent" :key="ev.id" class="security-alert-item">
+            <el-tag :type="severityTagType(ev.severity)" size="small" effect="light">{{ severityLabel(ev.severity) }}</el-tag>
+            <span class="item-type">{{ eventTypeLabel(ev.eventType) }}</span>
+            <span class="item-ip mono">{{ ev.clientIP || '-' }}</span>
+            <span class="item-target">{{ ev.target || ev.path || '-' }}</span>
+            <span class="item-time">{{ formatTime(ev.createdAt) }}</span>
+          </div>
+        </div>
+      </template>
+    </div>
+    <template #footer>
+      <div class="security-alert-actions">
+        <el-button @click="securityMarkAllRead">
+          全部标记已读
+        </el-button>
+        <el-button type="primary" @click="goSecurityPage">
+          前往查看
+        </el-button>
+      </div>
+    </template>
+  </el-dialog>
+
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { AuthApi, NotificationApi } from '@/api'
+import { AuthApi, NotificationApi, SecurityApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
 import ThemeToggle from './ThemeToggle.vue'
@@ -289,6 +336,64 @@ const isActive = (path) => {
   return route.path.startsWith(path)
 }
 
+// 安全事件强提醒状态
+const securityAlertVisible = ref(false)
+const securitySummary = reactive({ high: 0, total: 0 })
+const securityRecent = ref([])
+const severityMeta = { high: { label: '高危', type: 'danger' }, medium: { label: '中危', type: 'warning' }, low: { label: '低危', type: 'info' } }
+const eventTypeMeta = {
+  'auth.failed_login': '登录/注册失败',
+  'auth.locked': '登录被锁定',
+  'auth.unauthorized': '认证失败(401)',
+  'access.forbidden': '越权访问(403)',
+  'rate.limited': '触发限流(429)',
+  'code.bruteforce': '口令/分享码暴破'
+}
+const severityLabel = (s) => severityMeta[s]?.label || s || '未知'
+const severityTagType = (s) => severityMeta[s]?.type || 'info'
+const eventTypeLabel = (t) => eventTypeMeta[t] || t || '-'
+const formatTime = (iso) => {
+  if (!iso) return '-'
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
+
+// 管理员登录后查询未读风险事件，存在则强提醒
+const checkSecurityAlert = async () => {
+  try {
+    const res = await SecurityApi.unreadSummary()
+    if (!res.success || !res.data) return
+    securitySummary.high = res.data.high || 0
+    securitySummary.total = res.data.total || 0
+    securityRecent.value = res.data.recent || []
+    if (securitySummary.total > 0) {
+      securityAlertVisible.value = true
+    }
+  } catch (e) {
+    // 提醒拉取失败不阻塞登录
+  }
+}
+
+const securityMarkAllRead = async () => {
+  try {
+    await SecurityApi.markAllRead()
+  } catch (e) {
+    // 忽略
+  }
+  securitySummary.high = 0
+  securitySummary.total = 0
+  securityRecent.value = []
+  securityAlertVisible.value = false
+}
+
+const goSecurityPage = () => {
+  securityAlertVisible.value = false
+  router.push('/admin/security')
+}
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
 
@@ -324,6 +429,11 @@ const handleLogin = async () => {
         loginForm.username = ''
         loginForm.password = ''
         updateAuthState()
+
+        // 管理员登录：若存在未读风险事件，弹出强提醒
+        if (localStorage.getItem('userRole') === 'admin') {
+          checkSecurityAlert()
+        }
       } else {
         ElMessage.error(data.message || '登录失败')
       }
@@ -642,5 +752,78 @@ export default {
 
 .auth-submit {
   width: 100%;
+}
+
+// 安全事件强提醒弹框
+.security-alert-dialog {
+  .security-alert-body {
+    padding-top: 4px;
+
+    .security-alert-summary {
+      margin-bottom: 12px;
+      border-radius: 6px;
+    }
+
+    .security-alert-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: @text-color;
+    }
+
+    .security-alert-list {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid @border-color-light;
+      border-radius: 6px;
+      padding: 4px 0;
+    }
+
+    .security-alert-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      font-size: 13px;
+
+      & + .security-alert-item {
+        border-top: 1px solid @border-color-light;
+      }
+
+      .item-type {
+        flex: 0 0 auto;
+        color: @text-color;
+      }
+
+      .item-ip {
+        flex: 0 0 auto;
+        color: @text-color-secondary;
+      }
+
+      .item-target {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: @text-color;
+      }
+
+      .item-time {
+        flex: 0 0 auto;
+        color: @text-color-placeholder;
+        font-size: 12px;
+      }
+    }
+  }
+
+  .security-alert-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+}
+
+.mono {
+  font-family: monospace;
 }
 </style>

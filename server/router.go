@@ -26,6 +26,7 @@ import (
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/resource"
 	"fuzhan/internal/search"
+	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/setup"
 	temph "fuzhan/internal/temp"
@@ -65,6 +66,7 @@ type runCtx struct {
 	privateUploadHandler     *file.PrivateUploadHandler
 	privateStorageHandler    *file.PrivateStorageHandlers
 	adminHandler             *admin.Handler
+	securityHandler          *security.Handler
 	notificationHandler      *notification.Handler
 	adminURLDownloadHandler  *admin.URLDownloadHandler
 	taskHandler              *admin.TaskHandler
@@ -628,6 +630,14 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	// 操作记录清空/删除路由
 	admin.POST("/records/clear", adminHandler.ClearRecordsHandler)
 	admin.POST("/records/delete", adminHandler.DeleteRecordHandler)
+
+	// 安全事件分析路由（攻击/越权/异常请求 记录查看与分析，仅管理员）
+	if sh := rt.securityHandler; sh != nil {
+		admin.GET("/security/events", sh.ListEvents)
+		admin.GET("/security/events/unread-summary", sh.UnreadSummary)
+		admin.POST("/security/events/read", sh.MarkRead)
+		admin.GET("/security/events/stats", sh.Stats)
+	}
 
 	// 下载行为分析路由（基于 operation_records 公开下载聚合）
 	if h := rt.downloadAnalyticsHandler; h != nil {

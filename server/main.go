@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"fuzhan/internal/accessguard"
 	"fuzhan/internal/admin"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
@@ -27,8 +28,10 @@ import (
 	"fuzhan/internal/monitor"
 	"fuzhan/internal/notification"
 	"fuzhan/internal/openapi"
+	"fuzhan/internal/repositories"
 	"fuzhan/internal/resource"
 	"fuzhan/internal/search"
+	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/setup"
 	temph "fuzhan/internal/temp"
@@ -194,7 +197,7 @@ func main() {
 	})
 
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{})
+	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{})
 
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
@@ -202,6 +205,8 @@ func main() {
 	models.EnsureOperationRecordIndexes(db)
 	// 幂等清理 operation_records 历史冗余索引（须在 EnsureOperationRecordIndexes 之后，确保保留索引已建好）
 	models.CleanupOperationRecordIndexes(db)
+	// 为安全事件表创建索引
+	models.EnsureSecurityEventIndexes(db)
 
 	// 回填公共文件下载次数（从下载记录统计，升级/启动时执行一次）
 	services.BackfillPublicDownloadCounts(db)
@@ -297,6 +302,22 @@ func main() {
 	// 初始化全局有界操作记录器（固定 worker + 有界缓冲），
 	// 让下载/搜索/FTP 等记录点都走有界异步，避免每次操作起新协程造成瞬态尖峰
 	services.InitRecordWriter(recordRepo, services.RecordWriterWorkers, services.RecordWriterBuffer)
+	// 初始化全局有界安全事件写入器（攻击场景事件可能成片爆发，走有界异步不阻塞被拒响应）
+	secRepo := repositories.NewSecurityEventRepository(db)
+	security.InitWriter(secRepo, security.WriterWorkers, security.WriterBuffer)
+	// 注入共享/临时码/口令暴破锁定回调：命中的防护锁定写入安全事件（高危）
+	accessguard.SetFailHook(func(scope, ip string) {
+		security.Record(&models.SecurityEvent{
+			EventType: models.EventCodeBruteForce,
+			Severity:  models.SeverityHigh,
+			ClientIP:  ip,
+			Identity:  "anonymous",
+			Operation: "download." + scope,
+			Target:    scope,
+			Guard:     models.GuardAccessguard,
+			Reason:    "无效码/认证失败达阈值，已对该 IP 锁定",
+		})
+	})
 	// 初始化下载计数批量记录器：下载热路径只入队（非阻塞），后台周期攒批批量落库，
 	// 消除每次下载同步 UPDATE 索引表造成的写放大与请求线程阻塞
 	services.InitDownloadCountRecorder(db)
@@ -349,6 +370,7 @@ func main() {
 	adminService := services.NewAdminService(db)
 	adminHandler := admin.NewHandler(adminService, db)
 	notificationHandler := notification.NewHandler(db)
+	securityHandler := security.NewHandler(secRepo)
 	adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
 	taskHandler := admin.NewTaskHandler(taskService)
 	// 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
@@ -462,6 +484,7 @@ func main() {
 		privateUploadHandler:     privateUploadHandler,
 		privateStorageHandler:    privateStorageHandler,
 		adminHandler:             adminHandler,
+		securityHandler:          securityHandler,
 		notificationHandler:      notificationHandler,
 		adminURLDownloadHandler:  adminURLDownloadHandler,
 		taskHandler:              taskHandler,

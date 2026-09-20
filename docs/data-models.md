@@ -13,6 +13,7 @@
 - [OperationRecord 操作记录模型](#operationrecord-操作记录模型)
 - [URLDownloadTask URL下载任务模型](#urldownloadtask-url下载任务模型)
 - [Notification 通知模型](#notification-通知模型)
+- [SecurityEvent 安全事件模型](#securityevent-安全事件模型)
 - [关联关系图](#关联关系图)
 - [数据库支持](#数据库支持)
 - [自动迁移](#自动迁移)
@@ -235,6 +236,59 @@
 
 ---
 
+## SecurityEvent 安全事件模型
+
+- **表名**: `security_events`
+- **说明**: 记录被识别为攻击 / 越权 / 异常请求的风险事件，支撑管理员安全分析与处置；由专门的安全事件处理器（`internal/security`）经有界异步写入器落库，避免攻击场景下同步写库拖慢被拒请求的响应。
+
+| 字段名 | 类型 | 约束 | 说明 |
+|--------|------|------|------|
+| ID | uint | primaryKey | 自增主键 |
+| EventType | string(64) | not null | 事件类型，见 `Event*` 常量 |
+| Severity | string(16) | not null; default: low | 严重级别 `high` / `medium` / `low` |
+| ClientIP | string(45) | index | 源 IP |
+| Identity | string(64) | - | 操作者身份（用户名 或 anonymous） |
+| Operation | string(64) | - | 操作名称（如 `auth.login`、`file.download`） |
+| Target | string(512) | - | 操作对象（路径 / 分享码 / 用户名） |
+| HTTPMethod | string(16) | - | HTTP 方法 |
+| Path | string(1024) | - | 请求路径 + 查询串 |
+| UserAgent | string(512) | - | 客户端 UA |
+| StatusCode | int | default: 0 | HTTP 状态码 |
+| Result | string(16) | not null; default: failure | 结果 `success` / `failure` |
+| Reason | string(512) | - | 事件详情 / 错误描述 |
+| RequestID | string(64) | index | 用于关联同一波攻击的请求 ID |
+| Guard | string(64) | - | 命中的防护机制（auth / accessguard / webdav / ftp） |
+| Read | bool | not null; default: false; index | 管理员是否已读（评估未读提醒） |
+| CreatedAt | time.Time | index | 事件产生时间（UTC） |
+
+### Severity 严重级别
+
+| 取值 | 含义 |
+|------|------|
+| `high` | 高危：需管理员关注（暴破锁定、路径穿越、越权绕过等） |
+| `medium` | 中危：可疑但不一定恶意（单次 401 / 403 / 登录失败） |
+| `low` | 低危：常规限流触发等 |
+
+### EventType 事件类型
+
+| 取值 | 含义 |
+|------|------|
+| `auth.failed_login` | 登录 / 注册失败 |
+| `auth.locked` | 登录 / 注册失败达阈值被锁定（暴破缓解） |
+| `auth.unauthorized` | 认证失败（401） |
+| `access.forbidden` | 越权 / 禁止访问（403） |
+| `rate.limited` | 触发频率限制（429） |
+| `code.bruteforce` | 无效分享 / 临时码 / 口令枚举达阈值被锁定 |
+
+### 索引
+
+- `idx_security_events_created_at`: `created_at`（按时间倒序分页）
+- `idx_security_events_client_ip`: `client_ip`（TOP IP 分析）
+- `idx_security_events_request_id`: `request_id`（同一波攻击关联）
+- `idx_security_events_read`: `read`（未读过滤 / 未读计数）
+
+---
+
 ## 关联关系图
 
 ```
@@ -255,10 +309,10 @@
         ▼
 
 独立表（无外键关联）:
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│    User     │  │  TempFile   │  │ Operation   │
-│  (users)    │  │ (temp_files)│  │ (op_records)│
-└─────────────┘  └─────────────┘  └─────────────┘
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────────┐
+│    User     │  │  TempFile   │  │ Operation   │  │ SecurityEvent │
+│  (users)    │  │ (temp_files)│  │ (op_records)│  │(security_events)│
+└─────────────┘  └─────────────┘  └─────────────┘  └───────────────┘
 ```
 
 ---
@@ -289,6 +343,7 @@ db.AutoMigrate(
     &models.User{},
     &models.TempFile{},
     &models.URLDownloadTask{},
+    &models.SecurityEvent{},
 )
 
 // 运行时创建临时文件分片表

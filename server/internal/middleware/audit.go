@@ -2,9 +2,12 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"fuzhan/internal/constants"
+	"fuzhan/internal/models"
+	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -44,6 +47,8 @@ func AuditMiddleware() gin.HandlerFunc {
 					fmt.Sprintf("%s %s", c.Request.Method, c.Request.URL.Path),
 					fmt.Errorf("status %d", statusCode))
 			}
+			// 被拒绝的风险请求（401 越权/403 禁止/429 限流）写入安全事件库
+			recordRejectedSecurityEvent(c)
 		}
 	}
 }
@@ -133,4 +138,33 @@ func getDuration(c *gin.Context) int64 {
 		}
 	}
 	return 0
+}
+
+// recordRejectedSecurityEvent 将被拒绝（abort）的越权/禁止/限流请求写入安全事件库。
+// 仅对状态码命中风险集合（401/403/429）的请求登记，普通响应不产生安全事件以避免噪音。
+func recordRejectedSecurityEvent(c *gin.Context) {
+	status := c.Writer.Status()
+	var eventType, severity string
+	switch status {
+	case http.StatusUnauthorized:
+		eventType = models.EventAuthUnauthorized
+		severity = models.SeverityMedium
+	case http.StatusForbidden:
+		eventType = models.EventAccessForbidden
+		severity = models.SeverityMedium
+	case http.StatusTooManyRequests:
+		eventType = models.EventRateLimited
+		severity = models.SeverityLow
+	default:
+		return
+	}
+
+	ev := &models.SecurityEvent{
+		EventType: eventType,
+		Severity:  severity,
+		Target:    c.Request.Method + " " + c.Request.URL.Path,
+		Guard:     models.GuardAuth,
+		Reason:    fmt.Sprintf("请求被拒绝（HTTP %d）", status),
+	}
+	security.RecordFromGin(c, ev)
 }

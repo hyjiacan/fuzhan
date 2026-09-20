@@ -37,7 +37,16 @@ type record struct {
 var (
 	guardMu sync.Mutex
 	cache   = make(map[string]*record)
+
+	// failHook 达到阈值触发锁定时回调（scope 为锁定作用域，ip 为客户端 IP）。
+	// 由外层（main）注入，用于把共享码/口令暴破锁定写入安全事件。
+	failHook func(scope, ip string)
 )
+
+// SetFailHook 设置锁定事件回调；重复调用会覆盖上一次的设置。
+func SetFailHook(fn func(scope, ip string)) {
+	failHook = fn
+}
 
 func init() {
 	go func() {
@@ -133,6 +142,9 @@ func Fail(scope, ip string) {
 		rec.lockUntil = now.Add(lockDur)
 		rec.fail = 0
 		rec.total = 0
+		if failHook != nil {
+			failHook(scope, ip)
+		}
 	}
 }
 
