@@ -19,6 +19,28 @@ var (
 	previewUnrestricted  bool
 )
 
+// 用户自定义「扩展名 -> MIME 类型」运行时表，GetMimeType 优先于内置表匹配。
+var (
+	mimeTableMu   sync.RWMutex
+	userMimeTable map[string]string
+)
+
+// InitMimeTable 加载用户自定义 MIME 表（扩展名均转小写存储，与内置表一致）。
+// 配置为空（nil 或空 map）时重置为空表，不影响内置 fallback 行为。
+func InitMimeTable(cfg map[string]string) {
+	mimeTableMu.Lock()
+	defer mimeTableMu.Unlock()
+	userMimeTable = make(map[string]string, len(cfg))
+	for ext, mt := range cfg {
+		ext = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ext), "."))
+		mt = strings.TrimSpace(mt)
+		if ext == "" || mt == "" {
+			continue
+		}
+		userMimeTable[ext] = strings.ToLower(mt)
+	}
+}
+
 // InitPreviewConfig 初始化预览配置
 func InitPreviewConfig(allowMimes, allowExts string) {
 	previewMu.Lock()
@@ -154,8 +176,12 @@ func IsImageExtension(ext string) bool {
 	return imageExts[ext]
 }
 
-// GetMimeType 获取常见扩展名的 MIME 类型
+// GetMimeType 获取扩展名对应的 MIME 类型（用于预览识别的内置兜底）
+// 查找顺序：内置常见类型表 -> 默认 application/octet-stream。
+// 注意：用户自定义 MIME 表仅用于下载时 Content-Type（GetDownloadContentType），不影响预览识别。
 func GetMimeType(ext string) string {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+
 	mimeMap := map[string]string{
 		"txt":  "text/plain",
 		"html": "text/html",
@@ -207,4 +233,21 @@ func GetMimeType(ext string) string {
 		return mime
 	}
 	return "application/octet-stream"
+}
+
+// mimeTableLookup 在用户自定义 MIME 表中查询扩展名对应的 MIME 类型，未命中返回 ""。
+func mimeTableLookup(ext string) string {
+	mimeTableMu.RLock()
+	defer mimeTableMu.RUnlock()
+	return userMimeTable[ext]
+}
+
+// GetDownloadContentType 获取下载时应返回的 Content-Type。
+// 仅查用户自定义 MIME 表：命中返回配置的 MIME，未配置返回 ""（由调用方回退原有行为，避免影响下载类型推断）。
+func GetDownloadContentType(ext string) string {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	if ext == "" {
+		return ""
+	}
+	return mimeTableLookup(ext)
 }

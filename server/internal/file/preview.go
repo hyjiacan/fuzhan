@@ -20,6 +20,7 @@ import (
 func ReloadPreviewConfig() {
 	cfg := appconfig.GetConfig()
 	utils.InitPreviewConfig(cfg.Preview.AllowMimes, cfg.Preview.AllowExts)
+	utils.InitMimeTable(cfg.MimeTable)
 }
 
 // PreviewHandler 文件预览处理器
@@ -31,6 +32,7 @@ type PreviewHandler struct {
 func NewPreviewHandler(baseHandler *BaseHandler) *PreviewHandler {
 	cfg := appconfig.GetConfig()
 	utils.InitPreviewConfig(cfg.Preview.AllowMimes, cfg.Preview.AllowExts)
+	utils.InitMimeTable(cfg.MimeTable)
 	return &PreviewHandler{
 		BaseHandler: baseHandler,
 	}

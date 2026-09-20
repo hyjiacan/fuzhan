@@ -227,6 +227,10 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
 		safeFilename := url.QueryEscape(filepath.Base(targetPath))
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, filepath.Base(targetPath), safeFilename))
+		// 用户配置的下载 MIME 优先；未配置则交由 http.ServeFile 按扩展名自动推断 Content-Type
+		if mt := utils.GetDownloadContentType(filepath.Ext(targetPath)); mt != "" {
+			w.Header().Set("Content-Type", mt)
+		}
 		// 下载文件的缓存策略：可缓存 30 天
 		w.Header().Set("Cache-Control", "public, max-age=2592000, immutable")
 	} else {
@@ -355,6 +359,10 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
 		safeFilename := url.QueryEscape(filepath.Base(targetPath))
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, filepath.Base(targetPath), safeFilename))
+		// 用户配置的下载 MIME 优先；未配置则交由 http.ServeFile 按扩展名自动推断 Content-Type
+		if mt := utils.GetDownloadContentType(filepath.Ext(targetPath)); mt != "" {
+			w.Header().Set("Content-Type", mt)
+		}
 		// 下载文件的缓存策略：可缓存 30 天
 		w.Header().Set("Cache-Control", "public, max-age=2592000, immutable")
 	} else {

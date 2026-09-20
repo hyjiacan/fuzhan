@@ -28,6 +28,7 @@ type ConfigDTO struct {
 	Upload            UploadConfigDTO    `json:"upload"`
 	Download          DownloadConfigDTO  `json:"download"`
 	Preview           PreviewConfigDTO   `json:"preview"`
+	MimeTable         map[string]string  `json:"mimeTable"`
 	OpenApi           *OpenApiConfigDTO  `json:"openApi"`
 	Index             IndexConfigDTO     `json:"index"`
 	Resource          ResourceConfigDTO  `json:"resource"`
@@ -291,6 +292,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			MaxInlineSize: c.Preview.MaxInlineSize,
 			TextChunkSize: c.Preview.TextChunkSize,
 		},
+		MimeTable: c.MimeTable,
 		OpenApi: &OpenApiConfigDTO{
 			Enabled:           c.OpenAPI.Enabled,
 			IpAccessMode:      c.OpenAPI.IPAccessMode,
@@ -393,6 +395,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Preview.AllowExts = dto.Preview.AllowExts
 	cfg.Preview.MaxInlineSize = dto.Preview.MaxInlineSize
 	cfg.Preview.TextChunkSize = dto.Preview.TextChunkSize
+
+	cfg.MimeTable = dto.MimeTable
 
 	if dto.OpenApi != nil {
 		cfg.OpenAPI.Enabled = dto.OpenApi.Enabled

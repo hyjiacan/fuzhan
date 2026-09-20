@@ -194,6 +194,17 @@ preview:
   text_chunk_size: 100K         # 支持 50K, 100K 等格式
 
 # ----------------------------------------
+# 用户自定义 MIME 映射表
+# ----------------------------------------
+# 维护「文件扩展名 -> MIME 类型」的映射，用于文件下载时返回对应的 Content-Type。
+# 命中配置的扩展名，下载响应将使用设定的 MIME 类型；未配置的扩展名保持原有下载行为。
+# 可在「系统设置 -> MIME 表」页面维护。
+# mime_table:
+#   epub: application/epub+zip
+#   exe: application/x-msdownload
+#   apk: application/vnd.android.package-archive
+
+# ----------------------------------------
 # 账户配置（用户管理和认证相关）
 # ----------------------------------------
 # 各协议（WebDAV、FTP、Web）共用此配置。

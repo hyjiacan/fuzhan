@@ -96,6 +96,7 @@ type SaveConfigRequest struct {
 	Upload            appconfig.UploadConfigDTO    `json:"upload"`
 	Download          appconfig.DownloadConfigDTO  `json:"download"`
 	Preview           appconfig.PreviewConfigDTO   `json:"preview"`
+	MimeTable         map[string]string            `json:"mimeTable"`
 	OpenApi           *appconfig.OpenApiConfigDTO  `json:"openApi"`
 	Index             appconfig.IndexConfigDTO     `json:"index"`
 	Resource          appconfig.ResourceConfigDTO  `json:"resource"`
@@ -333,6 +334,12 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("preview.text_chunk_size", req.Preview.TextChunkSize)
 	}
 
+	// —— 用户自定义 MIME 表（扩展名 -> MIME 映射）——
+	if present("mimeTable") {
+		appconfig.GlobalConfig.MimeTable = req.MimeTable
+		updates.Add("mime_table", req.MimeTable)
+	}
+
 	// —— OpenAPI ——
 	if req.OpenApi != nil && present("openApi") {
 		appconfig.GlobalConfig.OpenAPI.Enabled = req.OpenApi.Enabled
@@ -433,6 +440,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	utils.InitPreviewConfig(appconfig.GlobalConfig.Preview.AllowMimes, appconfig.GlobalConfig.Preview.AllowExts)
+	utils.InitMimeTable(appconfig.GlobalConfig.MimeTable)
 	appconfig.RunOnSaveHooks()
 
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）

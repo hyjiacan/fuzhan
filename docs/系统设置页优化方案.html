@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统设置页布局与使用优化方案</title>
+<style>
+  :root {
+    --primary: #B25A00;
+    --primary-hover: #9C4F00;
+    --accent: #FFA500;
+    --text: #1f2329;
+    --text-2: #5c626a;
+    --border: #ececf0;
+    --bg: #fbfbfd;
+    --bg-2: #ffffff;
+    --high: #d03050;
+    --mid: #f0a020;
+    --low: #2080f0;
+    --ok: #18a058;
+    --shadow: 0 4px 18px rgba(0,0,0,.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+    color: var(--text);
+    background: linear-gradient(180deg, #f6f5f2 0%, var(--bg) 260px);
+    line-height: 1.7;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 28px 80px; }
+  header.hero {
+    padding: 8px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--primary); text-transform: uppercase; }
+  h1 { font-size: 34px; line-height: 1.25; margin: 10px 0 12px; letter-spacing: -.01em; }
+  .sub { color: var(--text-2); font-size: 15px; max-width: 720px; }
+  .meta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 18px; font-size: 13px; color: var(--text-2); }
+  .meta b { color: var(--text); font-weight: 600; }
+  h2 {
+    font-size: 22px; margin: 52px 0 6px; letter-spacing: -.005em;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  h2 .no { font-size: 14px; color: var(--primary); font-weight: 700; }
+  .lead { color: var(--text-2); font-size: 14px; margin: 0 0 22px; }
+  h3 { font-size: 16px; margin: 28px 0 10px; }
+  .card {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px 24px; margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--text-2); background: #f7f7fa; font-size: 12.5px; }
+  tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pill.high { background: #fdeef2; color: var(--high); }
+  .pill.mid  { background: #fdf4e3; color: var(--mid); }
+  .pill.low  { background: #edf4fd; color: var(--low); }
+  .pill.ok   { background: #e7f6ee; color: var(--ok); }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; background: #eef1f5; color: var(--text-2); margin: 0 4px 4px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px){ .compare { grid-template-columns: 1fr; } }
+  .frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; }
+  .frame .cap { padding: 8px 12px; font-size: 12.5px; font-weight: 600; border-bottom: 1px solid var(--border); background: #fafafc; }
+  .frame .cap .note { font-weight: 400; color: var(--text-2); }
+  .sk { padding: 14px; font-size: 12px; }
+  /* 当前结构模拟 */
+  .sk-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .sk-tab { padding: 5px 11px; border-radius: 999px; background: #eef1f5; color: var(--text-2); font-size: 11.5px; position: relative; }
+  .sk-tab.on { background: var(--primary); color: #fff; font-weight: 600; }
+  .sk-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sk-card { border: 1px dashed #cfd4dc; border-radius: 8px; padding: 10px; background: #fbfbfd; }
+  .sk-card.tall { grid-row: span 2; }
+  .sk-field { height: 7px; border-radius: 4px; background: #e3e6ec; margin: 6px 0; }
+  .sk-field.label { width: 40%; background: transparent; height: auto; font-size: 10.5px; color: var(--primary); font-weight: 700; margin-bottom: 2px; }
+  .sk-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .sk-btn { padding: 5px 14px; border-radius: 6px; font-size: 11.5px; font-weight: 600; }
+  .sk-btn.dark { background: var(--primary); color: #fff; }
+  .sk-btn.ghost { border: 1px solid #cfd4dc; color: var(--text-2); }
+  ul.tight { margin: 6px 0 0; padding-left: 20px; }
+  ul.tight li { margin: 4px 0; font-size: 14px; }
+  code { background: #f0f1f4; border-radius: 5px; padding: 1px 6px; font-size: 12.5px; font-family: "SFMono-Regular", Consolas, monospace; }
+  .callout { border-left: 3px solid var(--accent); background: #fffdf5; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 13.5px; }
+  .note{ color: var(--text-2); font-size: 13px; }
+  .eff { margin-top: 26px; }
+  .eff-item { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: #fff; }
+  .eff-item .num { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+  .eff-item .title { font-weight: 600; margin-bottom: 2px; }
+  .eff-item .desc { font-size: 13.5px; color: var(--text-2); }
+  .prio { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 5px; margin-right: 6px; }
+  .prio.P1 { background: #fdeef2; color: var(--high); }
+  .prio.P2 { background: #fdf4e3; color: var(--mid); }
+  .prio.P3 { background: #eef1f5; color: var(--text-2); }
+  .footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-2); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">UX / UI 优化方案</div>
+    <h1>系统设置页 · 布局与使用优化方案</h1>
+    <p class="sub">针对 <code>ui/src/views/SettingsView.vue</code> 及其 8 个配置子页面的信息架构、栅格布局、操作流与无障碍体验进行审查，提出分级、可落地的改进建议。</p>
+    <div class="meta">
+      <span>对象：<b>设置页（/admin/settings）</b></span>
+      <span>范围：<b>布局 + 使用（review）</b></span>
+      <span>状态：<b style="color:var(--ok)">方案 B 已实施</b></span>
+    </div>
+  </header>
+
+  <div class="card" style="border-left:4px solid var(--ok);background:#f6fbf8;">
+    <div style="font-weight:700;color:var(--ok);margin-bottom:6px;">实施记录</div>
+    <ul class="tight">
+      <li>已重构为<b>侧栏分节导航</b>（5 组 10 面板），替代原 8 个平级 Tab。</li>
+      <li>已落地<b>页面脏标记</b> + 顶部未保存提示 + 离开路由拦截；重置与保存按钮在无更改时禁用。</li>
+      <li>已落地<b>危险操作二次确认</b>：数据库驱动切换保存前强制弹窗。</li>
+      <li>原 SettingsBasic 拆分为 应用共享目录 / 私有与临时文件 / 上传配置 三个面板。</li>
+      <li>LDAP 卡收敛为折叠块；各子页 field-hint 统一为 AA 对比度次级文字色。</li>
+      <li>构建已验证通过（<code>yarn build</code>，Vite 输出 SettingsView / el-menu-item / el-collapse-item 分块）。</li>
+    </ul>
+  </div>
+
+  <section>
+    <h2><span class="no">01</span> 现状速览</h2>
+    <p class="lead">当前页面 = 页面标题 + 顶部横向 Tab（8 个）+ 底部浮动「重置 / 保存」操作栏。子页面在双列栅格内以卡片堆叠表单。</p>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:12px;">当前信息架构</div>
+      <div class="sk">
+        <div class="sk-tabs">
+          <span class="sk-tab on">基本信息</span><span class="sk-tab">服务配置</span><span class="sk-tab">存储配置</span><span class="sk-tab">预览配置</span><span class="sk-tab">MIME 表</span><span class="sk-tab">数据库</span><span class="sk-tab">访问控制</span><span class="sk-tab">资源监控</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--text-2);margin-bottom:8px;">示例：基本信息页（双列卡片）</div>
+        <div class="sk-cards">
+          <div class="sk-card"><div class="sk-field label">应用信息</div><div class="sk-field"></div></div>
+          <div class="sk-card sk-card"><div class="sk-field label">共享目录</div><div class="sk-field"></div><div class="sk-field"></div></div>
+          <div class="sk-card"><div class="sk-field label">私有文件</div><div class="sk-field"></div><div class="sk-field"></div></div>
+          <div class="sk-card"><div class="sk-field label">临时文件</div><div class="sk-field"></div><div class="sk-field"></div></div>
+          <div class="sk-card"><div class="sk-field label">上传配置</div><div class="sk-field"></div></div>
+          <div class="sk-card"><div class="sk-field label">URL 上传</div><div class="sk-field"></div><div class="sk-field"></div></div>
+        </div>
+        <div class="sk-footer"><span class="sk-btn ghost">重置</span><span class="sk-btn dark">保存配置</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">02</span> 审查发现</h2>
+    <p class="lead">分「布局」「使用与交互」「一致性」「无障碍」四类，按影响标记 P1（高）/ P2（中）/ P3（低）。</p>
+
+    <div class="card">
+      <h3 style="margin-top:0">布局类</h3>
+      <table>
+        <tr><th style="width:60px">级别</th><th style="width:190px">问题</th><th>说明</th></tr>
+        <tr><td><span class="pill high">P1</span></td><td>8 个顶级 Tab 信息量失衡</td><td>「基本信息」一页承载 6 张卡片（应用/共享目录/私有/临时/上传/URL），而「存储配置」仅 3 个字段、单卡。平级 Tab 造成层级感混乱，导航负担重。</td></tr>
+        <tr><td><span class="pill high">P1</span></td><td>底部「重置 / 保存」为全局语义</td><td>操作栏固定浮底，但设置分散在 8 个 Tab 内；用户在此页其它 Tab 改动后，需回到底部才知是否已提交，缺乏「当前页是否脏」的可见反馈。</td></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>关键条目缺分组</td><td>「基本信息」内的 6 张卡片彼此主题差异大（应用名 vs URL 上传网段），缺少二级分组或分区标题，扫读成本高。</td></tr>
+        <tr><td><span class="pill low">P3</span></td><td>移动端双列栅格塌缩</td><td><code>el-col :span="12" :xs="24"</code> 已正确单列化；但卡片内字段提示与操作未针对窄屏做收尾衔接（如小写提示、按钮换行）。整体受 AdminLayout 侧栏影响，窄屏体验一般。</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">使用与交互类</h3>
+      <table>
+        <tr><th style="width:60px">级别</th><th style="width:190px">问题</th><th>说明</th></tr>
+        <tr><td><span class="pill high">P1</span></td><td>无「未保存」提示与离开拦截</td><td>用户改动后直接切换 Tab 或离开页面，数据易丢失；「重置」无二次确认，误点即回退未保存改动。</td></tr>
+        <tr><td><span class="pill high">P1</span></td><td>危险操作缺防护</td><td>数据库切换、保存等一旦提交即改动运行配置；数据库页虽有警示 Alert，但「保存」按钮无区分，缺少关键项二次确认（如改动 DB 驱动时提醒需重启）。</td></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>保存成功反馈弱</td><td>仅 Toast 提示；服务器地址变更后引导跳转较绕，其它需重启的服务协议（FTP/FTPS/WebDAV）改动后无「需重启生效」说明。</td></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>表单校验不完整</td><td>部分字段仅有 placeholder / hint，缺即时校验或提交前校验（端口冲突、DSN 格式、Cron 表达式合法性等）。</td></tr>
+        <tr><td><span class="pill low">P3</span></td><td>「LDAP 认证」为占位卡</td><td>该卡片仅一条提示「暂未提供界面配置」且不可操作，占导航/内容空间，可用性价值低。</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">一致性 / 工程类</h3>
+      <table>
+        <tr><th style="width:60px">级别</th><th style="width:190px">问题</th><th>说明</th></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>提示样式重复定义</td><td>每个子页都重复声明 <code>.field-hint</code>、<code>.el-card:hover</code> 盒阴影（8 处副本）；应抽为全局工具类或卡片组件，减少漂移。</td></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>label 宽度不统一</td><td>子页 <code>label-width</code> 混用 100/120/140px，块槽出现不对齐；应统一为单一 token。</td></tr>
+        <tr><td><span class="pill low">P3</span></td><td>单位输入自维护逻辑</td><td>文件大小用「文本 + 解析」实现，分散在各 computed；有现成 <code>NumberUtils.parseFileSize</code>，但可在交互上提供单位下拉/格式化实时回显，提升准确性。</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">无障碍与可访问性</h3>
+      <table>
+        <tr><th style="width:60px">级别</th><th style="width:190px">问题</th><th>说明</th></tr>
+        <tr><td><span class="pill high">P1</span></td><td>提示文字对比度不足</td><td><code>.field-hint</code> 统一 12px 且用 <code>--el-text-color-placeholder</code>（偏浅），在中灰底上对比度 < 4.5:1，弱视用户难读；字段说明不应使用「占位灰」。参考项目 WCAG AA 约定。</td></tr>
+        <tr><td><span class="pill mid">P2</span></td><td>键盘聚焦 / 焦点环一致性</td><td>项目有 <code>@focus-ring</code> token，但设置页表单/开关未统一套用可见焦点状态（Element 默认有，但自定义卡片 hover 无对应 focus-visible）。</td></tr>
+        <tr><td><span class="pill low">P3</span></td><td>Tab 切换动画 / 语义</td><td>无 <code>aria-live</code> 播报保存结果；Tab 切换建议用 <code>role="tabpanel"</code> 明确语义（Element 默认符合，但保存反馈建议补 aria）。</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">03</span> 优化方向（对比）</h2>
+    <p class="lead">核心思路：<b>压缩层级、让"保存"离操作更近、把危险项隔离</b>。给出两套可选方向。</p>
+
+    <div class="compare">
+      <div class="frame">
+        <div class="cap">方案 A · 重组 Tab + 沉浸式保存 <span class="note">（推荐，改动适中）</span></div>
+        <div class="sk">
+          <div class="sk-tabs"><span class="sk-tab on">基础信息</span><span class="sk-tab">服务</span><span class="sk-tab">存储 &amp; 上传</span><span class="sk-tab">安全</span><span class="sk-tab">高级</span></div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px;">每个 Tab 内右侧顶置「未保存标记 + 保存」；Tab 上含脏标记 ●</div>
+          <div class="sk-cards">
+            <div class="sk-card"><div class="sk-field label">应用信息</div><div class="sk-field"></div></div>
+            <div class="sk-card"><div class="sk-field label">共享目录</div><div class="sk-field"></div></div>
+            <div class="sk-card"><div class="sk-field label">私有文件</div><div class="sk-field"></div></div>
+            <div class="sk-card"><div class="sk-field label">临时文件</div><div class="sk-field"></div></div>
+          </div>
+          <div class="sk-footer"><span class="sk-btn ghost">取消修改</span><span class="sk-btn dark">保存本页</span></div>
+        </div>
+      </div>
+      <div class="frame">
+        <div class="cap">方案 B · 侧栏分节导航 <span class="note">（改动大，可长线）</span></div>
+        <div class="sk" style="display:flex;gap:12px;">
+          <div style="flex:0 0 110px;border-right:1px solid var(--border);padding-right:10px;">
+            <div style="font-size:10.5px;color:var(--text-2);margin-bottom:6px;">设置目录</div>
+            <div style="padding:4px 8px;background:var(--primary);color:#fff;border-radius:6px;font-size:11px;margin-bottom:4px;">基础信息</div>
+            <div style="padding:4px 8px;font-size:11px;color:var(--text-2);margin-bottom:4px;">服务</div>
+            <div style="padding:4px 8px;font-size:11px;color:var(--text-2);margin-bottom:4px;">存储</div>
+            <div style="padding:4px 8px;font-size:11px;color:var(--text-2);">安全</div>
+          </div>
+          <div style="flex:1;"><div class="sk-card"><div class="sk-field label">应用信息</div><div class="sk-field"></div><div class="sk-field"></div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">04</span> 落地建议清单</h2>
+    <p class="lead">按优先级给出可执行改动，标注影响范围与工作量。</p>
+
+    <div class="eff">
+      <div class="eff-item">
+        <div class="num">1</div>
+        <div><div class="title">引入「页面脏标记」+ 离开拦截 <span class="prio P1">P1</span></div>
+        <div class="desc">保存成功后快照 settings 为 baseline；任意字段变更对比出差异，在 Tab 标签与按钮上显示脏标记（●），切换页/离页时 <code>beforeRouteLeave</code> 弹确认。改动集中在 <code>SettingsView.vue</code>，子页无需改。</div></div>
+      </div>
+      <div class="eff-item">
+        <div class="num">2</div>
+        <div><div class="title">危险操作二次确认 <span class="prio P1">P1</span></div>
+        <div class="desc">保存前对比 baseline：若 <code>database.driver</code> 变更 → 强制确认「切换数据库需重启，请确认数据已迁移」；TLS/证书、服务端口变更 → 提示需重启。</div></div>
+      </div>
+      <div class="eff-item">
+        <div class="num">3</div>
+        <div><div class="title">统一与抽取公共样式 <span class="prio P2">P2</span></div>
+        <div class="desc">把 8 份重复的 <code>.field-hint</code>、<code>.el-card:hover</code> 收敛为全局 <code>settings</code> 工具类或封装 <code>SettingCard</code>；提示文字改用 <code>@text-color-secondary</code>（AA）而非 placeholder，统一 label 宽度为单一 token。</div></div>
+      </div>
+      <div class="eff-item">
+        <div class="num">4</div>
+        <div><div class="title">分组 Tab，压缩导航 <span class="prio P2">P2</span></div>
+        <div class="desc">将「基本信息」的 6 卡按 基础/存储/上传 拆分；Tab 收敛为 5~6 个（如 基础信息、服务、存储与上传、预览与MIME、数据库、安全、资源）。MIME 属预览域，可并入「预览」。</div></div>
+      </div>
+      <div class="eff-item">
+        <div class="num">5</div>
+        <div><div class="title">移除 / 收敛占位卡 <span class="prio P3">P3</span></div>
+        <div class="desc">「LDAP 认证」无可操作项，可并入「访问控制」页顶部的说明折叠块，而非独立卡片。其他单字段页同理合并。</div></div>
+      </div>
+      <div class="eff-item">
+        <div class="num">6</div>
+        <div><div class="title">移动端与表单校验收尾 <span class="prio P3">P3</span></div>
+        <div class="desc">窄屏下卡片内 hint 换行、按钮全宽；补充 Cron / 端口 / DSN 在提交时的 <code>el-form</code> 校验规则与即时错误回显。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="callout"><b>建议推进方式：</b>先落地 P1 两项（脏标记 + 危险确认），价值最高、改动面小；P2 的样式收口与 Tab 重组可作为第二阶段统一重构，顺带解决无障碍对比度问题。可先用「方案 A」原型试用，再决定是否演进到「方案 B」侧栏布局。</div>
+
+  <div class="footer">基于 UICraft 审查 · 涉及 <code>SettingsView.vue</code> 与 <code>ui/src/views/settings/*</code></div>
+</div>
+</body>
+</html>

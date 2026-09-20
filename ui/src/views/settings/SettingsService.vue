@@ -214,7 +214,7 @@ onMounted(() => {
 }
 
 .field-hint {
-  color: var(--el-text-color-placeholder);
+  color: @text-color-secondary;
   font-size: 12px;
 }
 </style>

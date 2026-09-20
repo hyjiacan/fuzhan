@@ -10,6 +10,7 @@ import (
 
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
+	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -271,6 +272,11 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return r
 	}, record.FileName)
 	c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, cleanName, safeFilename))
+
+	// 用户配置的下载 MIME 优先；未配置则由 c.File 按扩展名自动推断 Content-Type
+	if mt := utils.GetDownloadContentType(filepath.Ext(record.FileName)); mt != "" {
+		c.Header("Content-Type", mt)
+	}
 
 	// 公共文件下载次数累加
 	h.db.Model(&models.FileRecordPublic{}).

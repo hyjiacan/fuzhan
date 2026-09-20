@@ -41,12 +41,13 @@ func readConfig() {
 			MaxFileSize string          `yaml:"max_file_size,omitempty"`
 			URLUpload   URLUploadConfig `yaml:"url_upload"`
 		} `yaml:"upload"`
-		Download DownloadConfig  `yaml:"download"`
-		Preview  PreviewConfig   `yaml:"preview"`
-		Log      utils.LogConfig `yaml:"log"`
-		OpenAPI  OpenAPIConfig   `yaml:"open_api"`
-		Index    IndexConfig     `yaml:"index"`
-		Resource ResourceConfig  `yaml:"resource"`
+		Download  DownloadConfig    `yaml:"download"`
+		Preview   PreviewConfig     `yaml:"preview"`
+		MimeTable map[string]string `yaml:"mime_table"`
+		Log       utils.LogConfig   `yaml:"log"`
+		OpenAPI   OpenAPIConfig     `yaml:"open_api"`
+		Index     IndexConfig       `yaml:"index"`
+		Resource  ResourceConfig    `yaml:"resource"`
 	}
 
 	if err := yaml.Unmarshal(data, &tempConfig); err != nil {
@@ -171,6 +172,8 @@ func readConfig() {
 		MaxInlineSize: tempConfig.Preview.MaxInlineSize,
 		TextChunkSize: tempConfig.Preview.TextChunkSize,
 	}
+	// 解析用户自定义 MIME 表
+	GlobalConfig.MimeTable = tempConfig.MimeTable
 
 	// 解析日志配置
 	GlobalConfig.Log = tempConfig.Log

@@ -248,7 +248,11 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	// 设置下载响应头 - RFC 5987安全编码
 	safeFilename := url.PathEscape(tempFile.Filename)
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, tempFile.Filename, safeFilename))
-	c.Header("Content-Type", "application/octet-stream")
+	contentType := "application/octet-stream"
+	if mt := utils.GetDownloadContentType(filepath.Ext(tempFile.Filename)); mt != "" {
+		contentType = mt
+	}
+	c.Header("Content-Type", contentType)
 
 	// 使用 http.ServeContent 发送文件：自动支持 Range/206 断点续传与 sendfile
 	// 零拷贝，替代裸 io.Copy；Length 与 Last-Modified 由 ServeContent 依文件信息生成。

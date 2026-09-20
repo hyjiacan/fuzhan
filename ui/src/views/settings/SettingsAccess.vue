@@ -30,6 +30,7 @@
               <el-input-number v-model="settings.openApi.requestsPerMinute" :min="1" :max="10000" />
               <span>次/分钟</span>
             </div>
+            <div class="field-hint">API 调用频率上限；超过后该请求会被拒绝</div>
           </el-form-item>
         </el-form>
       </el-card>
@@ -63,9 +64,11 @@
           <template v-if="rateLimitEnabled">
             <el-form-item label="窗口(分钟)">
               <el-input-number v-model="settings.download.rateLimit.windowMinutes" :min="1" :max="10080" />
+              <div class="field-hint">在一个窗口内累计请求数，窗口结束后计数重置</div>
             </el-form-item>
             <el-form-item label="最大请求数">
               <el-input-number v-model="settings.download.rateLimit.maxRequests" :min="1" :max="100000" />
+              <div class="field-hint">单个 IP 在窗口内允许的最大请求数，超出后暂时拒绝</div>
             </el-form-item>
           </template>
           <el-form-item label="失效锁定">
@@ -76,9 +79,11 @@
             <el-form-item label="失效阈值">
               <el-input-number v-model="settings.download.rateLimit.lockAfter" :min="1" :max="10000" />
               <span style="margin-left: 8px;">次</span>
+              <div class="field-hint">过期失效的请求达到多少次即触发锁定</div>
             </el-form-item>
             <el-form-item label="锁定(分钟)">
               <el-input-number v-model="settings.download.rateLimit.lockMinutes" :min="1" :max="10080" />
+              <div class="field-hint">达到阈值后 IP 被禁用的时长</div>
             </el-form-item>
           </template>
         </el-form>
@@ -102,17 +107,15 @@
       </el-card>
     </el-col>
 
-    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-      <el-card>
-        <template #header><span>LDAP 认证</span></template>
-        <el-form label-width="120px">
-          <el-form-item>
+    <el-col :span="24" class="full-col">
+      <el-card class="ldap-card">
+        <el-collapse>
+          <el-collapse-item title="LDAP 认证（Active Directory / OpenLDAP）" :disabled="false">
             <div class="field-hint" style="margin: 0;">
-              LDAP 认证（Active Directory / OpenLDAP）暂未提供界面配置。
-              如需启用，请编辑 <code>fuzhan.yaml</code> 的 <code>auth.ldap</code> 节点后重启生效。
+              LDAP 认证暂未提供界面配置。如需启用，请编辑 <code>fuzhan.yaml</code> 的 <code>auth.ldap</code> 节点后重启生效。
             </div>
-          </el-form-item>
-        </el-form>
+          </el-collapse-item>
+        </el-collapse>
       </el-card>
     </el-col>
   </el-row>
@@ -191,7 +194,11 @@ const allowedOriginsDisplay = computed({
 }
 
 .field-hint {
-  color: var(--el-text-color-placeholder);
+  color: @text-color-secondary;
   font-size: 12px;
+}
+
+.full-col {
+  margin-bottom: 16px;
 }
 </style>

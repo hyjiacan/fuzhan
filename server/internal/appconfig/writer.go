@@ -3,6 +3,7 @@ package appconfig
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -172,6 +173,20 @@ func setNodeValue(node *yaml.Node, value interface{}) bool {
 			}
 		}
 		*node = *seq
+		return true
+	case map[string]string:
+		mapNode := &yaml.Node{Kind: yaml.MappingNode}
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: k}
+			valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: v[k]}
+			mapNode.Content = append(mapNode.Content, keyNode, valNode)
+		}
+		*node = *mapNode
 		return true
 	}
 	return true

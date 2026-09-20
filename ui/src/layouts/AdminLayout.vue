@@ -45,23 +45,19 @@
         <el-icon class="wide-tip-close" @click="dismissWideTip" title="关闭提示"><Close /></el-icon>
       </div>
       <div class="layout-router">
-        <transition name="page-fade" mode="out-in">
-          <router-view />
-        </transition>
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </div>
     </el-main>
-
-    <!-- 主题切换（悬浮于内容区右上角） -->
-    <div class="admin-theme-toggle">
-      <ThemeToggle />
-    </div>
   </el-container>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { safeStorage } from '@/utils/storage'
 import { SecurityApi } from '@/api'
 import {
@@ -177,30 +173,6 @@ const handleMenuSelect = (key) => {
 .admin-layout {
   position: relative;
   height: 100%;
-
-  .admin-theme-toggle {
-    position: absolute;
-    top: 12px;
-    right: 16px;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--el-bg-color-overlay);
-    box-shadow: @shadow-sm;
-    color: var(--el-text-color-regular);
-    cursor: pointer;
-    transition: transform @transition-smooth, box-shadow @transition-smooth, color @transition-fast;
-
-    &:hover {
-      transform: rotate(15deg) scale(1.08);
-      box-shadow: @shadow-md;
-      color: @primary-color;
-    }
-  }
 
   .layout-sider {
     background: @bg-color;

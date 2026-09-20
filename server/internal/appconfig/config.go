@@ -216,21 +216,25 @@ type URLUploadConfig struct {
 type Config struct {
 	// WorkDir 工作目录。映射到顶层 yaml 键 work_dir。
 	// 为空时默认取二进制文件（fuzhan.exe）所在目录；可用 ${work_dir} 占位符被其它路径字段引用。
-	WorkDir  string          `yaml:"work_dir"`
-	App      APPConfig       `yaml:"app"`
-	Account  AccountConfig   `yaml:"account"`
-	Server   ServerConfig    `yaml:"server"`
-	Database DatabaseConfig  `yaml:"database"`
-	Storage  StorageConfig   `yaml:"storage"`
-	Upload   UploadConfig    `yaml:"upload"`
-	Download DownloadConfig  `yaml:"download"`
-	Preview  PreviewConfig   `yaml:"preview"`
-	Log      utils.LogConfig `yaml:"log"`
-	Security SecurityConfig  `yaml:"security"`
-	Auth     AuthConfig      `yaml:"auth"`
-	OpenAPI  OpenAPIConfig   `yaml:"open_api"`
-	Index    IndexConfig     `yaml:"index"`    // 文件索引配置
-	Resource ResourceConfig  `yaml:"resource"` // 服务器资源监控配置
+	WorkDir  string         `yaml:"work_dir"`
+	App      APPConfig      `yaml:"app"`
+	Account  AccountConfig  `yaml:"account"`
+	Server   ServerConfig   `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
+	Storage  StorageConfig  `yaml:"storage"`
+	Upload   UploadConfig   `yaml:"upload"`
+	Download DownloadConfig `yaml:"download"`
+	Preview  PreviewConfig  `yaml:"preview"`
+	// MimeTable 用户自定义「扩展名 -> MIME 类型」映射表。
+	// 预览时用于识别 go 内置 mime.TypeByExtension 无法识别或内置表未覆盖的扩展名，
+	// 用户表优先于内置表 fallback。未配置（空）时不影响既有行为。
+	MimeTable map[string]string `yaml:"mime_table"`
+	Log       utils.LogConfig   `yaml:"log"`
+	Security  SecurityConfig    `yaml:"security"`
+	Auth      AuthConfig        `yaml:"auth"`
+	OpenAPI   OpenAPIConfig     `yaml:"open_api"`
+	Index     IndexConfig       `yaml:"index"`    // 文件索引配置
+	Resource  ResourceConfig    `yaml:"resource"` // 服务器资源监控配置
 }
 
 // ResourceConfig 服务器资源监控配置

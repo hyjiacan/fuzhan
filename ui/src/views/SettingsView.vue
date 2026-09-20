@@ -1,85 +1,153 @@
 <template>
   <div class="settings-view">
-    <div class="header-section">
-      <h2>系统设置</h2>
-      <p class="description">管理系统配置和参数调整</p>
+    <div class="page-head">
+      <div class="title-wrap">
+        <h2>系统设置</h2>
+        <p class="description">管理系统配置和参数调整</p>
+      </div>
+      <div class="dirty-tip" v-if="isDirty">
+        <span class="dot"></span>有未保存的更改
+      </div>
     </div>
 
-    <el-tabs v-model="activeTab">
-      <!-- 基本信息 -->
-      <el-tab-pane name="basic" label="基本信息">
-        <SettingsBasic :settings="settings" />
-      </el-tab-pane>
+    <div class="settings-body">
+      <!-- 侧栏分节导航 -->
+      <aside class="settings-sider" :class="{ collapsed }">
+        <button class="sider-toggle" :title="collapsed ? '展开导航' : '收起导航'" @click="collapsed = !collapsed">
+          <el-icon><component :is="collapsed ? Expand : Fold" /></el-icon>
+        </button>
+        <el-menu
+          :default-active="activePanel"
+          :collapse="collapsed"
+          :collapse-transition="false"
+          class="settings-menu"
+          @select="handleSelect"
+        >
+          <template v-for="group in navGroups" :key="group.title">
+            <div class="menu-group-title" v-if="!collapsed">{{ group.title }}</div>
+            <el-menu-item v-for="item in group.items" :key="item.key" :index="item.key">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <template #title>
+                <span class="menu-item-label">{{ item.label }}</span>
+              </template>
+            </el-menu-item>
+          </template>
+        </el-menu>
+      </aside>
 
-      <!-- 服务配置 -->
-      <el-tab-pane name="service" label="服务配置">
-        <SettingsService :settings="settings" />
-      </el-tab-pane>
-
-      <!-- 存储配置 -->
-      <el-tab-pane name="storage" label="存储配置">
-        <SettingsStorage :settings="settings" />
-      </el-tab-pane>
-
-      <!-- 预览配置 -->
-      <el-tab-pane name="preview" label="预览配置">
-        <SettingsPreview :settings="settings" />
-      </el-tab-pane>
-
-      <!-- 数据库 -->
-      <el-tab-pane name="database" label="数据库">
-        <SettingsDatabase :settings="settings" />
-      </el-tab-pane>
-
-      <!-- 访问控制 -->
-      <el-tab-pane name="access" label="访问控制">
-        <SettingsAccess :settings="settings" />
-      </el-tab-pane>
-
-      <!-- 资源监控 -->
-      <el-tab-pane name="resource" label="资源监控">
-        <SettingsResource :settings="settings" />
-      </el-tab-pane>
-    </el-tabs>
+      <!-- 内容面板 -->
+      <div class="settings-content">
+        <transition name="panel-fade" mode="out-in">
+          <component :is="currentComponent" :key="activePanel" :settings="settings" />
+        </transition>
+      </div>
+    </div>
 
     <div class="actions-bar">
       <div class="actions-inner">
-        <el-button @click="loadSettings">重置</el-button>
-        <el-button type="primary" :loading="saving" @click="saveSettings">保存配置</el-button>
+        <div class="actions-status">
+          <template v-if="isDirty"><span class="dot warning"></span>当前有未保存的更改</template>
+          <template v-else><span class="dot ok"></span>所有更改已保存</template>
+        </div>
+        <div class="actions-btns">
+          <el-button :disabled="!isDirty" @click="handleReset">重置</el-button>
+          <el-button type="primary" :loading="saving" :disabled="!isDirty" @click="saveSettings">
+            保存配置{{ isDirty ? '' : ' ✓' }}
+          </el-button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, shallowRef, computed, toRaw, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { onBeforeRouteLeave } from 'vue-router'
+import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Odometer, Expand, Fold } from '@element-plus/icons-vue'
 import { NumberUtils } from '@/utils'
 import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
-import SettingsBasic from './settings/SettingsBasic.vue'
+import SettingsAppInfo from './settings/SettingsAppInfo.vue'
+import SettingsFilesQuota from './settings/SettingsFilesQuota.vue'
+import SettingsUploadConfig from './settings/SettingsUploadConfig.vue'
 import SettingsService from './settings/SettingsService.vue'
 import SettingsStorage from './settings/SettingsStorage.vue'
 import SettingsPreview from './settings/SettingsPreview.vue'
+import SettingsMime from './settings/SettingsMime.vue'
 import SettingsDatabase from './settings/SettingsDatabase.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsResource from './settings/SettingsResource.vue'
 import { formatToUnit } from './settings/useSettingsUtils'
 
 const message = ElMessage
-const dialog = {
-  warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
-    confirmButtonText: opts.positiveText || '确定',
-    cancelButtonText: opts.negativeText || '取消',
-    type: 'warning',
-    closeOnClickModal: !!opts.onMaskClick
-  }).then(() => { opts.onPositiveClick?.() }).catch(() => { opts.onNegativeClick?.() })
-}
-const saving = ref(false)
-const activeTab = ref('basic')
 
-// 保存原始服务器配置用于变更检测
+const saving = ref(false)
+const activePanel = shallowRef('appInfo')
+const collapsed = ref(false)
+
+// 侧栏分节分组：基础 / 服务存储 / 预览类型 / 数据安全 / 资源
+const navGroups = [
+  {
+    title: '基础信息',
+    items: [
+      { key: 'appInfo', label: '应用与共享目录', icon: Setting },
+      { key: 'filesQuota', label: '私有与临时文件', icon: FolderOpened },
+      { key: 'upload', label: '上传配置', icon: UploadFilled }
+    ]
+  },
+  {
+    title: '服务与存储',
+    items: [
+      { key: 'service', label: '服务配置', icon: Cpu },
+      { key: 'storage', label: '存储索引', icon: Files }
+    ]
+  },
+  {
+    title: '预览与类型',
+    items: [
+      { key: 'preview', label: '预览配置', icon: PictureRounded },
+      { key: 'mime', label: 'MIME 表', icon: Grid }
+    ]
+  },
+  {
+    title: '数据与安全',
+    items: [
+      { key: 'database', label: '数据库', icon: Coin },
+      { key: 'access', label: '访问控制', icon: Lock }
+    ]
+  },
+  {
+    title: '资源',
+    items: [
+      { key: 'resource', label: '资源监控', icon: Odometer }
+    ]
+  }
+]
+
+const panelMap = {
+  appInfo: SettingsAppInfo,
+  filesQuota: SettingsFilesQuota,
+  upload: SettingsUploadConfig,
+  service: SettingsService,
+  storage: SettingsStorage,
+  preview: SettingsPreview,
+  mime: SettingsMime,
+  database: SettingsDatabase,
+  access: SettingsAccess,
+  resource: SettingsResource
+}
+
+const currentComponent = computed(() => panelMap[activePanel.value])
+
+// 脏标记：以 settings 序列化快照为基准，判断是否存在未保存更改
+let baselineSnapshot = ''
+const serialize = (v) => JSON.stringify(toRaw(v))
+const isDirty = computed(() => baselineSnapshot !== '' && serialize(settings) !== baselineSnapshot)
+
+// 保存原始服务器/数据库配置用于变更检测与危险操作确认
 const originalServerConfig = ref(null)
+const originalDatabaseDriver = ref('')
 
 const settings = reactive({
   appName: '',
@@ -140,6 +208,7 @@ const settings = reactive({
     maxInlineSize: 1048576,
     textChunkSize: 102400
   },
+  mimeTable: {},
   openApi: {
     enabled: false,
     ipAccessMode: 'none',
@@ -160,7 +229,7 @@ const settings = reactive({
     samplingInterval: 5,
     collectInterval: 60,
     retentionDays: 7
-  },
+  }
 })
 
 // 解析 MySQL DSN
@@ -245,24 +314,20 @@ const loadSettings = async () => {
       settings.database.driver = cfg.database?.driver || 'sqlite'
       settings.database.dsn = cfg.database?.dsn || ''
 
-      // 解析 MySQL DSN
       if (settings.database.driver === 'mysql' && cfg.database?.dsn) {
         parseMysqlDsn(cfg.database.dsn)
       }
-      // 解析 PostgreSQL DSN
       if (settings.database.driver === 'postgres' && cfg.database?.dsn) {
         parsePostgresDsn(cfg.database.dsn)
       }
       settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name, uploadEnabled: d.uploadEnabled !== false })) || []
       settings.allowedExtensions = cfg.allowedExtensions || []
 
-      // 私有文件配置
       settings.privateFiles.enabled = cfg.privateFiles?.enabled ?? false
       settings.privateFiles.path = cfg.privateFiles?.path || ''
       settings.privateQuotaGlobal = cfg.privateFiles?.quotaGlobal || 0
       settings.privateQuotaUser = cfg.privateFiles?.quotaPerUser || 0
 
-      // 临时文件配置
       settings.tempFiles.enabled = cfg.tempFiles?.enabled ?? true
       settings.tempFiles.path = cfg.tempFiles?.path || ''
       settings.tempFiles.defaultExpireDays = cfg.tempFiles?.defaultExpireDays || 7
@@ -272,7 +337,6 @@ const loadSettings = async () => {
 
       settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false } }
 
-      // 下载限流配置（maxRequests=0 表示不限制）
       settings.download = {
         rateLimit: {
           windowMinutes: cfg.download?.rateLimit?.windowMinutes || 1,
@@ -282,7 +346,6 @@ const loadSettings = async () => {
         }
       }
 
-      // 预览配置
       settings.preview = {
         allowMimes: cfg.preview?.allowMimes || '',
         allowExts: cfg.preview?.allowExts || '',
@@ -290,7 +353,8 @@ const loadSettings = async () => {
         textChunkSize: NumberUtils.parseFileSize(cfg.preview?.textChunkSize || '100K')
       }
 
-      // Open API 配置
+      settings.mimeTable = { ...(cfg.mimeTable || {}) }
+
       settings.openApi = {
         enabled: cfg.openApi?.enabled ?? false,
         ipAccessMode: cfg.openApi?.ipAccessMode || 'none',
@@ -300,18 +364,15 @@ const loadSettings = async () => {
         requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
       }
 
-      // 文件索引配置
       settings.scanStartDelaySeconds = cfg.index?.scanStartDelaySeconds || 10
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
       settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
 
-      // 安全配置（trust_proxy / CORS）
       settings.security = {
         trustProxy: cfg.security?.trustProxy ?? false,
         allowedOrigins: cfg.security?.allowedOrigins || []
       }
 
-      // 资源监控配置
       settings.resource = {
         enabled: cfg.resource?.enabled ?? false,
         samplingInterval: cfg.resource?.samplingInterval || 5,
@@ -319,16 +380,24 @@ const loadSettings = async () => {
         retentionDays: cfg.resource?.retentionDays || 7
       }
 
-      // 保存原始服务器配置用于变更检测
       originalServerConfig.value = {
         host: settings.server.host,
         httpPort: settings.server.http.port
       }
+      originalDatabaseDriver.value = settings.database.driver
+
+      // 重置脏标记基线
+      markClean()
     }
   } catch (e) {
     console.error('加载设置失败', e)
     message.error('加载设置失败')
   }
+}
+
+// 标记为已保存，建立新基线
+const markClean = () => {
+  baselineSnapshot = serialize(settings)
 }
 
 // 等待服务就绪后导航
@@ -352,8 +421,35 @@ const pollServerHealth = (url, maxRetries, interval, onReady) => {
   check()
 }
 
+// 危险操作二次确认：数据库驱动或访问控制等高风险变更
+const confirmCriticalChange = async () => {
+  const dbChanged = settings.database.driver !== originalDatabaseDriver.value
+  if (dbChanged) {
+    try {
+      await ElMessageBox.confirm(
+        '当前已切换数据库类型。切换后需重启服务方才生效，且已有数据需通过外部工具手动迁移。确定继续保存吗？',
+        '检测到高危配置变更',
+        {
+          confirmButtonText: '仍要保存',
+          cancelButtonText: '取消',
+          type: 'warning',
+          dangerouslyUseHTMLString: false
+        }
+      )
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+  return true
+}
+
 // 执行保存配置
 const doSaveSettings = async () => {
+  // 危险操作二次确认
+  const proceed = await confirmCriticalChange()
+  if (!proceed) return
+
   saving.value = true
   try {
     let finalDsn = settings.database.dsn
@@ -408,6 +504,7 @@ const doSaveSettings = async () => {
         maxInlineSize: formatToUnit(settings.preview.maxInlineSize),
         textChunkSize: formatToUnit(settings.preview.textChunkSize)
       },
+      mimeTable: settings.mimeTable,
       openApi: {
         enabled: settings.openApi.enabled,
         ipAccessMode: settings.openApi.ipAccessMode,
@@ -453,6 +550,9 @@ const doSaveSettings = async () => {
       } catch (e) {
         console.error('刷新配置失败', e)
       }
+      // 刷新基线
+      originalDatabaseDriver.value = settings.database.driver
+      markClean()
       const hostChanged = originalServerConfig.value !== null &&
         settings.server.host !== originalServerConfig.value.host
       const portChanged = originalServerConfig.value !== null &&
@@ -460,17 +560,15 @@ const doSaveSettings = async () => {
       if (hostChanged || portChanged) {
         const displayHost = settings.server.host === '0.0.0.0' ? window.location.hostname : settings.server.host
         const newUrl = 'http://' + displayHost + ':' + settings.server.http.port
-        dialog.warning({
-          title: '服务器地址已变更',
-          content: '服务已切换到新地址：' + newUrl,
-          positiveText: '前往新地址',
-          negativeText: '留在当前页面',
-          onPositiveClick: () => {
-            pollServerHealth(newUrl, 20, 500, () => {
-              window.location.href = newUrl
-            })
-          }
-        })
+        ElMessageBox.confirm('服务已切换到新地址：' + newUrl, '服务器地址已变更', {
+          confirmButtonText: '前往新地址',
+          cancelButtonText: '留在当前页面',
+          type: 'warning'
+        }).then(() => {
+          pollServerHealth(newUrl, 20, 500, () => {
+            window.location.href = newUrl
+          })
+        }).catch(() => {})
       }
     } else {
       message.error(data.message || '保存失败')
@@ -488,6 +586,36 @@ const saveSettings = () => {
   doSaveSettings()
 }
 
+// 重置：二次确认后重新加载
+const handleReset = () => {
+  ElMessageBox.confirm('重置将丢弃当前未保存的更改，重新加载服务器配置。确定继续吗？', '确认重置', {
+    confirmButtonText: '重置',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    loadSettings()
+    message.success('已重置，恢复服务器配置')
+  }).catch(() => {})
+}
+
+const handleSelect = (key) => {
+  activePanel.value = key
+}
+
+// 导航切换（侧栏折叠/展开由点击菜单标题项切换，这里仅处理面板切换）
+
+// 离开拦截：有未保存更改时提示
+onBeforeRouteLeave(() => {
+  if (isDirty.value) {
+    return ElMessageBox.confirm('当前存在未保存的更改，离开后将会丢失。确定离开吗？', '未保存的更改', {
+      confirmButtonText: '仍要离开',
+      cancelButtonText: '留在当前页',
+      type: 'warning'
+    }).then(() => true).catch(() => false)
+  }
+  return true
+})
+
 onMounted(() => {
   loadSettings()
 })
@@ -499,64 +627,253 @@ onMounted(() => {
 .settings-view {
   padding: @container-padding;
 
-  .header-section {
-    margin-bottom: 24px;
+  .page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: @spacing-lg;
 
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
+    .title-wrap {
+      h2 {
+        margin: 0 0 8px 0;
+        font-size: @font-size-xxl;
+        font-weight: 600;
+      }
+
+      .description {
+        margin: 0;
+        color: @text-color-secondary;
+        font-size: @font-size-base;
+      }
     }
+  }
 
-    .description {
-      margin: 0;
+  .dirty-tip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: @border-radius-lg;
+    background: #fdf4e3;
+    color: @warning-color;
+    font-size: @font-size-sm;
+    font-weight: 500;
+    white-space: nowrap;
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: @warning-color;
+    }
+  }
+
+  .settings-body {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  .settings-sider {
+    flex: 0 0 200px;
+    position: sticky;
+    top: 16px;
+    border-radius: @border-radius-lg;
+    overflow: hidden;
+
+    .sider-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 36px;
+      border: none;
+      background: @bg-color;
       color: @text-color-secondary;
-      font-size: @font-size-base;
+      cursor: pointer;
+      transition: color @transition-fast, background-color @transition-fast;
+
+      &:hover {
+        color: @text-color;
+        background: var(--el-fill-color-light);
+      }
     }
+
+    &.collapsed {
+      flex-basis: 64px;
+    }
+
+    .settings-menu {
+      border-right: none;
+      background: @bg-color;
+      padding: 6px 0;
+      border-radius: @border-radius-lg;
+
+      :deep(.menu-group-title) {
+        padding: 14px 20px 6px;
+        font-size: @font-size-xs;
+        font-weight: 500;
+        color: @text-color-placeholder;
+        letter-spacing: 1px;
+      }
+
+      :deep(.el-menu-item) {
+        height: 44px;
+        line-height: 44px;
+        border-radius: @menu-item-radius;
+        margin: 2px @menu-item-margin-x;
+
+        &:hover {
+          background-color: var(--el-fill-color-light);
+        }
+      }
+
+      :deep(.el-menu-item.is-active) {
+        background-color: var(--el-color-primary-light-9);
+        color: var(--el-color-primary);
+        font-weight: 500;
+      }
+    }
+  }
+
+  .menu-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .settings-content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .panel-fade-enter-active,
+  .panel-fade-leave-active {
+    transition: opacity @transition-fast;
+  }
+
+  .panel-fade-enter-from,
+  .panel-fade-leave-to {
+    opacity: 0;
   }
 
   .actions-inner {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .actions-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: @text-color-secondary;
+    font-size: @font-size-sm;
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+
+      &.ok {
+        background: @success-color;
+      }
+
+      &.warning {
+        background: @warning-color;
+      }
+    }
+  }
+
+  .actions-btns {
+    display: flex;
     gap: 12px;
   }
 
   .actions-bar {
-    margin-top: 24px;
+    margin-top: @spacing-lg;
     padding: 16px;
     background: @bg-color-secondary;
     border-radius: @border-radius-lg;
     position: sticky;
     bottom: 16px;
+    z-index: 100;
     box-shadow: @shadow-md;
-  }
-
-  .field-hint {
-    color: var(--el-text-color-placeholder);
-    font-size: 12px;
   }
 }
 
 @media @tablet {
   .settings-view {
     padding: 12px;
+
+    .settings-sider {
+      flex-basis: 64px;
+
+      &:not(.collapsed) {
+        flex-basis: 180px;
+      }
+
+      .menu-group-title {
+        padding-left: 14px;
+      }
+    }
   }
 }
 
 @media @mobile {
   .settings-view {
     padding: 8px;
-  }
 
-  .actions-bar {
-    padding: 12px !important;
-    position: static !important;
+    .page-head {
+      flex-direction: column;
+      gap: 8px;
 
-    .actions-inner {
-      justify-content: stretch;
+      .dirty-tip {
+        align-self: flex-start;
+      }
+    }
 
-      .el-button {
-        flex: 1;
+    .settings-body {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .settings-sider {
+      flex-basis: auto !important;
+      position: static;
+      overflow: visible;
+      background: @bg-color;
+      border: 1px solid @border-color-light;
+      border-radius: @border-radius-lg;
+
+      &.collapsed .el-menu {
+        display: flex;
+        flex-wrap: wrap;
+      }
+
+      .sider-toggle {
+        display: none;
+      }
+    }
+
+    .actions-bar {
+      padding: 12px !important;
+      position: static !important;
+
+      .actions-inner {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .actions-status {
+        justify-content: center;
+      }
+
+      .actions-btns {
+        .el-button {
+          flex: 1;
+        }
       }
     }
   }

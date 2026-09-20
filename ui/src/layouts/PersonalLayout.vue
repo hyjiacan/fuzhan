@@ -28,9 +28,11 @@
     <!-- Content -->
     <el-main class="layout-content">
       <div class="layout-router">
-        <transition name="page-fade" mode="out-in">
-          <router-view />
-        </transition>
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </div>
     </el-main>
   </el-container>

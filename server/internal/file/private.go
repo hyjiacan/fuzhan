@@ -317,7 +317,11 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	// RFC 5987/RFC 6266 安全编码文件名
 	safeFilename := url.PathEscape(rec.FileName)
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, rec.FileName, safeFilename))
-	c.Header("Content-Type", "application/octet-stream")
+	contentType := "application/octet-stream"
+	if mt := utils.GetDownloadContentType(filepath.Ext(rec.FileName)); mt != "" {
+		contentType = mt
+	}
+	c.Header("Content-Type", contentType)
 	middleware.LogOperation(c, "private.download", rec.FileName, nil)
 	recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusSuccess, "", rec.ID)
 	if _, err := io.Copy(c.Writer, file); err != nil {

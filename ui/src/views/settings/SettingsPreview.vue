@@ -1,6 +1,6 @@
 <template>
   <el-row :gutter="16">
-    <el-col :span="12" :sm="12" :xs="24">
+    <el-col :span="24" :sm="24" :xs="24">
       <el-card>
         <template #header><span>预览配置</span></template>
         <el-form label-width="140px">
@@ -75,7 +75,7 @@ const textChunkSizeDisplay = computed({
 }
 
 .field-hint {
-  color: var(--el-text-color-placeholder);
+  color: @text-color-secondary;
   font-size: 12px;
 }
 </style>
