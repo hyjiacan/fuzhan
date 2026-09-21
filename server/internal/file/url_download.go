@@ -247,14 +247,51 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
+		// ---- 断点续传判定：服务器支持 Range 且存在有效部分文件且未下满 ----
+		dlTask, _ := h.urlTaskRepo.GetByID(taskID)
+		resumable := false
+		var resumeOffset int64
+		if dlTask != nil && dlTask.ResumeSupported {
+			if fi, statErr := os.Stat(uploadingPath); statErr == nil && fi.Mode().IsRegular() && fi.Size() > 0 && fi.Size() < fileSize {
+				resumeOffset = fi.Size()
+				resumable = true
+			}
+		}
+		if resumable {
+			// 从已有部分末尾续写，已下字节计入总量
+			downloaded = resumeOffset
+			outFile.Seek(resumeOffset, io.SeekStart)
+			_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
+		} else {
+			// 从头下载：清空可能存在的部分文件
+			outFile.Truncate(0)
+			outFile.Seek(0, io.SeekStart)
+		}
+
+		// 传输中断时保留部分文件与进度以便续传；数据校验类错误始终清理
+		failTask := func(msg string, keepPartial bool) {
+			urlTaskUpdated = true
+			if keepPartial && resumable && downloaded > 0 {
+				_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
+			} else {
+				os.Remove(uploadingPath)
+			}
+			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, msg)
+		}
+
 		getReq, reqErr := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 		if reqErr != nil {
 			outFile.Close()
-			os.Remove(uploadingPath)
-			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "创建下载请求失败")
+			failTask("创建下载请求失败", false)
 			utils.Error("URL下载创建请求失败", utils.Err(reqErr))
 			return
+		}
+		if resumable {
+			getReq.Header.Set("Range", fmt.Sprintf("bytes=%d-", resumeOffset))
+			if dlTask.ETag != "" {
+				// If-Range：资源未变返回206续传，已变返回200全量重下
+				getReq.Header.Set("If-Range", dlTask.ETag)
+			}
 		}
 
 		// 使用带 DNS 重绑定防护的 HTTP 客户端
@@ -266,40 +303,40 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		getResp, getErr := client.Do(getReq)
 		if getErr != nil {
 			outFile.Close()
-			os.Remove(uploadingPath)
-			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "下载请求失败: "+getErr.Error())
+			failTask("下载请求失败: "+getErr.Error(), true)
 			utils.Error("URL下载请求失败", utils.String("url", downloadURL), utils.Err(getErr))
 			return
 		}
 
-		if getResp.StatusCode != http.StatusOK {
+		// 服务器忽略 Range（资源已变化）：从头全量重下
+		if getResp.StatusCode == http.StatusOK && resumable {
+			outFile.Truncate(0)
+			outFile.Seek(0, io.SeekStart)
+			downloaded = 0
+			resumable = false
+			_ = h.urlTaskRepo.UpdateProgress(taskID, 0)
+		}
+		if getResp.StatusCode != http.StatusOK && getResp.StatusCode != http.StatusPartialContent {
 			getResp.Body.Close()
 			outFile.Close()
-			os.Remove(uploadingPath)
-			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "服务器返回异常状态码: "+strconv.Itoa(getResp.StatusCode))
+			failTask("服务器返回异常状态码: "+strconv.Itoa(getResp.StatusCode), false)
 			utils.Error("URL下载响应状态异常", utils.Int("status", getResp.StatusCode))
 			return
 		}
 
 		buf := make([]byte, 32*1024)
 		var lastProgressUpdate int64
-
 		for {
 			n, readErr := getResp.Body.Read(buf)
 			if n > 0 {
 				if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
 					getResp.Body.Close()
 					outFile.Close()
-					os.Remove(uploadingPath)
-					urlTaskUpdated = true
-					h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "写入文件失败")
+					failTask("写入文件失败", true)
 					utils.Error("URL下载写入文件失败", utils.Int64("downloaded", downloaded), utils.Err(writeErr))
 					return
 				}
 				downloaded += int64(n)
-
 				if downloaded-lastProgressUpdate >= 1*1024*1024 {
 					lastProgressUpdate = downloaded
 					_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
@@ -311,22 +348,17 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 			if readErr != nil {
 				getResp.Body.Close()
 				outFile.Close()
-				os.Remove(uploadingPath)
-				urlTaskUpdated = true
-				h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "读取响应数据失败")
+				failTask("读取响应数据失败", true)
 				utils.Error("URL下载读取响应失败", utils.Int64("downloaded", downloaded), utils.Err(readErr))
 				return
 			}
 		}
-
 		getResp.Body.Close()
 		outFile.Close()
 
 		if fileSize > 0 && downloaded != fileSize {
 			utils.Warn("URL下载大小不一致", utils.Int64("expected", fileSize), utils.Int64("actual", downloaded))
-			os.Remove(uploadingPath)
-			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "下载文件大小不匹配")
+			failTask("下载文件大小不匹配", false)
 			return
 		}
 	}

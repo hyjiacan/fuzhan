@@ -33,6 +33,7 @@ type URLDownloadTask struct {
 	FileName        string                 `gorm:"size:255;not null" json:"fileName"`
 	TargetPath      string                 `gorm:"size:512" json:"targetPath"`
 	StorageType     URLDownloadStorageType `gorm:"size:20;not null;default:temp" json:"storageType"`
+	RootName        string                 `gorm:"size:64" json:"rootName,omitempty"` // 目标根目录名，供重试还原会话上下文
 	Status          URLDownloadStatus      `gorm:"size:20;not null;default:pending" json:"status"`
 	ErrorMessage    string                 `gorm:"size:1024" json:"errorMessage,omitempty"`
 	FileSize        int64                  `gorm:"default:0" json:"fileSize"`

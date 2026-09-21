@@ -54,6 +54,12 @@ func (r *URLDownloadTaskRepository) UpdateProgress(id string, downloadedBytes in
 		Update("downloaded_bytes", downloadedBytes).Error
 }
 
+// UpdateTempFilePath 更新任务当前使用的临时下载路径（重试时换用新的临时文件）
+func (r *URLDownloadTaskRepository) UpdateTempFilePath(id string, path string) error {
+	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).
+		Update("temp_file_path", path).Error
+}
+
 // ListByStatus 按状态查询任务（分页，管理端用）
 func (r *URLDownloadTaskRepository) ListByStatus(status string, page, pageSize int) ([]models.URLDownloadTask, int64, error) {
 	var tasks []models.URLDownloadTask
@@ -153,4 +159,37 @@ func (r *URLDownloadTaskRepository) MergeAnonymousToUser(anonymousID string, use
 	return r.db.Model(&models.URLDownloadTask{}).
 		Where("anonymous_id = ? AND user_id IS NULL", anonymousID).
 		Update("user_id", userID).Error
+}
+
+// ReconcileInterrupted 启动对账：把上一进程遗留的非终态（pending/downloading）URL 下载
+// 任务收尾为失败，并返回这些任务，供调用方清理其孤儿临时下载文件（TempFilePath）。
+// 应在进程启动、尚未创建任何新下载任务前调用，避免误判新任务。
+func (r *URLDownloadTaskRepository) ReconcileInterrupted(interruptMsg string) ([]models.URLDownloadTask, error) {
+	if interruptMsg == "" {
+		interruptMsg = "进程重启中断"
+	}
+	nonTerminal := []models.URLDownloadStatus{
+		models.URLDownloadStatusPending,
+		models.URLDownloadStatusDownloading,
+	}
+
+	var tasks []models.URLDownloadTask
+	if err := r.db.Where("status IN ?", nonTerminal).Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+
+	now := utils.Now()
+	if err := r.db.Model(&models.URLDownloadTask{}).
+		Where("status IN ?", nonTerminal).
+		Updates(map[string]interface{}{
+			"status":        models.URLDownloadStatusFailed,
+			"error_message": interruptMsg,
+			"completed_at":  &now,
+		}).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
 }

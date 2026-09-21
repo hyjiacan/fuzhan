@@ -163,3 +163,31 @@ func (s *TaskService) CleanOldRecords(keep int) error {
 	subQuery := s.db.Model(&models.TaskRecord{}).Select("id").Order("created_at DESC").Limit(keep)
 	return s.db.Where("id NOT IN (?)", subQuery).Delete(&models.TaskRecord{}).Error
 }
+
+// ReconcileInterruptedTasks 启动对账：把进程重启前遗留的 pending/running 任务标记为中断。
+// 这些任务在旧进程中被中止，记录会一直冻结在"运行中/待处理"，直到本次启动将它们收尾。
+// 应在任务服务创建后、启动任何新任务之前调用一次，避免把新进程的活跃任务误判为遗留。
+func (s *TaskService) ReconcileInterruptedTasks() (int64, error) {
+	if s.db == nil {
+		return 0, nil
+	}
+	now := utils.Now()
+	res := s.db.Model(&models.TaskRecord{}).
+		Where("status IN ?", []string{
+			string(models.TaskStatusPending),
+			string(models.TaskStatusRunning),
+		}).
+		Updates(map[string]interface{}{
+			"status":        string(models.TaskStatusFailed),
+			"error_message": "进程重启中断",
+			"ended_at":      &now,
+		})
+	if res.Error != nil {
+		utils.Warn("启动对账任务状态失败", utils.Err(res.Error))
+		return 0, res.Error
+	}
+	if res.RowsAffected > 0 {
+		utils.Info("启动对账: 标记进程重启中断任务", utils.Int64("count", res.RowsAffected))
+	}
+	return res.RowsAffected, nil
+}

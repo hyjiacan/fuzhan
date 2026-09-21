@@ -228,8 +228,10 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		FileName:        filename,
 		FileSize:        fileSize,
 		StorageType:     models.URLDownloadStorageType(targetType),
+		RootName:        req.RootName,
 		Status:          models.URLDownloadStatusDownloading,
 		TargetPath:      targetPath,
+		TempFilePath:    uploadingPath, // 记录下载中的临时路径，供中断对账/取消时清理孤儿文件
 		Notified:        false,
 		UserID:          userIDPtr,
 		ETag:            etag,
@@ -424,10 +426,99 @@ func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
 		return
 	}
 
-	go h.downloadFromURL(taskID, task.URL, task.FileSize, task.FileName, "", task.TargetPath, task.TargetPath, "", "", "")
+	uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType := h.buildURLRetryPaths(task)
+
+	// 优先断点续传：复用已存在的部分文件，避免整份重下
+	resumed := false
+	if partial, ok := h.resumableUploadingPath(task, targetPath); ok {
+		uploadingPath = partial
+		resumed = true
+	}
+
+	if !resumed {
+		// 全新下载：清理旧的部分文件与失败残留目标，避免直接写目标或 finalize 误判"目标已存在"
+		if task.TempFilePath != "" && task.TempFilePath != uploadingPath {
+			if rmErr := os.Remove(task.TempFilePath); rmErr != nil && !os.IsNotExist(rmErr) {
+				utils.Warn("清理URL下载旧部分文件失败",
+					utils.String("path", task.TempFilePath), utils.Err(rmErr))
+			}
+		}
+		if targetPath != "" {
+			if rmErr := os.Remove(targetPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				utils.Warn("清理URL下载失败残留目标文件失败",
+					utils.String("path", targetPath), utils.Err(rmErr))
+			}
+		}
+	}
+	// 记录本次实际使用的临时路径，供取消/删除/启动对账清理
+	if uploadingPath != "" {
+		_ = h.urlTaskRepo.UpdateTempFilePath(taskID, uploadingPath)
+	}
+
+	go h.downloadFromURL(taskID, task.URL, task.FileSize, task.FileName, "", uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType)
 
 	middleware.LogOperation(c, "upload.url.retry", taskID, nil)
 	utils.HandleSuccess(c, http.StatusOK, "任务已重试", nil)
+}
+
+// resumableUploadingPath 判断是否可用已有部分文件断点续传：
+// 服务器支持 Range、存在有效（非目录、0<大小<目标）且仍位于目标同目录的部分文件。
+func (h *UploadSessionHandler) resumableUploadingPath(task *models.URLDownloadTask, targetPath string) (string, bool) {
+	if !task.ResumeSupported || task.TempFilePath == "" || targetPath == "" {
+		return "", false
+	}
+	fi, err := os.Stat(task.TempFilePath)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() <= 0 || fi.Size() >= task.FileSize {
+		return "", false
+	}
+	if filepath.Dir(task.TempFilePath) != filepath.Dir(targetPath) {
+		return "", false
+	}
+	return task.TempFilePath, true
+}
+
+// buildURLRetryPaths 根据已存的下载任务还原重试所需的路径与会话上下文。
+// 重试写入目标所在目录下的专用 `.retry.uploading` 临时文件，避免直接写目标，
+// 下载完成后由 downloadFromURL/finalizeURLDownload 原子重命名到最终路径。
+func (h *UploadSessionHandler) buildURLRetryPaths(task *models.URLDownloadTask) (uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot string, sessionTargetType models.TargetType) {
+	if task.TargetPath == "" {
+		return
+	}
+	targetPath = task.TargetPath
+	base := filepath.Base(targetPath)
+	dir := filepath.Dir(targetPath)
+	// 用任务 ID 保证临时文件唯一且可追溯
+	uploadingPath = filepath.Join(dir, "."+base+"."+task.ID+".retry.uploading")
+
+	switch task.StorageType {
+	case models.URLDownloadStorageRegular:
+		sessionTargetType = models.TargetTypeRegular
+		sessionTargetRoot = task.RootName
+	case models.URLDownloadStoragePrivate:
+		sessionTargetType = models.TargetTypePrivate
+		sessionTargetRoot = task.RootName
+	case models.URLDownloadStorageTemp:
+		sessionTargetType = models.TargetTypeTemp
+	}
+
+	// 还原目标相对根目录的目录（用于记录/索引的完整路径）
+	if sessionTargetRoot != "" {
+		if rootPath := appconfig.RootNames[sessionTargetRoot]; rootPath != "" {
+			if rootAbs, err1 := filepath.Abs(rootPath); err1 == nil {
+				if tgtAbs, err2 := filepath.Abs(targetPath); err2 == nil {
+					sep := string(filepath.Separator)
+					if strings.HasPrefix(tgtAbs, rootAbs+sep) {
+						rel := strings.TrimPrefix(tgtAbs, rootAbs+sep)
+						relDir := filepath.ToSlash(filepath.Dir(rel))
+						if relDir != "." && relDir != "/" {
+							sessionTargetPath = relDir
+						}
+					}
+				}
+			}
+		}
+	}
+	return
 }
 
 // DeleteURLTask 删除 URL 下载任务

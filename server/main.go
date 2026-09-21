@@ -364,6 +364,38 @@ func main() {
 	chunkSize := cfg.Upload.ChunkSize
 	uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService)
 	taskService := services.NewTaskService(db)
+	// 启动对账：先把上一进程遗留的 pending/running 任务收尾为"进程重启中断"，
+	// 再启动扫描/哈希等任务，避免任务管理页残留"运行中"僵死记录。
+	// 在此处调用安全：此时本进程尚未创建任何任务，DB 的 task_records 表已建。
+	if _, rerr := taskService.ReconcileInterruptedTasks(); rerr != nil {
+		utils.Warn("启动对账失败", utils.Err(rerr))
+	}
+	// 启动对账：URL 下载任务同样收尾上一进程遗留的 pending/downloading 为失败，
+	// 并清理其孤儿临时下载文件（TempFilePath），避免目标目录残留半截 .uploading。
+	urlTaskRepo := repositories.NewURLDownloadTaskRepository(db)
+	if interrupted, rerr := urlTaskRepo.ReconcileInterrupted("进程重启中断"); rerr != nil {
+		utils.Warn("URL下载任务启动对账失败", utils.Err(rerr))
+	} else {
+		for _, tk := range interrupted {
+			if tk.TempFilePath == "" {
+				continue
+			}
+			// 支持 Range 续传的任务保留部分文件，供重启后重试断点续传
+			if tk.ResumeSupported {
+				continue
+			}
+			if rmErr := os.Remove(tk.TempFilePath); rmErr != nil && !os.IsNotExist(rmErr) {
+				utils.Warn("清理URL下载孤儿文件失败",
+					utils.String("task_id", tk.ID),
+					utils.String("path", tk.TempFilePath),
+					utils.Err(rmErr))
+			}
+		}
+		if len(interrupted) > 0 {
+			utils.Info("URL下载任务启动对账: 标记中断并清理孤儿文件",
+				utils.Int("count", len(interrupted)))
+		}
+	}
 	uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService, taskService)
 	privateUploadHandler := file.NewPrivateUploadHandler(db, chunkSize, cfg.Storage.Private.Path, indexService)
 	privateStorageHandler := file.NewPrivateStorageHandlers()
