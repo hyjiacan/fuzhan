@@ -351,6 +351,49 @@ func (s *Syncer) moveFileOnce(rootName, oldPath, newPath string) error {
 	return nil
 }
 
+// HasActiveRecord 判断指定路径是否已存在 active 索引记录。
+// 供 watcher 处理重命名事件时判定路径身份（旧名 vs 新名）使用。
+func (s *Syncer) HasActiveRecord(rootName, filePath string) bool {
+	dbPath := filepath.ToSlash(filePath)
+	// 标准化 file_path：确保有前导 /
+	if !strings.HasPrefix(dbPath, "/") {
+		dbPath = "/" + dbPath
+	}
+	var count int64
+	if err := s.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND file_path = ? AND status = ?",
+			rootName, dbPath, models.FileStatusActive).
+		Count(&count).Error; err != nil {
+		utils.Warn("查询文件记录失败(重命名配对)",
+			utils.String("root", rootName),
+			utils.String("path", dbPath),
+			utils.Err(err))
+		return false
+	}
+	return count > 0
+}
+
+// MarkHashPending 将指定记录的 hash 状态置回 pending，供"已写完文件又被追加/覆盖写"
+// 时标记待重算使用；写入中的文件 hash 重新计算只能发生在它真正写完稳定之后。
+// 仅对 active 记录生效，记录不存在或无变化时无副作用。
+func (s *Syncer) MarkHashPending(rootName, filePath string) {
+	dbPath := filepath.ToSlash(filePath)
+	if !strings.HasPrefix(dbPath, "/") {
+		dbPath = "/" + dbPath
+	}
+	release := lockWrite()
+	defer release()
+	if err := s.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND file_path = ? AND status = ?",
+			rootName, dbPath, models.FileStatusActive).
+		Update("hash_status", "pending").Error; err != nil {
+		utils.Warn("标记 hash 待重算失败",
+			utils.String("root", rootName),
+			utils.String("path", dbPath),
+			utils.Err(err))
+	}
+}
+
 // createRecordAtPath 在目标路径新建一条 active 索引记录（moveFileOnce 的无旧记录兜底分支）
 func (s *Syncer) createRecordAtPath(tx *gorm.DB, rootName, dbPath string, now time.Time, topID *int64) error {
 	rootPath, ok := s.rootNames[rootName]

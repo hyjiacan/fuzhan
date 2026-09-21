@@ -33,6 +33,11 @@ type HashWorker struct {
 	progress    HashProgress
 	stats       HashStats
 	taskService TaskRecorder // 可选，用于记录哈希任务到 task_records
+
+	// ResidualDelay 主扫描中"仍被写入而跳过"的文件，其后的补算间隔。
+	// MaxResidualBatches 补算的最大轮数；两者为 0 时跳过补算（兼容旧行为）。
+	ResidualDelay      time.Duration
+	MaxResidualBatches int
 }
 
 // HashProgress 哈希计算进度
@@ -55,8 +60,10 @@ type HashStats struct {
 // NewHashWorker 创建哈希计算器
 func NewHashWorker(db *gorm.DB, rootNames map[string]string) *HashWorker {
 	return &HashWorker{
-		db:        db,
-		rootNames: rootNames,
+		db:                 db,
+		rootNames:          rootNames,
+		ResidualDelay:      3 * time.Second,
+		MaxResidualBatches: 5,
 	}
 }
 
@@ -209,11 +216,18 @@ func (w *HashWorker) run(ctx context.Context) {
 		utils.Int64("failed", totalFailed))
 }
 
-// processTable 处理单个表中的 pending 记录
+// processTable 处理单个表中的 pending 记录。
+// 正在写入的文件会被本轮跳过（保留 pending）并加入 skipped 集合，使主扫描的后续
+// 批次不再重复拾取它们，避免对持续写入的文件忙循环。主扫描结束后对这类"欠账"
+// 以 ResidualDelay 间隔补算最多 MaxResidualBatches 轮：期间写完的文件会命中并固化，
+// 仍写入中的再次被跳过；达上限仍未写完则保留 pending，交由后续触发（上传收尾 /
+// 下轮扫描）处理，绝不无限等待。
 func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTotal int64) (int64, int64) {
 	var done, failed int64
-	// 每批处理完会将 hash_status 置为 done，循环会继续拉取下一批 pending，直至清空。
+	var skipped []uint
 	const batchSize = 500
+
+	// 主扫描：处理非持续写入中的 pending 记录。
 	for {
 		select {
 		case <-ctx.Done():
@@ -221,13 +235,16 @@ func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTo
 		default:
 		}
 
-		var records []hashRecord
-		if err := w.db.Table(tableName).
+		query := w.db.Table(tableName).
 			Select("id, file_path, root_name").
 			Where("hash_status = ? AND is_dir = ?", "pending", false).
 			Order("file_size ASC").
-			Limit(batchSize).
-			Find(&records).Error; err != nil {
+			Limit(batchSize)
+		if len(skipped) > 0 {
+			query = query.Where("id NOT IN ?", skipped)
+		}
+		var records []hashRecord
+		if err := query.Find(&records).Error; err != nil {
 			utils.Warn("查询待计算 hash 记录失败",
 				utils.String("table", tableName),
 				utils.Err(err))
@@ -235,25 +252,68 @@ func (w *HashWorker) processTable(ctx context.Context, tableName string, tableTo
 		}
 
 		if len(records) == 0 {
-			return done, failed
+			break // 主扫描结束
 		}
 
-		batchDone, batchFailed := w.processHashBatch(ctx, tableName, records)
+		batchDone, batchFailed, batchSkipped := w.processHashBatch(ctx, tableName, records)
 		done += batchDone
 		failed += batchFailed
+		skipped = append(skipped, batchSkipped...)
 	}
+
+	// 残差补算：解决"外部直接写入而未走上传流程"的文件，在写入中被跳过、
+	// 写完后又无 TriggerHash 补触发、从而滞留 pending 直到下轮扫描的问题。
+	if w.MaxResidualBatches <= 0 || w.ResidualDelay <= 0 || len(skipped) == 0 {
+		return done, failed
+	}
+
+	for batch := 0; batch < w.MaxResidualBatches; batch++ {
+		select {
+		case <-ctx.Done():
+			return done, failed
+		case <-time.After(w.ResidualDelay):
+		}
+
+		// 主扫描后仅"仍被写入"的记录残留在 pending；本轮重新全量选取 pending，
+		// 已写完的会命中并固化，仍写入中的再次被跳过。
+		query := w.db.Table(tableName).
+			Select("id, file_path, root_name").
+			Where("hash_status = ? AND is_dir = ?", "pending", false).
+			Order("file_size ASC").
+			Limit(batchSize)
+		var records []hashRecord
+		if err := query.Find(&records).Error; err != nil {
+			utils.Warn("残差补算查询失败",
+				utils.String("table", tableName),
+				utils.Err(err))
+			return done, failed
+		}
+		if len(records) == 0 {
+			break // 欠账已补齐
+		}
+
+		batchDone, batchFailed, batchSkipped := w.processHashBatch(ctx, tableName, records)
+		done += batchDone
+		failed += batchFailed
+		if len(batchSkipped) == 0 {
+			break
+		}
+	}
+
+	return done, failed
 }
 
 // processHashBatch 并发计算一批记录的哈希值，并在主 goroutine 统一写库。
 // 哈希计算是纯磁盘 IO 类任务，可安全并行；SQLite 写操作集中串行执行，
 // 避免并发写锁竞争。
-func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, records []hashRecord) (int64, int64) {
+func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, records []hashRecord) (int64, int64, []uint) {
 	type hashResult struct {
 		id          uint
 		hash        string
 		errMsg      string
 		errCategory string
 		failed      bool
+		skipped     bool // 文件在计算期间仍在被写入，本轮跳过（保留 pending，不落库）
 	}
 
 	workerCount := runtime.GOMAXPROCS(0)
@@ -286,13 +346,22 @@ func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, rec
 					res.errCategory = "rootNotFound"
 				} else {
 					fullPath := filepath.Join(rootPath, rec.FilePath)
+					// 写保护：算前记录 size，算后再次校验。若前后不一致，说明文件
+					// 此刻仍在写入/被修改，本轮跳过（不落库、保留 pending），避免把
+					// 半截数据的 hash 固化；待文件真正写完稳定后由下一轮重算。
+					preSize, preErr := statSize(fullPath)
 					h, err := xxh3pkg.ComputeFileHash(fullPath)
 					if err != nil {
 						res.failed = true
 						res.errMsg = categorizeError(fullPath, err)
 						res.errCategory = classifyHashError(err)
 					} else {
-						res.hash = h
+						afterSize, afterErr := statSize(fullPath)
+						if preErr != nil || afterErr != nil || afterSize != preSize {
+							res.skipped = true
+						} else {
+							res.hash = h
+						}
 					}
 				}
 				results <- res
@@ -308,8 +377,14 @@ func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, rec
 
 	succIDs := make([]uint, 0, len(records))
 	succHashes := make([]string, 0, len(records))
+	skipIDs := make([]uint, 0)
 	var done, failed int64
 	for res := range results {
+		if res.skipped {
+			// 文件仍在写入：保留 pending，交由后续批次/下一轮重算
+			skipIDs = append(skipIDs, res.id)
+			continue
+		}
 		if res.failed {
 			w.markFailed(tableName, res.id, res.errMsg, 0)
 			failed++
@@ -333,16 +408,29 @@ func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, rec
 		release()
 	}
 
-	return done, failed
+	return done, failed, skipIDs
+}
+
+// statSize 读取文件当前大小（用于 hash 写前后一致性校验）。
+// 声明为包级变量以便测试注入桩替换真实实现。
+var statSize = func(path string) (int64, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return -1, err
+	}
+	return fi.Size(), nil
 }
 
 // batchUpdateHashes 用单条 "CASE id WHEN ... THEN ..." 批量写入哈希结果，
 // 取代逐条 UPDATE，降低 SQLite 写放大与多次取写锁的交替成本。
 // SQL 形态：UPDATE <table> SET xxh3_hash = CASE id WHEN ? THEN ? ... END,
-//   hash_status=? , hash_error=?, hash_retries=? WHERE id IN (?,...)
+//
+//	hash_status=? , hash_error=?, hash_retries=? WHERE id IN (?,...)
 func (w *HashWorker) batchUpdateHashes(tableName string, ids []uint, hashes []string) error {
 	var sb strings.Builder
-	sb.WriteString("xxh3_hash = CASE id ")
+	sb.WriteString("UPDATE ")
+	sb.WriteString(tableName)
+	sb.WriteString(" SET xxh3_hash = CASE id ")
 	args := make([]interface{}, 0, len(ids)*2+3+len(ids))
 	for i, id := range ids {
 		sb.WriteString("WHEN ? THEN ? ")

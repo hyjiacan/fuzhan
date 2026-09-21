@@ -28,6 +28,15 @@ type Watcher struct {
 	sizeStableWait time.Duration
 	sizeCheckWait  time.Duration
 
+	// 重命名配对池（按 rootName 聚合同一短时间窗内的重命名路径）
+	renameMu      sync.Mutex
+	renamePending map[string]*renameAssembly
+	renameWindow  time.Duration
+
+	// gate 文件"是否写完"判定状态机。监听只上报原始事件，是否写完由它判定，
+	// 判定写完通过 onFileSettled 建立索引，避免大文件写入中被误判提前建索引。
+	gate *SettledGate
+
 	// 忽略模式
 	ignorePatterns []string
 
@@ -51,15 +60,27 @@ type pendingEvent struct {
 	timerBox *time.Timer
 }
 
+// renameAssembly 单次重命名涉及的待配对路径集合。
+// Windows 上对同一文件的重命名会产生"旧名、新名"两个 Rename 事件，
+// 这里在短窗口内聚合同一 root 下的路径，随后还原 (旧名 -> 新名) 配对。
+type renameAssembly struct {
+	rootName string
+	paths    map[string]struct{}
+	timer    *time.Timer
+	done     bool
+}
+
 // NewWatcher 创建文件监听器
 func NewWatcher(syncer *Syncer, rootNames map[string]string) *Watcher {
-	return &Watcher{
+	w := &Watcher{
 		syncer:         syncer,
 		rootNames:      rootNames,
 		pending:        make(map[string]*pendingEvent),
 		debounceWindow: 2 * time.Second, // 事件消抖窗口
 		sizeStableWait: 2 * time.Second, // 文件大小稳定等待
 		sizeCheckWait:  2 * time.Second, // 大小检查间隔
+		renamePending:  make(map[string]*renameAssembly),
+		renameWindow:   500 * time.Millisecond, // 重命名配对聚合窗口
 		ignorePatterns: []string{
 			".git", ".svn", ".hg", // VCS
 			"node_modules", "__pycache__", // 依赖/缓存
@@ -67,6 +88,8 @@ func NewWatcher(syncer *Syncer, rootNames map[string]string) *Watcher {
 			"desktop.ini",
 		},
 	}
+	w.gate = NewSettledGate(rootNames, w.onFileSettled, w.onFileDirty)
+	return w
 }
 
 // Start 启动文件监听器
@@ -128,6 +151,19 @@ func (w *Watcher) Stop() {
 	w.pending = nil
 	w.pendingMu.Unlock()
 
+	// 清理重命名配对池
+	w.renameMu.Lock()
+	for _, a := range w.renamePending {
+		if a.timer != nil {
+			a.timer.Stop()
+		}
+	}
+	w.renamePending = nil
+	w.renameMu.Unlock()
+
+	// 清理写完判定状态机
+	w.gate.Close()
+
 	utils.Info("文件监听器已停止")
 }
 
@@ -167,10 +203,8 @@ func (w *Watcher) processEvents(events chan notify.EventInfo) {
 				w.handleRemove(rootName, relPath)
 
 			case event&notify.Rename != 0:
-				// 重命名事件由 Create/Remove 组合覆盖，这里仅记录日志
-				utils.Debug("文件重命名事件",
-					utils.String("path", relPath),
-					utils.String("root", rootName))
+				// 重命名事件在短窗口内聚合，还原 (旧名 -> 新名) 后原位更新索引
+				w.handleRename(rootName, relPath)
 
 			default:
 				// Create / Write: 进入消抖池等待文件稳定
@@ -254,19 +288,154 @@ func (w *Watcher) handleCreateOrWrite(pe *pendingEvent) {
 		}
 	}
 
-	// 文件大小已稳定（或强制同步），执行同步
+	// 文件大小已稳定（或强制同步），先将事件从消抖池取出，再交给写完判定状态机；
+	// 由状态机在判定真正写完（连续多次稳定）时通过 onFileSettled 建立索引，
+	// 避免对大文件"写入中途缓冲停顿"被误判为已写完而提前建索引。
 	w.removePending(pe.rootName, pe.relPath)
 
-	utils.Info("文件变更同步",
-		utils.String("path", pe.relPath),
-		utils.String("root", pe.rootName),
-		utils.Int64("size", currentSize))
+	if w.running.Load() {
+		w.gate.OnChange(pe.rootName, pe.relPath)
+	}
+}
 
-	if err := w.syncer.SyncFile(pe.rootName, pe.relPath); err != nil {
-		utils.Warn("文件同步失败",
-			utils.String("path", pe.relPath),
-			utils.String("root", pe.rootName),
+// onFileSettled 由写完判定状态机回调：文件判定写完时建立索引。
+func (w *Watcher) onFileSettled(rootName, relPath string) {
+	// 上传流程已直接写入索引（如分片上传收尾），跳过，避免重复处理
+	if w.skipRecentlySynced != nil && w.skipRecentlySynced(rootName, relPath) {
+		utils.Debug("文件最近已同步，跳过 gate 同步",
+			utils.String("path", relPath),
+			utils.String("root", rootName))
+		return
+	}
+	utils.Info("文件写完同步",
+		utils.String("path", relPath),
+		utils.String("root", rootName))
+	if err := w.syncer.SyncFile(rootName, relPath); err != nil {
+		utils.Warn("文件写完同步失败",
+			utils.String("path", relPath),
+			utils.String("root", rootName),
 			utils.Err(err))
+	}
+}
+
+// onFileDirty 由写完判定状态机回调：已写完的文件又被追加/覆盖写，
+// 将该记录 hash 状态置回 pending，待写入完成后重新计算。
+func (w *Watcher) onFileDirty(rootName, relPath string) {
+	utils.Debug("已写完文件被再次写入，标记 hash 待重算",
+		utils.String("path", relPath),
+		utils.String("root", rootName))
+	w.syncer.MarkHashPending(rootName, relPath)
+}
+
+// handleRename 处理重命名事件：聚合到 rootName 关联的短窗口集合，等待旧名/新名两个事件配对。
+func (w *Watcher) handleRename(rootName, relPath string) {
+	w.renameMu.Lock()
+	a, ok := w.renamePending[rootName]
+	if !ok || a.done {
+		a = &renameAssembly{
+			rootName: rootName,
+			paths:    make(map[string]struct{}),
+		}
+		w.renamePending[rootName] = a
+		a.timer = time.AfterFunc(w.renameWindow, func() {
+			w.resolveRenames(rootName)
+		})
+	}
+	a.paths[relPath] = struct{}{}
+	w.renameMu.Unlock()
+
+	utils.Debug("文件重命名事件(待配对)",
+		utils.String("path", relPath),
+		utils.String("root", rootName))
+}
+
+// resolveRenames 重命名窗口到期后，配对集合中的旧名与新名并原位更新索引记录。
+func (w *Watcher) resolveRenames(rootName string) {
+	w.renameMu.Lock()
+	a, ok := w.renamePending[rootName]
+	if !ok || a.done {
+		w.renameMu.Unlock()
+		return
+	}
+	a.done = true
+	delete(w.renamePending, rootName)
+	paths := make([]string, 0, len(a.paths))
+	for p := range a.paths {
+		paths = append(paths, p)
+	}
+	w.renameMu.Unlock()
+
+	if len(paths) == 0 {
+		return
+	}
+
+	rootPath, ok := w.rootNames[rootName]
+	if !ok {
+		utils.Warn("重命名配对失败: 根目录不存在",
+			utils.String("root", rootName))
+		return
+	}
+
+	type renCand struct {
+		path   string
+		onDisk bool // 路径在磁盘上仍存在（重命名后的新名）
+		hasDB  bool // 路径在索引表中已有 active 记录（重命名前的旧名）
+	}
+	cands := make([]renCand, 0, len(paths))
+	for _, p := range paths {
+		c := renCand{path: p}
+		if _, err := os.Stat(filepath.Join(rootPath, p)); err == nil {
+			c.onDisk = true
+		}
+		c.hasDB = w.syncer.HasActiveRecord(rootName, p)
+		cands = append(cands, c)
+	}
+
+	var oldCands []string // 磁盘已消失 & db 有记录 → 旧名
+	var newCands []string // 磁盘存在 & db 无记录 → 新名
+	for _, c := range cands {
+		switch {
+		case !c.onDisk && c.hasDB:
+			oldCands = append(oldCands, c.path)
+		case c.onDisk && !c.hasDB:
+			newCands = append(newCands, c.path)
+		}
+	}
+
+	// 典型形态：一个旧名 -> 一个新名，直接原位更新索引（含目录递归、软删复活、检索索引同步）
+	if len(oldCands) == 1 && len(newCands) == 1 {
+		utils.Info("文件重命名同步",
+			utils.String("root", rootName),
+			utils.String("old", oldCands[0]),
+			utils.String("new", newCands[0]))
+		if err := w.syncer.MoveFile(rootName, oldCands[0], newCands[0]); err != nil {
+			utils.Warn("重命名同步失败",
+				utils.String("root", rootName),
+				utils.String("old", oldCands[0]),
+				utils.String("new", newCands[0]),
+				utils.Err(err))
+		}
+		return
+	}
+
+	// 无法精确配对（多文件同时重命名 / 跨目录移动等），保守兜底：
+	// 对"磁盘存在且 db 无记录"的新名走 SyncFile 建立索引，避免新路径长期缺记录；
+	// 旧名不主动处理，交由下一次全量扫描对账，避免误配对/误删。
+	for _, p := range newCands {
+		utils.Info("重命名兜底: 为新路径建立索引",
+			utils.String("root", rootName),
+			utils.String("path", p))
+		if err := w.syncer.SyncFile(rootName, p); err != nil {
+			utils.Warn("重命名兜底同步失败",
+				utils.String("root", rootName),
+				utils.String("path", p),
+				utils.Err(err))
+		}
+	}
+	if len(oldCands) > 0 {
+		utils.Debug("重命名未能配对, 旧名交由全量扫描对账",
+			utils.String("root", rootName),
+			utils.Int("count", len(oldCands)))
 	}
 }
 
@@ -275,6 +444,9 @@ func (w *Watcher) handleRemove(rootName, relPath string) {
 	utils.Info("文件删除事件",
 		utils.String("path", relPath),
 		utils.String("root", rootName))
+
+	// 终止该路径在写完判定状态机中的观察，避免继续 poll 已删除文件
+	w.gate.Cancel(rootName, relPath)
 
 	if err := w.syncer.RemoveFile(rootName, relPath); err != nil {
 		utils.Warn("删除同步失败",
