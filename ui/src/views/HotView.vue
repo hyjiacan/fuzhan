@@ -86,16 +86,24 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
 
-// el-table-v2 需要数值宽高，实时测量容器
+// el-table-v2 需要数值宽高：宽度实时测量容器，高度按行数自适应
 const tableWrapRef = ref(null)
 const tableWidth = ref(600)
-const tableHeight = ref(360)
+const MIN_TABLE_HEIGHT = 360
+const tableHeight = ref(MIN_TABLE_HEIGHT)
 let tableResizeObs = null
-const updateTableSize = () => {
+
+// 根据当前行数计算高度：行数少则表格变矮，行数多则随内容增高
+const updateTableHeight = () => {
+  const rows = hotDownloads.value.length
+  tableHeight.value = rows * TableConst.ROW_HEIGHT
+  if (tableHeight.value < MIN_TABLE_HEIGHT) tableHeight.value = MIN_TABLE_HEIGHT
+}
+
+const updateTableWidth = () => {
   const el = tableWrapRef.value
   if (el) {
     tableWidth.value = el.clientWidth || 600
-    tableHeight.value = el.clientHeight || 360
   }
 }
 
@@ -259,6 +267,7 @@ const loadHotDownloads = async () => {
     if (data.success && data.data) {
       hotDownloads.value = data.data.records || []
       total.value = data.data.total || 0
+      updateTableHeight()
     }
   } catch (error) {
     ElMessage.error('获取热门下载失败')
@@ -271,8 +280,9 @@ const loadHotDownloads = async () => {
 onMounted(() => {
   loadKeywords()
   loadHotDownloads()
-  updateTableSize()
-  tableResizeObs = new ResizeObserver(updateTableSize)
+  updateTableHeight()
+  updateTableWidth()
+  tableResizeObs = new ResizeObserver(updateTableWidth)
   if (tableWrapRef.value) {
     tableResizeObs.observe(tableWrapRef.value)
   }
@@ -304,7 +314,7 @@ onUnmounted(() => {
   }
 
   .table-v2-wrap {
-    height: 360px;
+    min-height: 360px;
   }
 
   .pagination-wrapper {

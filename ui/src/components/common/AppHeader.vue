@@ -54,85 +54,124 @@
   </header>
 
   <!-- 登录弹框 -->
-  <el-dialog v-model="showLoginModal" title="登录" width="400px">
-    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="120px">
-      <el-form-item prop="username" label="用户名">
+  <el-dialog v-model="showLoginModal" class="auth-dialog" width="420px">
+    <template #header>
+      <div class="auth-dialog-header">
+        <img src="/assets/icons/logo.svg" class="auth-dialog-logo" alt="浮栈" />
+        <div class="auth-dialog-heading">
+          <h3 class="auth-dialog-title">欢迎回来</h3>
+          <p class="auth-dialog-subtitle">登录 {{ appName }}，继续你的文件旅程</p>
+        </div>
+      </div>
+    </template>
+
+    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top">
+      <el-form-item label="用户名" prop="username">
         <el-input
           v-model="loginForm.username"
           :maxlength="64"
+          size="large"
           placeholder="请输入用户名"
           type="text"
           autocomplete="username"
           @keydown.enter="handleLogin"
-        />
+        >
+          <template #prefix><el-icon><User /></el-icon></template>
+        </el-input>
       </el-form-item>
-      <el-form-item prop="password" label="密码">
+      <el-form-item label="密码" prop="password">
         <el-input
           v-model="loginForm.password"
           :maxlength="128"
+          size="large"
           type="password"
           show-password
           placeholder="请输入密码"
           autocomplete="current-password"
           @keydown.enter="handleLogin"
-        />
+        >
+          <template #prefix><el-icon><Lock /></el-icon></template>
+        </el-input>
       </el-form-item>
     </el-form>
+
     <template #footer>
       <div class="auth-footer">
-        <el-button type="primary" :loading="loggingIn" class="auth-submit" @click="handleLogin">
+        <el-button type="primary" size="large" :loading="loggingIn" class="auth-submit" @click="handleLogin">
           登录
         </el-button>
-        <el-button link v-if="privateStorageEnabled" @click="switchToRegister" class="switch-link">
-          还没有账号？去注册
-        </el-button>
+        <div v-if="privateStorageEnabled" class="auth-switch">
+          <span class="auth-switch-text">还没有账号？</span>
+          <el-button link type="primary" class="switch-link" @click="switchToRegister">立即注册</el-button>
+        </div>
       </div>
     </template>
   </el-dialog>
 
   <!-- 注册弹框 -->
-  <el-dialog v-model="showRegisterModal" title="注册" width="400px">
-    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="120px">
-      <el-form-item prop="username" label="用户名">
+  <el-dialog v-model="showRegisterModal" class="auth-dialog" width="420px">
+    <template #header>
+      <div class="auth-dialog-header">
+        <img src="/assets/icons/logo.svg" class="auth-dialog-logo" alt="浮栈" />
+        <div class="auth-dialog-heading">
+          <h3 class="auth-dialog-title">创建账号</h3>
+          <p class="auth-dialog-subtitle">加入 {{ appName }}，让文件有处可栖</p>
+        </div>
+      </div>
+    </template>
+
+    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-position="top">
+      <el-form-item label="用户名" prop="username">
         <el-input
           v-model="registerForm.username"
           :maxlength="64"
+          size="large"
           placeholder="请输入用户名"
           autocomplete="username"
           @keydown.enter="handleRegister"
-        />
+        >
+          <template #prefix><el-icon><User /></el-icon></template>
+        </el-input>
       </el-form-item>
-      <el-form-item prop="password" label="密码">
+      <el-form-item label="密码" prop="password">
         <el-input
           v-model="registerForm.password"
           :maxlength="128"
+          size="large"
           type="password"
           show-password
           placeholder="请输入密码"
           autocomplete="new-password"
           @keydown.enter="handleRegister"
-        />
+        >
+          <template #prefix><el-icon><Lock /></el-icon></template>
+        </el-input>
       </el-form-item>
-      <el-form-item prop="confirmPassword" label="确认密码">
+      <el-form-item label="确认密码" prop="confirmPassword">
         <el-input
           v-model="registerForm.confirmPassword"
           :maxlength="128"
+          size="large"
           type="password"
           show-password
           placeholder="请再次输入密码"
           autocomplete="new-password"
           @keydown.enter="handleRegister"
-        />
+        >
+          <template #prefix><el-icon><Lock /></el-icon></template>
+        </el-input>
       </el-form-item>
     </el-form>
+
     <template #footer>
       <div class="auth-footer">
-        <el-button type="primary" :loading="registering" class="auth-submit" @click="handleRegister">
+        <el-button type="primary" size="large" :loading="registering" class="auth-submit" @click="handleRegister">
           注册
         </el-button>
-        <el-button link @click="switchToLogin" class="switch-link">
-          已有账号？去登录
-        </el-button>
+        <div class="auth-switch">
+          <span class="auth-switch-text">已有账号？</span>
+          <el-button link type="primary" class="switch-link" @click="switchToLogin">去登录</el-button>
+        </div>
       </div>
     </template>
   </el-dialog>
@@ -190,6 +229,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { User, Lock } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi, SecurityApi } from '@/api'
 import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
 import store from '@/store'
@@ -287,12 +327,20 @@ onMounted(() => {
   updateAuthState()
   showLoginDialogEvent.addEventListener('show', handleShowLoginDialog)
   showRegisterDialogEvent.addEventListener('show', handleShowRegisterDialog)
+  // 启动时后端校验 token 失效被清除后，刷新本地登录态与菜单
+  window.addEventListener('auth:changed', handleAuthChanged)
 })
 
 onUnmounted(() => {
   showLoginDialogEvent.removeEventListener('show', handleShowLoginDialog)
   showRegisterDialogEvent.removeEventListener('show', handleShowRegisterDialog)
+  window.removeEventListener('auth:changed', handleAuthChanged)
 })
+
+// token 被清除（如启动校验失效）时刷新登录态，隐藏用户/管理菜单
+const handleAuthChanged = () => {
+  updateAuthState()
+}
 
 // Navigation items from router meta
 const visibleNavItems = computed(() => {
@@ -738,20 +786,108 @@ export default {
   }
 }
 
+.auth-dialog {
+  border-radius: @border-radius-lg;
+  overflow: hidden;
+  box-shadow: @shadow-lg;
+
+  .el-dialog__header {
+    padding: 28px 24px 0;
+  }
+
+  .el-dialog__body {
+    padding: 22px 24px 6px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 24px 24px;
+  }
+
+  .el-dialog__headerbtn {
+    top: 20px;
+    right: 20px;
+  }
+
+  .auth-dialog-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-right: 28px;
+
+    .auth-dialog-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      box-shadow: @shadow-sm;
+    }
+
+    .auth-dialog-heading {
+      min-width: 0;
+
+      .auth-dialog-title {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.3;
+        font-weight: 700;
+        color: @text-color;
+      }
+
+      .auth-dialog-subtitle {
+        margin: 3px 0 0;
+        font-size: @font-size-sm;
+        color: @text-color-placeholder;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+  }
+
+  .el-form-item {
+    margin-bottom: 18px;
+  }
+}
+
 .auth-footer {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 16px;
 
-  .switch-link {
-    justify-content: center;
-    margin: 0 auto;
+  .auth-submit {
+    width: 100%;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    box-shadow: @button-hover-shadow;
+    transition: transform @transition-fast, box-shadow @transition-fast;
+
+    &:hover:not(.is-loading):not(.is-disabled) {
+      transform: @hover-lift;
+      box-shadow: 0 8px 20px fade(@primary-accent, 40%);
+    }
+
+    &:active:not(.is-loading):not(.is-disabled) {
+      transform: @active-scale;
+    }
   }
-}
 
-.auth-submit {
-  width: 100%;
+  .auth-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+
+    .auth-switch-text {
+      font-size: @font-size-sm;
+      color: @text-color-secondary;
+    }
+
+    .switch-link {
+      font-weight: 600;
+      font-size: @font-size-sm;
+    }
+  }
 }
 
 // 安全事件强提醒弹框

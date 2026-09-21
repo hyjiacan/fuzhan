@@ -139,7 +139,7 @@ async function pollNotifications() {
   }
 }
 
-// 启动时验证服务器端 token 有效性，无效则静默清除
+// 启动时验证服务器端 token 有效性，无效则静默清除并刷新菜单，不弹出任何提示
 async function validateTokenOnServer() {
   const token = localStorage.getItem('token')
   if (!token) return
@@ -147,16 +147,24 @@ async function validateTokenOnServer() {
   try {
     const data = await AuthApi.getUserInfo()
     if (!data.success || !data.data) {
-      // Token 无效或已过期，静默清除
-      localStorage.removeItem('token')
-      localStorage.removeItem('uuid')
-      localStorage.removeItem('username')
-      localStorage.removeItem('userRole')
-      store.setAuthenticated(false)
+      clearStaleAuth()
     }
     // 若服务端刷新了 token，响应拦截器已自动保存新 token
   } catch (e) {
-    // 网络错误时保持当前状态，不打扰用户
-    console.error('验证token失败:', e)
+    // token 失效（401）由响应拦截器统一清除，此处仅做兜底并刷新界面状态；
+    // 网络错误（无响应）时保持当前状态，不打扰用户
+    if (e && e.response && (e.response.status === 401 || e.response.status === 403)) {
+      clearStaleAuth()
+    } else if (e && !e.response) {
+      console.error('验证token失败:', e)
+    }
   }
+}
+
+// 清除本地失效身份信息，并通知界面刷新登录态（不弹提示）
+function clearStaleAuth() {
+  AuthApi.clearAuth()
+  localStorage.removeItem('userRole')
+  store.setAuthenticated(false)
+  window.dispatchEvent(new CustomEvent('auth:changed'))
 }

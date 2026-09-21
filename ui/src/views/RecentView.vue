@@ -20,7 +20,7 @@
       <!-- 最近上传 -->
       <el-card class="recent-card">
         <template #header>最近上传</template>
-        <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="loading">
+        <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="uploadsLoading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
             row-key="id" :row-height="TableConst.ROW_HEIGHT">
             <template #empty>
@@ -47,7 +47,7 @@
       <!-- 最近下载 -->
       <el-card class="recent-card">
         <template #header>最近下载</template>
-        <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="loading">
+        <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="downloadsLoading">
           <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
             row-key="id" :row-height="TableConst.ROW_HEIGHT">
             <template #empty>
@@ -90,7 +90,8 @@ const SearchIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 ])
 
 // State
-const loading = ref(false)
+const uploadsLoading = ref(false)
+const downloadsLoading = ref(false)
 const recentKeywords = ref([])
 
 // Upload pagination
@@ -316,6 +317,7 @@ const loadRecentKeywords = async () => {
 
 // 加载最近上传
 const loadUploads = async () => {
+  uploadsLoading.value = true
   try {
     const data = await FileApi.recent(uploadPage.value, uploadPageSize.value, 'upload')
     if (data.success && data.data) {
@@ -325,12 +327,14 @@ const loadUploads = async () => {
   } catch (error) {
     ElMessage.error('加载上传记录失败')
     console.error(error)
+  } finally {
+    uploadsLoading.value = false
   }
 }
 
 // 加载最近下载
 const loadDownloads = async () => {
-  loading.value = true
+  downloadsLoading.value = true
   try {
     const data = await FileApi.recent(downloadPage.value, downloadPageSize.value, 'download')
     if (data.success && data.data) {
@@ -341,7 +345,7 @@ const loadDownloads = async () => {
     ElMessage.error('加载下载记录失败')
     console.error(error)
   } finally {
-    loading.value = false
+    downloadsLoading.value = false
   }
 }
 
