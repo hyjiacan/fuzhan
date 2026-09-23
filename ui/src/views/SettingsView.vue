@@ -47,7 +47,6 @@
       <div class="actions-inner">
         <div class="actions-status">
           <template v-if="isDirty"><span class="dot warning"></span>当前有未保存的更改</template>
-          <template v-else><span class="dot ok"></span>所有更改已保存</template>
         </div>
         <div class="actions-btns">
           <el-button :disabled="!isDirty" @click="handleReset">重置</el-button>
@@ -61,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, shallowRef, computed, toRaw, onMounted } from 'vue'
+import { ref, reactive, shallowRef, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave } from 'vue-router'
 import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Odometer, Expand, Fold } from '@element-plus/icons-vue'
@@ -141,9 +140,13 @@ const panelMap = {
 const currentComponent = computed(() => panelMap[activePanel.value])
 
 // 脏标记：以 settings 序列化快照为基准，判断是否存在未保存更改
-let baselineSnapshot = ''
-const serialize = (v) => JSON.stringify(toRaw(v))
-const isDirty = computed(() => baselineSnapshot !== '' && serialize(settings) !== baselineSnapshot)
+// 基线用 ref 而非普通变量，否则 markClean 更新基线时 isDirty 不会重算（保存后脏标记无法复位）
+const baselineSnapshot = ref('')
+// 直接序列化响应式对象：若用 toRaw 剥离代理，computed 无法收集字段依赖，isDirty 将永不响应变更
+const serialize = (v) => JSON.stringify(v)
+const isDirty = computed(() => baselineSnapshot.value !== '' && serialize(settings) !== baselineSnapshot.value)
+// 各顶层配置节的基线序列化值，供保存时增量 diff：仅提交发生变化的配置节
+let baselineSections = null
 
 // 保存原始服务器/数据库配置用于变更检测与危险操作确认
 const originalServerConfig = ref(null)
@@ -397,8 +400,33 @@ const loadSettings = async () => {
 
 // 标记为已保存，建立新基线
 const markClean = () => {
-  baselineSnapshot = serialize(settings)
+  baselineSnapshot.value = serialize(settings)
+  baselineSections = {}
+  for (const k of Object.keys(settings)) baselineSections[k] = JSON.stringify(settings[k])
 }
+
+// configData 顶层节 -> 其来源的 settings 顶层节，用于判定该节是否因变更而随请求提交
+const SECTION_SOURCES = {
+  app: ['appName'],
+  account: ['account'],
+  server: ['server'],
+  database: ['database'],
+  rootDirs: ['rootDirs'],
+  allowedExtensions: ['allowedExtensions'],
+  privateFiles: ['privateFiles', 'privateQuotaGlobal', 'privateQuotaUser'],
+  tempFiles: ['tempFiles', 'tempFilesQuotaGlobal', 'tempFilesQuotaPerIP'],
+  upload: ['upload'],
+  download: ['download'],
+  preview: ['preview'],
+  mimeTable: ['mimeTable'],
+  openApi: ['openApi'],
+  index: ['scanStartDelaySeconds', 'scanCronExpression', 'searchReconcileCronExpression'],
+  resource: ['resource'],
+  security: ['security']
+}
+
+// 判定任一来源设置节是否相对基线变化；基线尚未建立时视为全量提交
+const sectionChanged = (keys) => !baselineSections || keys.some(k => baselineSections[k] !== JSON.stringify(settings[k]))
 
 // 等待服务就绪后导航
 const pollServerHealth = (url, maxRetries, interval, onReady) => {
@@ -530,7 +558,14 @@ const doSaveSettings = async () => {
       }
     }
 
-    const data = await ConfigApi.save(configData)
+    // 增量保存：按 SECTION_SOURCES 只打包发生变化的配置节，未变更节点不随请求发送。
+    // 后端对未提交节点按 present() 做节点级合并、保留原值，避免全量提交覆盖无关配置
+    const payload = {}
+    for (const [dstKey, srcKeys] of Object.entries(SECTION_SOURCES)) {
+      if (sectionChanged(srcKeys)) payload[dstKey] = configData[dstKey]
+    }
+
+    const data = await ConfigApi.save(payload)
     if (data.success) {
       message.success(data.message || '配置已保存并生效')
       try {
