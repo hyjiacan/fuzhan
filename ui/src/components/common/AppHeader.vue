@@ -2,13 +2,17 @@
   <header class="app-header">
     <div class="header-content">
       <!-- Logo -->
-      <router-link to="/" class="logo-link">
+      <div class="app-title">
         <img src="/assets/icons/logo.svg" class="app-logo" alt="logo" />
         <span class="app-name">{{ appName }}</span>
-      </router-link>
+      </div>
 
       <!-- Hamburger toggle (mobile) -->
-      <button class="nav-toggle" @click="mobileMenuOpen = !mobileMenuOpen" :aria-label="mobileMenuOpen ? '关闭菜单' : '打开菜单'">
+      <button
+        class="nav-toggle"
+        @click="mobileMenuOpen = !mobileMenuOpen"
+        :aria-label="mobileMenuOpen ? '关闭菜单' : '打开菜单'"
+      >
         <span class="hamburger-line" :class="{ open: mobileMenuOpen }"></span>
         <span class="hamburger-line" :class="{ open: mobileMenuOpen }"></span>
         <span class="hamburger-line" :class="{ open: mobileMenuOpen }"></span>
@@ -31,10 +35,21 @@
           <ThemeToggle class="header-theme-toggle" />
           <template v-if="authState.isLoggedIn">
             <span class="username">{{ authState.username }}</span>
-            <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
+            <el-button
+              link
+              size="small"
+              class="logout-btn"
+              @click="handleLogout"
+              >退出</el-button
+            >
           </template>
           <template v-else>
-            <a class="login-link" href="javascript:void(0)" @click="showLoginModal = true">登录</a>
+            <a
+              class="login-link"
+              href="javascript:void(0)"
+              @click="showLoginModal = true"
+              >登录</a
+            >
           </template>
         </div>
       </nav>
@@ -44,10 +59,17 @@
         <ThemeToggle class="header-theme-toggle" />
         <template v-if="authState.isLoggedIn">
           <span class="username">{{ authState.username }}</span>
-          <el-button link size="small" class="logout-btn" @click="handleLogout">退出</el-button>
+          <el-button link size="small" class="logout-btn" @click="handleLogout"
+            >退出</el-button
+          >
         </template>
         <template v-else>
-          <a class="login-link" href="javascript:void(0)" @click="showLoginModal = true">登录</a>
+          <a
+            class="login-link"
+            href="javascript:void(0)"
+            @click="showLoginModal = true"
+            >登录</a
+          >
         </template>
       </div>
     </div>
@@ -60,12 +82,19 @@
         <img src="/assets/icons/logo.svg" class="auth-dialog-logo" alt="浮栈" />
         <div class="auth-dialog-heading">
           <h3 class="auth-dialog-title">欢迎回来</h3>
-          <p class="auth-dialog-subtitle">登录 {{ appName }}，继续你的文件旅程</p>
+          <p class="auth-dialog-subtitle">
+            登录 {{ appName }}，继续你的文件旅程
+          </p>
         </div>
       </div>
     </template>
 
-    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top">
+    <el-form
+      ref="loginFormRef"
+      :model="loginForm"
+      :rules="loginRules"
+      label-position="top"
+    >
       <el-form-item label="用户名" prop="username">
         <el-input
           v-model="loginForm.username"
@@ -76,7 +105,9 @@
           autocomplete="username"
           @keydown.enter="handleLogin"
         >
-          <template #prefix><el-icon><User /></el-icon></template>
+          <template #prefix
+            ><el-icon><User /></el-icon
+          ></template>
         </el-input>
       </el-form-item>
       <el-form-item label="密码" prop="password">
@@ -90,19 +121,33 @@
           autocomplete="current-password"
           @keydown.enter="handleLogin"
         >
-          <template #prefix><el-icon><Lock /></el-icon></template>
+          <template #prefix
+            ><el-icon><Lock /></el-icon
+          ></template>
         </el-input>
       </el-form-item>
     </el-form>
 
     <template #footer>
       <div class="auth-footer">
-        <el-button type="primary" size="large" :loading="loggingIn" class="auth-submit" @click="handleLogin">
+        <el-button
+          type="primary"
+          size="large"
+          :loading="loggingIn"
+          class="auth-submit"
+          @click="handleLogin"
+        >
           登录
         </el-button>
         <div v-if="privateStorageEnabled" class="auth-switch">
           <span class="auth-switch-text">还没有账号？</span>
-          <el-button link type="primary" class="switch-link" @click="switchToRegister">立即注册</el-button>
+          <el-button
+            link
+            type="primary"
+            class="switch-link"
+            @click="switchToRegister"
+            >立即注册</el-button
+          >
         </div>
       </div>
     </template>
@@ -120,7 +165,12 @@
       </div>
     </template>
 
-    <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-position="top">
+    <el-form
+      ref="registerFormRef"
+      :model="registerForm"
+      :rules="registerRules"
+      label-position="top"
+    >
       <el-form-item label="用户名" prop="username">
         <el-input
           v-model="registerForm.username"
@@ -130,7 +180,9 @@
           autocomplete="username"
           @keydown.enter="handleRegister"
         >
-          <template #prefix><el-icon><User /></el-icon></template>
+          <template #prefix
+            ><el-icon><User /></el-icon
+          ></template>
         </el-input>
       </el-form-item>
       <el-form-item label="密码" prop="password">
@@ -144,7 +196,9 @@
           autocomplete="new-password"
           @keydown.enter="handleRegister"
         >
-          <template #prefix><el-icon><Lock /></el-icon></template>
+          <template #prefix
+            ><el-icon><Lock /></el-icon
+          ></template>
         </el-input>
       </el-form-item>
       <el-form-item label="确认密码" prop="confirmPassword">
@@ -158,19 +212,33 @@
           autocomplete="new-password"
           @keydown.enter="handleRegister"
         >
-          <template #prefix><el-icon><Lock /></el-icon></template>
+          <template #prefix
+            ><el-icon><Lock /></el-icon
+          ></template>
         </el-input>
       </el-form-item>
     </el-form>
 
     <template #footer>
       <div class="auth-footer">
-        <el-button type="primary" size="large" :loading="registering" class="auth-submit" @click="handleRegister">
+        <el-button
+          type="primary"
+          size="large"
+          :loading="registering"
+          class="auth-submit"
+          @click="handleRegister"
+        >
           注册
         </el-button>
         <div class="auth-switch">
           <span class="auth-switch-text">已有账号？</span>
-          <el-button link type="primary" class="switch-link" @click="switchToLogin">去登录</el-button>
+          <el-button
+            link
+            type="primary"
+            class="switch-link"
+            @click="switchToLogin"
+            >去登录</el-button
+          >
         </div>
       </div>
     </template>
@@ -193,7 +261,8 @@
         class="security-alert-summary"
       >
         <template #title>
-          检测到 <b>{{ securitySummary.high }}</b> 条高危、共 <b>{{ securitySummary.total }}</b> 条未读风险事件，
+          检测到 <b>{{ securitySummary.high }}</b> 条高危、共
+          <b>{{ securitySummary.total }}</b> 条未读风险事件，
           可能包含针对本系统的攻击 / 越权 / 异常请求，请尽快处理。
         </template>
       </el-alert>
@@ -201,11 +270,20 @@
       <template v-if="securityRecent.length > 0">
         <div class="security-alert-title">最近未读事件（高危优先）</div>
         <div class="security-alert-list">
-          <div v-for="ev in securityRecent" :key="ev.id" class="security-alert-item">
-            <el-tag :type="severityTagType(ev.severity)" size="small" effect="light">{{ severityLabel(ev.severity) }}</el-tag>
+          <div
+            v-for="ev in securityRecent"
+            :key="ev.id"
+            class="security-alert-item"
+          >
+            <el-tag
+              :type="severityTagType(ev.severity)"
+              size="small"
+              effect="light"
+              >{{ severityLabel(ev.severity) }}</el-tag
+            >
             <span class="item-type">{{ eventTypeLabel(ev.eventType) }}</span>
-            <span class="item-ip mono">{{ ev.clientIP || '-' }}</span>
-            <span class="item-target">{{ ev.target || ev.path || '-' }}</span>
+            <span class="item-ip mono">{{ ev.clientIP || "-" }}</span>
+            <span class="item-target">{{ ev.target || ev.path || "-" }}</span>
             <span class="item-time">{{ formatTime(ev.createdAt) }}</span>
           </div>
         </div>
@@ -213,337 +291,341 @@
     </div>
     <template #footer>
       <div class="security-alert-actions">
-        <el-button @click="securityMarkAllRead">
-          全部标记已读
-        </el-button>
-        <el-button type="primary" @click="goSecurityPage">
-          前往查看
-        </el-button>
+        <el-button @click="securityMarkAllRead"> 全部标记已读 </el-button>
+        <el-button type="primary" @click="goSecurityPage"> 前往查看 </el-button>
       </div>
     </template>
   </el-dialog>
-
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
-import { AuthApi, NotificationApi, SecurityApi } from '@/api'
-import { showLoginDialogEvent, showRegisterDialogEvent } from '@/router'
-import store from '@/store'
-import ThemeToggle from './ThemeToggle.vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { ElMessage } from "element-plus";
+import { User, Lock } from "@element-plus/icons-vue";
+import { AuthApi, NotificationApi, SecurityApi } from "@/api";
+import { showLoginDialogEvent, showRegisterDialogEvent } from "@/router";
+import store from "@/store";
+import ThemeToggle from "./ThemeToggle.vue";
 
-const router = useRouter()
-const route = useRoute()
+const router = useRouter();
+const route = useRoute();
 
 // Config
-const appName = computed(() => store.state.config.appName)
+const appName = computed(() => store.state.config.appName);
 
 // 私有存储是否启用
-const privateStorageEnabled = computed(() => store.state.config.privateStorageEnabled !== false)
+const privateStorageEnabled = computed(
+  () => store.state.config.privateStorageEnabled !== false,
+);
 
 // Auth state - reactive to localStorage changes
 const authState = reactive({
   isLoggedIn: false,
-  username: '',
-  isAdmin: false
-})
+  username: "",
+  isAdmin: false,
+});
 
 // Login modal
-const showLoginModal = ref(false)
-const mobileMenuOpen = ref(false)
-const loggingIn = ref(false)
-const loginFormRef = ref(null)
+const showLoginModal = ref(false);
+const mobileMenuOpen = ref(false);
+const loggingIn = ref(false);
+const loginFormRef = ref(null);
 const loginForm = reactive({
-  username: '',
-  password: ''
-})
+  username: "",
+  password: "",
+});
 const loginRules = {
-  username: { required: true, message: '请输入用户名', trigger: 'blur' },
-  password: { required: true, message: '请输入密码', trigger: 'blur' }
-}
+  username: { required: true, message: "请输入用户名", trigger: "blur" },
+  password: { required: true, message: "请输入密码", trigger: "blur" },
+};
 
 // Register modal
-const showRegisterModal = ref(false)
-const registering = ref(false)
-const registerFormRef = ref(null)
+const showRegisterModal = ref(false);
+const registering = ref(false);
+const registerFormRef = ref(null);
 const registerForm = reactive({
-  username: '',
-  password: '',
-  confirmPassword: ''
-})
+  username: "",
+  password: "",
+  confirmPassword: "",
+});
 const registerRules = {
-  username: { required: true, message: '请输入用户名', trigger: 'blur' },
-  password: { required: true, message: '请输入密码', trigger: 'blur' },
+  username: { required: true, message: "请输入用户名", trigger: "blur" },
+  password: { required: true, message: "请输入密码", trigger: "blur" },
   confirmPassword: [
-    { required: true, message: '请再次输入密码', trigger: 'blur' },
+    { required: true, message: "请再次输入密码", trigger: "blur" },
     {
       validator: (rule, value) => value === registerForm.password,
-      message: '两次输入的密码不一致',
-      trigger: 'blur'
-    }
-  ]
-}
+      message: "两次输入的密码不一致",
+      trigger: "blur",
+    },
+  ],
+};
 
 // Update auth state from localStorage
 const updateAuthState = () => {
-  authState.isLoggedIn = AuthApi.isLoggedIn()
-  authState.username = localStorage.getItem('username') || '用户'
-  authState.isAdmin = localStorage.getItem('userRole') === 'admin'
-}
+  authState.isLoggedIn = AuthApi.isLoggedIn();
+  authState.username = localStorage.getItem("username") || "用户";
+  authState.isAdmin = localStorage.getItem("userRole") === "admin";
+};
 
 // 登录弹框事件处理
 const handleShowLoginDialog = () => {
-  updateAuthState()
+  updateAuthState();
   if (!authState.isLoggedIn) {
-    showLoginModal.value = true
+    showLoginModal.value = true;
   }
-}
+};
 
 // 注册弹框事件处理
 const handleShowRegisterDialog = () => {
-  updateAuthState()
+  updateAuthState();
   if (!authState.isLoggedIn && privateStorageEnabled.value) {
-    showRegisterModal.value = true
+    showRegisterModal.value = true;
   }
-}
+};
 
 // 切换到注册弹框
 const switchToRegister = () => {
-  showLoginModal.value = false
-  showRegisterModal.value = true
-}
+  showLoginModal.value = false;
+  showRegisterModal.value = true;
+};
 
 // 切换到登录弹框
 const switchToLogin = () => {
-  showRegisterModal.value = false
-  showLoginModal.value = true
-}
+  showRegisterModal.value = false;
+  showLoginModal.value = true;
+};
 
 // 监听登录弹框事件
 onMounted(() => {
-  updateAuthState()
-  showLoginDialogEvent.addEventListener('show', handleShowLoginDialog)
-  showRegisterDialogEvent.addEventListener('show', handleShowRegisterDialog)
+  updateAuthState();
+  showLoginDialogEvent.addEventListener("show", handleShowLoginDialog);
+  showRegisterDialogEvent.addEventListener("show", handleShowRegisterDialog);
   // 启动时后端校验 token 失效被清除后，刷新本地登录态与菜单
-  window.addEventListener('auth:changed', handleAuthChanged)
-})
+  window.addEventListener("auth:changed", handleAuthChanged);
+});
 
 onUnmounted(() => {
-  showLoginDialogEvent.removeEventListener('show', handleShowLoginDialog)
-  showRegisterDialogEvent.removeEventListener('show', handleShowRegisterDialog)
-  window.removeEventListener('auth:changed', handleAuthChanged)
-})
+  showLoginDialogEvent.removeEventListener("show", handleShowLoginDialog);
+  showRegisterDialogEvent.removeEventListener("show", handleShowRegisterDialog);
+  window.removeEventListener("auth:changed", handleAuthChanged);
+});
 
 // token 被清除（如启动校验失效）时刷新登录态，隐藏用户/管理菜单
 const handleAuthChanged = () => {
-  updateAuthState()
-}
+  updateAuthState();
+};
 
 // Navigation items from router meta
 const visibleNavItems = computed(() => {
-  const items = []
+  const items = [];
 
   // 公共页面：始终显示
   const publicPages = [
-    { path: '/files', name: '文件' },
-    { path: '/recent', name: '最近' },
-    { path: '/hot', name: '热门' },
-    { path: '/temp', name: '临时' }
-  ]
+    { path: "/files", name: "文件" },
+    { path: "/recent", name: "最近" },
+    { path: "/hot", name: "热门" },
+    { path: "/temp", name: "临时" },
+  ];
   for (const item of publicPages) {
-    if (item.path === '/temp' && !store.state.config.tempFilesEnabled) continue
-    items.push(item)
+    if (item.path === "/temp" && !store.state.config.tempFilesEnabled) continue;
+    items.push(item);
   }
 
   // 登录后额外显示角色入口
   if (authState.isLoggedIn) {
     if (authState.isAdmin) {
-      items.push({ path: '/admin', name: '管理' })
+      items.push({ path: "/admin", name: "管理" });
     } else {
-      items.push({ path: '/user', name: '个人' })
+      items.push({ path: "/user", name: "个人" });
     }
   }
 
-  return items
-})
+  return items;
+});
 
 // Methods
 const isActive = (path) => {
-  if (path === '/files') {
-    return route.path === '/files' || route.path.startsWith('/files/')
+  if (path === "/files") {
+    return route.path === "/files" || route.path.startsWith("/files/");
   }
-  if (path === '/user') {
-    return route.path.startsWith('/user')
+  if (path === "/user") {
+    return route.path.startsWith("/user");
   }
-  if (path === '/admin') {
-    return route.path.startsWith('/admin')
+  if (path === "/admin") {
+    return route.path.startsWith("/admin");
   }
-  return route.path.startsWith(path)
-}
+  return route.path.startsWith(path);
+};
 
 // 安全事件强提醒状态
-const securityAlertVisible = ref(false)
-const securitySummary = reactive({ high: 0, total: 0 })
-const securityRecent = ref([])
-const severityMeta = { high: { label: '高危', type: 'danger' }, medium: { label: '中危', type: 'warning' }, low: { label: '低危', type: 'info' } }
+const securityAlertVisible = ref(false);
+const securitySummary = reactive({ high: 0, total: 0 });
+const securityRecent = ref([]);
+const severityMeta = {
+  high: { label: "高危", type: "danger" },
+  medium: { label: "中危", type: "warning" },
+  low: { label: "低危", type: "info" },
+};
 const eventTypeMeta = {
-  'auth.failed_login': '登录/注册失败',
-  'auth.locked': '登录被锁定',
-  'auth.unauthorized': '认证失败(401)',
-  'access.forbidden': '越权访问(403)',
-  'rate.limited': '触发限流(429)',
-  'code.bruteforce': '口令/分享码暴破'
-}
-const severityLabel = (s) => severityMeta[s]?.label || s || '未知'
-const severityTagType = (s) => severityMeta[s]?.type || 'info'
-const eventTypeLabel = (t) => eventTypeMeta[t] || t || '-'
+  "auth.failed_login": "登录/注册失败",
+  "auth.locked": "登录被锁定",
+  "auth.unauthorized": "认证失败(401)",
+  "access.forbidden": "越权访问(403)",
+  "rate.limited": "触发限流(429)",
+  "code.bruteforce": "口令/分享码暴破",
+};
+const severityLabel = (s) => severityMeta[s]?.label || s || "未知";
+const severityTagType = (s) => severityMeta[s]?.type || "info";
+const eventTypeLabel = (t) => eventTypeMeta[t] || t || "-";
 const formatTime = (iso) => {
-  if (!iso) return '-'
+  if (!iso) return "-";
   try {
-    return new Date(iso).toLocaleString()
+    return new Date(iso).toLocaleString();
   } catch {
-    return iso
+    return iso;
   }
-}
+};
 
 // 管理员登录后查询未读风险事件，存在则强提醒
 const checkSecurityAlert = async () => {
   try {
-    const res = await SecurityApi.unreadSummary()
-    if (!res.success || !res.data) return
-    securitySummary.high = res.data.high || 0
-    securitySummary.total = res.data.total || 0
-    securityRecent.value = res.data.recent || []
+    const res = await SecurityApi.unreadSummary();
+    if (!res.success || !res.data) return;
+    securitySummary.high = res.data.high || 0;
+    securitySummary.total = res.data.total || 0;
+    securityRecent.value = res.data.recent || [];
     if (securitySummary.total > 0) {
-      securityAlertVisible.value = true
+      securityAlertVisible.value = true;
     }
   } catch (e) {
     // 提醒拉取失败不阻塞登录
   }
-}
+};
 
 const securityMarkAllRead = async () => {
   try {
-    await SecurityApi.markAllRead()
+    await SecurityApi.markAllRead();
   } catch (e) {
     // 忽略
   }
-  securitySummary.high = 0
-  securitySummary.total = 0
-  securityRecent.value = []
-  securityAlertVisible.value = false
-}
+  securitySummary.high = 0;
+  securitySummary.total = 0;
+  securityRecent.value = [];
+  securityAlertVisible.value = false;
+};
 
 const goSecurityPage = () => {
-  securityAlertVisible.value = false
-  router.push('/admin/security')
-}
+  securityAlertVisible.value = false;
+  router.push("/admin/security");
+};
 
 const handleLogin = async () => {
-  if (!loginFormRef.value) return
+  if (!loginFormRef.value) return;
 
   loginFormRef.value.validate(async (valid) => {
-    if (!valid) return
+    if (!valid) return;
 
-    loggingIn.value = true
+    loggingIn.value = true;
     try {
-      const data = await AuthApi.login(loginForm.username, loginForm.password)
+      const data = await AuthApi.login(loginForm.username, loginForm.password);
 
       if (data.success) {
-        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username)
+        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username);
 
         // 获取用户信息并保存 role
         try {
-          const userData = await AuthApi.getUserInfo()
+          const userData = await AuthApi.getUserInfo();
           if (userData.success && userData.data) {
-            localStorage.setItem('userRole', userData.data.role || 'user')
+            localStorage.setItem("userRole", userData.data.role || "user");
           }
         } catch (e) {
-          console.error('获取用户信息失败', e)
+          console.error("获取用户信息失败", e);
         }
 
         // 登录后合并匿名通知到当前用户
         try {
-          NotificationApi.merge()
+          NotificationApi.merge();
         } catch (e) {
           // 合并失败不影响登录流程
         }
 
-        ElMessage.success('登录成功')
-        showLoginModal.value = false
-        loginForm.username = ''
-        loginForm.password = ''
-        updateAuthState()
+        ElMessage.success("登录成功");
+        showLoginModal.value = false;
+        loginForm.username = "";
+        loginForm.password = "";
+        updateAuthState();
 
         // 管理员登录：若存在未读风险事件，弹出强提醒
-        if (localStorage.getItem('userRole') === 'admin') {
-          checkSecurityAlert()
+        if (localStorage.getItem("userRole") === "admin") {
+          checkSecurityAlert();
         }
       } else {
-        ElMessage.error(data.message || '登录失败')
+        ElMessage.error(data.message || "登录失败");
       }
     } catch (error) {
-      ElMessage.error('登录失败：' + error.message)
+      ElMessage.error("登录失败：" + error.message);
     } finally {
-      loggingIn.value = false
+      loggingIn.value = false;
     }
-  })
-}
+  });
+};
 
 const handleRegister = async () => {
-  if (!registerFormRef.value) return
+  if (!registerFormRef.value) return;
 
   registerFormRef.value.validate(async (valid) => {
-    if (!valid) return
+    if (!valid) return;
 
-    registering.value = true
+    registering.value = true;
     try {
-      const data = await AuthApi.register(registerForm.username, registerForm.password)
+      const data = await AuthApi.register(
+        registerForm.username,
+        registerForm.password,
+      );
 
       if (data.success) {
-        ElMessage.success('注册成功，请登录')
+        ElMessage.success("注册成功，请登录");
 
         // 自动填充登录表单
-        loginForm.username = registerForm.username
-        loginForm.password = ''
+        loginForm.username = registerForm.username;
+        loginForm.password = "";
 
         // 关闭注册弹框，打开登录弹框
-        showRegisterModal.value = false
-        registerForm.username = ''
-        registerForm.password = ''
-        registerForm.confirmPassword = ''
-        showLoginModal.value = true
+        showRegisterModal.value = false;
+        registerForm.username = "";
+        registerForm.password = "";
+        registerForm.confirmPassword = "";
+        showLoginModal.value = true;
       } else {
-        ElMessage.error(data.message || '注册失败')
+        ElMessage.error(data.message || "注册失败");
       }
     } catch (error) {
-      ElMessage.error('注册失败：' + error.message)
+      ElMessage.error("注册失败：" + error.message);
     } finally {
-      registering.value = false
+      registering.value = false;
     }
-  })
-}
+  });
+};
 
 const handleLogout = () => {
-  AuthApi.clearAuth()
-  localStorage.removeItem('userRole')
-  updateAuthState()
-  router.push({ path: '/', query: {} })
-}
+  AuthApi.clearAuth();
+  localStorage.removeItem("userRole");
+  updateAuthState();
+  router.push({ path: "/", query: {} });
+};
 </script>
 
 <script>
-import { computed } from 'vue'
+import { computed } from "vue";
 export default {
-  name: 'AppHeader'
-}
+  name: "AppHeader",
+};
 </script>
 
 <style lang="less">
-@import '@/styles/variables.less';
+@import "@/styles/variables.less";
 
 .app-header {
   height: @header-height;
@@ -563,34 +645,31 @@ export default {
   gap: 32px;
 }
 
-.logo-link {
+@keyframes logoFloat {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(4px);
+  }
+}
+
+.app-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  text-decoration: none;
   color: #fff;
   flex-shrink: 0;
 
   .app-logo {
-      width: 32px;
-      height: 32px;
-      transition: transform 0.2s ease;
-
-      &:hover {
-        animation: logoFloat 0.6s ease-in-out infinite alternate;
-      }
-    }
-
-    @keyframes logoFloat {
-      from {
-        transform: translateY(0);
-      }
-      to {
-        transform: translateY(-6px);
-      }
-    }
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    animation: logoFloat 4s ease-in-out infinite alternate;
+  }
 
   .app-name {
+    display: inline-block;
     font-size: @font-size-xl;
     font-weight: 600;
   }
@@ -682,7 +761,9 @@ export default {
       padding: 14px 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       border-radius: 0;
-      transition: background-color 0.2s, color 0.2s;
+      transition:
+        background-color 0.2s,
+        color 0.2s;
 
       &:hover {
         transform: none;
@@ -724,7 +805,11 @@ export default {
   color: rgba(255, 255, 255, 0.7);
   text-decoration: none;
   border-radius: 999px;
-  transition: background-color 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
   font-size: @font-size-base;
   position: relative;
 
@@ -776,7 +861,10 @@ export default {
   color: rgba(255, 255, 255, 0.75);
   margin-right: 8px;
   border-radius: 6px;
-  transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
+  transition:
+    color 0.2s,
+    background-color 0.2s,
+    box-shadow 0.2s;
   gap: 6px;
 
   &:hover {
@@ -860,7 +948,9 @@ export default {
     font-weight: 600;
     letter-spacing: 0.5px;
     box-shadow: @button-hover-shadow;
-    transition: transform @transition-fast, box-shadow @transition-fast;
+    transition:
+      transform @transition-fast,
+      box-shadow @transition-fast;
 
     &:hover:not(.is-loading):not(.is-disabled) {
       transform: @hover-lift;

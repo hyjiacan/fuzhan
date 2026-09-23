@@ -6,7 +6,7 @@
         <template #header>热门搜索关键词</template>
         <div v-if="keywords.length > 0" class="keyword-badges">
           <el-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
-            <el-tag @click="searchKeyword(kw.word)" style="cursor: pointer">{{ kw.word }}</el-tag>
+            <el-tag @click="searchKeyword(kw.word)" style="cursor: pointer; padding-right: 40px;">{{ kw.word }}</el-tag>
           </el-badge>
         </div>
         <el-empty v-else description="暂无搜索数据">
