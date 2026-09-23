@@ -18,6 +18,7 @@ var validActions = map[string]bool{
 	"upload":   true,
 	"download": true,
 	"search":   true,
+	"preview":  true,
 }
 
 func isValidAction(action string) bool {
@@ -52,7 +53,7 @@ func (h *RecentHandler) GetRecent(c *gin.Context) {
 	}
 
 	if !isValidAction(action) {
-		utils.HandleErrorCompat(c, http.StatusBadRequest, "非法的action参数，有效值: upload, download, search", nil)
+		utils.HandleErrorCompat(c, http.StatusBadRequest, "非法的action参数，有效值: upload, download, search, preview", nil)
 		return
 	}
 

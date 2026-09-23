@@ -162,7 +162,7 @@
 | ClientIP | string(45) | index | 客户端IP |
 | UserID | string(64) | index | 用户ID |
 | UploadType | TargetType | size:20, not null, default:"regular" | 上传类型 |
-| Action | string(20) | default:"upload", index | 操作类型 (upload/download/download-by-hash/search) |
+| Action | string(20) | default:"upload", index | 操作类型 (upload/download/download-by-hash/search/preview) |
 | SearchQuery | string(255) | index | 搜索关键词 |
 | UploadTime | time.Time | not null, index | 上传时间 |
 | CreatedAt | time.Time | index | 创建时间 |

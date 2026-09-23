@@ -336,7 +336,7 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
-		response.HandleBadRequest(c, "请提供要清空的记录类型 (search/upload/download)", nil)
+		response.HandleBadRequest(c, "请提供要清空的记录类型 (search/upload/download/preview)", nil)
 		return
 	}
 
@@ -344,10 +344,11 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 		"search":   "search",
 		"upload":   "upload",
 		"download": "download",
+		"preview":  "preview",
 	}
 	if _, ok := validActions[req.Action]; !ok {
 		middleware.LogOperation(c, "admin.records.clear", req.Action, fmt.Errorf("invalid action"))
-		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download", nil)
+		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download, preview", nil)
 		return
 	}
 
@@ -375,7 +376,7 @@ func (h *Handler) DeleteRecordHandler(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), err)
-		response.HandleBadRequest(c, "请提供记录ID和记录类型 (search/upload/download)", nil)
+		response.HandleBadRequest(c, "请提供记录ID和记录类型 (search/upload/download/preview)", nil)
 		return
 	}
 
@@ -383,10 +384,11 @@ func (h *Handler) DeleteRecordHandler(c *gin.Context) {
 		"search":   true,
 		"upload":   true,
 		"download": true,
+		"preview":  true,
 	}
 	if !validActions[req.Action] {
 		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), fmt.Errorf("invalid action"))
-		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download", nil)
+		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download, preview", nil)
 		return
 	}
 

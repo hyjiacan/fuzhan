@@ -36,6 +36,16 @@
           <el-icon><DeleteIcon /></el-icon>
           清空下载
         </el-button>
+        <el-button
+          type="danger"
+          size="small"
+          :loading="clearingRecord === 'preview'"
+          :disabled="clearingRecord !== null"
+          @click="handleClearRecords('preview')"
+        >
+          <el-icon><DeleteIcon /></el-icon>
+          清空预览
+        </el-button>
       </div>
     </div>
 
@@ -109,6 +119,28 @@
           />
         </div>
       </el-tab-pane>
+
+      <el-tab-pane name="preview" label="最近预览">
+        <div ref="previewWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="previewColumns"
+            :data="previewRecords"
+            :width="previewWidth"
+            :height="previewHeight"
+            :row-height="TableConst.ROW_HEIGHT"
+            row-key="id"
+          />
+        </div>
+        <div class="pagination-wrap" v-if="previewTotal > 0">
+          <el-pagination
+            v-model:current-page="previewPage"
+            :page-size="pageSize"
+            :total="previewTotal"
+            layout="prev, pager, next"
+            @current-change="() => loadRecords('preview')"
+          />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -144,6 +176,11 @@ const searchRecords = ref([])
 const searchTotal = ref(0)
 const searchPage = ref(1)
 
+// 预览
+const previewRecords = ref([])
+const previewTotal = ref(0)
+const previewPage = ref(1)
+
 // 清空
 const clearingRecord = ref(null)
 
@@ -160,12 +197,15 @@ const DeleteIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox
 const uploadWrapRef = ref(null)
 const downloadWrapRef = ref(null)
 const searchWrapRef = ref(null)
+const previewWrapRef = ref(null)
 const uploadWidth = ref(600)
 const uploadHeight = ref(300)
 const downloadWidth = ref(600)
 const downloadHeight = ref(300)
 const searchWidth = ref(600)
 const searchHeight = ref(300)
+const previewWidth = ref(600)
+const previewHeight = ref(300)
 let tableResizeObs = null
 
 const updateTableSize = () => {
@@ -183,6 +223,11 @@ const updateTableSize = () => {
   if (s && s.clientWidth > 0) {
     searchWidth.value = s.clientWidth
     searchHeight.value = s.clientHeight || 300
+  }
+  const p = previewWrapRef.value
+  if (p && p.clientWidth > 0) {
+    previewWidth.value = p.clientWidth
+    previewHeight.value = p.clientHeight || 300
   }
 }
 
@@ -312,6 +357,18 @@ const searchColumns = [
   deleteRecordColumn('search')
 ]
 
+const previewColumns = [
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'fileSize', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  },
+  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
+  { title: '预览时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  },
+  deleteRecordColumn('preview')
+]
+
 // ============ 数据加载 ============
 
 const loadRecords = async (action) => {
@@ -320,6 +377,7 @@ const loadRecords = async (action) => {
     let page = 1
     if (action === 'upload') page = uploadPage.value
     else if (action === 'download') page = downloadPage.value
+    else if (action === 'preview') page = previewPage.value
     else page = searchPage.value
 
     const res = await FileApi.recent(page, pageSize, action)
@@ -333,6 +391,9 @@ const loadRecords = async (action) => {
       } else if (action === 'download') {
         downloadRecords.value = records
         downloadTotal.value = total
+      } else if (action === 'preview') {
+        previewRecords.value = records
+        previewTotal.value = total
       } else {
         searchRecords.value = records
         searchTotal.value = total
@@ -356,7 +417,7 @@ const handleTabChange = (tab) => {
 // ============ 单条删除 ============
 
 const handleDeleteRecord = async (row, action) => {
-  const actionLabels = { search: '搜索', upload: '上传', download: '下载' }
+  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览' }
   const label = actionLabels[action] || action
   if (!window.confirm(`确定要删除该条${label}记录吗？此操作不可恢复。`)) {
     return
@@ -381,7 +442,7 @@ const handleDeleteRecord = async (row, action) => {
 // ============ 清空记录 ============
 
 const handleClearRecords = async (action) => {
-  const actionLabels = { search: '搜索', upload: '上传', download: '下载' }
+  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览' }
   const label = actionLabels[action] || action
   if (!window.confirm(`确定要清空所有${label}记录吗？此操作不可恢复。`)) {
     return
@@ -412,9 +473,10 @@ onMounted(() => {
   if (uploadWrapRef.value) tableResizeObs.observe(uploadWrapRef.value)
   if (downloadWrapRef.value) tableResizeObs.observe(downloadWrapRef.value)
   if (searchWrapRef.value) tableResizeObs.observe(searchWrapRef.value)
+  if (previewWrapRef.value) tableResizeObs.observe(previewWrapRef.value)
   // 支持从看板等入口通过 ?tab=xxx 直接定位到对应 tab
   const tabQuery = route.query.tab
-  const initialTab = ['upload', 'download', 'search'].includes(tabQuery) ? tabQuery : 'upload'
+  const initialTab = ['upload', 'download', 'search', 'preview'].includes(tabQuery) ? tabQuery : 'upload'
   activeTab.value = initialTab
   loadRecords(initialTab)
 })

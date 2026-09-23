@@ -196,7 +196,11 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 记录下载操作（非阻塞，仅记录 GET 请求）
+	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
+	isPreview := r.URL.Query().Get("preview") == "true"
+
+	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
+	// 不写入下载记录，也不会进入下载计数/下载行为分析（见 OperationRecord.BeforeCreate）
 	if ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
 			Action:     "download-by-hash",
@@ -209,13 +213,13 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 			CreatedAt:  utils.Now(),
 			SourceType: models.SourceTypePublic,
 		}
+		if isPreview {
+			rec.Action = "preview"
+		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
 		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
 	}
-
-	// 判定是否为预览请求
-	isPreview := r.URL.Query().Get("preview") == "true"
 
 	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
 	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
@@ -329,7 +333,11 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// 记录下载操作（非阻塞，仅记录 GET 请求）
+	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
+	isPreview := r.URL.Query().Get("preview") == "true"
+
+	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
+	// 不写入下载记录，也不会进入下载计数/下载行为分析（见 OperationRecord.BeforeCreate）
 	if record && ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
 			Action:     "download",
@@ -342,6 +350,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			CreatedAt:  utils.Now(),
 			SourceType: models.SourceTypePublic,
 		}
+		if isPreview {
+			rec.Action = "preview"
+		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
 		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
@@ -349,12 +360,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
 	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
-	if record && r.URL.Query().Get("preview") != "true" && isNewDownloadRequest(r) {
+	if record && !isPreview && isNewDownloadRequest(r) {
 		SubmitDownloadCountIncrement("/" + rootName + "/" + strings.TrimPrefix(subPath, "/"))
 	}
-
-	// 判定是否为预览请求
-	isPreview := r.URL.Query().Get("preview") == "true"
 	if !isPreview {
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
 		safeFilename := url.QueryEscape(filepath.Base(targetPath))

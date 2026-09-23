@@ -122,7 +122,9 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 			result["chunkSize"] = textChunkSize
 			result["totalChunks"] = (info.Size() + textChunkSize - 1) / textChunkSize
 		} else {
-			result["fileUrl"] = "/download/" + filePath
+			// 图片/PDF 内联预览走下载接口但标记 preview=true：既排除内置浏览器预览器的
+			// 预取/缩略图请求，也不会累加下载计数或写入下载历史（见 download_service.go）
+			result["fileUrl"] = "/download/" + filePath + "?preview=true"
 		}
 	}
 
