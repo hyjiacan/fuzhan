@@ -154,9 +154,10 @@ describe('analyzeLatestVersions', () => {
       assert.deepStrictEqual(getLatestFilenames(files), ['pkg-2.0.tar.gz']);
     });
 
-    it('不同扩展名应分为不同组', () => {
+    it('不同扩展名应分为不同组（每组内部仍按同类判定）', () => {
       const files = ['app-1.0.exe', 'app-2.0.zip', 'app-1.5.exe'];
-      assert.deepStrictEqual(getLatestFilenames(files), ['app-1.5.exe', 'app-2.0.zip']);
+      // exe 组有 2 个同类 → 标 1.5；zip 组只有 1 个（无同类）→ 不标
+      assert.deepStrictEqual(getLatestFilenames(files), ['app-1.5.exe']);
     });
 
     it('includeLone=true 时应保留孤例', () => {

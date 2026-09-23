@@ -1,5 +1,6 @@
-import { ref, computed } from 'vue'
-import { analyzeLatestVersions, compareFileNames } from '@/utils'
+import { ref, computed, watch } from 'vue'
+import { compareFileNames } from '@/utils'
+import { analyzeLatestVersionsAsync } from '@/utils/latest-version'
 import store from '@/store'
 
 // 文件页表格尺寸测量、界面排序与最新版本标记
@@ -8,11 +9,25 @@ export function useHomeTable({ isSearching, searchCompleted }) {
 
   const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 
-  // 版本标记：仅浏览模式（非搜索）下，分析当前目录，返回"最新版本"文件的 path 集合
-  const latestVersionPaths = computed(() => {
-    if (isSearching.value || searchCompleted.value) return new Set()
-    return analyzeLatestVersions(fileList.value)
-  })
+  // 版本标记：仅浏览模式（非搜索）下，经 Worker 异步分析当前目录，返回"最新版本"文件的 path 集合。
+  // 用请求令牌忽略过期结果（文件快速切换时只有最后一次生效）。
+  const latestVersionPaths = ref(new Set())
+  let versionReqToken = 0
+  const refreshLatestVersion = () => {
+    if (isSearching.value || searchCompleted.value) {
+      latestVersionPaths.value = new Set()
+      return
+    }
+    const token = ++versionReqToken
+    analyzeLatestVersionsAsync(fileList.value).then((paths) => {
+      if (token === versionReqToken) latestVersionPaths.value = paths
+    })
+  }
+  watch(
+    () => [fileList.value, isSearching.value, searchCompleted.value],
+    refreshLatestVersion,
+    { immediate: true, deep: false }
+  )
 
   // ============ 界面排序（不涉及后台）============
   // 默认按名称升序；支持按路径(文件名)、修改时间、下载次数排序
