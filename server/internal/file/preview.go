@@ -72,9 +72,14 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fullPath), "."))
 
-	mimeType := mime.TypeByExtension(fullPath)
-	if mimeType == "" || mimeType == "application/octet-stream" {
-		mimeType = utils.GetMimeType(ext)
+	// 预览 MIME 识别优先级：用户自定义表(设置页「MIME 类型」可配) > Go 内置表 > 内置兜底表，
+	// 使配置的「扩展名 -> MIME」能生效于预览识别与元信息展示
+	mimeType := utils.GetPreviewMimeType(ext)
+	if mimeType == "" {
+		mimeType = mime.TypeByExtension(fullPath)
+		if mimeType == "" || mimeType == "application/octet-stream" {
+			mimeType = utils.GetMimeType(ext)
+		}
 	}
 
 	isPreviewable := utils.IsPreviewable(fullPath, mimeType)

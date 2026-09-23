@@ -58,6 +58,20 @@ func TestMimeTable_DownloadContentType(t *testing.T) {
 		}
 	}
 
+	// 预览识别用的 GetPreviewMimeType 命中用户表
+	if got := GetPreviewMimeType("epub"); got != "application/x-rar-compressed" {
+		t.Errorf("GetPreviewMimeType(\"epub\") = %q, want application/x-rar-compressed", got)
+	}
+	if got := GetPreviewMimeType("exe"); got != "application/x-msdownload" {
+		t.Errorf("GetPreviewMimeType(\"exe\") = %q, want application/x-msdownload", got)
+	}
+	if got := GetPreviewMimeType("pdf"); got != "" {
+		t.Errorf("GetPreviewMimeType(\"pdf\") = %q, want 空(未配置需回退内置)", got)
+	}
+	if got := GetPreviewMimeType(""); got != "" {
+		t.Errorf("GetPreviewMimeType(\"\") = %q, want 空", got)
+	}
+
 	// 预览识别的 GetMimeType 不受用户表影响，仅走内置表兜底
 	if got := GetMimeType("txt"); got != "text/plain" {
 		t.Errorf("GetMimeType(\"txt\") 不应受用户表影响，= %q, want text/plain", got)

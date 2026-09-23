@@ -251,3 +251,13 @@ func GetDownloadContentType(ext string) string {
 	}
 	return mimeTableLookup(ext)
 }
+
+// GetPreviewMimeType 获取预览识别用的 MIME 类型（仅查用户自定义表）。
+// 让设置页配置的「扩展名 -> MIME」能参与预览识别；未命中返回 ""，由调用方回退 Go 内置与内置兜底表。
+func GetPreviewMimeType(ext string) string {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	if ext == "" {
+		return ""
+	}
+	return mimeTableLookup(ext)
+}

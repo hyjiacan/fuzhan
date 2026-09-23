@@ -61,6 +61,8 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			"allowMimes": currentConfig.Preview.AllowMimes,
 			"allowExts":  currentConfig.Preview.AllowExts,
 		},
+		// 用户自定义 MIME 表：供前端文件列表「是否可预览」判定与后端预览识别口径一致
+		"mimeTable": currentConfig.MimeTable,
 		"openApi": gin.H{
 			"enabled": currentConfig.OpenAPI.Enabled,
 		},
