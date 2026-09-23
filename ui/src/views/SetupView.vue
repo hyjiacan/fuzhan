@@ -307,6 +307,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { SetupApi, SystemApi } from '@/api'
 import { NumberUtils } from '@/utils'
+import { ErrorCode } from '@/utils/error'
 
 const router = useRouter()
 const message = ElMessage
@@ -639,6 +640,12 @@ onMounted(async () => {
       if (cfg.dsn) form.dsn = cfg.dsn
     }
   } catch (e) {
+    // 系统已初始化时，/setup/default-config 会被后端路由层拦截返回 404（NOT_FOUND），
+    // 此时不应停留在部署向导，直接跳转主页
+    if (e?.code === ErrorCode.NOT_FOUND) {
+      router.push('/')
+      return
+    }
     console.error('Failed to load default config:', e)
   }
 
