@@ -167,6 +167,10 @@ export const ConfigApi = {
 
   save(config) {
     return request.post('/config', config, { skipSuccessToast: true })
+  },
+
+  testLdap(ldapConfig) {
+    return request.post('/config/ldap/test', ldapConfig)
   }
 }
 

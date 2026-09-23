@@ -510,6 +510,9 @@ func (rt *runCtx) run() {
 		workerStart(wm, "consistency-check", rt.runConsistencyCheckWorker)
 		workerStart(wm, "search-reconcile", rt.runSearchReconcileWorker)
 		workerStart(wm, "resource-monitor", func(ctx context.Context) { rt.resourceCollector.Run(ctx) })
+		if rt.ldapService != nil {
+			workerStart(wm, "ldap-sync", func(workerCtx context.Context) { rt.ldapService.StartSyncWorker(workerCtx) })
+		}
 
 		// ===== 启动完成 =====
 		utils.Info("========================================")

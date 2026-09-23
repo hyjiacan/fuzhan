@@ -33,6 +33,27 @@ type ConfigDTO struct {
 	Index             IndexConfigDTO     `json:"index"`
 	Resource          ResourceConfigDTO  `json:"resource"`
 	Security          SecurityConfigDTO  `json:"security"`
+	Auth              AuthConfigDTO      `json:"auth"`
+}
+
+// AuthConfigDTO 认证配置 DTO
+type AuthConfigDTO struct {
+	LDAP LDAPConfigDTO `json:"ldap"`
+}
+
+// LDAPConfigDTO LDAP 配置 DTO（前端 camelCase 字段，对应 yaml auth.ldap.*）
+type LDAPConfigDTO struct {
+	Enabled            bool   `json:"enabled"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	UseSSL             bool   `json:"useSSL"`
+	BaseDN             string `json:"baseDN"`
+	BindDN             string `json:"bindDN"`
+	BindPassword       string `json:"bindPassword"`
+	UserFilter         string `json:"userFilter"`
+	SyncInterval       int    `json:"syncInterval"`
+	AutoCreateUser     bool   `json:"autoCreateUser"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
 }
 
 // SecurityConfigDTO 安全配置 DTO（trust_proxy / CORS）
@@ -316,6 +337,21 @@ func (c *Config) ToDTO() ConfigDTO {
 			TrustProxy:     c.Security.TrustProxy,
 			AllowedOrigins: c.Security.AllowedOrigins,
 		},
+		Auth: AuthConfigDTO{
+			LDAP: LDAPConfigDTO{
+				Enabled:            c.Auth.LDAP.Enabled,
+				Host:               c.Auth.LDAP.Host,
+				Port:               c.Auth.LDAP.Port,
+				UseSSL:             c.Auth.LDAP.UseSSL,
+				BaseDN:             c.Auth.LDAP.BaseDN,
+				BindDN:             c.Auth.LDAP.BindDN,
+				BindPassword:       c.Auth.LDAP.BindPassword,
+				UserFilter:         c.Auth.LDAP.UserFilter,
+				SyncInterval:       c.Auth.LDAP.SyncInterval,
+				AutoCreateUser:     c.Auth.LDAP.AutoCreateUser,
+				InsecureSkipVerify: c.Auth.LDAP.InsecureSkipVerify,
+			},
+		},
 	}
 }
 
@@ -421,6 +457,19 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	// 安全配置
 	cfg.Security.TrustProxy = dto.Security.TrustProxy
 	cfg.Security.AllowedOrigins = dto.Security.AllowedOrigins
+
+	// LDAP 认证配置
+	cfg.Auth.LDAP.Enabled = dto.Auth.LDAP.Enabled
+	cfg.Auth.LDAP.Host = dto.Auth.LDAP.Host
+	cfg.Auth.LDAP.Port = dto.Auth.LDAP.Port
+	cfg.Auth.LDAP.UseSSL = dto.Auth.LDAP.UseSSL
+	cfg.Auth.LDAP.BaseDN = dto.Auth.LDAP.BaseDN
+	cfg.Auth.LDAP.BindDN = dto.Auth.LDAP.BindDN
+	cfg.Auth.LDAP.BindPassword = dto.Auth.LDAP.BindPassword
+	cfg.Auth.LDAP.UserFilter = dto.Auth.LDAP.UserFilter
+	cfg.Auth.LDAP.SyncInterval = dto.Auth.LDAP.SyncInterval
+	cfg.Auth.LDAP.AutoCreateUser = dto.Auth.LDAP.AutoCreateUser
+	cfg.Auth.LDAP.InsecureSkipVerify = dto.Auth.LDAP.InsecureSkipVerify
 
 	return cfg
 }

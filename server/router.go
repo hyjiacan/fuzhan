@@ -93,6 +93,7 @@ type runCtx struct {
 
 	idxSearch         *search.SearchIndex
 	resourceCollector *resource.Collector
+	ldapService       *auth.LDAPService
 }
 
 // isCLIRequest 判断请求是否来自命令行工具（curl/wget）
@@ -439,6 +440,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	configGroup.Use(authMiddleware.AuthRequired(), middleware.RequireAdmin(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	configGroup.GET("", configHandler.GetConfig)
 	configGroup.POST("", configHandler.SaveConfig)
+	configGroup.POST("/ldap/test", configHandler.TestLDAPConfig)
 
 	// 临时文件路由（基于IP，无需认证）
 	temp := api.Group("/temp")

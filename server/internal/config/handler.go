@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	appconfig "fuzhan/internal/appconfig"
+	"fuzhan/internal/auth"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
@@ -103,6 +105,7 @@ type SaveConfigRequest struct {
 	Index             appconfig.IndexConfigDTO     `json:"index"`
 	Resource          appconfig.ResourceConfigDTO  `json:"resource"`
 	Security          appconfig.SecurityConfigDTO  `json:"security"`
+	Auth              appconfig.AuthConfigDTO      `json:"auth"`
 }
 
 func (h *Handler) SaveConfig(c *gin.Context) {
@@ -416,6 +419,34 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("security.allowed_origins", origins)
 	}
 
+	// —— LDAP 认证配置 ——
+	// 前端只提交发生变化的顶级节，auth 一旦提交则整个 LDAP 节点原样写回
+	if present("auth") {
+		ld := req.Auth.LDAP
+		appconfig.GlobalConfig.Auth.LDAP.Enabled = ld.Enabled
+		appconfig.GlobalConfig.Auth.LDAP.Host = ld.Host
+		appconfig.GlobalConfig.Auth.LDAP.Port = ld.Port
+		appconfig.GlobalConfig.Auth.LDAP.UseSSL = ld.UseSSL
+		appconfig.GlobalConfig.Auth.LDAP.BaseDN = ld.BaseDN
+		appconfig.GlobalConfig.Auth.LDAP.BindDN = ld.BindDN
+		appconfig.GlobalConfig.Auth.LDAP.BindPassword = ld.BindPassword
+		appconfig.GlobalConfig.Auth.LDAP.UserFilter = ld.UserFilter
+		appconfig.GlobalConfig.Auth.LDAP.SyncInterval = ld.SyncInterval
+		appconfig.GlobalConfig.Auth.LDAP.AutoCreateUser = ld.AutoCreateUser
+		appconfig.GlobalConfig.Auth.LDAP.InsecureSkipVerify = ld.InsecureSkipVerify
+		updates.Add("auth.ldap.enabled", ld.Enabled)
+		updates.Add("auth.ldap.host", ld.Host)
+		updates.Add("auth.ldap.port", ld.Port)
+		updates.Add("auth.ldap.use_ssl", ld.UseSSL)
+		updates.Add("auth.ldap.base_dn", ld.BaseDN)
+		updates.Add("auth.ldap.bind_dn", ld.BindDN)
+		updates.Add("auth.ldap.bind_password", ld.BindPassword)
+		updates.Add("auth.ldap.user_filter", ld.UserFilter)
+		updates.Add("auth.ldap.sync_interval", ld.SyncInterval)
+		updates.Add("auth.ldap.auto_create_user", ld.AutoCreateUser)
+		updates.Add("auth.ldap.insecure_skip_verify", ld.InsecureSkipVerify)
+	}
+
 	// 私有/临时文件存储目录创建
 	if appconfig.GlobalConfig.Storage.Private.Enabled && appconfig.GlobalConfig.Storage.Private.Path != "" {
 		for _, dir := range []string{
@@ -448,4 +479,57 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
 	response.HandleSuccess(c, http.StatusOK, "配置已保存并生效", nil)
+}
+
+// TestLDAPConfig 测试 LDAP 连接。可选 JSON body（LDAPConfigDTO）用于测试未保存的表单值；
+// body 为空时使用当前已保存的配置。仅做连接与服务账号绑定探测，不验证具体用户。
+func (h *Handler) TestLDAPConfig(c *gin.Context) {
+	var dto appconfig.LDAPConfigDTO
+	body, _ := io.ReadAll(c.Request.Body)
+	useBody := len(strings.TrimSpace(string(body))) > 0
+	if useBody {
+		if err := json.Unmarshal(body, &dto); err != nil {
+			utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+			return
+		}
+	} else {
+		saved := appconfig.GetConfig().Auth.LDAP
+		dto = appconfig.LDAPConfigDTO{
+			Enabled:            saved.Enabled,
+			Host:               saved.Host,
+			Port:               saved.Port,
+			UseSSL:             saved.UseSSL,
+			BaseDN:             saved.BaseDN,
+			BindDN:             saved.BindDN,
+			BindPassword:       saved.BindPassword,
+			UserFilter:         saved.UserFilter,
+			SyncInterval:       saved.SyncInterval,
+			AutoCreateUser:     saved.AutoCreateUser,
+			InsecureSkipVerify: saved.InsecureSkipVerify,
+		}
+	}
+
+	if dto.Host == "" {
+		utils.HandleBadRequest(c, "LDAP 服务器地址未配置", nil)
+		return
+	}
+
+	svc := auth.NewLDAPService(nil, &auth.LDAPConfig{
+		Enabled:            dto.Enabled,
+		Host:               dto.Host,
+		Port:               dto.Port,
+		UseSSL:             dto.UseSSL,
+		BaseDN:             dto.BaseDN,
+		BindDN:             dto.BindDN,
+		BindPassword:       dto.BindPassword,
+		UserFilter:         dto.UserFilter,
+		SyncInterval:       dto.SyncInterval,
+		AutoCreateUser:     dto.AutoCreateUser,
+		InsecureSkipVerify: dto.InsecureSkipVerify,
+	})
+	if err := svc.TestConnection(); err != nil {
+		utils.HandleBadRequest(c, "LDAP 连接测试失败: "+err.Error(), nil)
+		return
+	}
+	response.HandleSuccess(c, http.StatusOK, "LDAP 连接测试成功", nil)
 }

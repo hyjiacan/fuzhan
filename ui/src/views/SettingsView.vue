@@ -232,6 +232,21 @@ const settings = reactive({
     samplingInterval: 5,
     collectInterval: 60,
     retentionDays: 7
+  },
+  auth: {
+    ldap: {
+      enabled: false,
+      host: '',
+      port: 389,
+      useSSL: false,
+      baseDN: '',
+      bindDN: '',
+      bindPassword: '',
+      userFilter: '',
+      syncInterval: 3600,
+      autoCreateUser: false,
+      insecureSkipVerify: false
+    }
   }
 })
 
@@ -383,6 +398,22 @@ const loadSettings = async () => {
         retentionDays: cfg.resource?.retentionDays || 7
       }
 
+      settings.auth = {
+        ldap: {
+          enabled: cfg.auth?.ldap?.enabled ?? false,
+          host: cfg.auth?.ldap?.host || '',
+          port: cfg.auth?.ldap?.port || 389,
+          useSSL: cfg.auth?.ldap?.useSSL ?? false,
+          baseDN: cfg.auth?.ldap?.baseDN || '',
+          bindDN: cfg.auth?.ldap?.bindDN || '',
+          bindPassword: cfg.auth?.ldap?.bindPassword || '',
+          userFilter: cfg.auth?.ldap?.userFilter || '',
+          syncInterval: cfg.auth?.ldap?.syncInterval || 3600,
+          autoCreateUser: cfg.auth?.ldap?.autoCreateUser ?? false,
+          insecureSkipVerify: cfg.auth?.ldap?.insecureSkipVerify ?? false
+        }
+      }
+
       originalServerConfig.value = {
         host: settings.server.host,
         httpPort: settings.server.http.port
@@ -422,7 +453,8 @@ const SECTION_SOURCES = {
   openApi: ['openApi'],
   index: ['scanStartDelaySeconds', 'scanCronExpression', 'searchReconcileCronExpression'],
   resource: ['resource'],
-  security: ['security']
+  security: ['security'],
+  auth: ['auth']
 }
 
 // 判定任一来源设置节是否相对基线变化；基线尚未建立时视为全量提交
@@ -555,6 +587,21 @@ const doSaveSettings = async () => {
       security: {
         trustProxy: settings.security.trustProxy,
         allowedOrigins: settings.security.allowedOrigins
+      },
+      auth: {
+        ldap: {
+          enabled: settings.auth.ldap.enabled,
+          host: settings.auth.ldap.host,
+          port: settings.auth.ldap.port,
+          useSSL: settings.auth.ldap.useSSL,
+          baseDN: settings.auth.ldap.baseDN,
+          bindDN: settings.auth.ldap.bindDN,
+          bindPassword: settings.auth.ldap.bindPassword,
+          userFilter: settings.auth.ldap.userFilter,
+          syncInterval: settings.auth.ldap.syncInterval,
+          autoCreateUser: settings.auth.ldap.autoCreateUser,
+          insecureSkipVerify: settings.auth.ldap.insecureSkipVerify
+        }
       }
     }
 

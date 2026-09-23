@@ -337,13 +337,31 @@ func main() {
 		InsecureSkipVerify: cfg.Auth.LDAP.InsecureSkipVerify,
 	})
 
-	// 将 LDAP 服务注入到 AuthService
+	// 将 LDAP 服务注入 AuthService（无论初始是否启用，都注入以便配置保存后热启用）
+	authService.SetLDAPService(ldapService)
 	if ldapService.IsEnabled() {
-		authService.SetLDAPService(ldapService)
 		utils.Info("LDAP 认证已启用", utils.String("host", cfg.Auth.LDAP.Host))
 	} else {
 		utils.Info("LDAP 认证未启用")
 	}
+
+	// 配置保存后热更新 LDAP 配置（启用/地址/过滤器等修改无需重启；目录同步间隔由 worker 每周期重读）
+	appconfig.AddOnSaveHook(func() {
+		cur := appconfig.GetConfig().Auth.LDAP
+		ldapService.UpdateConfig(&auth.LDAPConfig{
+			Enabled:            cur.Enabled,
+			Host:               cur.Host,
+			Port:               cur.Port,
+			UseSSL:             cur.UseSSL,
+			BaseDN:             cur.BaseDN,
+			BindDN:             cur.BindDN,
+			BindPassword:       cur.BindPassword,
+			UserFilter:         cur.UserFilter,
+			SyncInterval:       cur.SyncInterval,
+			AutoCreateUser:     cur.AutoCreateUser,
+			InsecureSkipVerify: cur.InsecureSkipVerify,
+		})
+	})
 
 	// 创建认证中间件（实时查库检查用户禁用状态）
 	authMiddleware := middleware.NewAuthMiddleware(db)
@@ -540,6 +558,7 @@ func main() {
 		openAPIStatsHandler:      openAPIStatsHandler,
 		idxSearch:                idxSearch,
 		resourceCollector:        resourceCollector,
+		ldapService:              ldapService,
 	}
 
 	// 服务器地址
