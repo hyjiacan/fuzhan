@@ -4,15 +4,15 @@ import (
 	"testing"
 	"time"
 
-	"fuzhan/internal/downloadanalytics"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/models"
 )
 
-// TestDownloadAnalytics_PublicOnlyAndSuccessSplit 验证分析服务只统计公共来源的下载事件，
+// TestBehaviorAnalytics_PublicOnlyAndSuccessSplit 验证分析服务只统计公共来源的下载事件，
 // 并按 dl_ok 区分成功/失败：私有/临时/上传 等非公共下载记录一律不计入。
-func TestDownloadAnalytics_PublicOnlyAndSuccessSplit(t *testing.T) {
+func TestBehaviorAnalytics_PublicOnlyAndSuccessSplit(t *testing.T) {
 	db := getTestDB(t)
-	svc := downloadanalytics.NewService(db)
+	svc := behavioranalytics.NewService(db)
 
 	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
@@ -92,10 +92,10 @@ func TestDownloadAnalytics_PublicOnlyAndSuccessSplit(t *testing.T) {
 	}
 }
 
-// TestDownloadAnalytics_WatermarkCacheRefresh 验证水位缓存：新增公开下载事件会触发缓存失效并重算。
-func TestDownloadAnalytics_WatermarkCacheRefresh(t *testing.T) {
+// TestBehaviorAnalytics_WatermarkCacheRefresh 验证水位缓存：新增公开下载事件会触发缓存失效并重算。
+func TestBehaviorAnalytics_WatermarkCacheRefresh(t *testing.T) {
 	db := getTestDB(t)
-	svc := downloadanalytics.NewService(db)
+	svc := behavioranalytics.NewService(db)
 
 	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
@@ -143,12 +143,12 @@ func TestDownloadAnalytics_WatermarkCacheRefresh(t *testing.T) {
 	}
 }
 
-// TestDownloadAnalytics_TopFilesUploadTimeBackfill 回归验证 TopFiles：
+// TestBehaviorAnalytics_TopFilesUploadTimeBackfill 回归验证 TopFiles：
 // 不得把 SQL 聚合列 MAX(upload_time) 直接 Scan 进 time.Time（SQLite 对聚合列返回 TEXT，
 // 驱动无法转换会报 Scan error），上传时间应由 enrichPublicInfo 从权威索引表 file_records_public 回填。
-func TestDownloadAnalytics_TopFilesUploadTimeBackfill(t *testing.T) {
+func TestBehaviorAnalytics_TopFilesUploadTimeBackfill(t *testing.T) {
 	db := getTestDB(t)
-	svc := downloadanalytics.NewService(db)
+	svc := behavioranalytics.NewService(db)
 
 	from := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC)

@@ -143,7 +143,7 @@
 ## OperationRecord 操作记录模型
 
 - **表名**: `operation_records`
-- **说明**: 上传/下载/搜索等操作审计记录。下载行为分析基于其中 `dl_event=1` 的公开下载事件聚合（私有/临时来源不计入）。
+- **说明**: 上传/下载/搜索等操作审计记录。行为分析中的下载行为基于其中 `dl_event=1` 的公开下载事件聚合（私有/临时来源不计入）。
 
 | 字段名 | 类型 | 约束 | 说明 |
 |--------|------|------|------|
@@ -176,7 +176,7 @@
 - `SearchQuery`: 搜索统计
 - `DeletedAt`: 软删除查询
 - `idx__operation_records__action_created_at`: `action, created_at`（最近/热门列表）；历史冗余索引 `idx_operation_records_action_created` 已被 `CleanupOperationRecordIndexes` 幂等清理（列与之完全一致，仅存在于手动执行过 005.sql 的存量库）
-- `idx__operation_records__dl_event_created_at_dl_ok`: `dl_event, created_at, dl_ok`（下载分析覆盖索引，按 dl_event 等值 + created_at 区间过滤）
+- `idx__operation_records__dl_event_created_at_dl_ok`: `dl_event, created_at, dl_ok`（行为分析下载行为覆盖索引，按 dl_event 等值 + created_at 区间过滤）
 - `idx__operation_records__dl_event_id`: `dl_event, id`（分析缓存水位判定）
 
 ---

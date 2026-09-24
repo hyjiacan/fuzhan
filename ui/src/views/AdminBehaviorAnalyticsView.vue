@@ -1,9 +1,9 @@
 ﻿<template>
-  <div class="admin-download-analytics">
+  <div class="admin-behavior-analytics">
     <div class="header-section">
       <div class="header-left">
-        <h2>下载行为分析</h2>
-        <p class="description">基于公开文件下载记录的聚合分析：趋势、热度、时段、衰减、来源分布与失败/异常情况</p>
+        <h2>行为分析</h2>
+        <p class="description">按访问 / 上传 / 下载三种行为分行聚合，支持按用户与按 IP 两种维度分析</p>
       </div>
       <div class="header-right">
         <el-button type="primary" size="small" :loading="loading" @click="loadAll">
@@ -33,7 +33,7 @@
           style="width: 360px"
           @change="loadAll"
         />
-        <span class="filter-label">粒度</span>
+        <span class="filter-label">下载趋势粒度</span>
         <el-select v-model="granularity" size="default" style="width: 100px" @change="loadTrend">
           <el-option label="按日" value="day" />
           <el-option label="按周" value="week" />
@@ -41,6 +41,50 @@
         </el-select>
       </div>
     </el-card>
+
+    <!-- ============ 访问 / 上传行为（基于最近操作记录，按用户/按IP） ============ -->
+    <el-card
+      v-for="def in behaviorDefs"
+      :key="def.key"
+      shadow="never"
+      class="chart-card behavior-card"
+      v-loading="behavior[def.key].loading"
+    >
+      <template #header>
+        <div class="card-title">
+          <span>{{ def.label }} <span class="sub">{{ def.desc }}</span></span>
+          <el-radio-group
+            :model-value="behavior[def.key].dim"
+            size="small"
+            @change="(v) => { behavior[def.key].dim = v; renderBehaviorChart(behavior[def.key]) }"
+          >
+            <el-radio-button label="user">按用户</el-radio-button>
+            <el-radio-button label="ip">按 IP</el-radio-button>
+          </el-radio-group>
+        </div>
+      </template>
+      <div class="behavior-metrics">
+        <div class="metric-card"><div class="metric-value">{{ behavior[def.key].summary.total }}</div><div class="metric-title">总次数</div></div>
+        <div class="metric-card"><div class="metric-value">{{ behavior[def.key].summary.uniqueUsers }}</div><div class="metric-title">独立用户</div></div>
+        <div class="metric-card"><div class="metric-value">{{ behavior[def.key].summary.uniqueIPs }}</div><div class="metric-title">独立 IP</div></div>
+      </div>
+      <div :ref="(el) => { if (el) behavior[def.key].el = el }" class="chart-box small"></div>
+      <el-table :data="behaviorRows(behavior[def.key])" border size="small" class="top-table">
+        <el-table-column type="index" label="#" width="44" align="center" />
+        <el-table-column prop="key" :label="behavior[def.key].dim === 'ip' ? 'IP 地址' : '用户'" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span :class="{ 'dim-empty': !row.key }">{{ row.key || (behavior[def.key].dim === 'ip' ? '未知' : '匿名') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="count" label="次数" width="100" align="right" />
+        <el-table-column label="占比" width="100" align="right">
+          <template #default="{ row }">{{ row.percent }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- ============ 下载行为 ============ -->
+    <div class="section-title"><span class="section-title-text">下载行为</span><span class="section-title-sub">基于公开文件下载记录的聚合分析：趋势、热度、时段、来源与失败/异常情况</span></div>
 
     <!-- ============ 概览指标卡片 ============ -->
     <section class="metric-grid">
@@ -125,11 +169,11 @@
       </el-table>
     </el-card>
 
-    <!-- ============ 来源分布 ============ -->
+    <!-- ============ 来源分布（按 IP / 按用户） ============ -->
     <el-card shadow="never" class="chart-card">
       <template #header>
         <div class="card-title">
-          <span>来源分布</span>
+          <span>下载来源分布</span>
           <el-radio-group v-model="sourceBy" size="small" @change="loadSources">
             <el-radio-button label="ip">按 IP</el-radio-button>
             <el-radio-button label="user">按用户</el-radio-button>
@@ -137,6 +181,12 @@
         </div>
       </template>
       <div ref="sourcesEl" class="chart-box small"></div>
+      <el-table :data="sourcesRows" border size="small" class="top-table">
+        <el-table-column type="index" label="#" width="44" align="center" />
+        <el-table-column prop="key" :label="sourceBy === 'ip' ? 'IP 地址' : '用户'" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="count" label="下载数" width="100" align="right" />
+        <el-table-column prop="fileCount" label="涉文件数" width="100" align="right" />
+      </el-table>
     </el-card>
 
     <!-- ============ 目录 / 类型聚合 ============ -->
@@ -215,7 +265,7 @@ import 'echarts/lib/component/tooltip'
 import 'echarts/lib/component/legend'
 import 'echarts/lib/component/visualMap'
 import 'echarts/lib/component/graphic'
-import { DownloadAnalyticsApi } from '../api'
+import { BehaviorAnalyticsApi, FileApi } from '../api'
 
 const loading = ref(false)
 const preset = ref('30d')
@@ -233,6 +283,7 @@ const lifecycle = ref([])
 const aggregate = ref([])
 const selectedFromFile = ref(null)
 const fileDetail = ref(null)
+const sourcesRows = ref([])
 
 const trendEl = ref()
 const topFilesEl = ref()
@@ -243,15 +294,85 @@ const lifecycleEl = ref()
 const aggregateEl = ref()
 const fileDetailEl = ref()
 
-let trendChart = null
-let topFilesChart = null
-let sourcesChart = null
-let failChart = null
-let heatmapChart = null
-let lifecycleChart = null
-let aggregateChart = null
-let fileDetailChart = null
+// ================= 访问 / 上传行为 =================
+// 复用 /files/recent 现有记录做轻量聚合（不新增后端接口）。"访问"以预览记录近似。
+const behaviorDefs = [
+  { key: 'access', label: '访问行为', action: 'preview', color: '#16a085', desc: '基于最近预览记录' },
+  { key: 'upload', label: '上传行为', action: 'upload', color: '#fa8c16', desc: '基于最近上传记录' }
+]
 
+const behavior = {}
+for (const def of behaviorDefs) {
+  behavior[def.key] = reactive({
+    key: def.key,
+    action: def.action,
+    color: def.color,
+    dim: 'user',
+    loading: false,
+    el: null,
+    summary: { total: 0, uniqueUsers: 0, uniqueIPs: 0 },
+    byUser: [],
+    byIP: []
+  })
+}
+
+// 把 {key: count} 聚合成排序后的行（含占比），按次数降序
+const toRows = (map) => {
+  const total = Object.values(map).reduce((s, v) => s + v, 0)
+  return Object.entries(map)
+    .map(([key, count]) => ({ key, count, percent: total > 0 ? ((count / total) * 100).toFixed(1) + '%' : '-' }))
+    .sort((a, b) => b.count - a.count)
+}
+
+async function loadBehavior(st) {
+  st.loading = true
+  try {
+    const res = await FileApi.recent(1, 100, st.action)
+    const records = (res.data && res.data.records) || []
+    const byUser = {}
+    const byIP = {}
+    for (const r of records) {
+      const u = r.userID ? r.userID : '匿名'
+      const ip = r.clientIP ? r.clientIP : '未知'
+      byIP[ip] = (byIP[ip] || 0) + 1
+      byUser[u] = (byUser[u] || 0) + 1
+    }
+    st.byUser = toRows(byUser)
+    st.byIP = toRows(byIP)
+    st.summary.total = (res.data && res.data.total) || records.length
+    st.summary.uniqueUsers = Object.keys(byUser).length
+    st.summary.uniqueIPs = Object.keys(byIP).length
+  } catch (e) {
+    st.byUser = []
+    st.byIP = []
+  } finally {
+    st.loading = false
+    renderBehaviorChart(st)
+  }
+}
+
+const behaviorRows = (st) => (st.dim === 'ip' ? st.byIP : st.byUser)
+
+function renderBehaviorChart(st) {
+  const rows = (st.dim === 'ip' ? st.byIP : st.byUser).slice(0, 10)
+  const name = 'behavior-' + st.key
+  if (!st.el) return
+  if (rows.length === 0) {
+    renderChart(name, st.el, emptyHorizBarOption(), true)
+    return
+  }
+  const c = axisColors()
+  renderChart(name, st.el, {
+    color: [st.color],
+    tooltip: { trigger: 'axis' },
+    grid: baseGridOpt(),
+    xAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
+    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, formatter: (v) => truncateLabel(v, 140) }, axisLine: { show: false } },
+    series: [{ type: 'bar', barMaxWidth: 18, data: rows.map((r) => r.count) }]
+  }, true)
+}
+
+// ================= 下载 =================
 const buttonsEnabled = computed(() => topFiles.value.some((f) => f.sourceId > 0))
 
 // 由档位/自定义解析出 RFC3339 的 from/to
@@ -310,9 +431,24 @@ function emptyHorizBarOption() {
   }
 }
 
+// ================= 统一图表渲染（修复容器塌陷）=================
+// 若容器尚无尺寸则推迟到下一帧再初始化，避免 echarts.init 在高度为 0 的容器上画出塌陷画布。
+const chartInst = {}
+function renderChart(name, el, option, notMerge) {
+  if (!el) return
+  if (!chartInst[name]) {
+    if (!el.clientWidth || !el.clientHeight) {
+      requestAnimationFrame(() => renderChart(name, el, option, notMerge))
+      return
+    }
+    chartInst[name] = echarts.init(el)
+  }
+  chartInst[name].setOption(option, !!notMerge)
+}
+
 async function loadSummary() {
   const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getSummary({ from, to })
+  const res = await BehaviorAnalyticsApi.getSummary({ from, to })
   if (res.success && res.data) Object.assign(summary, res.data)
 }
 
@@ -322,120 +458,35 @@ async function loadTrend() {
   if (selectedFromFile.value && selectedFromFile.value.sourceId) {
     params.id = selectedFromFile.value.sourceId
   }
-  const res = await DownloadAnalyticsApi.getTrend(params)
+  const res = await BehaviorAnalyticsApi.getTrend(params)
   const data = (res.data || []).filter((p) => p.time)
-  renderTrendChart(data, !!selectedFromFile.value)
-}
-
-async function loadTopFiles() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getTopFiles({ from, to, limit: 10, sort: topSort.value })
-  topFiles.value = res.data || []
-  renderTopFilesChart(topFiles.value)
-}
-
-async function loadSources() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getSources({ from, to, by: sourceBy.value, limit: 10 })
-  renderSourcesChart(res.data || [], sourceBy.value)
-}
-
-async function loadFailures() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getFailures({ from, to, limit: 10 })
-  failures.value = res.data || []
-  renderFailChart(failures.value)
-}
-
-async function loadHeatmap() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getHeatmap({ from, to })
-  heatmap.value = res.data || []
-  renderHeatmapChart(heatmap.value)
-}
-
-async function loadLifecycle() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getLifecycle({ from, to, capDays: 30 })
-  lifecycle.value = res.data || []
-  renderLifecycleChart(lifecycle.value)
-}
-
-async function loadAggregate() {
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getAggregate({ from, to, dimension: aggDim.value, limit: 12 })
-  aggregate.value = res.data || []
-  renderAggregateChart(aggregate.value, aggDim.value)
-}
-
-async function loadFileDetail() {
-  const sel = selectedFromFile.value
-  if (!sel || !sel.sourceId) return
-  const { from, to } = resolveRange()
-  const res = await DownloadAnalyticsApi.getFileDetail({ id: sel.sourceId, from, to })
-  if (res.success && res.data) {
-    if (!fileDetail.value) fileDetail.value = res.data
-    else Object.assign(fileDetail.value, res.data)
-    await nextTick()
-    renderFileDetailChart(fileDetail.value)
-  }
-}
-
-async function loadAll() {
-  loading.value = true
-  if (selectedFromFile.value && !selectedFromFile.value.sourceId) clearSelectedFile()
-  await loadFileDetail()
-  try {
-    await Promise.all([loadSummary(), loadTrend(), loadTopFiles(), loadSources(), loadFailures(), loadHeatmap(), loadLifecycle(), loadAggregate()])
-  } finally {
-    loading.value = false
-  }
-}
-
-function onTopFileClick(row) {
-  if (!row.sourceId) {
-    return
-  }
-  selectedFromFile.value = row
-  fileDetail.value = null
-  loadAll()
-}
-
-function clearSelectedFile() {
-  selectedFromFile.value = null
-  fileDetail.value = null
-  loadAll()
-}
-
-// ---------------- 图表渲染 ----------------
-function renderTrendChart(points, single) {
-  if (!trendEl.value) return
-  if (!trendChart) trendChart = echarts.init(trendEl.value)
+  const single = !!selectedFromFile.value
   const c = axisColors()
-  trendChart.setOption({
+  renderChart('trend', trendEl.value, {
     color: ['#2080f0', '#f56c6c'],
     tooltip: { trigger: 'axis' },
     legend: { top: 0, data: ['成功', '失败'], textStyle: { color: c.text } },
     grid: baseGridOpt(),
-    xAxis: { type: 'category', data: points.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
+    xAxis: { type: 'category', data: data.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
     series: [
-      { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.count) },
-      { name: '失败', type: 'line', smooth: true, showSymbol: false, data: points.map((p) => p.failed) }
+      { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: data.map((p) => p.count) },
+      { name: '失败', type: 'line', smooth: true, showSymbol: false, data: data.map((p) => p.failed) }
     ]
   }, !single)
 }
 
-function renderTopFilesChart(list) {
-  if (!topFilesEl.value) return
-  if (!topFilesChart) topFilesChart = echarts.init(topFilesEl.value)
-  const rows = (list || []).slice(0, 10)
+async function loadTopFiles() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getTopFiles({ from, to, limit: 10, sort: topSort.value })
+  topFiles.value = res.data || []
+  const rows = topFiles.value.slice(0, 10)
   if (rows.length === 0) {
-    topFilesChart.setOption(emptyHorizBarOption(), true)
+    renderChart('topFiles', topFilesEl.value, emptyHorizBarOption(), true)
     return
   }
   const c = axisColors()
-  topFilesChart.setOption({
+  renderChart('topFiles', topFilesEl.value, {
     color: ['#2080f0'],
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
@@ -454,16 +505,17 @@ function renderTopFilesChart(list) {
   }, true)
 }
 
-function renderSourcesChart(list, by) {
-  if (!sourcesEl.value) return
-  if (!sourcesChart) sourcesChart = echarts.init(sourcesEl.value)
-  const rows = (list || []).slice(0, 10)
+async function loadSources() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getSources({ from, to, by: sourceBy.value, limit: 10 })
+  sourcesRows.value = res.data || []
+  const rows = sourcesRows.value.slice(0, 10)
   if (rows.length === 0) {
-    sourcesChart.setOption(emptyHorizBarOption(), true)
+    renderChart('sources', sourcesEl.value, emptyHorizBarOption(), true)
     return
   }
   const c = axisColors()
-  sourcesChart.setOption({
+  renderChart('sources', sourcesEl.value, {
     color: ['#16a085'],
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
@@ -473,16 +525,17 @@ function renderSourcesChart(list, by) {
   }, true)
 }
 
-function renderFailChart(list) {
-  if (!failEl.value) return
-  if (!failChart) failChart = echarts.init(failEl.value)
-  const rows = (list || []).slice(0, 8)
+async function loadFailures() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getFailures({ from, to, limit: 10 })
+  failures.value = res.data || []
+  const rows = failures.value.slice(0, 8)
   if (rows.length === 0) {
-    failChart.setOption(emptyHorizBarOption(), true)
+    renderChart('fail', failEl.value, emptyHorizBarOption(), true)
     return
   }
   const c = axisColors()
-  failChart.setOption({
+  renderChart('fail', failEl.value, {
     color: ['#f56c6c'],
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
@@ -492,14 +545,16 @@ function renderFailChart(list) {
   }, true)
 }
 
-function renderHeatmapChart(cells) {
+async function loadHeatmap() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getHeatmap({ from, to })
+  heatmap.value = res.data || []
   if (!heatmapEl.value) return
-  if (!heatmapChart) heatmapChart = echarts.init(heatmapEl.value)
   const c = axisColors()
   const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-  const data = (cells || []).map((cell) => [cell.weekday - 1, cell.hour, cell.count])
-  const max = Math.max(1, ...data.map((d) => d[2]))
-  heatmapChart.setOption({
+  const cells = (res.data || []).map((cell) => [cell.weekday - 1, cell.hour, cell.count])
+  const max = Math.max(1, ...cells.map((d) => d[2]))
+  renderChart('heatmap', heatmapEl.value, {
     tooltip: {
       position: 'top',
       formatter: (p) => `${weekdays[p.value[0]]} ${String(p.value[1]).padStart(2, '0')}:00<br/>下载 ${p.value[2]} 次`
@@ -524,72 +579,113 @@ function renderHeatmapChart(cells) {
       textStyle: { color: c.text },
       inRange: { color: ['#ebf4ff', '#2080f0', '#f5222d'] }
     },
-    series: [{ type: 'heatmap', data, label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+    series: [{ type: 'heatmap', data: cells, label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
   }, true)
 }
 
-function renderLifecycleChart(points) {
+async function loadLifecycle() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getLifecycle({ from, to, capDays: 30 })
+  lifecycle.value = res.data || []
   if (!lifecycleEl.value) return
-  if (!lifecycleChart) lifecycleChart = echarts.init(lifecycleEl.value)
   const c = axisColors()
-  lifecycleChart.setOption({
+  const points = res.data || []
+  renderChart('lifecycle', lifecycleEl.value, {
     color: ['#2080f0', '#fa8c16'],
     tooltip: { trigger: 'axis' },
     legend: { top: 0, data: ['下载量', '涉文件数'], textStyle: { color: c.text } },
     grid: baseGridOpt(),
-    xAxis: { type: 'category', data: (points || []).map((p) => `第 ${p.day} 天`), axisLabel: { color: c.tick, interval: 2 }, axisLine: { lineStyle: { color: c.line } } },
+    xAxis: { type: 'category', data: points.map((p) => `第 ${p.day} 天`), axisLabel: { color: c.tick, interval: 2 }, axisLine: { lineStyle: { color: c.line } } },
     yAxis: [
       { type: 'value', name: '下载量', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
       { type: 'value', name: '文件数', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { show: false } }
     ],
     series: [
-      { name: '下载量', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: (points || []).map((p) => p.downloads) },
-      { name: '涉文件数', type: 'line', smooth: true, yAxisIndex: 1, showSymbol: false, data: (points || []).map((p) => p.files) }
+      { name: '下载量', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.downloads) },
+      { name: '涉文件数', type: 'line', smooth: true, yAxisIndex: 1, showSymbol: false, data: points.map((p) => p.files) }
     ]
   }, true)
 }
 
-function renderAggregateChart(list, dim) {
-  if (!aggregateEl.value) return
-  if (!aggregateChart) aggregateChart = echarts.init(aggregateEl.value)
-  const rows = (list || []).slice(0, 12)
+async function loadAggregate() {
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getAggregate({ from, to, dimension: aggDim.value, limit: 12 })
+  aggregate.value = res.data || []
+  const rows = aggregate.value.slice(0, 12)
   if (rows.length === 0) {
-    aggregateChart.setOption(emptyHorizBarOption(), true)
+    renderChart('aggregate', aggregateEl.value, emptyHorizBarOption(), true)
     return
   }
   const c = axisColors()
-  const label = dim === 'dir' ? '目录' : '扩展名'
-  aggregateChart.setOption({
+  const label = aggDim.value === 'dir' ? '目录' : '扩展名'
+  renderChart('aggregate', aggregateEl.value, {
     color: ['#722ed1'],
     tooltip: { trigger: 'axis' },
     grid: baseGridOpt(),
     xAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, formatter: (v) => truncateLabel(dim === 'type' ? '.' + v : v, 180) }, axisLine: { show: false } },
+    yAxis: { type: 'category', inverse: true, data: rows.map((r) => r.key), axisLabel: { color: c.text, formatter: (v) => truncateLabel(aggDim.value === 'type' ? '.' + v : v, 180) }, axisLine: { show: false } },
     series: [{ name: label, type: 'bar', barMaxWidth: 18, data: rows.map((r) => r.count) }]
   }, true)
 }
 
-function renderFileDetailChart(detail) {
-  if (!fileDetailEl.value) return
-  if (!fileDetailChart) fileDetailChart = echarts.init(fileDetailEl.value)
-  const c = axisColors()
-  const points = detail.trend || []
-  fileDetailChart.setOption({
-    color: ['#2080f0', '#f56c6c'],
-    tooltip: { trigger: 'axis' },
-    legend: { top: 0, data: ['成功', '失败'], textStyle: { color: c.text } },
-    grid: baseGridOpt(),
-    xAxis: { type: 'category', data: points.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
-    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-    series: [
-      { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.count) },
-      { name: '失败', type: 'line', smooth: true, showSymbol: false, data: points.map((p) => p.failed) }
-    ]
-  }, false)
+async function loadFileDetail() {
+  const sel = selectedFromFile.value
+  if (!sel || !sel.sourceId) return
+  const { from, to } = resolveRange()
+  const res = await BehaviorAnalyticsApi.getFileDetail({ id: sel.sourceId, from, to })
+  if (res.success && res.data) {
+    if (!fileDetail.value) fileDetail.value = res.data
+    else Object.assign(fileDetail.value, res.data)
+    const c = axisColors()
+    const points = fileDetail.value.trend || []
+    renderChart('fileDetail', fileDetailEl.value, {
+      color: ['#2080f0', '#f56c6c'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0, data: ['成功', '失败'], textStyle: { color: c.text } },
+      grid: baseGridOpt(),
+      xAxis: { type: 'category', data: points.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
+      yAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
+      series: [
+        { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.count) },
+        { name: '失败', type: 'line', smooth: true, showSymbol: false, data: points.map((p) => p.failed) }
+      ]
+    }, false)
+  }
+}
+
+async function loadAll() {
+  loading.value = true
+  if (selectedFromFile.value && !selectedFromFile.value.sourceId) clearSelectedFile()
+  try {
+    await loadFileDetail()
+    await Promise.all([
+      loadSummary(), loadTrend(), loadTopFiles(), loadSources(), loadFailures(), loadHeatmap(), loadLifecycle(), loadAggregate()
+    ])
+    // 访问 / 上传行为（复用最近记录，前端聚合）
+    behaviorDefs.forEach((def) => loadBehavior(behavior[def.key]))
+  } finally {
+    loading.value = false
+    nextTick(resizeCharts)
+  }
+}
+
+function onTopFileClick(row) {
+  if (!row.sourceId) {
+    return
+  }
+  selectedFromFile.value = row
+  fileDetail.value = null
+  loadAll()
+}
+
+function clearSelectedFile() {
+  selectedFromFile.value = null
+  fileDetail.value = null
+  loadAll()
 }
 
 function resizeCharts() {
-  ;[trendChart, topFilesChart, sourcesChart, failChart, heatmapChart, lifecycleChart, aggregateChart, fileDetailChart].forEach((ch) => ch && ch.resize())
+  Object.values(chartInst).forEach((ch) => ch && ch.resize())
 }
 
 onMounted(async () => {
@@ -599,15 +695,16 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', resizeCharts)
-  ;[trendChart, topFilesChart, sourcesChart, failChart, heatmapChart, lifecycleChart, aggregateChart, fileDetailChart].forEach((ch) => {
+  Object.values(chartInst).forEach((ch) => {
     if (ch) ch.dispose()
   })
 })
 </script>
 
 <style scoped>
-.admin-download-analytics {
+.admin-behavior-analytics {
   padding: 8px 2px;
+  min-width: 0;
 }
 .header-section {
   display: flex;
@@ -624,6 +721,12 @@ onUnmounted(() => {
   color: var(--el-text-color-placeholder);
   font-size: 13px;
 }
+
+.el-card {
+  /* 修复塌陷问题 */
+  overflow: unset;
+}
+
 .filter-card {
   margin-bottom: 14px;
 }
@@ -636,6 +739,30 @@ onUnmounted(() => {
 .filter-label {
   color: var(--el-text-color-secondary);
   font-size: 14px;
+}
+.section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.section-title-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.section-title-sub {
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+.behavior-card {
+  margin-bottom: 14px;
+}
+.behavior-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .metric-grid {
   display: grid;
@@ -688,6 +815,8 @@ onUnmounted(() => {
 .chart-box {
   width: 100%;
   height: 320px;
+  min-width: 0;
+  min-height: 0;
 }
 .chart-box.small {
   height: 260px;
@@ -702,9 +831,11 @@ onUnmounted(() => {
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
+.dim-empty {
+  color: var(--el-text-color-placeholder);
+}
 .top-table {
   margin-top: 10px;
-  cursor: pointer;
 }
 .agg-wrap {
   display: flex;
@@ -749,6 +880,9 @@ onUnmounted(() => {
 
 @media (max-width: 1100px) {
   .metric-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .behavior-metrics {
     grid-template-columns: repeat(3, 1fr);
   }
   .two-col {

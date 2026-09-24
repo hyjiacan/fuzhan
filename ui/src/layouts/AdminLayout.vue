@@ -93,7 +93,7 @@ const menuGroups = [
     items: [
       { label: '看板', key: '/admin/dashboard', icon: DataBoard },
       { label: '资源监控', key: '/admin/resource', icon: Odometer },
-      { label: '下载行为分析', key: '/admin/download-analytics', icon: TrendCharts },
+      { label: '行为分析', key: '/admin/behavior-analytics', icon: TrendCharts },
       { label: '在线IP', key: '/admin/online', icon: Monitor }
     ]
   },
@@ -236,6 +236,7 @@ const handleMenuSelect = (key) => {
 
       .menu-badge {
         margin-left: 8px;
+        display: flex;
 
         :deep(.el-badge__content) {
           position: static;
@@ -249,6 +250,8 @@ const handleMenuSelect = (key) => {
 
   .layout-menu {
     border-right: none;
+
+    --el-menu-item-height: 40px;
 
     :deep(.el-menu-item-group__title) {
       padding: 14px 20px 6px;

@@ -177,7 +177,7 @@
 | AdminApiKeyView / AdminOpenApiView | `/admin/openapi` | el-form, el-input, el-table-v2 | OpenAPI 与 API Key 管理 |
 | AdminOnlineView | `/admin/online` | el-table-v2, el-alert, el-button | 在线 IP 统计，展示当前在线 IP 及在线时长，自动刷新 |
 | AdminResourceView | `/admin/resource` | el-card, echarts | 服务器资源监控，CPU/内存/磁盘/IO 实时与历史曲线 |
-| AdminDownloadAnalyticsView | `/admin/download-analytics` | echarts, el-radio-group, el-date-picker, el-table, el-card | 下载行为分析（仅公开文件）：趋势、时段热度、生命周期/衰减、热门文件（含扩散比）、来源分布、目录/类型聚合、失败异常统计，支持近7/30天与自定义区间、按日周月粒度与单文件下钻 |
+| AdminBehaviorAnalyticsView | `/admin/behavior-analytics` | echarts, el-radio-group, el-date-picker, el-table, el-card | 行为分析：按访问 / 上传 / 下载三种行为分行区块聚合，均支持按用户 / 按 IP 维度（访问/上传基于最近记录、下载基于公开文件）；下载含趋势、时段热度、生命周期/衰减、热门文件（含扩散比）、来源分布、目录/类型聚合、失败异常统计，支持近7/30天与自定义区间、按日周月粒度与单文件下钻 |
 
 ---
 
@@ -199,7 +199,7 @@
 | SetupApi | 初始化 | status, save, validateDir, networkInterfaces, defaultConfig |
 | SystemApi | 系统 | getOptions, health, ready |
 | MonitorApi | 监控 | storage, access, keywords, rankings, hotDownloads |
-| DownloadAnalyticsApi | 下载分析 | summary, trend, topFiles, sources, failures, fileDetail, heatmap, aggregate, lifecycle |
+| BehaviorAnalyticsApi | 行为分析 | summary, trend, topFiles, sources, failures, fileDetail, heatmap, aggregate, lifecycle |
 | NotificationApi | 通知 | getNotifications, markAsRead, mergeAnonymous |
 
 ### Axios 配置
@@ -296,7 +296,7 @@
 | `/admin/url-tasks` | AdminURLTaskView | requiresAuth, requiresAdmin, navName | URL下载任务 |
 | `/admin/online` | AdminOnlineView | requiresAuth, requiresAdmin, navName | 在线IP |
 | `/admin/resource` | AdminResourceView | requiresAuth, requiresAdmin, title | 资源监控 |
-| `/admin/download-analytics` | AdminDownloadAnalyticsView | requiresAuth, requiresAdmin, title | 下载行为分析 |
+| `/admin/behavior-analytics` | AdminBehaviorAnalyticsView | requiresAuth, requiresAdmin, title | 行为分析 |
 | `/:pathMatch(.*)*` | - | - | 默认重定向到 /files |
 
 ### 路由模式

@@ -86,7 +86,7 @@ func truncate(s string, maxLen int) string {
 	return string(runes[:maxLen])
 }
 
-// recordDownloadFailure 记录一次失败的下载尝试（下载行为分析失败/异常维度）。
+// recordDownloadFailure 记录一次失败的下载尝试（行为分析失败/异常维度）。
 // 失败的尝试同样复用 recordDownload 的全局有界记录器 + 同步回退写入。
 func (ds *DownloadService) recordDownloadFailure(fileName, subPath, rootName, fullPath, ip, reason string) {
 	if ds.recordRepo == nil {
@@ -200,7 +200,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	isPreview := r.URL.Query().Get("preview") == "true"
 
 	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
-	// 不写入下载记录，也不会进入下载计数/下载行为分析（见 OperationRecord.BeforeCreate）
+	// 不写入下载记录，也不会进入下载计数/行为分析（见 OperationRecord.BeforeCreate）
 	if ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
 			Action:     "download-by-hash",
@@ -337,7 +337,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	isPreview := r.URL.Query().Get("preview") == "true"
 
 	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
-	// 不写入下载记录，也不会进入下载计数/下载行为分析（见 OperationRecord.BeforeCreate）
+	// 不写入下载记录，也不会进入下载计数/行为分析（见 OperationRecord.BeforeCreate）
 	if record && ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
 			Action:     "download",

@@ -150,7 +150,7 @@ func EnsureOperationRecordIndexes(db *gorm.DB) {
 		columns string
 	}{
 		{name: "action_created_at", columns: "`action`, created_at"},
-		// 下载行为分析：按 dl_event 等值 + created_at 区间过滤，dl_ok 作覆盖列做成功/失败分支，
+		// 行为分析：按 dl_event 等值 + created_at 区间过滤，dl_ok 作覆盖列做成功/失败分支，
 		// 使 summary/trend/heatmap/top-files/sources/aggregate 等均命中该覆盖索引。
 		{name: "dl_event_created_at_dl_ok", columns: "dl_event, created_at, dl_ok"},
 		// 分析缓存水位：判定「自某水位以来是否新增公开下载事件/inline 取最大 id」，用 (dl_event, id) 快速命中。

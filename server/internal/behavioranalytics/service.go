@@ -1,4 +1,4 @@
-package downloadanalytics
+package behavioranalytics
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 下载行为分析：基于 operation_records 中公开文件下载记录（action=download/download-by-hash）聚合。
+// 行为分析：基于 operation_records 中公开文件下载记录（action=download/download-by-hash）聚合。
 // 私有/临时下载虽在入口落 operation_records（source_type=private/temp），但分析层一律只统计公共来源。
 //
 // 提升一：写时物化的「下载统计签名」列 DlEvent/DlOk 在 OperationRecord.BeforeCreate 写入时计算，
@@ -114,13 +114,13 @@ type FileDetailResult struct {
 	ByUser       []SourceStat `json:"byUser"`
 }
 
-// Service 下载行为分析服务
+// Service 行为分析服务
 type Service struct {
 	db    *gorm.DB
 	cache *watermarkCache
 }
 
-// NewService 创建下载行为分析服务
+// NewService 创建行为分析服务
 func NewService(db *gorm.DB) *Service {
 	return &Service{db: db, cache: newWatermarkCache()}
 }

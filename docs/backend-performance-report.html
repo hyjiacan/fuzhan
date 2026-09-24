@@ -261,7 +261,7 @@
     <tr><td><code>internal/temp/handler.go:249</code></td><td>临时下载用裸 <code>io.Copy</code>，无 Range/206/续传；主下载路径 <code>ServeFile</code> 已良好</td><td style="color:var(--low)">改用 <code>c.File</code> 复用 Range/sendfile</td></tr>
     <tr><td><code>internal/auth/middleware.go:292</code></td><td><code>RequestIDMiddleware</code> 每请求 <code>crypto/rand.Read</code>（毫秒级）</td><td style="color:var(--low)">可换原子计数器/伪随机</td></tr>
     <tr><td><code>internal/openapi/middleware.go:165</code></td><td>限流 map 无淘汰，去重 IP 越多内存越涨</td><td style="color:var(--low)">加 LRU / 周期清理</td></tr>
-    <tr><td><code>internal/downloadanalytics/…</code></td><td>Heatmap/Aggregate/Trend 命中即删除重算，窗口内全量行 <code>Scan</code> 入内存</td><td style="color:var(--low)">延长兜底 TTL、SQL 侧聚合</td></tr>
+    <tr><td><code>internal/behavioranalytics/…</code></td><td>Heatmap/Aggregate/Trend 命中即删除重算，窗口内全量行 <code>Scan</code> 入内存</td><td style="color:var(--low)">延长兜底 TTL、SQL 侧聚合</td></tr>
     <tr><td><code>internal/repositories/audit_store.go:360</code></td><td><code>GetAll</code> 全表 <code>Find</code> 无 limit</td><td style="color:var(--low)">加 limit 或告警统计</td></tr>
     <tr><td><code>internal/uploadutil/uploadutil.go:20</code></td><td><code>io.ReadAll(srcFile)</code> 无长度限制（当前无调用方，死代码）</td><td style="color:var(--low)">删除或限读</td></tr>
     <tr><td><code>internal/services/file_service.go:38</code></td><td><code>append([]rec, records...)</code> 每次前插 + O(n) 拷贝（上限100）</td><td style="color:var(--low)">头插/环形缓冲</td></tr>

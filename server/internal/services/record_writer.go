@@ -157,7 +157,7 @@ func SubmitRecord(rec *models.OperationRecord) bool {
 	return w.Submit(rec)
 }
 
-// SubmitFailedRecord 记录一次失败的操作（用于下载行为分析失败/异常维度）。
+// SubmitFailedRecord 记录一次失败的操作（用于行为分析失败/异常维度）。
 // 复用全局有界记录器；携带失败原因，避免各下载入口重复初始化。
 func SubmitFailedRecord(rec *models.OperationRecord, failReason string) {
 	if rec == nil {

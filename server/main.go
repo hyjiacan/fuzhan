@@ -18,7 +18,7 @@ import (
 	"fuzhan/internal/auth"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
-	"fuzhan/internal/downloadanalytics"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/health"
 	"fuzhan/internal/index"
@@ -213,10 +213,10 @@ func main() {
 	// 回填历史操作记录的 file_record_id（建立身份关联，移动/重命名后不丢）
 	services.BackfillFileRecordIDs(db)
 
-	// 回填下载来源身份（source_type/source_id），为下载行为分析跨来源聚合提供一致身份
+	// 回填下载来源身份（source_type/source_id），为行为分析跨来源聚合提供一致身份
 	services.BackfillOperationRecordSource(db)
 
-	// 回填下载统计签名（dl_event/dl_ok），供下载行为分析等值过滤并命中覆盖索引
+	// 回填下载统计签名（dl_event/dl_ok），供行为分析等值过滤并命中覆盖索引
 	services.BackfillDownloadSignature(db)
 
 	// 初始化日志记录器 (已在 appconfig.DoInit 中初始化)
@@ -497,8 +497,8 @@ func main() {
 	monitorService := services.NewMonitorService(recordRepo, db)
 	monitorHandler := monitor.NewHandler(monitorService)
 
-	// 下载行为分析处理器（需管理员认证；基于 operation_records 公开下载聚合）
-	downloadAnalyticsHandler := downloadanalytics.NewHandler(downloadanalytics.NewService(db))
+	// 行为分析处理器（需管理员认证；基于 operation_records 公开下载聚合）
+	behaviorAnalyticsHandler := behavioranalytics.NewHandler(behavioranalytics.NewService(db))
 
 	// 服务器资源监控（需管理员认证；worker 在下方启动）
 	resourceCollector := resource.NewCollector(func() *gorm.DB { return appconfig.GetDB() })
@@ -548,7 +548,7 @@ func main() {
 		monitorHandler:           monitorHandler,
 		resourceHandler:          resourceHandler,
 		previewHandler:           previewHandler,
-		downloadAnalyticsHandler: downloadAnalyticsHandler,
+		behaviorAnalyticsHandler: behaviorAnalyticsHandler,
 		authMiddleware:           authMiddleware,
 		rbacService:              rbacService,
 		openAPICfg:               openAPICfg,

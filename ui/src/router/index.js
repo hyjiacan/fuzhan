@@ -30,7 +30,7 @@ const AdminOpenApiView = () => import(/* webpackChunkName: "views-admin-openapi"
 const AdminDuplicatesView = () => import(/* webpackChunkName: "views-admin-duplicates" */ '../views/AdminDuplicatesView.vue')
 const AdminOnlineView = () => import(/* webpackChunkName: "views-admin-online" */ '../views/AdminOnlineView.vue')
 const AdminResourceView = () => import(/* webpackChunkName: "views-admin-resource" */ '../views/AdminResourceView.vue')
-const AdminDownloadAnalyticsView = () => import(/* webpackChunkName: "views-admin-download-analytics" */ '../views/AdminDownloadAnalyticsView.vue')
+const AdminBehaviorAnalyticsView = () => import(/* webpackChunkName: "views-admin-behavior-analytics" */ '../views/AdminBehaviorAnalyticsView.vue')
 const AdminSecurityView = () => import(/* webpackChunkName: "views-admin-security" */ '../views/AdminSecurityView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
@@ -167,10 +167,10 @@ const router = createRouter({
           meta: { title: '资源监控' }
         },
         {
-          path: 'download-analytics',
-          name: 'admin-download-analytics',
-          component: AdminDownloadAnalyticsView,
-          meta: { title: '下载行为分析' }
+          path: 'behavior-analytics',
+          name: 'admin-behavior-analytics',
+          component: AdminBehaviorAnalyticsView,
+          meta: { title: '行为分析' }
         },
         {
           path: 'users',

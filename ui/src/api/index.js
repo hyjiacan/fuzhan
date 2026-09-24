@@ -713,34 +713,34 @@ export const MonitorApi = {
   }
 }
 
-// ========== 下载行为分析 API ==========
-export const DownloadAnalyticsApi = {
+// ========== 行为分析 API ==========
+export const BehaviorAnalyticsApi = {
   getSummary(params) {
-    return request.get('/admin/download-analytics/summary', { params })
+    return request.get('/admin/behavior-analytics/summary', { params })
   },
   getTrend(params) {
-    return request.get('/admin/download-analytics/trend', { params })
+    return request.get('/admin/behavior-analytics/trend', { params })
   },
   getTopFiles(params) {
-    return request.get('/admin/download-analytics/top-files', { params })
+    return request.get('/admin/behavior-analytics/top-files', { params })
   },
   getSources(params) {
-    return request.get('/admin/download-analytics/sources', { params })
+    return request.get('/admin/behavior-analytics/sources', { params })
   },
   getFailures(params) {
-    return request.get('/admin/download-analytics/failures', { params })
+    return request.get('/admin/behavior-analytics/failures', { params })
   },
   getFileDetail(params) {
-    return request.get('/admin/download-analytics/file', { params })
+    return request.get('/admin/behavior-analytics/file', { params })
   },
   getHeatmap(params) {
-    return request.get('/admin/download-analytics/heatmap', { params })
+    return request.get('/admin/behavior-analytics/heatmap', { params })
   },
   getAggregate(params) {
-    return request.get('/admin/download-analytics/aggregate', { params })
+    return request.get('/admin/behavior-analytics/aggregate', { params })
   },
   getLifecycle(params) {
-    return request.get('/admin/download-analytics/lifecycle', { params })
+    return request.get('/admin/behavior-analytics/lifecycle', { params })
   }
 }
 
@@ -821,7 +821,7 @@ export default {
   SetupApi,
   SystemApi,
   MonitorApi,
-  DownloadAnalyticsApi,
+  BehaviorAnalyticsApi,
   NotificationApi,
   ApiKeyApi,
   SecurityApi

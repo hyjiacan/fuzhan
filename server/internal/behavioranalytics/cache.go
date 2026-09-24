@@ -1,4 +1,4 @@
-package downloadanalytics
+package behavioranalytics
 
 import (
 	"sync"

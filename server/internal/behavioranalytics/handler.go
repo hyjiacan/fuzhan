@@ -1,4 +1,4 @@
-package downloadanalytics
+package behavioranalytics
 
 import (
 	"net/http"
@@ -10,12 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handler 下载行为分析处理器
+// Handler 行为分析处理器
 type Handler struct {
 	service *Service
 }
 
-// NewHandler 创建下载行为分析处理器
+// NewHandler 创建行为分析处理器
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -49,19 +49,19 @@ func intQuery(c *gin.Context, key string, def, max int) int {
 	return v
 }
 
-// SummaryHandle GET /admin/download-analytics/summary
+// SummaryHandle GET /admin/behavior-analytics/summary
 func (h *Handler) SummaryHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	res, err := h.service.Summary(from, to)
 	if err != nil {
-		utils.Warn("下载行为分析-summary查询失败", utils.Err(err))
+		utils.Warn("行为分析-summary查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取下载总览失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// TrendHandle GET /admin/download-analytics/trend?granularity=&id=
+// TrendHandle GET /admin/behavior-analytics/trend?granularity=&id=
 func (h *Handler) TrendHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	granularity := "day"
@@ -71,54 +71,54 @@ func (h *Handler) TrendHandle(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Query("id"), 10, 64)
 	res, err := h.service.TrendPoints(from, to, granularity, uint(id))
 	if err != nil {
-		utils.Warn("下载行为分析-trend查询失败", utils.Err(err))
+		utils.Warn("行为分析-trend查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取下载趋势失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// TopFilesHandle GET /admin/download-analytics/top-files?sort=count|spread
+// TopFilesHandle GET /admin/behavior-analytics/top-files?sort=count|spread
 func (h *Handler) TopFilesHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	limit := intQuery(c, "limit", 10, 100)
 	res, err := h.service.TopFiles(from, to, c.Query("sort"), limit)
 	if err != nil {
-		utils.Warn("下载行为分析-top-files查询失败", utils.Err(err))
+		utils.Warn("行为分析-top-files查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取热门下载文件失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// SourcesHandle GET /admin/download-analytics/sources
+// SourcesHandle GET /admin/behavior-analytics/sources
 func (h *Handler) SourcesHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	by := c.Query("by")
 	limit := intQuery(c, "limit", 10, 100)
 	res, err := h.service.Sources(from, to, by, limit)
 	if err != nil {
-		utils.Warn("下载行为分析-sources查询失败", utils.Err(err))
+		utils.Warn("行为分析-sources查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取来源分布失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// FailuresHandle GET /admin/download-analytics/failures
+// FailuresHandle GET /admin/behavior-analytics/failures
 func (h *Handler) FailuresHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	limit := intQuery(c, "limit", 10, 100)
 	res, err := h.service.FailureReasons(from, to, limit)
 	if err != nil {
-		utils.Warn("下载行为分析-failures查询失败", utils.Err(err))
+		utils.Warn("行为分析-failures查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取失败情况失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// FileDetailHandle GET /admin/download-analytics/file?id=&from=&to=
+// FileDetailHandle GET /admin/behavior-analytics/file?id=&from=&to=
 func (h *Handler) FileDetailHandle(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Query("id"), 10, 64)
 	if err != nil || id == 0 {
@@ -128,45 +128,45 @@ func (h *Handler) FileDetailHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	res, err := h.service.FileDetail(uint(id), from, to)
 	if err != nil {
-		utils.Warn("下载行为分析-file明细查询失败", utils.Int64("id", int64(id)), utils.Err(err))
+		utils.Warn("行为分析-file明细查询失败", utils.Int64("id", int64(id)), utils.Err(err))
 		response.HandleInternalServerError(c, "获取文件明细失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// HeatmapHandle GET /admin/download-analytics/heatmap
+// HeatmapHandle GET /admin/behavior-analytics/heatmap
 func (h *Handler) HeatmapHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	res, err := h.service.Heatmap(from, to)
 	if err != nil {
-		utils.Warn("下载行为分析-heatmap查询失败", utils.Err(err))
+		utils.Warn("行为分析-heatmap查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取时段热度失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// AggregateHandle GET /admin/download-analytics/aggregate?dimension=dir|type
+// AggregateHandle GET /admin/behavior-analytics/aggregate?dimension=dir|type
 func (h *Handler) AggregateHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	limit := intQuery(c, "limit", 10, 100)
 	res, err := h.service.Aggregate(from, to, c.Query("dimension"), limit)
 	if err != nil {
-		utils.Warn("下载行为分析-aggregate查询失败", utils.Err(err))
+		utils.Warn("行为分析-aggregate查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取目录/类型聚合失败")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", res)
 }
 
-// LifecycleHandle GET /admin/download-analytics/lifecycle
+// LifecycleHandle GET /admin/behavior-analytics/lifecycle
 func (h *Handler) LifecycleHandle(c *gin.Context) {
 	from, to := parseRange(c)
 	capDays := intQuery(c, "capDays", 30, 90)
 	res, err := h.service.Lifecycle(from, to, capDays)
 	if err != nil {
-		utils.Warn("下载行为分析-lifecycle查询失败", utils.Err(err))
+		utils.Warn("行为分析-lifecycle查询失败", utils.Err(err))
 		response.HandleInternalServerError(c, "获取生命周期/衰减曲线失败")
 		return
 	}

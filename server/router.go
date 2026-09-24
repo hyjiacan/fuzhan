@@ -12,7 +12,7 @@ import (
 	"fuzhan/internal/auth"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
-	"fuzhan/internal/downloadanalytics"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/ftp"
 	"fuzhan/internal/health"
@@ -80,7 +80,7 @@ type runCtx struct {
 	monitorHandler           *monitor.Handler
 	resourceHandler          *resource.Handler
 	previewHandler           *file.PreviewHandler
-	downloadAnalyticsHandler *downloadanalytics.Handler
+	behaviorAnalyticsHandler *behavioranalytics.Handler
 
 	authMiddleware *middleware.AuthMiddleware
 	rbacService    *auth.RBACService
@@ -641,17 +641,17 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 		admin.GET("/security/events/stats", sh.Stats)
 	}
 
-	// 下载行为分析路由（基于 operation_records 公开下载聚合）
-	if h := rt.downloadAnalyticsHandler; h != nil {
-		admin.GET("/download-analytics/summary", h.SummaryHandle)
-		admin.GET("/download-analytics/trend", h.TrendHandle)
-		admin.GET("/download-analytics/top-files", h.TopFilesHandle)
-		admin.GET("/download-analytics/sources", h.SourcesHandle)
-		admin.GET("/download-analytics/failures", h.FailuresHandle)
-		admin.GET("/download-analytics/file", h.FileDetailHandle)
-		admin.GET("/download-analytics/heatmap", h.HeatmapHandle)
-		admin.GET("/download-analytics/aggregate", h.AggregateHandle)
-		admin.GET("/download-analytics/lifecycle", h.LifecycleHandle)
+	// 行为分析路由（下载行为 /admin/behavior-analytics，基于 operation_records 公开下载聚合）
+	if h := rt.behaviorAnalyticsHandler; h != nil {
+		admin.GET("/behavior-analytics/summary", h.SummaryHandle)
+		admin.GET("/behavior-analytics/trend", h.TrendHandle)
+		admin.GET("/behavior-analytics/top-files", h.TopFilesHandle)
+		admin.GET("/behavior-analytics/sources", h.SourcesHandle)
+		admin.GET("/behavior-analytics/failures", h.FailuresHandle)
+		admin.GET("/behavior-analytics/file", h.FileDetailHandle)
+		admin.GET("/behavior-analytics/heatmap", h.HeatmapHandle)
+		admin.GET("/behavior-analytics/aggregate", h.AggregateHandle)
+		admin.GET("/behavior-analytics/lifecycle", h.LifecycleHandle)
 	}
 
 	// TLS 证书上传路由
