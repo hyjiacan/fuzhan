@@ -132,12 +132,36 @@ const parseDupPath = (fullPath) => {
   return { dirs, fileName }
 }
 
-// 分组标题：文件名相同则追加文件名，不同则提示有 x 个文件名
+// 分词：去掉扩展名后，按中文/英文数字词切分（用于求多文件名的相同词交集）
+const tokenizeName = (name) => {
+  const stem = String(name).replace(/\.[^.]+$/, '')
+  return stem.match(/[\u4e00-\u9fa5]+|[A-Za-z0-9]+/g) || []
+}
+
+// 计算多个不同文件名的共同词部分（与词顺序无关），按首个文件名词序返回；无共同词则返回空串
+const computeCommonWords = (names) => {
+  const unique = [...new Set(names.map((n) => String(n).trim()).filter(Boolean))]
+  if (unique.length < 2) return ''
+  const tokenLists = unique.map(tokenizeName)
+  const common = new Set(tokenLists[0])
+  for (let i = 1; i < tokenLists.length; i++) {
+    const set = new Set(tokenLists[i])
+    for (const t of common) if (!set.has(t)) common.delete(t)
+  }
+  if (common.size === 0) return ''
+  return tokenLists[0].filter((t, idx, arr) => common.has(t) && arr.indexOf(t) === idx).join(' ')
+}
+
+// 分组标题：文件名相同则追加文件名；不同则提示有 x 个文件名，并在其后显示共同词部分
 const groupTitle = (group, idx) => {
   const base = `#${idx + 1}  ${group.xxh3Hash.substring(0, 16)}...  (${group.fileCount} 个文件, ${formatSizeDup(group.totalSize)})`
   const nameSet = new Set((group.files || []).map(f => f.fileName).filter(Boolean))
   if (nameSet.size === 1) return `${base} · ${[...nameSet][0]}`
-  if (nameSet.size > 1) return `${base} · 有 ${nameSet.size} 个文件名`
+  if (nameSet.size > 1) {
+    const common = computeCommonWords([...nameSet])
+    const suffix = common ? ` · 相同词: ${common}` : ''
+    return `${base} · 有 ${nameSet.size} 个文件名${suffix}`
+  }
   return base
 }
 

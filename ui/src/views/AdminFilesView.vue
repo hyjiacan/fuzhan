@@ -25,7 +25,7 @@
         <div class="header-actions">
           <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
             class="search-input" clearable name="search-query" @keydown.enter="searchFiles" />
-          <el-button size="small" @click="loadCurrentDir" :loading="loading">刷新</el-button>
+          <el-button size="small" @click="handleRefresh" :loading="loading">刷新</el-button>
           <el-button v-if="checkedRowKeys.length > 0" size="small" type="danger" @click="handleBatchDelete">
             删除选中 ({{ checkedRowKeys.length }})
           </el-button>
@@ -220,6 +220,15 @@ const {
   previewDialogVisible, previewMaximized, previewFileData, downloadFile,
   handleBatchDelete
 } = actions
+
+// 刷新：若搜索框有关键字则重跑搜索，否则刷新当前目录
+const handleRefresh = () => {
+  if (searchQuery.value.trim()) {
+    searchFiles()
+  } else {
+    loadCurrentDir()
+  }
+}
 
 // 双击行
 const handleDblClick = (row) => {
