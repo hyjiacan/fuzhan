@@ -31,7 +31,10 @@
             class="search-input" :style="searchInputWidth" size="large">
             <template #default="{ item }">
               <div class="suggest-item">
-                <span class="suggest-name">{{ item.value }}</span>
+                <span class="suggest-text">
+                  <span v-if="item.prefix" class="suggest-prefix">{{ item.prefix }}</span>
+                  <span class="suggest-name">{{ item.token }}</span>
+                </span>
                 <span v-if="item.corrected" class="suggest-tag">纠错</span>
               </div>
             </template>
@@ -737,6 +740,18 @@ watch(
     align-items: center;
     justify-content: space-between;
     width: 100%;
+  }
+
+  .suggest-text {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+  }
+
+  .suggest-prefix {
+    flex-shrink: 0;
+    margin-right: 2px;
+    color: @text-color-secondary;
   }
 
   .suggest-name {

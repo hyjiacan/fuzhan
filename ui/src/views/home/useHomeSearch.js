@@ -41,39 +41,50 @@ export function useHomeSearch() {
     store.clearSearchState()
   }
 
-  // 搜索框下拉推荐：自动补全 + 拼写纠错（输入防抖 300ms，避免每键并发两次请求）
+  // 搜索框下拉推荐：自动补全 + 拼写纠错。
+  // 按空格把输入拆成若干部分，仅针对最后一部分（用户当前正在输入的部分）请求建议，
+  // 选中后替换该部分并保留前面的关键词，使输入的每一段都能获得推荐/纠错。
+  // 输入防抖 300ms，避免每键并发两次请求。
   let suggestTimer = null
   const querySuggestions = (queryString, cb) => {
     if (suggestTimer) clearTimeout(suggestTimer)
     suggestTimer = setTimeout(() => {
-      const q = (queryString || '').trim()
-      if (!q) {
+      const raw = queryString || ''
+      // 末尾为空格表示新的一段尚未开始输入，暂不给出建议
+      if (!raw.trim() || /\s$/.test(raw)) {
         cb([])
         return
       }
-      // 并行拉取自动补全与纠错建议
+      const parts = raw.trim().split(/\s+/)
+      const token = parts[parts.length - 1]
+      const prefix = parts.length > 1 ? `${parts.slice(0, -1).join(' ')} ` : ''
+      // 并行拉取当前段的自动补全与纠错建议
       Promise.all([
-        SearchApi.autocomplete(q).catch(() => ({ data: [] })),
-        SearchApi.spellcheck(q).catch(() => ({ data: [] }))
+        SearchApi.autocomplete(token).catch(() => ({ data: [] })),
+        SearchApi.spellcheck(token).catch(() => ({ data: [] }))
       ]).then(([autoRes, spellRes]) => {
         const autoNames = Array.isArray(autoRes?.data) ? autoRes.data : []
         const spellNames = Array.isArray(spellRes?.data) ? spellRes.data : []
-        const suggestions = new Map() // value -> { value, corrected }
-        // 自动补全结果：直接作为推荐
-        for (const name of autoNames) {
-          if (!suggestions.has(name)) suggestions.set(name, { value: name, corrected: false })
+        const suggestions = new Map() // 完整查询串 -> { value, prefix, token, corrected }
+        const push = (name, corrected) => {
+          if (!name) return
+          const value = prefix + name
+          if (suggestions.has(value)) return
+          suggestions.set(value, { value, prefix, token: name, corrected })
         }
-        // 纠错结果：标注为"纠错"，且避免与原查询相同、避免与自动补全重复
+        // 自动补全结果：直接作为推荐
+        for (const name of autoNames) push(name, false)
+        // 纠错结果：标注为"纠错"，避免与当前输入段相同、避免与自动补全重复
         for (const name of spellNames) {
-          if (name === q || suggestions.has(name)) continue
-          suggestions.set(name, { value: name, corrected: true })
+          if (name === token) continue
+          push(name, true)
         }
         cb([...suggestions.values()].slice(0, 12))
       })
     }, 300)
   }
 
-  // 选中推荐项：用该关键词发起搜索（下拉项为关键词 term，而非完整文件名）
+  // 选中推荐项：item.value 为"保留前段 + 替换后的当前段"的完整查询串，直接以之搜索
   const onSuggestionSelect = (item) => {
     searchQuery.value = item.value
     searchFiles()
