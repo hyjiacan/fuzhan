@@ -29,12 +29,12 @@ type ApiKeyService struct {
 
 	// 校验结果 TTL 缓存：ValidateApiKey 每次做 bcrypt（cost 10，约几十 ms）。
 	// 缓存成功结果可显著提升 OpenAPI 认证吞吐，短 TTL 兼顾密钥禁用/过期及时性。
-	cacheMu sync.Mutex
-	cache   map[string]apiKeyCacheEntry
+	cacheMu  sync.Mutex
+	cache    map[string]apiKeyCacheEntry
 	cacheTTL time.Duration
 
 	// last_used_at 写节流：避免每个请求都异步起 goroutine 更新，高并发下产生无界协程。
-	touchMu  sync.Mutex
+	touchMu   sync.Mutex
 	lastTouch map[uint]time.Time
 	touchTTL  time.Duration
 }

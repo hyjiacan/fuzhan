@@ -62,7 +62,7 @@ func TestFilterTermFragmentsEquivalent(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		var terms []suggestTerm
 		seen := map[string]bool{}
-		for _, wd := range randomWords(rng, 2+ (i%6), alphabet) {
+		for _, wd := range randomWords(rng, 2+(i%6), alphabet) {
 			if !seen[wd] {
 				seen[wd] = true
 				terms = append(terms, suggestTerm{term: wd, count: uint64(1 + rng.Intn(50))})

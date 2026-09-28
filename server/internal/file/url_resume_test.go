@@ -23,32 +23,32 @@ var srvRange, srvIfRange string
 // noopAudio 实现 AuditStore 的 no-op 桩，供 downloadFromURL 集成测试使用。
 type noopAudit struct{}
 
-func (noopAudit) Create(_ *models.OperationRecord) error                              { return nil }
-func (noopAudit) CreateBatch(_ []*models.OperationRecord) error                       { return nil }
-func (noopAudit) GetByID(_ uint) (*models.OperationRecord, error)                     { return nil, nil }
+func (noopAudit) Create(_ *models.OperationRecord) error          { return nil }
+func (noopAudit) CreateBatch(_ []*models.OperationRecord) error   { return nil }
+func (noopAudit) GetByID(_ uint) (*models.OperationRecord, error) { return nil, nil }
 func (noopAudit) ListByUserID(_ string, _, _ int) ([]models.OperationRecord, int64, error) {
 	return nil, 0, nil
 }
 func (noopAudit) ListByIP(_ string, _, _ int) ([]models.OperationRecord, int64, error) {
 	return nil, 0, nil
 }
-func (noopAudit) ListRecent(_ string, _ int) ([]models.OperationRecord, error)       { return nil, nil }
-func (noopAudit) ListRecentAll(_ int, _ string) ([]models.OperationRecord, error)    { return nil, nil }
+func (noopAudit) ListRecent(_ string, _ int) ([]models.OperationRecord, error)    { return nil, nil }
+func (noopAudit) ListRecentAll(_ int, _ string) ([]models.OperationRecord, error) { return nil, nil }
 func (noopAudit) ListRecentAllPaginated(_, _ int, _ string) ([]models.OperationRecord, int64, error) {
 	return nil, 0, nil
 }
-func (noopAudit) ResolvePublicFileID(_, _ string) (uint, error)                     { return 0, nil }
-func (noopAudit) UpdateFileRecordID(_, _ uint) error                                { return nil }
+func (noopAudit) ResolvePublicFileID(_, _ string) (uint, error) { return 0, nil }
+func (noopAudit) UpdateFileRecordID(_, _ uint) error            { return nil }
 func (noopAudit) AttachCurrentPaths(r []models.OperationRecord) []models.OperationRecord {
 	return r
 }
-func (noopAudit) Delete(_ uint) error                                      { return nil }
-func (noopAudit) DeleteByIDAndAction(_ uint, _ string) (int64, error)      { return 0, nil }
+func (noopAudit) Delete(_ uint) error                                       { return nil }
+func (noopAudit) DeleteByIDAndAction(_ uint, _ string) (int64, error)       { return 0, nil }
 func (noopAudit) DeleteByFile(_, _ string, _ bool, _ []uint) (int64, error) { return 0, nil }
-func (noopAudit) GetAll() ([]models.OperationRecord, error)               { return nil, nil }
-func (noopAudit) GetRecent(_ int) ([]models.OperationRecord, error)       { return nil, nil }
+func (noopAudit) GetAll() ([]models.OperationRecord, error)                 { return nil, nil }
+func (noopAudit) GetRecent(_ int) ([]models.OperationRecord, error)         { return nil, nil }
 func (noopAudit) GetRecentSearches(_ int) ([]models.OperationRecord, error) { return nil, nil }
-func (noopAudit) DeleteByAction(_ string) (int64, error)                  { return 0, nil }
+func (noopAudit) DeleteByAction(_ string) (int64, error)                    { return 0, nil }
 
 // 集成测试：预置部分文件后调用 downloadFromURL，应发 Range 请求从断点续传，
 // 最终目标文件字节与远端完全一致，任务完成。

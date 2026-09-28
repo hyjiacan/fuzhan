@@ -16,9 +16,9 @@ import (
 	"fuzhan/internal/admin"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
-	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/health"
 	"fuzhan/internal/index"
@@ -219,6 +219,13 @@ func main() {
 	// 回填下载统计签名（dl_event/dl_ok），供行为分析等值过滤并命中覆盖索引
 	services.BackfillDownloadSignature(db)
 
+	// 回填下载计数签名（dl_counted）：该列首次引入时补齐存量记录。补齐后索引表里的
+	// download_count 只是历史累加值，需按记录集全量对齐一次（幂等）才能与记录唯一对应；
+	// 未发生补齐（列已是最新）时跳过，避免每次启动都做全量重算。
+	if services.BackfillDownloadCounted(db) > 0 {
+		services.RecountAllPublicDownloadCounts(db)
+	}
+
 	// 初始化日志记录器 (已在 appconfig.DoInit 中初始化)
 	defer utils.Sync()
 
@@ -418,7 +425,9 @@ func main() {
 	privateUploadHandler := file.NewPrivateUploadHandler(db, chunkSize, cfg.Storage.Private.Path, indexService)
 	privateStorageHandler := file.NewPrivateStorageHandlers()
 	adminService := services.NewAdminService(db)
-	adminHandler := admin.NewHandler(adminService, db)
+	// 行为分析服务提前创建：既供统计接口使用，也供记录删除后主动失效缓存
+	behaviorAnalyticsService := behavioranalytics.NewService(db)
+	adminHandler := admin.NewHandler(adminService, db, behaviorAnalyticsService)
 	notificationHandler := notification.NewHandler(db)
 	securityHandler := security.NewHandler(secRepo)
 	adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
@@ -498,7 +507,7 @@ func main() {
 	monitorHandler := monitor.NewHandler(monitorService)
 
 	// 行为分析处理器（需管理员认证；基于 operation_records 公开下载聚合）
-	behaviorAnalyticsHandler := behavioranalytics.NewHandler(behavioranalytics.NewService(db))
+	behaviorAnalyticsHandler := behavioranalytics.NewHandler(behaviorAnalyticsService)
 
 	// 服务器资源监控（需管理员认证；worker 在下方启动）
 	resourceCollector := resource.NewCollector(func() *gorm.DB { return appconfig.GetDB() })

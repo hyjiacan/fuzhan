@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -108,11 +109,11 @@ func (ds *DownloadService) recordDownloadFailure(fileName, subPath, rootName, fu
 	recordDownload(ds.recordRepo, rec)
 }
 
-// isNewDownloadRequest 判断请求是否代表一次新的下载（而非续传/分段延续）：
+// IsNewDownloadRequest 判断请求是否代表一次新的下载（而非续传/分段延续）：
 // - 不带 Range 头的完整请求（浏览器普通下载、curl/wget 等）
 // - 带 Range 头但起始偏移为 0 的请求（Chrome 并行下载、aria2/IDM 等多连接下载器的首段）
 // 带 Range 且起始偏移 > 0 的请求是断点续传或分段延续，不计入下载次数
-func isNewDownloadRequest(r *http.Request) bool {
+func IsNewDownloadRequest(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
@@ -198,15 +199,20 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
 	isPreview := r.URL.Query().Get("preview") == "true"
+	// counted 表示这次请求是否计入下载次数：非预览且为新下载（排除断点续传/分段延续）。
+	// 记录与计数必须使用同一判定，否则记录集无法唯一推导计数值（删除记录后重算会失真）。
+	counted := !isPreview && IsNewDownloadRequest(r)
 
 	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
 	// 不写入下载记录，也不会进入下载计数/行为分析（见 OperationRecord.BeforeCreate）
 	if ds.recordRepo != nil && r.Method == http.MethodGet {
+		// fullPath 已是 "/根目录/子路径" 完整路径（FindFilePathByHash 返回索引表的 full_path），
+		// 直接落库；此前再拼一次 "/根目录/" 会造成重复前缀，使记录与索引表 full_path 无法对应。
 		rec := &models.OperationRecord{
 			Action:     "download-by-hash",
-			FileName:   filepath.Base(targetPath),
-			FilePath:   filepath.Dir(fullPath),
-			FullPath:   "/" + rootName + "/" + fullPath,
+			FileName:   filepath.Base(fullPath),
+			FilePath:   path.Dir(strings.TrimPrefix(fullPath, "/"+rootName)),
+			FullPath:   fullPath,
 			FileSize:   info.Size(),
 			RootName:   rootName,
 			ClientIP:   ip,
@@ -216,6 +222,9 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		if isPreview {
 			rec.Action = "preview"
 		}
+		if counted {
+			rec.DlCounted = 1
+		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
 		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
@@ -223,7 +232,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
 	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
-	if !isPreview && isNewDownloadRequest(r) {
+	if counted {
 		SubmitDownloadCountIncrement(fullPath)
 	}
 
@@ -335,6 +344,11 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
 	isPreview := r.URL.Query().Get("preview") == "true"
+	// 下载次数的完整路径键：与索引表 file_records_public.full_path 一致
+	fullPath := "/" + rootName + "/" + strings.TrimPrefix(subPath, "/")
+	// counted 表示这次请求是否计入下载次数：管理页下载不计入、预览不计入、续传/分段延续不计入。
+	// 记录与计数使用同一判定，保证「下载次数」可由记录集唯一推导（删除记录后可精确回退）。
+	counted := record && !isPreview && IsNewDownloadRequest(r)
 
 	// 记录操作（非阻塞，仅记录 GET 请求）。预览请求记为 "preview" 操作，
 	// 不写入下载记录，也不会进入下载计数/行为分析（见 OperationRecord.BeforeCreate）
@@ -343,7 +357,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 			Action:     "download",
 			FileName:   filepath.Base(targetPath),
 			FilePath:   subPath,
-			FullPath:   "/" + rootName + "/" + strings.TrimPrefix(subPath, "/"),
+			FullPath:   fullPath,
 			FileSize:   info.Size(),
 			RootName:   rootName,
 			ClientIP:   ip,
@@ -353,6 +367,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		if isPreview {
 			rec.Action = "preview"
 		}
+		if counted {
+			rec.DlCounted = 1
+		}
 		ds.attachFileID(rec, rootName, rec.FullPath)
 		rec.SourceID = rec.FileRecordID
 		recordDownload(ds.recordRepo, rec)
@@ -360,8 +377,8 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 公共文件下载次数累加（真实下载时，不含预览；仅统计新下载请求，忽略续传/分段延续）。
 	// 异步攒批落库，不阻塞下载响应（次下载不再同步 UPDATE 索引表）。
-	if record && !isPreview && isNewDownloadRequest(r) {
-		SubmitDownloadCountIncrement("/" + rootName + "/" + strings.TrimPrefix(subPath, "/"))
+	if counted {
+		SubmitDownloadCountIncrement(fullPath)
 	}
 	if !isPreview {
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）

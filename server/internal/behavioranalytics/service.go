@@ -125,6 +125,16 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{db: db, cache: newWatermarkCache()}
 }
 
+// InvalidateCache 主动失效全部统计缓存。删除操作记录后由删除方调用：
+// 软删除既不会新增下载事件 id、也不会推进水位，水位机制无法察觉，
+// 只能显式通知，否则统计结果要等到 maxCacheAge 兜底 TTL 才收敛。
+func (s *Service) InvalidateCache() {
+	if s == nil {
+		return
+	}
+	s.cache.clear()
+}
+
 // cached 以 key 读取/写入缓存：命中且水位内无新增公开下载事件则直接返回，否则执行 compute() 并缓存。
 // 写入时记录水位（当前最大公开下载事件 id），供后续命中判定。
 func (s *Service) cached(key string, compute func() (interface{}, error)) (interface{}, error) {

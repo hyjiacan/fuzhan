@@ -10,6 +10,7 @@ import (
 // BackfillPublicDownloadCounts 从下载记录(operation_records)统计各公共文件的下载次数并回写到文件索引表。
 // 作为升级/启动时的一次性回填：仅处理 download_count 仍为 0 的记录，幂等且避免覆盖真实增量，
 // 也避免每次启动都做全量重算。下载记录会实时递增，因此未回填过的文件其数量会持续准确。
+// 计数口径与写入侧一致（dl_counted = 1，即公开来源、非预览、非断点续传/分段延续）。
 func BackfillPublicDownloadCounts(db *gorm.DB) {
 	if db == nil {
 		return
@@ -23,17 +24,40 @@ func BackfillPublicDownloadCounts(db *gorm.DB) {
             SELECT COUNT(*)
             FROM operation_records
             WHERE operation_records.full_path = file_records_public.full_path
-              AND operation_records.action IN (?, ?)
+              AND operation_records.dl_counted = 1
               AND operation_records.deleted_at IS NULL
         )
         WHERE status = ? AND is_dir = ? AND download_count = 0`
 
-	result := db.Exec(stmt, "download", "download-by-hash", models.FileStatusActive, false)
+	result := db.Exec(stmt, models.FileStatusActive, false)
 	if result.Error != nil {
 		utils.Warn("回填公共文件下载次数失败", utils.Err(result.Error))
 		return
 	}
 	utils.Info("公共文件下载次数回填完成", utils.Int64("affected", result.RowsAffected))
+}
+
+// BackfillDownloadCounted 为存量操作记录补齐下载计数签名 dl_counted（= 公开且成功的下载事件）。
+// 幂等：仅更新仍为 0 的记录，返回本次更新行数。返回 >0 说明该列刚被引入/补齐，
+// 调用方应据此做一次全量对齐（RecountAllPublicDownloadCounts），使索引表计数与记录集一致。
+//
+// 说明：存量记录无法还原"当时是否为一次新下载请求"，只能按 dl_event+dl_ok 近似置位；
+// 新写入的记录由各下载入口按请求级判定精确置位，此后不再产生偏差。
+func BackfillDownloadCounted(db *gorm.DB) int64 {
+	if db == nil || !db.Migrator().HasTable(&models.OperationRecord{}) {
+		return 0
+	}
+	result := db.Exec(`UPDATE operation_records
+		SET dl_counted = 1
+		WHERE dl_event = 1 AND dl_ok = 1 AND dl_counted = 0 AND deleted_at IS NULL`)
+	if result.Error != nil {
+		utils.Warn("回填下载计数签名失败", utils.Err(result.Error))
+		return 0
+	}
+	if result.RowsAffected > 0 {
+		utils.Info("下载计数签名回填完成", utils.Int64("affected", result.RowsAffected))
+	}
+	return result.RowsAffected
 }
 
 // BackfillFileRecordIDs 回填历史操作记录的 file_record_id：按路径反查公共文件索引记录 ID。

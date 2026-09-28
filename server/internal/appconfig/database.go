@@ -39,7 +39,7 @@ type PoolConfig struct {
 func DefaultPoolConfig() PoolConfig {
 	return PoolConfig{
 		MaxIdleConns:    2,
-		MaxOpenConns:    4, // SQLite 单写者，4 足矣且写锁碰撞更低；MySQL/PG 按需在配置里上调
+		MaxOpenConns:    4,    // SQLite 单写者，4 足矣且写锁碰撞更低；MySQL/PG 按需在配置里上调
 		ConnMaxLifetime: 3600, // 1小时
 	}
 }

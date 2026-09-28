@@ -155,6 +155,9 @@ func EnsureOperationRecordIndexes(db *gorm.DB) {
 		{name: "dl_event_created_at_dl_ok", columns: "dl_event, created_at, dl_ok"},
 		// 分析缓存水位：判定「自某水位以来是否新增公开下载事件/inline 取最大 id」，用 (dl_event, id) 快速命中。
 		{name: "dl_event_id", columns: "dl_event, id"},
+		// 下载次数重算：按 dl_counted 等值 + full_path 计数（删除记录后回退下载次数），
+		// 同时覆盖「按 dl_counted 分组统计各路径计数」的全量对齐扫描，避免扫全表。
+		{name: "dl_counted_full_path", columns: "dl_counted, full_path"},
 	}
 	for _, idx := range compositeIndexes {
 		indexName := "idx__operation_records__" + idx.name

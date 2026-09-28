@@ -100,10 +100,10 @@ func TestLDAPService_Authenticate_EmptyCredentials(t *testing.T) {
 func TestLDAPService_BuildUserFilter(t *testing.T) {
 	db := setupLDAPTestDB(t)
 	cases := []struct {
-		name    string
-		filter  string
-		user    string
-		want    string
+		name   string
+		filter string
+		user   string
+		want   string
 	}{
 		{"默认(uid)", "", "zhangsan", "(uid=zhangsan)"},
 		{"OpenLDAP模板", "(uid=%s)", "zhangsan", "(uid=zhangsan)"},

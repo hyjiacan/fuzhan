@@ -147,7 +147,10 @@ func (r *downloadCountRecorder) flush() {
 		r.mu.Unlock()
 		return
 	}
-	type agg struct{ path string; n int }
+	type agg struct {
+		path string
+		n    int
+	}
 	rows := make([]agg, 0, len(r.pending))
 	for p, n := range r.pending {
 		rows = append(rows, agg{path: p, n: n})

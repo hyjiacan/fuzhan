@@ -10,6 +10,7 @@ import (
 
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -278,10 +279,36 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		c.Header("Content-Type", mt)
 	}
 
-	// 公共文件下载次数累加
-	h.db.Model(&models.FileRecordPublic{}).
-		Where("full_path = ?", record.FullPath).
-		UpdateColumn("download_count", gorm.Expr("download_count + 1"))
+	// 下载记录是下载次数的唯一真源：此处既要累加计数，也要落一条操作记录，
+	// 否则计数会超出记录集（删除记录后重算会凭空减少）。两者使用同一「新下载请求」判定。
+	counted := services.IsNewDownloadRequest(c.Request)
+	if counted {
+		h.db.Model(&models.FileRecordPublic{}).
+			Where("full_path = ?", record.FullPath).
+			UpdateColumn("download_count", gorm.Expr("download_count + 1"))
+	}
+	rec := &models.OperationRecord{
+		Action:       "download",
+		FileName:     record.FileName,
+		FilePath:     record.FilePath,
+		FullPath:     record.FullPath,
+		FileSize:     record.FileSize,
+		RootName:     record.RootName,
+		ClientIP:     c.ClientIP(),
+		FileRecordID: record.ID,
+		SourceID:     record.ID,
+		SourceType:   models.SourceTypePublic,
+		UploadTime:   utils.Now(),
+		CreatedAt:    utils.Now(),
+	}
+	if counted {
+		rec.DlCounted = 1
+	}
+	if !services.SubmitDownloadRecord(rec) {
+		if err := h.db.Create(rec).Error; err != nil {
+			utils.Warn("记录开放接口下载操作失败", utils.Err(err))
+		}
+	}
 
 	c.File(fullPath)
 }

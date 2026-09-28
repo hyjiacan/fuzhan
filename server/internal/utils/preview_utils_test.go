@@ -47,7 +47,7 @@ func TestMimeTable_DownloadContentType(t *testing.T) {
 		want string
 	}{
 		{"epub", "application/epub+zip"},
-		{"EPUB", "application/epub+zip"}, // 不区分大小写
+		{"EPUB", "application/epub+zip"},    // 不区分大小写
 		{"exe", "application/x-msdownload"}, // 忽略点号 + 大小写归一
 		{".EXE", "application/x-msdownload"},
 		{"TXT", "custom/text"},

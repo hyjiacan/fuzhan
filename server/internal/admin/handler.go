@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/online"
@@ -25,13 +26,31 @@ import (
 type Handler struct {
 	adminService *services.AdminService
 	db           *gorm.DB
+	// analytics 行为分析服务，用于删除操作记录后立即失效统计缓存
+	analytics *behavioranalytics.Service
 }
 
 // NewHandler 创建管理员处理器
-func NewHandler(adminService *services.AdminService, db *gorm.DB) *Handler {
+func NewHandler(adminService *services.AdminService, db *gorm.DB, analytics *behavioranalytics.Service) *Handler {
 	return &Handler{
 		adminService: adminService,
 		db:           db,
+		analytics:    analytics,
+	}
+}
+
+// validRecordActions 记录管理支持的记录类型
+var validRecordActions = map[string]bool{
+	"search":   true,
+	"upload":   true,
+	"download": true,
+	"preview":  true,
+}
+
+// invalidateAnalyticsCache 失效行为分析统计缓存（删除操作记录后调用）
+func (h *Handler) invalidateAnalyticsCache() {
+	if h.analytics != nil {
+		h.analytics.InvalidateCache()
 	}
 }
 
@@ -340,19 +359,23 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 		return
 	}
 
-	validActions := map[string]string{
-		"search":   "search",
-		"upload":   "upload",
-		"download": "download",
-		"preview":  "preview",
-	}
-	if _, ok := validActions[req.Action]; !ok {
+	if !validRecordActions[req.Action] {
 		middleware.LogOperation(c, "admin.records.clear", req.Action, fmt.Errorf("invalid action"))
 		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download, preview", nil)
 		return
 	}
 
 	repo := repositories.NewRecordRepository(h.db)
+	// 删除前先收集受影响的计数重算目标：记录删除后无法再反查其归属的文件。
+	// 收集失败则中止，避免"记录已删、次数未回退"的不一致状态。
+	paths, tempIDs, err := repo.CollectRecountTargets(req.Action, 0)
+	if err != nil {
+		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
+		utils.Error("收集下载计数重算目标失败", utils.String("action", req.Action), utils.Err(err))
+		response.HandleInternalServerError(c, "清空记录失败")
+		return
+	}
+
 	count, err := repo.DeleteByAction(req.Action)
 	if err != nil {
 		middleware.LogOperation(c, "admin.records.clear", req.Action, err)
@@ -360,6 +383,11 @@ func (h *Handler) ClearRecordsHandler(c *gin.Context) {
 		response.HandleInternalServerError(c, "清空记录失败")
 		return
 	}
+
+	// 记录是下载次数的唯一真源：删除后按剩余记录幂等重算，使索引表计数同步回退
+	services.RecountPublicDownloadCounts(h.db, paths)
+	services.RecountTempDownloadCounts(h.db, tempIDs)
+	h.invalidateAnalyticsCache()
 
 	middleware.LogOperation(c, "admin.records.clear", req.Action, nil)
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
@@ -380,19 +408,22 @@ func (h *Handler) DeleteRecordHandler(c *gin.Context) {
 		return
 	}
 
-	validActions := map[string]bool{
-		"search":   true,
-		"upload":   true,
-		"download": true,
-		"preview":  true,
-	}
-	if !validActions[req.Action] {
+	if !validRecordActions[req.Action] {
 		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), fmt.Errorf("invalid action"))
 		response.HandleBadRequest(c, "无效的记录类型，有效值: search, upload, download, preview", nil)
 		return
 	}
 
 	repo := repositories.NewRecordRepository(h.db)
+	// 删除前先收集受影响的计数重算目标（记录删除后无法再反查其归属的文件）
+	paths, tempIDs, err := repo.CollectRecountTargets(req.Action, req.ID)
+	if err != nil {
+		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), err)
+		utils.Error("收集下载计数重算目标失败", utils.Int64("id", int64(req.ID)), utils.String("action", req.Action), utils.Err(err))
+		response.HandleInternalServerError(c, "删除记录失败")
+		return
+	}
+
 	count, err := repo.DeleteByIDAndAction(req.ID, req.Action)
 	if err != nil {
 		middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), err)
@@ -405,6 +436,11 @@ func (h *Handler) DeleteRecordHandler(c *gin.Context) {
 		response.HandleBadRequest(c, "记录不存在或类型不匹配", nil)
 		return
 	}
+
+	// 记录是下载次数的唯一真源：删除后按剩余记录幂等重算，使索引表计数同步回退
+	services.RecountPublicDownloadCounts(h.db, paths)
+	services.RecountTempDownloadCounts(h.db, tempIDs)
+	h.invalidateAnalyticsCache()
 
 	middleware.LogOperation(c, "admin.records.delete", fmt.Sprintf("%d/%s", req.ID, req.Action), nil)
 	response.HandleSuccess(c, http.StatusOK, "删除成功", gin.H{

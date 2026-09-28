@@ -46,3 +46,10 @@ func (c *watermarkCache) set(key string, e cacheEntry) {
 	defer c.mu.Unlock()
 	c.m[key] = e
 }
+
+// clear 清空全部缓存条目。
+func (c *watermarkCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = make(map[string]cacheEntry)
+}

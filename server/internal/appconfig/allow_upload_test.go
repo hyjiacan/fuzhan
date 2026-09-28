@@ -7,9 +7,9 @@ func TestDirectoryConfig_UploadAllowed(t *testing.T) {
 	trueVal := true
 
 	cases := []struct {
-		name  string
-		dir   DirectoryConfig
-		want  bool
+		name string
+		dir  DirectoryConfig
+		want bool
 	}{
 		{"未配置（nil）默认允许", DirectoryConfig{Path: "x"}, true},
 		{"显式允许", DirectoryConfig{Path: "x", AllowUpload: &trueVal}, true},

@@ -118,6 +118,11 @@ type OperationRecord struct {
 	DlEvent int `gorm:"default:0" json:"-"`
 	// DlOk 下载事件成功标志：仅 DlEvent=1 时有意义，1=成功，0=失败/异常（status 非法值归类为失败）。
 	DlOk int `gorm:"default:0" json:"-"`
+	// DlCounted 下载计数签名：1=该记录已计入 file_records_public.download_count。
+	// 仅当一次请求既写入记录、又触发计数累加（公开来源、非预览、非断点续传/分段延续）时置位，
+	// 由调用方显式设置（请求级条件无法在 BeforeCreate 中还原）。
+	// 有了它，"下载次数"可由记录集唯一推导：删除记录后按 dl_counted 重算即可精确回退，不再只增不减。
+	DlCounted int `gorm:"default:0" json:"-"`
 	// Notes 当前关联文件的备注（查询时回填，不落库）
 	Notes string `gorm:"-" json:"notes"`
 }

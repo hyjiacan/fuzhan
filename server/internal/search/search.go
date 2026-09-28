@@ -48,7 +48,7 @@ type SearchIndex struct {
 	writer *bluge.Writer
 	dir    string // 本索引的磁盘目录（用于计算影子重建目录）
 	seg    *gse.Segmenter
-	mu     sync.Mutex // 串行化写操作
+	mu     sync.Mutex   // 串行化写操作
 	rwMu   sync.RWMutex // 保护 writer 字段生命周期：读共享 / 热替换写独占
 
 	// 词表缓存：建议接口（SuggestKeywords/SuggestCorrectKeywords）基于去重后的 term 词表工作，

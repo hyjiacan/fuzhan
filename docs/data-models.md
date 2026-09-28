@@ -169,6 +169,7 @@
 | DeletedAt | gorm.DeletedAt | index | 软删除 |
 | DlEvent | int | default:0 | 下载统计签名：1=公开下载事件（action∈{download,download-by-hash} 且来源 public），写库时由 BeforeCreate 计算 |
 | DlOk | int | default:0 | 下载事件成功标志：仅 DlEvent=1 有意义，1=成功，0=失败/异常 |
+| DlCounted | int | default:0 | 下载计数签名：1=该记录已计入 `file_records_public.download_count`（公开来源、非预览、非断点续传/分段延续）。由各下载入口显式置位；有了它，下载次数可由记录集唯一推导，删除记录后按 `dl_counted` 重算即可精确回退 |
 
 **索引**:
 - `ClientIP`: IP 统计
@@ -178,6 +179,7 @@
 - `idx__operation_records__action_created_at`: `action, created_at`（最近/热门列表）；历史冗余索引 `idx_operation_records_action_created` 已被 `CleanupOperationRecordIndexes` 幂等清理（列与之完全一致，仅存在于手动执行过 005.sql 的存量库）
 - `idx__operation_records__dl_event_created_at_dl_ok`: `dl_event, created_at, dl_ok`（行为分析下载行为覆盖索引，按 dl_event 等值 + created_at 区间过滤）
 - `idx__operation_records__dl_event_id`: `dl_event, id`（分析缓存水位判定）
+- `idx__operation_records__dl_counted_full_path`: `dl_counted, full_path`（下载次数重算：按 dl_counted 等值 + full_path 计数，删除记录后回退下载次数；同时覆盖「按 dl_counted 分组统计各路径计数」的全量对齐扫描）
 
 ---
 

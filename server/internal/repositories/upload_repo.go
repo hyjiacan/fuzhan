@@ -332,7 +332,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	// 因此用子查询统计 DISTINCT 行数）
 	distinctSub := r.db.Table("operation_records").Select(dedupGroupKey)
 	if action != "" {
-		distinctSub = distinctSub.Where("`action` = ?", action)
+		distinctSub = distinctSub.Where("`action` IN ?", ExpandRecordActions(action))
 	}
 	distinctSub = ApplyExistingFileFilter(distinctSub)
 	var total int64
@@ -345,7 +345,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 		"*, ROW_NUMBER() OVER (PARTITION BY " + dedupGroupKey + " ORDER BY created_at DESC, id DESC) AS __rn",
 	)
 	if action != "" {
-		rowsQuery = rowsQuery.Where("`action` = ?", action)
+		rowsQuery = rowsQuery.Where("`action` IN ?", ExpandRecordActions(action))
 	}
 	rowsQuery = ApplyExistingFileFilter(rowsQuery)
 
@@ -388,11 +388,66 @@ func (r *RecordRepository) GetRecentSearches(limit int) ([]models.OperationRecor
 	return records, err
 }
 
+// downloadRecordActions 下载类记录的操作类型集合。
+// 公开下载（download）与按哈希下载（download-by-hash）在统计口径上同属"下载"，
+// 删除/清空/列表都必须按同一集合处理；否则"清空下载记录"会残留哈希下载记录，
+// 对应文件的下载次数也就无法回退到 0。
+var downloadRecordActions = []string{"download", "download-by-hash"}
+
+// ExpandRecordActions 把界面/接口上的记录类型展开为实际落库的 action 集合。
+// 目前仅 "download" 需要展开（含 download-by-hash），其余类型原样返回。
+func ExpandRecordActions(action string) []string {
+	if action == "download" {
+		return downloadRecordActions
+	}
+	return []string{action}
+}
+
 // DeleteByIDAndAction 按 ID 且限定操作类型删除单条操作记录
 // 返回删除的记录数（0 表示记录不存在或类型不匹配）
 func (r *RecordRepository) DeleteByIDAndAction(id uint, action string) (int64, error) {
-	result := r.db.Where("id = ? AND `action` = ?", id, action).Delete(&models.OperationRecord{})
+	result := r.db.Where("id = ? AND `action` IN ?", id, ExpandRecordActions(action)).
+		Delete(&models.OperationRecord{})
 	return result.RowsAffected, result.Error
+}
+
+// CollectRecountTargets 收集即将被删除的记录所影响的计数重算目标，必须在删除之前调用
+// （记录删除后无法再反查）。paths 为公共文件完整路径集合，用于重算 file_records_public.download_count；
+// tempIDs 为临时文件 ID 集合，用于重算 temp_files.download_count。
+// action 先经 ExpandRecordActions 展开（"download" 含 download-by-hash）；
+// id > 0 时只收集该条记录，否则收集该类型命中的全部记录。仅收集未软删除的记录。
+// 只有下载类记录会影响计数，其余类型（upload/search/preview）直接返回空。
+func (r *RecordRepository) CollectRecountTargets(action string, id uint) (paths []string, tempIDs []uint, err error) {
+	if !isDownloadAction(action) {
+		return nil, nil, nil
+	}
+
+	where := "deleted_at IS NULL AND `action` IN (?)"
+	args := []interface{}{ExpandRecordActions(action)}
+	if id > 0 {
+		where += " AND id = ?"
+		args = append(args, id)
+	}
+
+	// dl_event=1 即公开下载事件（含 source_type 判定），据此排除临时/私有下载的路径，
+	// 避免把 /temp/<code> 之类的路径带进公共文件重算。
+	pathArgs := append(append([]interface{}{}, args...), 1)
+	if err = r.db.Raw("SELECT DISTINCT full_path FROM operation_records WHERE "+where+" AND dl_event = ?", pathArgs...).
+		Scan(&paths).Error; err != nil {
+		return nil, nil, err
+	}
+
+	tempArgs := append(append([]interface{}{}, args...), models.SourceTypeTemp)
+	if err = r.db.Raw("SELECT DISTINCT source_id FROM operation_records WHERE "+where+
+		" AND source_type = ? AND source_id > 0", tempArgs...).Scan(&tempIDs).Error; err != nil {
+		return nil, nil, err
+	}
+	return paths, tempIDs, nil
+}
+
+// isDownloadAction 判断记录类型是否属于"下载"（download 与 download-by-hash 同属下载）。
+func isDownloadAction(action string) bool {
+	return action == "download" || action == "download-by-hash"
 }
 
 // DeleteByFile 文件/目录删除时级联清理对应的上传/下载操作记录。
@@ -423,9 +478,10 @@ func (r *RecordRepository) DeleteByFile(rootName, relPath string, isDir bool, re
 }
 
 // DeleteByAction 删除指定操作类型的所有记录
-// action 有效值: "search", "upload", "download"
+// action 有效值: "search", "upload", "download", "preview"；先经 ExpandRecordActions 展开
+// （"download" 含 download-by-hash），与列表、计数重算保持同一口径。
 // 返回删除的记录数
 func (r *RecordRepository) DeleteByAction(action string) (int64, error) {
-	result := r.db.Where("`action` = ?", action).Delete(&models.OperationRecord{})
+	result := r.db.Where("`action` IN ?", ExpandRecordActions(action)).Delete(&models.OperationRecord{})
 	return result.RowsAffected, result.Error
 }
