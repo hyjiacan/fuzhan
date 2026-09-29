@@ -63,7 +63,7 @@
 import { ref, reactive, shallowRef, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave } from 'vue-router'
-import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Odometer, Expand, Fold } from '@element-plus/icons-vue'
+import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Key, Odometer, Expand, Fold } from '@element-plus/icons-vue'
 import { NumberUtils } from '@/utils'
 import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
@@ -76,6 +76,7 @@ import SettingsPreview from './settings/SettingsPreview.vue'
 import SettingsMime from './settings/SettingsMime.vue'
 import SettingsDatabase from './settings/SettingsDatabase.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
+import SettingsAuth from './settings/SettingsAuth.vue'
 import SettingsResource from './settings/SettingsResource.vue'
 import { formatToUnit } from './settings/useSettingsUtils'
 
@@ -113,7 +114,8 @@ const navGroups = [
     title: '数据与安全',
     items: [
       { key: 'database', label: '数据库', icon: Coin },
-      { key: 'access', label: '访问控制', icon: Lock }
+      { key: 'access', label: '访问控制', icon: Lock },
+      { key: 'auth', label: '身份认证', icon: Key }
     ]
   },
   {
@@ -134,6 +136,7 @@ const panelMap = {
   mime: SettingsMime,
   database: SettingsDatabase,
   access: SettingsAccess,
+  auth: SettingsAuth,
   resource: SettingsResource
 }
 
@@ -244,6 +247,23 @@ const settings = reactive({
       bindPassword: '',
       userFilter: '',
       syncInterval: 3600,
+      autoCreateUser: false,
+      insecureSkipVerify: false
+    },
+    oauth2: {
+      enabled: false,
+      providerName: '',
+      clientId: '',
+      clientSecret: '',
+      authUrl: '',
+      tokenUrl: '',
+      userInfoUrl: '',
+      issuer: '',
+      scopes: [],
+      redirectUrl: '',
+      usernameClaim: '',
+      displayNameClaim: '',
+      emailClaim: '',
       autoCreateUser: false,
       insecureSkipVerify: false
     }
@@ -411,6 +431,23 @@ const loadSettings = async () => {
           syncInterval: cfg.auth?.ldap?.syncInterval || 3600,
           autoCreateUser: cfg.auth?.ldap?.autoCreateUser ?? false,
           insecureSkipVerify: cfg.auth?.ldap?.insecureSkipVerify ?? false
+        },
+        oauth2: {
+          enabled: cfg.auth?.oauth2?.enabled ?? false,
+          providerName: cfg.auth?.oauth2?.providerName || '',
+          clientId: cfg.auth?.oauth2?.clientId || '',
+          clientSecret: cfg.auth?.oauth2?.clientSecret || '',
+          authUrl: cfg.auth?.oauth2?.authUrl || '',
+          tokenUrl: cfg.auth?.oauth2?.tokenUrl || '',
+          userInfoUrl: cfg.auth?.oauth2?.userInfoUrl || '',
+          issuer: cfg.auth?.oauth2?.issuer || '',
+          scopes: cfg.auth?.oauth2?.scopes || [],
+          redirectUrl: cfg.auth?.oauth2?.redirectUrl || '',
+          usernameClaim: cfg.auth?.oauth2?.usernameClaim || '',
+          displayNameClaim: cfg.auth?.oauth2?.displayNameClaim || '',
+          emailClaim: cfg.auth?.oauth2?.emailClaim || '',
+          autoCreateUser: cfg.auth?.oauth2?.autoCreateUser ?? false,
+          insecureSkipVerify: cfg.auth?.oauth2?.insecureSkipVerify ?? false
         }
       }
 
@@ -601,6 +638,23 @@ const doSaveSettings = async () => {
           syncInterval: settings.auth.ldap.syncInterval,
           autoCreateUser: settings.auth.ldap.autoCreateUser,
           insecureSkipVerify: settings.auth.ldap.insecureSkipVerify
+        },
+        oauth2: {
+          enabled: settings.auth.oauth2.enabled,
+          providerName: settings.auth.oauth2.providerName,
+          clientId: settings.auth.oauth2.clientId,
+          clientSecret: settings.auth.oauth2.clientSecret,
+          authUrl: settings.auth.oauth2.authUrl,
+          tokenUrl: settings.auth.oauth2.tokenUrl,
+          userInfoUrl: settings.auth.oauth2.userInfoUrl,
+          issuer: settings.auth.oauth2.issuer,
+          scopes: settings.auth.oauth2.scopes,
+          redirectUrl: settings.auth.oauth2.redirectUrl,
+          usernameClaim: settings.auth.oauth2.usernameClaim,
+          displayNameClaim: settings.auth.oauth2.displayNameClaim,
+          emailClaim: settings.auth.oauth2.emailClaim,
+          autoCreateUser: settings.auth.oauth2.autoCreateUser,
+          insecureSkipVerify: settings.auth.oauth2.insecureSkipVerify
         }
       }
     }

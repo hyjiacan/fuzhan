@@ -17,7 +17,7 @@
 7. **文件预览**：在浏览器中预览文本、图片、PDF文件
 8. **FTP 服务器**：内置 FTP 服务器支持
 9. **WebDAV 服务器**：支持外部应用通过 WebDAV 协议访问
-10. **多种认证**：JWT、API Key、LDAP
+10. **多种认证**：JWT、API Key、LDAP、OAuth2 / OIDC
 11. **RBAC 权限控制**：细粒度的权限管理
 12. **基本安全机制**：包含路径遍历保护、文件类型过滤、多种认证
 
@@ -41,6 +41,7 @@
 │   │   │   ├── handler.go         # 认证处理器
 │   │   │   ├── api_key.go         # API Key 认证
 │   │   │   ├── ldap.go            # LDAP 认证
+│   │   │   ├── oauth2.go          # OAuth2 / OIDC 外部认证
 │   │   │   └── rbac.go            # RBAC 权限
 │   │   ├── cli/                   # CLI 模块
 │   │   ├── config/                # 配置管理
@@ -63,6 +64,7 @@
 │   │   ├── notification/          # 通知系统
 │   │   ├── openapi/               # OpenAPI 支持
 │   │   ├── repositories/          # 数据访问层
+│   │   ├── resource/              # 服务器资源监控（采样/硬件/SSE）
 │   │   ├── router/                # 路由配置
 │   │   ├── services/              # 业务服务
 │   │   │   ├── auth_service.go
@@ -101,7 +103,7 @@
 | 后端语言 | Go 1.26.0 | 跨平台编译 |
 | 后端框架 | Gin v1.11.0 | 高性能 HTTP 框架 |
 | 数据库 | SQLite/MySQL/PostgreSQL | 可选（通过 Gorm） |
-| 认证 | JWT / API Key / LDAP | 多种认证方式 |
+| 认证 | JWT / API Key / LDAP / OAuth2 / OIDC | 多种认证方式 |
 | 权限控制 | RBAC | 基于角色的访问控制 |
 | 日志 | Zap + lumberjack | 结构化日志，支持轮转 |
 | 前端框架 | Vue 3.5.24 | 组合式 API |
@@ -126,6 +128,7 @@
 - 数据库连接配置
 - 上传分片大小配置
 - LDAP 服务器配置
+- OAuth2 / OIDC 外部认证配置
 - WebDAV 配置
 - OpenAPI 配置
 - 日志级别配置
@@ -147,6 +150,7 @@
 | `cli/` | CLI 接口 |
 | `health/` | 健康检查 |
 | `monitor/` | 系统监控 |
+| `resource/` | 服务器资源监控（硬件配置、实时采样、历史采集、SSE 推送） |
 | `notification/` | 通知系统 |
 | `setup/` | 初始化向导 |
 | `openapi/` | OpenAPI 文档 |
@@ -168,6 +172,7 @@
 | `handler.go` | 用户认证处理器 |
 | `api_key.go` | API Key 生成和验证 |
 | `ldap.go` | LDAP 认证集成 |
+| `oauth2.go` | OAuth2 / OIDC 外部认证（授权码模式） |
 | `rbac.go` | RBAC 权限控制 |
 
 #### 6. 访问协议 (server/internal/access/)
@@ -201,14 +206,15 @@
 1. **JWT 认证**：用户注册、登录、令牌自动刷新
 2. **API Key 认证**：外部集成，支持 IP 限制
 3. **LDAP 认证**：企业目录集成
-4. **RBAC 权限**：基于角色的访问控制（user/admin/api）
-5. **密码安全**：使用 bcrypt 哈希存储
-6. **路径遍历保护**：`IsPathOutOfScope()` 函数验证路径
-7. **文件类型过滤**：`IsFileAllowed()` 函数限制上传类型
-8. **安全响应头**：X-Frame-Options、X-Content-Type-Options 等
-9. **CORS 控制**：跨域资源共享配置
-10. **速率限制**：可配置请求频率限制
-11. **SSRF 防护**：URL 下载时验证源 IP
+4. **OAuth2 / OIDC 外部认证**：对接外部统一认证系统（授权码模式）
+5. **RBAC 权限**：基于角色的访问控制（user/admin/api）
+6. **密码安全**：使用 bcrypt 哈希存储
+7. **路径遍历保护**：`IsPathOutOfScope()` 函数验证路径
+8. **文件类型过滤**：`IsFileAllowed()` 函数限制上传类型
+9. **安全响应头**：X-Frame-Options、X-Content-Type-Options 等
+10. **CORS 控制**：跨域资源共享配置
+11. **速率限制**：可配置请求频率限制
+12. **SSRF 防护**：URL 下载时验证源 IP
 
 ## 性能特性
 
@@ -293,6 +299,7 @@
 - 临时文件配置
 - 私有存储配置
 - LDAP 配置（可选）
+- OAuth2 / OIDC 外部认证配置（可选）
 - WebDAV 配置（可选）
 - OpenAPI 配置（可选）
 - 日志配置

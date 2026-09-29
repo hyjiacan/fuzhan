@@ -166,7 +166,8 @@
 | RecentView | `/recent` | el-table-v2, el-button, el-tag, el-empty | 最近上传文件列表展示 |
 | HotView | `/hot` | el-table-v2, el-tag, el-empty | 热门下载文件排行 |
 | UserView | `/user` | el-card, el-descriptions, el-progress, el-form | 个人中心，用户信息、配额展示、修改密码 |
-| SettingsView | `/settings` | el-tabs, el-form, el-input, el-switch, el-card | 系统设置，多标签页配置 |
+| SettingsView | `/settings` | el-menu, el-form, el-input, el-switch, el-card, el-tabs | 系统设置，侧栏分节导航 + 内容面板（含「身份认证」子页：LDAP / OAuth2 标签页） |
+| OAuth2CallbackView | `/oauth2/callback` | el-card, el-icon, el-button | 外部 OAuth2/OIDC 登录回调，写入登录态并按角色跳转 |
 | AdminDashboardView | `/admin/dashboard` | el-card, el-descriptions, el-progress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
 | AdminFilesView | `/admin/files`, `/admin/files/:path*` | el-breadcrumb, el-table-v2, el-tree-select | 管理员文件管理，支持搜索、重命名、移动、删除 |
 | AdminUsersView | `/admin/users` | el-table-v2, el-dialog, el-tag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
@@ -176,7 +177,7 @@
 | AdminDuplicatesView | `/admin/duplicates` | el-table-v2, el-tag | 重复文件管理，检测与清理重复文件 |
 | AdminApiKeyView / AdminOpenApiView | `/admin/openapi` | el-form, el-input, el-table-v2 | OpenAPI 与 API Key 管理 |
 | AdminOnlineView | `/admin/online` | el-table-v2, el-alert, el-button | 在线 IP 统计，展示当前在线 IP 及在线时长，自动刷新 |
-| AdminResourceView | `/admin/resource` | el-card, echarts | 服务器资源监控，CPU/内存/磁盘/IO 实时与历史曲线 |
+| AdminResourceView | `/admin/resource` | el-card, echarts | 服务器资源监控：服务器配置卡片（CPU/内存/磁盘/网卡）+ CPU/内存/磁盘/IO/网络流量实时与历史曲线，实时数据经 SSE 推送（失败降级轮询） |
 | AdminBehaviorAnalyticsView | `/admin/behavior-analytics` | echarts, el-radio-group, el-date-picker, el-table, el-card | 行为分析：按访问 / 上传 / 下载三种行为分行区块聚合，均支持按用户 / 按 IP 维度（访问/上传基于最近记录、下载基于公开文件）；下载含趋势、时段热度、生命周期/衰减、热门文件（含扩散比）、来源分布、目录/类型聚合、失败异常统计，支持近7/30天与自定义区间、按日周月粒度与单文件下钻 |
 
 ---
@@ -286,6 +287,7 @@
 | `/temp` | TempView | navName: '临时' | 临时文件 |
 | `/recent` | RecentView | navName: '最近' | 最近上传 |
 | `/hot` | HotView | navName: '热门' | 热门下载 |
+| `/oauth2/callback` | OAuth2CallbackView | - | 外部 OAuth2/OIDC 登录回调 |
 | `/user` | UserView | requiresAuth, hideFromNavIfAdmin | 个人中心 |
 | `/admin/users` | AdminUsersView | requiresAuth, requiresAdmin, navName | 用户管理 |
 | `/admin/dashboard` | AdminDashboardView | requiresAuth, requiresAdmin, navName | 仪表盘 |

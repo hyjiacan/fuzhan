@@ -262,7 +262,35 @@ type IndexConfig struct {
 
 // AuthConfig 认证配置
 type AuthConfig struct {
-	LDAP LDAPClientConfig `yaml:"ldap"`
+	LDAP   LDAPClientConfig `yaml:"ldap"`
+	OAuth2 OAuth2Config     `yaml:"oauth2"`
+}
+
+// OAuth2Config 外部 OAuth2/OIDC 认证配置。
+// 采用授权码模式（Authorization Code）：本服务作为客户端，用户登录时跳转到外部
+// 认证系统完成认证，再回调换取令牌并映射为本地用户。
+type OAuth2Config struct {
+	Enabled      bool     `yaml:"enabled"`
+	ProviderName string   `yaml:"provider_name,omitempty"` // 显示名称，如 "企业 SSO" / "GitHub"
+	ClientID     string   `yaml:"client_id,omitempty"`
+	ClientSecret string   `yaml:"client_secret,omitempty"`
+	AuthURL      string   `yaml:"auth_url,omitempty"`      // 授权端点（OIDC 可留空，由 issuer 自动发现）
+	TokenURL     string   `yaml:"token_url,omitempty"`     // 令牌端点
+	UserInfoURL  string   `yaml:"user_info_url,omitempty"` // 用户信息端点
+	Issuer       string   `yaml:"issuer,omitempty"`        // OIDC Issuer，用于自动发现端点（可选）
+	Scopes       []string `yaml:"scopes,omitempty"`        // 请求的 scope，默认 openid profile email
+	// RedirectURL 回调地址。留空时按当前请求的 scheme/host 推断，便于多域名部署。
+	RedirectURL string `yaml:"redirect_url,omitempty"`
+	// UsernameClaim 用户名取值字段，默认 preferred_username，回退 sub
+	UsernameClaim string `yaml:"username_claim,omitempty"`
+	// DisplayNameClaim 显示名取值字段，默认 name
+	DisplayNameClaim string `yaml:"display_name_claim,omitempty"`
+	// EmailClaim 邮箱取值字段，默认 email
+	EmailClaim string `yaml:"email_claim,omitempty"`
+	// AutoCreateUser 认证通过后自动创建本地用户（关闭时仅允许已存在的本地用户登录）
+	AutoCreateUser bool `yaml:"auto_create_user,omitempty"`
+	// InsecureSkipVerify 是否跳过 TLS 证书校验（默认 false，仅测试/自签名环境开启）
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify,omitempty"`
 }
 
 // OpenAPIConfig Open API 配置

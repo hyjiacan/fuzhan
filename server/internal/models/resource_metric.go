@@ -16,6 +16,8 @@ type ResourceMetric struct {
 	DiskTotal   uint64    `json:"diskTotal"`   // 磁盘总量（字节）
 	DiskIORead  float64   `json:"diskIoRead"`  // 磁盘读 IO（字节/秒）
 	DiskIOWrite float64   `json:"diskIoWrite"` // 磁盘写 IO（字节/秒）
+	NetRecv     float64   `json:"netRecv"`     // 网络接收速率（字节/秒）
+	NetSent     float64   `json:"netSent"`     // 网络发送速率（字节/秒）
 }
 
 func (ResourceMetric) TableName() string {

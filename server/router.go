@@ -10,9 +10,9 @@ import (
 	"fuzhan/internal/admin"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
+	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
-	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/file"
 	"fuzhan/internal/ftp"
 	"fuzhan/internal/health"
@@ -362,6 +362,10 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		// 外部 OAuth2/OIDC 认证：状态查询、发起授权、回调换取本地令牌
+		auth.GET("/oauth2/status", authHandler.OAuth2Status)
+		auth.GET("/oauth2/authorize", authHandler.OAuth2Authorize)
+		auth.GET("/oauth2/callback", authHandler.OAuth2Callback)
 	}
 
 	// 分享下载路由（无需认证）
@@ -441,6 +445,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	configGroup.GET("", configHandler.GetConfig)
 	configGroup.POST("", configHandler.SaveConfig)
 	configGroup.POST("/ldap/test", configHandler.TestLDAPConfig)
+	configGroup.POST("/oauth2/test", configHandler.TestOAuth2Config)
 
 	// 临时文件路由（基于IP，无需认证）
 	temp := api.Group("/temp")
@@ -714,6 +719,8 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	{
 		resourceRoutes.GET("/snapshot", rt.resourceHandler.Snapshot)
 		resourceRoutes.GET("/history", rt.resourceHandler.History)
+		// SSE 实时推送：EventSource 无法自定义请求头，鉴权走 AuthRequired 支持的 ?token= 查询参数
+		resourceRoutes.GET("/stream", rt.resourceHandler.Stream)
 	}
 }
 

@@ -36,6 +36,7 @@
 - JWT 认证 + 自动 token 刷新 + 用户禁用检查
 - API Key 认证（外部集成）
 - LDAP 认证（企业目录）
+- OAuth2 / OIDC 外部认证（授权码模式，对接外部统一认证系统）
 - RBAC 权限控制
 - 数据迁移说明（SQLite ↔ MySQL ↔ PostgreSQL 使用外部工具如 dbswitch）
 - OpenAPI 文档
@@ -166,6 +167,7 @@ fuzhan/
 │   │   │   ├── handler.go    # 认证处理器
 │   │   │   ├── api_key.go    # API Key 认证
 │   │   │   ├── ldap.go       # LDAP 认证
+│   │   │   ├── oauth2.go     # OAuth2 / OIDC 外部认证
 │   │   │   └── rbac.go       # RBAC 权限控制
 │   │   │
 │   │   ├── cli/              # CLI 模块
@@ -234,6 +236,12 @@ fuzhan/
 │   │   ├── repositories/     # 数据访问层
 │   │   │   ├── upload_repo.go
 │   │   │   └── url_download_task_repo.go
+│   │   │
+│   │   ├── resource/         # 服务器资源监控
+│   │   │   ├── collector.go  # 采样/历史采集与 SSE 广播
+│   │   │   ├── hardware.go   # 硬件配置采集（CPU/内存/磁盘/网卡）
+│   │   │   ├── handler.go    # 快照/历史/SSE 端点
+│   │   │   └── types.go      # 数据结构
 │   │   │
 │   │   ├── resources/        # 嵌入资源
 │   │   │   ├── embed.go      # 资源嵌入
@@ -321,6 +329,7 @@ fuzhan/
 - **JWT Token**: HS256 算法，24小时有效期
 - **API Key**: 外部集成认证，支持 IP 限制
 - **LDAP**: 企业目录集成
+- **OAuth2 / OIDC**: 对接外部统一认证系统（授权码模式），映射为本地用户
 - **自动刷新**: 距过期 < 30 分钟时自动刷新
 - **密码**: bcrypt 哈希
 - **RBAC**: 基于角色的访问控制（user/admin/api）

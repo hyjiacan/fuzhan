@@ -445,6 +445,43 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("auth.ldap.sync_interval", ld.SyncInterval)
 		updates.Add("auth.ldap.auto_create_user", ld.AutoCreateUser)
 		updates.Add("auth.ldap.insecure_skip_verify", ld.InsecureSkipVerify)
+
+		// —— OAuth2/OIDC 认证配置 ——
+		oauth := req.Auth.OAuth2
+		appconfig.GlobalConfig.Auth.OAuth2.Enabled = oauth.Enabled
+		appconfig.GlobalConfig.Auth.OAuth2.ProviderName = oauth.ProviderName
+		appconfig.GlobalConfig.Auth.OAuth2.ClientID = oauth.ClientID
+		appconfig.GlobalConfig.Auth.OAuth2.ClientSecret = oauth.ClientSecret
+		appconfig.GlobalConfig.Auth.OAuth2.AuthURL = oauth.AuthURL
+		appconfig.GlobalConfig.Auth.OAuth2.TokenURL = oauth.TokenURL
+		appconfig.GlobalConfig.Auth.OAuth2.UserInfoURL = oauth.UserInfoURL
+		appconfig.GlobalConfig.Auth.OAuth2.Issuer = oauth.Issuer
+		appconfig.GlobalConfig.Auth.OAuth2.Scopes = oauth.Scopes
+		appconfig.GlobalConfig.Auth.OAuth2.RedirectURL = oauth.RedirectURL
+		appconfig.GlobalConfig.Auth.OAuth2.UsernameClaim = oauth.UsernameClaim
+		appconfig.GlobalConfig.Auth.OAuth2.DisplayNameClaim = oauth.DisplayNameClaim
+		appconfig.GlobalConfig.Auth.OAuth2.EmailClaim = oauth.EmailClaim
+		appconfig.GlobalConfig.Auth.OAuth2.AutoCreateUser = oauth.AutoCreateUser
+		appconfig.GlobalConfig.Auth.OAuth2.InsecureSkipVerify = oauth.InsecureSkipVerify
+		updates.Add("auth.oauth2.enabled", oauth.Enabled)
+		updates.Add("auth.oauth2.provider_name", oauth.ProviderName)
+		updates.Add("auth.oauth2.client_id", oauth.ClientID)
+		updates.Add("auth.oauth2.client_secret", oauth.ClientSecret)
+		updates.Add("auth.oauth2.auth_url", oauth.AuthURL)
+		updates.Add("auth.oauth2.token_url", oauth.TokenURL)
+		updates.Add("auth.oauth2.user_info_url", oauth.UserInfoURL)
+		updates.Add("auth.oauth2.issuer", oauth.Issuer)
+		scopeList := make([]interface{}, len(oauth.Scopes))
+		for i, sc := range oauth.Scopes {
+			scopeList[i] = sc
+		}
+		updates.Add("auth.oauth2.scopes", scopeList)
+		updates.Add("auth.oauth2.redirect_url", oauth.RedirectURL)
+		updates.Add("auth.oauth2.username_claim", oauth.UsernameClaim)
+		updates.Add("auth.oauth2.display_name_claim", oauth.DisplayNameClaim)
+		updates.Add("auth.oauth2.email_claim", oauth.EmailClaim)
+		updates.Add("auth.oauth2.auto_create_user", oauth.AutoCreateUser)
+		updates.Add("auth.oauth2.insecure_skip_verify", oauth.InsecureSkipVerify)
 	}
 
 	// 私有/临时文件存储目录创建
@@ -532,4 +569,42 @@ func (h *Handler) TestLDAPConfig(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "LDAP 连接测试成功", nil)
+}
+
+// TestOAuth2Config 测试 OAuth2/OIDC 配置：校验凭据并解析端点（必要时执行 OIDC 发现）。
+// 可选 JSON body（OAuth2ConfigDTO）用于测试未保存的表单值；body 为空时使用当前已保存的配置。
+func (h *Handler) TestOAuth2Config(c *gin.Context) {
+	var dto appconfig.OAuth2ConfigDTO
+	body, _ := io.ReadAll(c.Request.Body)
+	if len(strings.TrimSpace(string(body))) > 0 {
+		if err := json.Unmarshal(body, &dto); err != nil {
+			utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+			return
+		}
+	} else {
+		dto = appconfig.GlobalConfig.ToDTO().Auth.OAuth2
+	}
+
+	svc := auth.NewOAuth2Service(nil, &auth.OAuth2Config{
+		Enabled:            dto.Enabled,
+		ProviderName:       dto.ProviderName,
+		ClientID:           dto.ClientID,
+		ClientSecret:       dto.ClientSecret,
+		AuthURL:            dto.AuthURL,
+		TokenURL:           dto.TokenURL,
+		UserInfoURL:        dto.UserInfoURL,
+		Issuer:             dto.Issuer,
+		Scopes:             dto.Scopes,
+		RedirectURL:        dto.RedirectURL,
+		UsernameClaim:      dto.UsernameClaim,
+		DisplayNameClaim:   dto.DisplayNameClaim,
+		EmailClaim:         dto.EmailClaim,
+		AutoCreateUser:     dto.AutoCreateUser,
+		InsecureSkipVerify: dto.InsecureSkipVerify,
+	})
+	if err := svc.TestConnection(); err != nil {
+		utils.HandleBadRequest(c, "OAuth2 配置测试失败: "+err.Error(), nil)
+		return
+	}
+	response.HandleSuccess(c, http.StatusOK, "OAuth2 配置测试成功（端点可达）", nil)
 }

@@ -370,6 +370,17 @@ func main() {
 		})
 	})
 
+	// 外部 OAuth2/OIDC 认证服务（配置保存后热更新，无需重启）
+	oauth2Service := auth.NewOAuth2Service(db, oauth2ConfigFromApp(cfg.Auth.OAuth2))
+	if oauth2Service.IsEnabled() {
+		utils.Info("OAuth2 外部认证已启用", utils.String("provider", cfg.Auth.OAuth2.ProviderName))
+	} else {
+		utils.Info("OAuth2 外部认证未启用")
+	}
+	appconfig.AddOnSaveHook(func() {
+		oauth2Service.UpdateConfig(oauth2ConfigFromApp(appconfig.GetConfig().Auth.OAuth2))
+	})
+
 	// 创建认证中间件（实时查库检查用户禁用状态）
 	authMiddleware := middleware.NewAuthMiddleware(db)
 
@@ -647,4 +658,25 @@ func ensureJWTPersisted() {
 	}
 	appconfig.GlobalConfig.Server.JWTSecret = secretHex
 	utils.Info("检测到未配置 JWT 密钥，已生成固定密钥并写入配置")
+}
+
+// oauth2ConfigFromApp 将应用配置中的 OAuth2 节点转换为认证服务内部使用的配置结构
+func oauth2ConfigFromApp(c appconfig.OAuth2Config) *auth.OAuth2Config {
+	return &auth.OAuth2Config{
+		Enabled:            c.Enabled,
+		ProviderName:       c.ProviderName,
+		ClientID:           c.ClientID,
+		ClientSecret:       c.ClientSecret,
+		AuthURL:            c.AuthURL,
+		TokenURL:           c.TokenURL,
+		UserInfoURL:        c.UserInfoURL,
+		Issuer:             c.Issuer,
+		Scopes:             c.Scopes,
+		RedirectURL:        c.RedirectURL,
+		UsernameClaim:      c.UsernameClaim,
+		DisplayNameClaim:   c.DisplayNameClaim,
+		EmailClaim:         c.EmailClaim,
+		AutoCreateUser:     c.AutoCreateUser,
+		InsecureSkipVerify: c.InsecureSkipVerify,
+	}
 }

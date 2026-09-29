@@ -156,6 +156,16 @@ export const AuthApi = {
 
   changePassword(oldPassword, newPassword) {
     return request.put('/auth/password', { oldPassword, newPassword }, { skipSuccessToast: true })
+  },
+
+  // 外部 OAuth2/OIDC：登录页查询是否启用及提供方名称
+  oauth2Status() {
+    return request.get('/auth/oauth2/status')
+  },
+
+  // 外部 OAuth2/OIDC：获取授权跳转地址（由前端执行跳转，便于统一处理错误）
+  oauth2Authorize() {
+    return request.get('/auth/oauth2/authorize')
   }
 }
 
@@ -171,6 +181,10 @@ export const ConfigApi = {
 
   testLdap(ldapConfig) {
     return request.post('/config/ldap/test', ldapConfig)
+  },
+
+  testOAuth2(oauth2Config) {
+    return request.post('/config/oauth2/test', oauth2Config)
   }
 }
 
@@ -182,6 +196,12 @@ export const ResourceApi = {
 
   history(scope, range) {
     return request.get('/admin/resource/history', { params: { scope, range } })
+  },
+
+  // SSE 实时推送地址：EventSource 无法自定义请求头，令牌通过查询参数传递
+  streamUrl() {
+    const token = localStorage.getItem('token') || ''
+    return `${API_BASE}/admin/resource/stream?token=${encodeURIComponent(token)}`
   }
 }
 

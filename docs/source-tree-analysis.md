@@ -39,6 +39,7 @@ fuzhan/                              # 项目根目录
 │   │   │   ├── handler.go               # 用户注册/登录/Token 刷新
 │   │   │   ├── api_key.go               # API Key 认证
 │   │   │   ├── ldap.go                  # LDAP 认证
+│   │   │   ├── oauth2.go                # OAuth2 / OIDC 外部认证
 │   │   │   └── rbac.go                  # RBAC 权限控制
 │   │   │
 │   │   ├── cli/                         # CLI 模块
@@ -109,6 +110,14 @@ fuzhan/                              # 项目根目录
 │   │   ├── repositories/                # 数据访问层
 │   │   │   ├── upload_repo.go
 │   │   │   └── url_download_task_repo.go
+│   │   │
+│   │   ├── resource/                    # 服务器资源监控
+│   │   │   ├── collector.go             # 采样/历史采集与 SSE 广播
+│   │   │   ├── hardware.go              # 硬件配置采集（CPU/内存/磁盘/网卡）
+│   │   │   ├── handler.go               # 快照/历史/SSE 端点
+│   │   │   ├── types.go                 # 数据结构
+│   │   │   ├── procattr_other.go        # 进程属性（非 Windows）
+│   │   │   └── procattr_windows.go      # 进程属性（Windows）
 │   │   │
 │   │   ├── resources/                   # 嵌入资源
 │   │   │   ├── embed.go                 # 资源嵌入
@@ -271,7 +280,7 @@ fuzhan/                              # 项目根目录
 
 | 目录 | 职责 |
 |------|------|
-| `auth/` | 用户注册、登录、Token 刷新、API Key、LDAP、RBAC |
+| `auth/` | 用户注册、登录、Token 刷新、API Key、LDAP、OAuth2 / OIDC、RBAC |
 | `file/` | 文件列表、重命名、移动、删除、下载、搜索、预览、上传 |
 | `admin/` | 用户 CRUD、会话管理、TLS 证书 |
 | `temp/` | 临时文件管理（IP 配额、分片上传） |

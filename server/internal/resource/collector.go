@@ -15,6 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
+	gnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 	"gorm.io/gorm"
 )
@@ -32,6 +33,12 @@ const (
 	footprintWalkTimeout = 30 * time.Second
 	// retentionCheckInterval 历史数据清理检查间隔
 	retentionCheckInterval = 1 * time.Hour
+	// hardwareRefreshInterval 硬件配置刷新间隔（秒）。CPU/内存/磁盘/网卡配置变化极少，
+	// 低频刷新即可，避免每次采样都做昂贵的系统调用与（Windows 下）外部进程探测。
+	hardwareRefreshInterval = 600
+	// subscriberBuffer SSE 订阅通道缓冲长度。缓冲满说明客户端消费过慢，
+	// 直接丢弃该帧而不阻塞采集主循环，下一帧会带上最新值。
+	subscriberBuffer = 4
 )
 
 // skipFSType 服务器整体磁盘统计时跳过的伪文件系统类型（Linux）
@@ -61,11 +68,13 @@ func NewCollector(getDB func() *gorm.DB) *Collector {
 			ScopeServer:  {},
 			ScopeProgram: {},
 		},
-		lastSample: time.Now(),
+		subscribers: make(map[chan Realtime]struct{}),
+		lastSample:  time.Now(),
 	}
 }
 
-// Collector 资源采集器：负责内存实时采样、按采集间隔落库历史、定期清理过期历史。
+// Collector 资源采集器：负责内存实时采样、按采集间隔落库历史、定期清理过期历史，
+// 并把每次采样结果实时广播给 SSE 订阅者。
 type Collector struct {
 	getDB func() *gorm.DB
 	pid   int32
@@ -75,9 +84,20 @@ type Collector struct {
 	buffer map[string][]ScopePoint
 	server Point
 	prog   Point
+	// netNICs 各网卡最近一次采样的流量速率（仅实时展示，不落库）
+	netNICs []NICRate
+
+	// 硬件配置缓存（低频刷新）
+	hardware     Hardware
+	lastHardware time.Time
+
+	// SSE 订阅者集合：每个订阅者一个带缓冲通道，采样后广播最新快照
+	subMu       sync.Mutex
+	subscribers map[chan Realtime]struct{}
 
 	prevServerCPU    []cpu.TimesStat
 	prevServerDiskIO map[string]disk.IOCountersStat
+	prevServerNetIO  []gnet.IOCountersStat
 	prevProgDiskIO   *process.IOCountersStat
 	lastSample       time.Time
 	lastCollect      time.Time
@@ -118,6 +138,8 @@ func (c *Collector) Run(ctx context.Context) {
 	c.lastCollect = time.Now().Add(-time.Duration(collect) * time.Second)
 	lastCleanup := time.Now()
 	c.cleanup(retention)
+	// 先采集一次硬件配置，保证首个快照与首帧 SSE 就带完整服务器配置
+	c.refreshHardware(time.Now())
 
 	utils.Info("服务器资源监控已启动",
 		utils.Int("sampling_seconds", sampling),
@@ -174,6 +196,15 @@ func (c *Collector) sample(now time.Time) {
 		server.DiskIORead, server.DiskIOWrite = 0, 0
 	}
 
+	// 服务器网络流量（全部物理网卡合计；回环接口不计入，避免本机回环流量污染）
+	var nicRates []NICRate
+	if nio, err := gnet.IOCounters(true); err == nil {
+		server.NetRecv, server.NetSent, nicRates = c.netRates(c.prevServerNetIO, nio, now)
+		c.prevServerNetIO = nio
+	} else {
+		server.NetRecv, server.NetSent = 0, 0
+	}
+
 	// 程序资源
 	if c.proc != nil {
 		if p, err := c.proc.CPUPercent(); err == nil {
@@ -197,11 +228,70 @@ func (c *Collector) sample(now time.Time) {
 	// 本程序磁盘占用分母取整个存储总量，与服务器同口径，展示本程序占"整个存储"的百分比
 	prog.DiskTotal = server.DiskTotal
 
+	// 硬件配置低频刷新（CPU/内存/磁盘/网卡配置）
+	c.refreshHardware(now)
+
+	c.mu.Lock()
+	c.netNICs = nicRates
+	c.mu.Unlock()
+
 	c.setSnapshot(ScopeServer, server)
 	c.setSnapshot(ScopeProgram, prog)
 	c.push(ScopeServer, server, now)
 	c.push(ScopeProgram, prog, now)
 	c.lastSample = now
+	c.broadcast()
+}
+
+// refreshHardware 按 hardwareRefreshInterval 低频刷新硬件配置缓存
+func (c *Collector) refreshHardware(now time.Time) {
+	if now.Sub(c.lastHardware) < time.Duration(hardwareRefreshInterval)*time.Second {
+		return
+	}
+	c.mu.Lock()
+	c.hardware = collectHardware()
+	c.lastHardware = now
+	hw := c.hardware
+	c.mu.Unlock()
+	utils.Debug("已刷新服务器硬件配置",
+		utils.String("cpu", hw.CPU.Model),
+		utils.Int("cores", hw.CPU.Cores),
+		utils.Int("nics", len(hw.NICs)),
+		utils.Int("disks", len(hw.Disks)))
+}
+
+// broadcast 把最新快照推送给所有 SSE 订阅者。
+// 订阅通道为带缓冲通道，缓冲满时丢弃该帧（客户端消费过慢），绝不阻塞采集主循环。
+func (c *Collector) broadcast() {
+	rt := c.Snapshot()
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	for ch := range c.subscribers {
+		select {
+		case ch <- rt:
+		default:
+		}
+	}
+}
+
+// Subscribe 注册一个 SSE 订阅者，返回接收通道与注销函数。
+// 返回的通道由调用方在注销后关闭前不得再次使用；注销函数可安全重复调用。
+func (c *Collector) Subscribe() (<-chan Realtime, func()) {
+	ch := make(chan Realtime, subscriberBuffer)
+	c.subMu.Lock()
+	c.subscribers[ch] = struct{}{}
+	c.subMu.Unlock()
+
+	var once sync.Once
+	unsubscribe := func() {
+		once.Do(func() {
+			c.subMu.Lock()
+			delete(c.subscribers, ch)
+			close(ch)
+			c.subMu.Unlock()
+		})
+	}
+	return ch, unsubscribe
 }
 
 // setSnapshot 更新某 scope 的最新快照
@@ -227,17 +317,19 @@ func (c *Collector) push(scope string, p Point, now time.Time) {
 	c.buffer[scope] = lst
 }
 
-// Snapshot 返回实时快照（当前值 + 最近内存曲线）
+// Snapshot 返回实时快照（硬件配置 + 当前值 + 最近内存曲线 + 网卡实时速率）
 func (c *Collector) Snapshot() Realtime {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	rt := Realtime{
 		Running:          c.proc != nil,
 		SamplingInterval: c.currentSampling(),
+		Hardware:         c.hardware,
 		Server:           c.server,
 		Program:          c.prog,
 		ServerRecent:     append([]ScopePoint(nil), c.buffer[ScopeServer]...),
 		ProgramRecent:    append([]ScopePoint(nil), c.buffer[ScopeProgram]...),
+		NetNICs:          append([]NICRate(nil), c.netNICs...),
 	}
 	return rt
 }
@@ -274,6 +366,8 @@ func (c *Collector) History(scope string, from, to time.Time) ([]ScopePoint, err
 				DiskTotal:   r.DiskTotal,
 				DiskIORead:  r.DiskIORead,
 				DiskIOWrite: r.DiskIOWrite,
+				NetRecv:     r.NetRecv,
+				NetSent:     r.NetSent,
 			},
 		})
 	}
@@ -313,6 +407,8 @@ func (c *Collector) persist(now time.Time) {
 			DiskTotal:   s.p.DiskTotal,
 			DiskIORead:  s.p.DiskIORead,
 			DiskIOWrite: s.p.DiskIOWrite,
+			NetRecv:     s.p.NetRecv,
+			NetSent:     s.p.NetSent,
 		}
 		if err := db.Create(rec).Error; err != nil {
 			utils.Warn("写入资源监控历史失败", utils.String("scope", s.scope), utils.Err(err))
@@ -465,6 +561,44 @@ func (c *Collector) ioRates(prev map[string]disk.IOCountersStat, cur map[string]
 		}
 	}
 	return r, w
+}
+
+// netRates 计算服务器网络流量速率（字节/秒）：
+// 返回全部物理网卡的合计收发速率，以及各网卡的明细速率（用于卡片展示）。
+// 回环接口不计入合计，避免本机回环流量污染真实网络吞吐。
+func (c *Collector) netRates(prev []gnet.IOCountersStat, cur []gnet.IOCountersStat, now time.Time) (recv, sent float64, rates []NICRate) {
+	elapsed := now.Sub(c.lastSample).Seconds()
+	if len(prev) == 0 || elapsed <= 0 {
+		return 0, 0, nil
+	}
+	prevByName := make(map[string]gnet.IOCountersStat, len(prev))
+	for _, p := range prev {
+		prevByName[p.Name] = p
+	}
+	rates = make([]NICRate, 0, len(cur))
+	for _, s := range cur {
+		if s.Name == "lo" || strings.HasPrefix(s.Name, "Loopback") {
+			continue
+		}
+		p, ok := prevByName[s.Name]
+		if !ok {
+			continue
+		}
+		var r, w float64
+		if s.BytesRecv >= p.BytesRecv {
+			r = float64(s.BytesRecv-p.BytesRecv) / elapsed
+		}
+		if s.BytesSent >= p.BytesSent {
+			w = float64(s.BytesSent-p.BytesSent) / elapsed
+		}
+		recv += r
+		sent += w
+		rates = append(rates, NICRate{Name: s.Name, Recv: r, Sent: w})
+	}
+	sort.Slice(rates, func(i, j int) bool {
+		return rates[i].Recv+rates[i].Sent > rates[j].Recv+rates[j].Sent
+	})
+	return recv, sent, rates
 }
 
 // procIORates 计算进程磁盘 IO 速率（字节/秒）

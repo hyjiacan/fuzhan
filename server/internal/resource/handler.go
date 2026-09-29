@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,6 +13,10 @@ import (
 
 // maxHistoryPoints 历史接口最多返回的点数，超出则平均下采样
 const maxHistoryPoints = 800
+
+// streamHeartbeatInterval SSE 心跳间隔。长时间无采样（如功能未启用）时也要
+// 定期发送注释帧，避免中间代理按空闲超时断开连接。
+const streamHeartbeatInterval = 15 * time.Second
 
 // Handler 服务器资源监控处理器
 type Handler struct {
@@ -25,6 +31,70 @@ func NewHandler(collector *Collector) *Handler {
 // Snapshot 实时快照 + 最近内存采样曲线
 func (h *Handler) Snapshot(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", h.collector.Snapshot())
+}
+
+// Stream 以 SSE 推送实时快照：连接建立时先发一帧当前快照，此后每次采样广播一帧。
+// 相比前端定时轮询，实时性更好、请求开销更低；历史曲线仍走 History 接口。
+func (h *Handler) Stream(c *gin.Context) {
+	ch, unsubscribe := h.collector.Subscribe()
+	defer unsubscribe()
+
+	// SSE 必需响应头；X-Accel-Buffering 关闭 Nginx 等反向代理的响应缓冲，
+	// 否则事件会被代理攒批，前端看到的刷新会明显滞后。
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		utils.Warn("当前环境不支持 SSE（响应写入器不支持 Flush）")
+		response.HandleInternalServerError(c, "当前环境不支持实时推送")
+		return
+	}
+
+	// 建连即推送一帧，前端无需额外请求即可拿到首屏数据
+	if !writeSSEFrame(c, flusher, h.collector.Snapshot()) {
+		return
+	}
+
+	ticker := time.NewTicker(streamHeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case rt, open := <-ch:
+			if !open {
+				return
+			}
+			if !writeSSEFrame(c, flusher, rt) {
+				return
+			}
+		case <-ticker.C:
+			// 注释帧仅用于保活，前端会忽略
+			if _, err := fmt.Fprint(c.Writer, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSSEFrame 写入一帧数据，返回 false 表示连接已断开
+func writeSSEFrame(c *gin.Context, flusher http.Flusher, rt Realtime) bool {
+	payload, err := json.Marshal(rt)
+	if err != nil {
+		utils.Warn("序列化资源监控实时数据失败", utils.Err(err))
+		return true
+	}
+	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 // History 历史查询
@@ -86,7 +156,7 @@ func downsample(pts []ScopePoint) []ScopePoint {
 			end = len(pts)
 		}
 		n := end - i
-		var cpu, read, write float64
+		var cpu, read, write, netRecv, netSent float64
 		var mem, memT, used, total uint64
 		for j := i; j < end; j++ {
 			p := pts[j]
@@ -97,6 +167,8 @@ func downsample(pts []ScopePoint) []ScopePoint {
 			total += p.DiskTotal
 			read += p.DiskIORead
 			write += p.DiskIOWrite
+			netRecv += p.NetRecv
+			netSent += p.NetSent
 		}
 		out = append(out, ScopePoint{
 			Timestamp: pts[i].Timestamp,
@@ -109,6 +181,8 @@ func downsample(pts []ScopePoint) []ScopePoint {
 				DiskTotal:   total / uint64(n),
 				DiskIORead:  read / float64(n),
 				DiskIOWrite: write / float64(n),
+				NetRecv:     netRecv / float64(n),
+				NetSent:     netSent / float64(n),
 			},
 		})
 	}

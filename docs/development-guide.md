@@ -58,7 +58,7 @@ fuzhan/
 │   ├── internal/           # 核心应用代码
 │   │   ├── access/         # WebDAV / FTP 虚拟文件系统
 │   │   ├── admin/          # 管理员功能
-│   │   ├── auth/           # 认证（JWT/API Key/LDAP/RBAC）
+│   │   ├── auth/           # 认证（JWT/API Key/LDAP/OAuth2/RBAC）
 │   │   ├── cli/            # CLI 接口
 │   │   ├── config/         # 配置管理
 │   │   ├── file/           # 文件操作
@@ -320,13 +320,31 @@ storage:
     default_expire_days: 7
     delete_on_download: true  # 下载后删除
 
-# LDAP 配置（可选）
-ldap:
-  enabled: false
-  server: "ldap://localhost:389"
-  base_dn: "dc=example,dc=com"
-  bind_dn: ""
-  bind_password: ""
+# 身份认证配置（可选）：LDAP / OAuth2
+auth:
+  ldap:
+    enabled: false
+    host: "ldap.example.com"
+    port: 389
+    use_ssl: false
+    base_dn: "dc=example,dc=com"
+    bind_dn: ""
+    bind_password: ""
+    user_filter: ""            # 如 (uid=%s)
+    auto_create_user: false
+  oauth2:
+    enabled: false
+    provider_name: ""          # 如 "企业 SSO"
+    client_id: ""
+    client_secret: ""
+    issuer: ""                 # OIDC Issuer，配置后自动发现端点
+    auth_url: ""               # 授权端点
+    token_url: ""              # 令牌端点
+    user_info_url: ""          # 用户信息端点
+    scopes: []                 # 默认 [openid, profile, email]
+    redirect_url: ""           # 回调地址，留空按当前域名推断
+    username_claim: ""         # 默认 preferred_username
+    auto_create_user: false
 
 # 上传配置
 upload:

@@ -261,9 +261,10 @@ security:
   #   - "*"
 
 # ----------------------------------------
-# LDAP 认证配置
+# 身份认证配置（LDAP / OAuth2）
 # ----------------------------------------
-# 用于对接企业目录（Active Directory / OpenLDAP）。仅当需要 LDAP 账户同步/认证时配置。
+# LDAP 用于对接企业目录（Active Directory / OpenLDAP）；OAuth2/OIDC 用于对接外部统一认证系统。
+# 仅当需要外部账户认证时配置。
 # auth:
 #   ldap:
 #     enabled: false
@@ -277,6 +278,22 @@ security:
 #     sync_interval: 3600      # 目录同步间隔（秒）
 #     auto_create_user: false  # 认证通过后是否自动创建本地账户
 #     insecure_skip_verify: false  # 跳过 LDAPS 证书校验（仅测试/自签名环境可设为 true）
+#   oauth2:
+#     enabled: false           # 是否启用外部认证（授权码模式）
+#     provider_name: ""        # 显示名称，用于登录页按钮文案，如 "企业 SSO"
+#     client_id: ""            # 外部系统分配的客户端 ID
+#     client_secret: ""        # 客户端密钥
+#     auth_url: ""             # 授权端点（OIDC 可留空，由 issuer 自动发现）
+#     token_url: ""            # 令牌端点
+#     user_info_url: ""        # 用户信息端点（留空时回退解析 id_token 载荷）
+#     issuer: ""               # OIDC Issuer，用于自动发现端点（可选）
+#     scopes: []               # 请求的 scope，默认 [openid, profile, email]
+#     redirect_url: ""         # 回调地址，留空时按当前访问域名推断
+#     username_claim: ""       # 用户名取值字段，默认 preferred_username（回退 email 前缀 / sub）
+#     display_name_claim: ""   # 显示名取值字段，默认 name
+#     email_claim: ""          # 邮箱取值字段，默认 email
+#     auto_create_user: false  # 认证通过后是否自动创建本地账户
+#     insecure_skip_verify: false  # 跳过外部端点证书校验（仅测试/自签名环境可设为 true）
 
 # ----------------------------------------
 # Open API 配置
@@ -294,8 +311,10 @@ security:
 # ----------------------------------------
 # 服务器资源监控配置
 # ----------------------------------------
-# 在管理模块中展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 的实时与历史曲线。
-# 实时曲线按 sampling_interval 秒在内存采样（不落库）；历史数据按 collect_interval 秒落库（默认每分钟一条）。
+# 在管理模块中展示服务器硬件配置（CPU / 内存 / 磁盘 / 网卡）与整体、本程序的
+# CPU、内存、磁盘占用、磁盘 IO、网络流量的实时与历史曲线。
+# 实时曲线按 sampling_interval 秒在内存采样（不落库），并可通过 SSE（/admin/resource/stream）推送；
+# 历史数据按 collect_interval 秒落库（默认每分钟一条）。
 # 历史数据保留 retention_days 天，超出部分定期清理。
 resource:
   enabled: true                 # 是否启用资源监控（默认 false，需手动开启）

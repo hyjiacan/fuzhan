@@ -33,6 +33,7 @@ const AdminResourceView = () => import(/* webpackChunkName: "views-admin-resourc
 const AdminBehaviorAnalyticsView = () => import(/* webpackChunkName: "views-admin-behavior-analytics" */ '../views/AdminBehaviorAnalyticsView.vue')
 const AdminSecurityView = () => import(/* webpackChunkName: "views-admin-security" */ '../views/AdminSecurityView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
+const OAuth2CallbackView = () => import('../views/OAuth2CallbackView.vue')
 
 // 登录/注册弹框触发事件
 export const showLoginDialogEvent = new EventTarget()
@@ -75,6 +76,12 @@ const router = createRouter({
       name: 'hot',
       component: HotView,
       meta: { navName: '热门' }
+    },
+    {
+      // 外部 OAuth2/OIDC 认证回调：后端校验后跳回此处并携带令牌
+      path: '/oauth2/callback',
+      name: 'oauth2-callback',
+      component: OAuth2CallbackView
     },
 
     // ========== 个人路由（普通用户） ==========

@@ -178,6 +178,34 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 	}, nil
 }
 
+// LoginByUser 为已完成外部认证（OAuth2/OIDC）的用户签发本地令牌
+func (s *AuthService) LoginByUser(user *models.User) (*AuthResponse, error) {
+	if user == nil {
+		return nil, errors.New("用户信息为空")
+	}
+	if user.Disabled {
+		return nil, errors.New("账户已被禁用")
+	}
+	if !appconfig.GlobalConfig.Storage.Private.Enabled && user.Role != "admin" {
+		return nil, errors.New("私有存储未启用，仅管理员可登录")
+	}
+
+	role := user.Role
+	if role == "" {
+		role = "user"
+	}
+	token, err := jwt.GenerateJWT(user.UUID, user.Username, role, user.Disabled)
+	if err != nil {
+		return nil, fmt.Errorf("生成令牌失败: %w", err)
+	}
+	return &AuthResponse{
+		Token:     token,
+		UUID:      user.UUID,
+		Username:  user.Username,
+		ExpiresIn: authTokenTTLSeconds,
+	}, nil
+}
+
 // GetCurrentUser 获取当前用户信息
 func (s *AuthService) GetCurrentUser(c *gin.Context) (*models.User, error) {
 	uuidInterface, exists := c.Get("userUUID")

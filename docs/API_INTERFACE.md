@@ -4,7 +4,7 @@
 
 ## 概述
 
-本文档描述了浮栈系统的 API 接口，包括文件操作、上传下载、搜索、临时文件管理、认证（JWT/API Key/LDAP）等功能。所有接口均通过 HTTP/HTTPS 协议访问，使用 JSON 格式进行数据交换。
+本文档描述了浮栈系统的 API 接口，包括文件操作、上传下载、搜索、临时文件管理、认证（JWT/API Key/LDAP/OAuth2）等功能。所有接口均通过 HTTP/HTTPS 协议访问，使用 JSON 格式进行数据交换。
 
 ## 基础信息
 
@@ -15,6 +15,7 @@
   - JWT Bearer Token（部分接口需要）
   - API Key（外部集成）
   - LDAP（企业目录）
+  - OAuth2 / OIDC（外部统一认证，授权码模式）
 - **响应格式**：
   ```json
   {
@@ -118,6 +119,27 @@
     "newPassword": "新密码 (6-128字符)"
   }
   ```
+
+### 6. 外部 OAuth2 / OIDC 认证
+
+用于对接外部统一认证系统（授权码模式）。三个接口均无需认证。
+
+- **查询状态**：`GET /api/v1/auth/oauth2/status`
+  - 返回是否启用及提供方显示名称，供登录页决定是否展示外部认证入口。
+  ```json
+  { "success": true, "data": { "enabled": true, "providerName": "企业 SSO" } }
+  ```
+
+- **发起授权**：`GET /api/v1/auth/oauth2/authorize`
+  - 返回外部认证系统的授权地址与签名 state，由前端整页跳转。
+  ```json
+  { "success": true, "data": { "authorizeUrl": "https://sso.example.com/oauth2/authorize?...", "state": "..." } }
+  ```
+
+- **回调处理**：`GET /api/v1/auth/oauth2/callback`
+  - 由外部系统回调，后端校验 state、换取令牌、映射本地用户并签发 JWT，
+    最终 302 重定向到前端 `/#/oauth2/callback?token=...&uuid=...&username=...`；
+    失败时重定向为 `/#/oauth2/callback?error=...`。
 
 ## 文件浏览接口
 

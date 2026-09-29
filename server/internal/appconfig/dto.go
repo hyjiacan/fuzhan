@@ -38,7 +38,27 @@ type ConfigDTO struct {
 
 // AuthConfigDTO 认证配置 DTO
 type AuthConfigDTO struct {
-	LDAP LDAPConfigDTO `json:"ldap"`
+	LDAP   LDAPConfigDTO   `json:"ldap"`
+	OAuth2 OAuth2ConfigDTO `json:"oauth2"`
+}
+
+// OAuth2ConfigDTO 外部 OAuth2/OIDC 配置 DTO（对应 yaml auth.oauth2.*）
+type OAuth2ConfigDTO struct {
+	Enabled            bool     `json:"enabled"`
+	ProviderName       string   `json:"providerName"`
+	ClientID           string   `json:"clientId"`
+	ClientSecret       string   `json:"clientSecret"`
+	AuthURL            string   `json:"authUrl"`
+	TokenURL           string   `json:"tokenUrl"`
+	UserInfoURL        string   `json:"userInfoUrl"`
+	Issuer             string   `json:"issuer"`
+	Scopes             []string `json:"scopes"`
+	RedirectURL        string   `json:"redirectUrl"`
+	UsernameClaim      string   `json:"usernameClaim"`
+	DisplayNameClaim   string   `json:"displayNameClaim"`
+	EmailClaim         string   `json:"emailClaim"`
+	AutoCreateUser     bool     `json:"autoCreateUser"`
+	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
 }
 
 // LDAPConfigDTO LDAP 配置 DTO（前端 camelCase 字段，对应 yaml auth.ldap.*）
@@ -351,6 +371,23 @@ func (c *Config) ToDTO() ConfigDTO {
 				AutoCreateUser:     c.Auth.LDAP.AutoCreateUser,
 				InsecureSkipVerify: c.Auth.LDAP.InsecureSkipVerify,
 			},
+			OAuth2: OAuth2ConfigDTO{
+				Enabled:            c.Auth.OAuth2.Enabled,
+				ProviderName:       c.Auth.OAuth2.ProviderName,
+				ClientID:           c.Auth.OAuth2.ClientID,
+				ClientSecret:       c.Auth.OAuth2.ClientSecret,
+				AuthURL:            c.Auth.OAuth2.AuthURL,
+				TokenURL:           c.Auth.OAuth2.TokenURL,
+				UserInfoURL:        c.Auth.OAuth2.UserInfoURL,
+				Issuer:             c.Auth.OAuth2.Issuer,
+				Scopes:             c.Auth.OAuth2.Scopes,
+				RedirectURL:        c.Auth.OAuth2.RedirectURL,
+				UsernameClaim:      c.Auth.OAuth2.UsernameClaim,
+				DisplayNameClaim:   c.Auth.OAuth2.DisplayNameClaim,
+				EmailClaim:         c.Auth.OAuth2.EmailClaim,
+				AutoCreateUser:     c.Auth.OAuth2.AutoCreateUser,
+				InsecureSkipVerify: c.Auth.OAuth2.InsecureSkipVerify,
+			},
 		},
 	}
 }
@@ -470,6 +507,23 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Auth.LDAP.SyncInterval = dto.Auth.LDAP.SyncInterval
 	cfg.Auth.LDAP.AutoCreateUser = dto.Auth.LDAP.AutoCreateUser
 	cfg.Auth.LDAP.InsecureSkipVerify = dto.Auth.LDAP.InsecureSkipVerify
+
+	// OAuth2/OIDC 认证配置
+	cfg.Auth.OAuth2.Enabled = dto.Auth.OAuth2.Enabled
+	cfg.Auth.OAuth2.ProviderName = dto.Auth.OAuth2.ProviderName
+	cfg.Auth.OAuth2.ClientID = dto.Auth.OAuth2.ClientID
+	cfg.Auth.OAuth2.ClientSecret = dto.Auth.OAuth2.ClientSecret
+	cfg.Auth.OAuth2.AuthURL = dto.Auth.OAuth2.AuthURL
+	cfg.Auth.OAuth2.TokenURL = dto.Auth.OAuth2.TokenURL
+	cfg.Auth.OAuth2.UserInfoURL = dto.Auth.OAuth2.UserInfoURL
+	cfg.Auth.OAuth2.Issuer = dto.Auth.OAuth2.Issuer
+	cfg.Auth.OAuth2.Scopes = dto.Auth.OAuth2.Scopes
+	cfg.Auth.OAuth2.RedirectURL = dto.Auth.OAuth2.RedirectURL
+	cfg.Auth.OAuth2.UsernameClaim = dto.Auth.OAuth2.UsernameClaim
+	cfg.Auth.OAuth2.DisplayNameClaim = dto.Auth.OAuth2.DisplayNameClaim
+	cfg.Auth.OAuth2.EmailClaim = dto.Auth.OAuth2.EmailClaim
+	cfg.Auth.OAuth2.AutoCreateUser = dto.Auth.OAuth2.AutoCreateUser
+	cfg.Auth.OAuth2.InsecureSkipVerify = dto.Auth.OAuth2.InsecureSkipVerify
 
 	return cfg
 }

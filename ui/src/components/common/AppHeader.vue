@@ -128,6 +128,20 @@
       </el-form-item>
     </el-form>
 
+    <!-- 外部统一认证入口（OAuth2/OIDC，由后端配置决定是否展示） -->
+    <div v-if="oauth2Enabled" class="auth-external-block">
+      <el-divider class="auth-divider">或</el-divider>
+      <el-button
+        size="large"
+        class="auth-external"
+        :loading="oauth2Redirecting"
+        @click="handleOAuth2Login"
+      >
+        <el-icon v-if="!oauth2Redirecting" class="auth-external-icon"><Key /></el-icon>
+        使用 {{ oauth2ProviderName }} 登录
+      </el-button>
+    </div>
+
     <template #footer>
       <div class="auth-footer">
         <el-button
@@ -302,7 +316,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
-import { User, Lock } from "@element-plus/icons-vue";
+import { User, Lock, Key } from "@element-plus/icons-vue";
 import { AuthApi, NotificationApi, SecurityApi } from "@/api";
 import { showLoginDialogEvent, showRegisterDialogEvent } from "@/router";
 import store from "@/store";
@@ -340,6 +354,41 @@ const loginRules = {
   password: { required: true, message: "请输入密码", trigger: "blur" },
 };
 
+// 外部 OAuth2/OIDC 认证入口状态（是否展示由后端配置决定）
+const oauth2Enabled = ref(false);
+const oauth2ProviderName = ref("OAuth2");
+const oauth2Redirecting = ref(false);
+
+const loadOAuth2Status = async () => {
+  try {
+    const res = await AuthApi.oauth2Status();
+    if (res.success && res.data) {
+      oauth2Enabled.value = !!res.data.enabled;
+      oauth2ProviderName.value = res.data.providerName || "OAuth2";
+    }
+  } catch (e) {
+    // 状态查询失败时静默降级，不展示外部认证入口
+    oauth2Enabled.value = false;
+  }
+};
+
+// 跳转到外部认证系统：先向后端获取带签名 state 的授权地址，再整页跳转
+const handleOAuth2Login = async () => {
+  oauth2Redirecting.value = true;
+  try {
+    const res = await AuthApi.oauth2Authorize();
+    if (res.success && res.data?.authorizeUrl) {
+      window.location.href = res.data.authorizeUrl;
+    } else {
+      ElMessage.error(res.message || "无法发起外部认证");
+      oauth2Redirecting.value = false;
+    }
+  } catch (e) {
+    ElMessage.error("无法发起外部认证：" + (e?.message || e));
+    oauth2Redirecting.value = false;
+  }
+};
+
 // Register modal
 const showRegisterModal = ref(false);
 const registering = ref(false);
@@ -373,6 +422,7 @@ const updateAuthState = () => {
 const handleShowLoginDialog = () => {
   updateAuthState();
   if (!authState.isLoggedIn) {
+    loadOAuth2Status();
     showLoginModal.value = true;
   }
 };
@@ -400,6 +450,7 @@ const switchToLogin = () => {
 // 监听登录弹框事件
 onMounted(() => {
   updateAuthState();
+  loadOAuth2Status();
   showLoginDialogEvent.addEventListener("show", handleShowLoginDialog);
   showRegisterDialogEvent.addEventListener("show", handleShowRegisterDialog);
   // 启动时后端校验 token 失效被清除后，刷新本地登录态与菜单
@@ -976,6 +1027,30 @@ export default {
     .switch-link {
       font-weight: 600;
       font-size: @font-size-sm;
+    }
+  }
+}
+
+// 外部统一认证入口（登录弹框内）
+.auth-external-block {
+  margin-top: 4px;
+
+  .auth-divider {
+    margin: 8px 0 16px;
+
+    :deep(.el-divider__text) {
+      font-size: @font-size-sm;
+      color: @text-color-secondary;
+    }
+  }
+
+  .auth-external {
+    width: 100%;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+
+    .auth-external-icon {
+      margin-right: 6px;
     }
   }
 }
