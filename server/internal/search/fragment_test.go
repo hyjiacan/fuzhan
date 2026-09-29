@@ -1,82 +1,131 @@
 package search
 
 import (
-	"math/rand"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/blugelabs/bluge/analysis"
 )
 
-// oldFilterTermFragments 是优化前的 O(n²) 实现，用于行为等价性对照。
-func oldFilterTermFragments(terms []suggestTerm) []suggestTerm {
-	out := make([]suggestTerm, 0, len(terms))
-	for _, t := range terms {
-		if isASCIIWord(t.term) && len(t.term) < 5 && containsInOld(t.term, terms) {
-			continue
-		}
-		out = append(out, t)
+// analyzeTerms 用给定分析器切分文本，返回 token 词形集合（保序，便于断言）。
+func analyzeTerms(a *analysis.Analyzer, text string) []string {
+	stream := a.Analyze([]byte(text))
+	out := make([]string, 0, len(stream))
+	for _, tok := range stream {
+		out = append(out, string(tok.Term))
 	}
 	return out
 }
 
-func containsInOld(s string, terms []suggestTerm) bool {
-	for _, t := range terms {
-		if !isASCIIWord(t.term) || len(t.term) <= len(s) {
-			continue
-		}
-		if len(s) > 0 && len(t.term) >= len(s)+2 && containsStr(t.term, s) {
+func hasTerm(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
 			return true
 		}
 	}
 	return false
 }
 
-func containsStr(hay, needle string) bool {
-	for i := 0; i+len(needle) <= len(hay); i++ {
-		if hay[i:i+len(needle)] == needle {
-			return true
+// TestAnalyzerFieldSeparation 验证双字段分析器职责隔离：
+// 完整词分析器只输出完整词、不含任何 N-gram 片段；片段分析器在完整词基础上补充 2~4 片段。
+func TestAnalyzerFieldSeparation(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+
+	full := newFullWordAnalyzer(idx.seg)
+	ngram := newNgramAnalyzer(idx.seg)
+
+	const name = "final textbook book.pdf"
+
+	fullTerms := analyzeTerms(full, name)
+	// 完整词字段：中文语义单元 / 英文整词必须保留
+	for _, w := range []string{"final", "textbook", "book", "pdf"} {
+		if !hasTerm(fullTerms, w) {
+			t.Fatalf("完整词字段应含完整词 %q，实际 %v", w, fullTerms)
 		}
 	}
-	return false
+	// 完整词字段：不得出现任何 N-gram 片段
+	for _, frag := range []string{"fina", "inal", "extb", "boo", "ook", "pd"} {
+		if hasTerm(fullTerms, frag) {
+			t.Fatalf("完整词字段不应含 N-gram 片段 %q，实际 %v", frag, fullTerms)
+		}
+	}
+
+	ngramTerms := analyzeTerms(ngram, name)
+	// 片段字段：完整词仍在
+	for _, w := range []string{"final", "textbook", "book", "pdf"} {
+		if !hasTerm(ngramTerms, w) {
+			t.Fatalf("片段字段应含完整词 %q，实际 %v", w, ngramTerms)
+		}
+	}
+	// 片段字段：补充了 2~4 长度片段
+	for _, frag := range []string{"fina", "inal", "extb", "boo", "ook"} {
+		if !hasTerm(ngramTerms, frag) {
+			t.Fatalf("片段字段应含片段 %q，实际 %v", frag, ngramTerms)
+		}
+	}
 }
 
-// TestFilterTermFragmentsEquivalent 验证新倒排子串实现与旧 O(n²) 实现在多种词表上行为一致。
-func TestFilterTermFragmentsEquivalent(t *testing.T) {
-	corpora := [][]suggestTerm{
-		// 空 / 单元素
-		{},
-		{{"readme", 3}},
-		// 真实文件名风格
-		{{"readme", 5}, {"read", 2}, {"me", 2}, {"md", 3}, {"iso9001", 4}, {"iso", 1}, {"iso9000", 2}},
-		// 中文词汇不应被 ASCII 宿主误删
-		{{"年度", 7}, {"财务报表", 5}, {"报表", 3}, {"readme", 2}, {"read", 1}},
-		// 边界长度 4 的词若是更长词子串则应被删
-		{{"book", 4}, {"textbook", 6}, {"bo", 2}, {"ok", 2}},
-		// 长度差不足(host=len(s)+1)不应判为碎片
-		{{"mars", 9}, {"marsx", 2}, {"ma", 1}},
+// TestSuggestTermTableIsPureFullWords 验证词表枚举只来自完整词字段：
+// 合法完整词（含长度 4 且恰为更长词子串的 book）不再被误删，N-gram 碎片（如 final 的 fina）不再出现。
+func TestSuggestTermTableIsPureFullWords(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	idx.suggestDebounceNs = 0 // 禁用节流，写入后下次读立即重建
+
+	for id, name := range map[int64]string{
+		1: "final report.pdf",
+		2: "textbook cover.pdf",
+		3: "book list.pdf",
+	} {
+		if err := idx.IndexFile(id, name); err != nil {
+			t.Fatalf("IndexFile 失败: %v", err)
+		}
 	}
 
-	// 随机生成一批 ASCII 词组合
-	rng := rand.New(rand.NewSource(20260918))
-	alphabet := []byte("abcdefghij")
-	for i := 0; i < 40; i++ {
-		var terms []suggestTerm
-		seen := map[string]bool{}
-		for _, wd := range randomWords(rng, 2+(i%6), alphabet) {
-			if !seen[wd] {
-				seen[wd] = true
-				terms = append(terms, suggestTerm{term: wd, count: uint64(1 + rng.Intn(50))})
-			}
-		}
-		corpora = append(corpora, terms)
+	terms, err := idx.enumSuggestTerms()
+	if err != nil {
+		t.Fatalf("enumSuggestTerms 失败: %v", err)
+	}
+	set := make(map[string]struct{}, len(terms))
+	for _, x := range terms {
+		set[x.term] = struct{}{}
 	}
 
-	for ci, c := range corpora {
-		got := filterTermFragments(c)
-		want := oldFilterTermFragments(c)
-		if !reflect.DeepEqual(keysOf(got), keysOf(want)) {
-			t.Fatalf("corpus#%d 行为不一致:\n  old=%v\n  new=%v", ci, keysOf(want), keysOf(got))
+	// 合法完整词必须全部保留（book 历史上会被 textbook 的子串判据误删）
+	for _, w := range []string{"final", "textbook", "book"} {
+		if _, ok := set[w]; !ok {
+			t.Fatalf("词表应含完整词 %q，实际 %v", w, keysOf(terms))
 		}
+	}
+	// N-gram 碎片不得进入词表
+	for _, frag := range []string{"fina", "inal", "extb", "boo", "ook"} {
+		if _, ok := set[frag]; ok {
+			t.Fatalf("词表不应含 N-gram 碎片 %q，实际 %v", frag, keysOf(terms))
+		}
+	}
+}
+
+// TestAutoCompleteMiddleMatchViaNgramField 验证中段/子串召回迁移到片段字段后不退化：
+// e60p 是 mate60pro 的 4-gram，属中段匹配，应命中（由片段字段兜住召回）。
+func TestAutoCompleteMiddleMatchViaNgramField(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+
+	if err := idx.IndexFile(1, "华为Mate60Pro评测.pdf"); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := idx.AutoComplete("e60p", 10)
+	if err != nil {
+		t.Fatalf("AutoComplete 失败: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("中段前缀 e60p 应命中片段字段，实际为空")
+	}
+	if hits[0] != "华为Mate60Pro评测.pdf" {
+		t.Fatalf("期望命中 华为Mate60Pro评测.pdf，实际 %v", hits)
 	}
 }
 
@@ -137,19 +186,6 @@ func sortScored(cand []scoredSuggest, limit int) []string {
 	out := make([]string, 0, limit)
 	for i := 0; i < len(cand) && len(out) < limit; i++ {
 		out = append(out, cand[i].term)
-	}
-	return out
-}
-
-func randomWords(rng *rand.Rand, n int, alphabet []byte) []string {
-	out := make([]string, 0, n)
-	for i := 0; i < n; i++ {
-		l := 2 + rng.Intn(6) // 2..7
-		b := make([]byte, l)
-		for j := range b {
-			b[j] = alphabet[rng.Intn(len(alphabet))]
-		}
-		out = append(out, string(b))
 	}
 	return out
 }

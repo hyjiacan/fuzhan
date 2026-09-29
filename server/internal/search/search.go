@@ -4,9 +4,11 @@
 //   - 自动补全（前缀匹配，供用户输入时实时联想）
 //   - 拼写纠错（模糊匹配，识别用户拼错的文件名并给出建议）
 //
-// 分词策略（面向中英文混排文件名）：
-//   - 中文：使用 gse 分词，切分成语义单元（如"年度财务报表" → 年度/财务/报表）
-//   - 英文/数字：使用 N-gram（长度 2~4）生成片段，支持只记得部分名称的检索
+// 分词策略（面向中英文混排文件名，采用双字段隔离）：
+//   - 完整词字段 file_name：中文语义单元（如"年度财务报表" → 年度/财务/报表）与英文/数字整词，
+//     开启 store 供回读文件名；它是建议与纠错词表的唯一枚举来源。
+//   - 片段字段 file_name_ngram：在完整词基础上再补英文/数字的 N-gram（长度 2~4）片段，
+//     仅索引不 store，只服务需要子串/中段召回的查询。
 //   - 统一小写化：README / readme / Readme 等价
 package search
 
@@ -29,8 +31,10 @@ import (
 )
 
 const (
-	// FieldFileName 文件名索引字段名
+	// FieldFileName 完整词字段：中文语义单元 / 英文整词；开启 store，供回读文件名
 	FieldFileName = "file_name"
+	// FieldFileNameNgram 片段字段：完整词 + N-gram(2~4)；仅索引不 store，供子串召回
+	FieldFileNameNgram = "file_name_ngram"
 
 	// Ngram 英文/数字片段长度范围
 	ngramMin = 2
@@ -54,7 +58,7 @@ type SearchIndex struct {
 
 	// 词表缓存：建议接口（SuggestKeywords/SuggestCorrectKeywords）基于去重后的 term 词表工作，
 	// 直接每次枚举全词表开销大，这里在写入后节流（debounce）重建一次，后续读复用。
-	// 缓存中保存的是"已剔除 N-gram 碎片"的过滤词表，过滤开销（倒排子串扫描）仅在建缓存时执行一次。
+	// 词表只从完整词字段 FieldFileName 枚举，天然不含 N-gram 碎片，无需再做子串清洗。
 	termCacheMu       sync.Mutex // 保护 termCacheTerms 及 lastWriteAt/loaded 的重建
 	lastWriteAt       int64      // 最近一次索引写入的 UnixNano 时间，用于节流判定
 	termCacheLoaded   bool
@@ -90,7 +94,7 @@ func openBlugeWriter(dir string, seg *gse.Segmenter) (*bluge.Writer, error) {
 	}
 	config := bluge.DefaultConfig(dir)
 	config.DefaultSearchField = FieldFileName
-	config.DefaultSearchAnalyzer = newMixedAnalyzer(seg)
+	config.DefaultSearchAnalyzer = newFullWordAnalyzer(seg)
 	writer, err := bluge.OpenWriter(config)
 	if err != nil {
 		return nil, fmt.Errorf("打开 Bluge 索引失败: %w", err)
@@ -98,13 +102,18 @@ func openBlugeWriter(dir string, seg *gse.Segmenter) (*bluge.Writer, error) {
 	return writer, nil
 }
 
-// buildSearchDoc 以给定分析器构建一条文档（file_name 开启 store）。与 s 无耦合，供线上与影子重建共用。
+// buildSearchDoc 以两个分析器分别构建同一文件名的两个字段：
+//   - file_name（完整词）：开启 store，供词表枚举与命中后回读文件名
+//   - file_name_ngram（完整词 + N-gram 片段）：不 store，供前缀/模糊等子串召回
+//
+// 与 s 无耦合，供线上与影子重建共用。
 func buildSearchDoc(id, fileName string, seg *gse.Segmenter) *bluge.Document {
 	doc := bluge.NewDocument(id)
-	f := bluge.NewTextField(FieldFileName, fileName).
+	doc.AddField(bluge.NewTextField(FieldFileName, fileName).
 		StoreValue().
-		WithAnalyzer(newMixedAnalyzer(seg))
-	doc.AddField(f)
+		WithAnalyzer(newFullWordAnalyzer(seg)))
+	doc.AddField(bluge.NewTextField(FieldFileNameNgram, fileName).
+		WithAnalyzer(newNgramAnalyzer(seg)))
 	return doc
 }
 
@@ -127,16 +136,15 @@ func writeEntries(w *bluge.Writer, seg *gse.Segmenter, entries []IndexEntry) err
 	return nil
 }
 
-// newMixedAnalyzer 构造组合分析器：
-//   - gse 处理中文分词
-//   - N-gram(2~4) 处理英文/数字片段
-//   - LowerCase 过滤器统一小写
-func newMixedAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
+// newFullWordAnalyzer 构造「完整词」分析器：gse 中文分词 + 英文/数字整词，不补 N-gram 片段。
+// 供 file_name 字段使用，是建议/纠错词表的唯一来源。
+func newFullWordAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Tokenizer: &gseNgramTokenizer{
-			seg:      seg,
-			ngramMin: ngramMin,
-			ngramMax: ngramMax,
+			seg:         seg,
+			ngramMin:    ngramMin,
+			ngramMax:    ngramMax,
+			enableNgram: false,
 		},
 		TokenFilters: []analysis.TokenFilter{
 			token.NewLowerCaseFilter(),
@@ -144,11 +152,28 @@ func newMixedAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
 	}
 }
 
-// gseNgramTokenizer 自定义分词器：先 gse 切词，再对英文/数字段补 N-gram。
+// newNgramAnalyzer 构造「片段」分析器：完整词 + N-gram(2~4) 片段。
+// 供 file_name_ngram 字段使用，只服务需要子串/中段召回的查询。
+func newNgramAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Tokenizer: &gseNgramTokenizer{
+			seg:         seg,
+			ngramMin:    ngramMin,
+			ngramMax:    ngramMax,
+			enableNgram: true,
+		},
+		TokenFilters: []analysis.TokenFilter{
+			token.NewLowerCaseFilter(),
+		},
+	}
+}
+
+// gseNgramTokenizer 自定义分词器：先 gse 切词，完整词始终保留，再按开关决定是否对英文/数字段补 N-gram。
 type gseNgramTokenizer struct {
-	seg      *gse.Segmenter
-	ngramMin int
-	ngramMax int
+	seg         *gse.Segmenter
+	ngramMin    int
+	ngramMax    int
+	enableNgram bool
 }
 
 // Tokenize 将输入文本转换为 token 流。
@@ -182,11 +207,13 @@ func (t *gseNgramTokenizer) Tokenize(input []byte) analysis.TokenStream {
 			continue
 		}
 		if isASCIIWord(w) && len(w) >= 2 {
-			// 英文/数字：保留完整词（供精确前缀/模糊匹配），并补充 N-gram 片段
+			// 英文/数字：完整词始终保留（供精确前缀/模糊匹配），仅按开关补充 N-gram 片段
 			emit(w)
-			for n := t.ngramMin; n <= t.ngramMax && n <= len(w); n++ {
-				for i := 0; i+n <= len(w); i++ {
-					emit(w[i : i+n])
+			if t.enableNgram {
+				for n := t.ngramMin; n <= t.ngramMax && n <= len(w); n++ {
+					for i := 0; i+n <= len(w); i++ {
+						emit(w[i : i+n])
+					}
 				}
 			}
 		} else {
@@ -213,7 +240,7 @@ func isASCIIWord(s string) bool {
 
 // IndexFile 将一条文件名写入索引。
 // fileID 作为文档唯一标识，同名文件再次调用即更新（覆盖旧数据）。
-// file_name 字段调用 StoreValue，查询时可回读文件名。
+// 文档写入完整词字段（store，供回读文件名）与片段字段（不 store，供子串召回）两个字段。
 func (s *SearchIndex) IndexFile(fileID int64, fileName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -362,7 +389,8 @@ func (s *SearchIndex) invalidateTermCache() {
 	s.lastWriteAt = time.Now().UnixNano()
 }
 
-// enumSuggestTerms 返回去重后的建议词表（已剔除 N-gram 碎片，含频率），供建议接口复用。
+// enumSuggestTerms 返回去重后的建议词表（含频率），供建议接口复用。
+// 词表只从完整词字段 FieldFileName 枚举，天然不含 N-gram 碎片，无需再做子串清洗。
 // 带惰性+节流缓存：首读重建一次；写入后不立即重建，待节流窗口（suggestRebuildDebounce）
 // 过后再重建，窗口内的高频读直接复用旧缓存，避免每次键入都枚举全词表。
 // termCacheMu 互斥串行化所有读与重建，保证同一时刻仅一个 goroutine 枚举词表。
@@ -395,8 +423,8 @@ func (s *SearchIndex) enumSuggestTerms() ([]suggestTerm, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 倒排子串过滤在此一次性完成，后续读直接复用过滤结果
-	s.termCacheTerms = filterTermFragments(raw)
+	// 词表来自完整词字段，已是纯完整词，直接作为缓存词表
+	s.termCacheTerms = raw
 	s.termCacheLoaded = true
 	s.lastWriteAt = 0
 	return s.termCacheTerms, nil
@@ -411,6 +439,7 @@ func (s *SearchIndex) writeStillRecent() bool {
 }
 
 // enumSuggestTermsUncached 实际枚举词表（无缓存）。
+// 只枚举完整词字段 FieldFileName：该字段不含 N-gram 片段，枚举结果即纯完整词词表。
 func (s *SearchIndex) enumSuggestTermsUncached() ([]suggestTerm, error) {
 	reader, err := s.writer.Reader()
 	if err != nil {
@@ -438,49 +467,8 @@ func (s *SearchIndex) enumSuggestTermsUncached() ([]suggestTerm, error) {
 	return terms, nil
 }
 
-// filterTermFragments 过滤 N-gram 碎片（英文/数字片段被索引为 2~4 长度的子串）。
-// 规则：仅当某 ASCII term 是某"更长 ASCII term"（长度 >= len(term)+2）的连续子串时判定为碎片并丢弃，
-// 中文词汇不受影响。完整词（如 readme、mate60pro）因无更长宿主不会被误删。
-//
-// 倒排化：先用宿主子串建索引，把原先对每个 term 全表扫宿主（O(n²)）降为近线性。
-// 覆盖集 covered 只收录"宿主长度 >= 子串长度+2"的子串，与规则语义完全等价，仅保留在
-// 确有意义时把碎片判为丢弃的判定项。过滤仍只执行一次（见 enumSuggestTerms 缓存）。
-func filterTermFragments(terms []suggestTerm) []suggestTerm {
-	// 第一遍：对每个 ASCII 宿主词，把其长度为 2..maxN 的连续子串写入 covered 集合。
-	// 宿主为长度 >= len(s)+2 的词，即长度分别不低于 4/5/6（对应碎片长 2/3/4）。
-	covered := make(map[string]struct{}, len(terms))
-	for _, t := range terms {
-		if !isASCIIWord(t.term) || len(t.term) < 4 {
-			continue
-		}
-		word := t.term
-		L := len(word)
-		maxN := L - 2 // 所需宿主长度 >= 子串长+2
-		if maxN > ngramMax {
-			maxN = ngramMax
-		}
-		for n := 2; n <= maxN; n++ {
-			for i := 0; i+n <= L; i++ {
-				covered[word[i:i+n]] = struct{}{}
-			}
-		}
-	}
-
-	// 第二遍：长度 < ngramMax+1（即 <5）的 ASCII term 若命中覆盖集，即为其更长宿主词的碎片，丢弃。
-	out := make([]suggestTerm, 0, len(terms))
-	for _, t := range terms {
-		if isASCIIWord(t.term) && len(t.term) < ngramMax+1 {
-			if _, ok := covered[t.term]; ok {
-				continue
-			}
-		}
-		out = append(out, t)
-	}
-	return out
-}
-
 // SuggestKeywords 自动补全关键词：返回以 prefix 开头的最常见关键词（term），而非完整文件名。
-// 基于词表枚举（已剔除 N-gram 碎片），按出现频率排序；返回最多 limit 个。英文为小写，中文为语义词。
+// 基于词表枚举（只含完整词，无 N-gram 碎片），按出现频率排序；返回最多 limit 个。英文为小写，中文为语义词。
 func (s *SearchIndex) SuggestKeywords(prefix string, limit int) ([]string, error) {
 	terms, err := s.enumSuggestTerms()
 	if err != nil {
@@ -515,7 +503,7 @@ func (s *SearchIndex) SuggestCorrectKeywords(word string, limit int) ([]string, 
 		return []string{}, nil
 	}
 
-	// 词表已剔除 N-gram 碎片，直接用于距离比较。
+	// 词表只含完整词，直接用于距离比较，无需再排除 N-gram 噪声。
 	firstChar := want[0]
 	type scored struct {
 		suggestTerm
@@ -574,10 +562,11 @@ func (s *SearchIndex) SuggestRelatedKeywords(prefix string, limit int) ([]string
 	}
 	defer reader.Close()
 
-	// 各输入段以前缀查询求交（Must），兼容用户当前段尚未输完的情况
+	// 各输入段以前缀查询求交（Must），兼容用户当前段尚未输完的情况。
+	// 命中片段字段以保留 ASCII 中段匹配；回读仍取完整词字段存储的原始文件名。
 	bq := bluge.NewBooleanQuery()
 	for _, t := range terms {
-		bq.AddMust(bluge.NewPrefixQuery(t).SetField(FieldFileName))
+		bq.AddMust(bluge.NewPrefixQuery(t).SetField(FieldFileNameNgram))
 	}
 
 	dmi, err := reader.Search(context.Background(), bluge.NewTopNSearch(relatedDocsLimit, bq))
@@ -690,6 +679,7 @@ func min3(a, b, c int) int {
 }
 
 // AutoComplete 自动补全：基于前缀查询。
+// 命中片段字段 file_name_ngram（含 N-gram），保留中段匹配能力；回读完整词字段存储的文件名。
 // 返回最多 limit 个匹配的 file_name。前缀为人正常输入的内容，会经分析器处理。
 func (s *SearchIndex) AutoComplete(prefix string, limit int) ([]string, error) {
 	s.rwMu.RLock()
@@ -705,7 +695,7 @@ func (s *SearchIndex) AutoComplete(prefix string, limit int) ([]string, error) {
 	defer reader.Close()
 
 	q := bluge.NewPrefixQuery(strings.ToLower(strings.TrimSpace(prefix))).
-		SetField(FieldFileName)
+		SetField(FieldFileNameNgram)
 	req := bluge.NewTopNSearch(limit, q)
 
 	dmi, err := reader.Search(context.Background(), req)
@@ -716,6 +706,7 @@ func (s *SearchIndex) AutoComplete(prefix string, limit int) ([]string, error) {
 }
 
 // SpellCheck 拼写纠错：基于模糊查询。
+// 命中片段字段 file_name_ngram（含 N-gram），与自动补全召回口径一致；回读完整词字段存储的文件名。
 // 设置 fuzziness=2、prefix_length=1（首字符必须精确，减少误纠音近词），
 // 返回最多 limit 个最相似的文件名候选。
 func (s *SearchIndex) SpellCheck(word string, limit int) ([]string, error) {
@@ -734,7 +725,7 @@ func (s *SearchIndex) SpellCheck(word string, limit int) ([]string, error) {
 	q := bluge.NewFuzzyQuery(strings.ToLower(strings.TrimSpace(word))).
 		SetFuzziness(2). // 编辑距离容差
 		SetPrefix(1).    // 固定首字符，避免离谱建议
-		SetField(FieldFileName)
+		SetField(FieldFileNameNgram)
 	req := bluge.NewTopNSearch(limit, q)
 
 	dmi, err := reader.Search(context.Background(), req)
