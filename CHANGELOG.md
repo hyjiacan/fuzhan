@@ -9,6 +9,7 @@
 
 ### 新增
 
+- 搜索框新增「相关词推荐」：输入一段后敲空格，按同文件共现给出下一段候选（下拉标注"相关"），配合原有分段联想/纠错，使多词查询的每一段都有推荐能力。新增 `GET /api/v1/search-related` 接口。(hyjiacan, 2026-09-29)
 - 操作记录新增 `dl_counted` 下载计数签名列（含 `dl_counted, full_path` 索引），使「下载次数」可由记录集唯一推导。(hyjiacan, 2026-09-28)
 - 新增下载次数重算能力：删除/清空下载记录后，按剩余记录幂等回退 `file_records_public.download_count` 与 `temp_files.download_count`。(hyjiacan, 2026-09-28)
 

@@ -389,6 +389,10 @@ export const SearchApi = {
   // 文件名检索：拼写纠错（输入错误时给推荐）
   spellcheck(query, limit = 5) {
     return request.get('/search-spellcheck', { params: { q: query, limit } })
+  },
+  // 文件名检索：相关词推荐（输入空格后给出下一段候选）
+  related(query, limit = 10) {
+    return request.get('/search-related', { params: { q: query, limit } })
   }
 }
 

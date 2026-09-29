@@ -512,6 +512,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		// 文件名检索：自动补全（搜索框实时联想）与拼写纠错
 		api.GET("/search-suggest", suggestHandler.Autocomplete)
 		api.GET("/search-spellcheck", suggestHandler.SpellCheck)
+		api.GET("/search-related", suggestHandler.Related) // 输入空格后的下一段相关词候选
 	}
 
 	// 需要认证的路由组

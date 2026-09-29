@@ -340,3 +340,74 @@ func TestIndexBatchAndAutoComplete(t *testing.T) {
 		}
 	}
 }
+
+// TestSuggestRelatedKeywords 覆盖相关词推荐：按同文件共现统计、排除已输入段及其补全、按共现文档数排序。
+// 注：gse 会把"年度报告"整体切为一个词，故用例按真实分词设计。
+func TestSuggestRelatedKeywords(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	files := map[int64]string{
+		1: "2024年度财务报表.pdf",
+		2: "2023年度财务报表模板.xlsx",
+		3: "年度报告.pdf",
+		4: "季度总结.txt",
+		5: "财务报表打印.xlsx",
+	}
+	for id, name := range files {
+		if err := idx.IndexFile(id, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 空输入与无命中均应返回空
+	if got, err := idx.SuggestRelatedKeywords("   ", 10); err != nil || len(got) != 0 {
+		t.Fatalf("空输入应返回空，实际 %v, err=%v", got, err)
+	}
+	if got, err := idx.SuggestRelatedKeywords("不存在的词zzz", 10); err != nil || len(got) != 0 {
+		t.Fatalf("无命中应返回空，实际 %v, err=%v", got, err)
+	}
+
+	// 单段：命中 1/2/3；"财务报表"与"pdf"各共现 2 次，应占据前两位
+	got, err := idx.SuggestRelatedKeywords("年度", 10)
+	if err != nil {
+		t.Fatalf("SuggestRelatedKeywords 失败: %v", err)
+	}
+	if len(got) < 2 {
+		t.Fatalf("年度 的相关词应至少 2 个，实际 %v", got)
+	}
+	if !containsTerm(got[:2], "财务报表") || !containsTerm(got[:2], "pdf") {
+		t.Fatalf("年度 的高频相关词应为 财务报表 与 pdf，实际 %v", got)
+	}
+	// 已输入段及其补全（年度报告）不应出现；未命中文件（4/5）的词也不应出现
+	for _, bad := range []string{"年度", "年度报告", "总结", "打印"} {
+		if containsTerm(got, bad) {
+			t.Fatalf("相关词不应含 %s，实际 %v", bad, got)
+		}
+	}
+
+	// 多段：仅同时含 年度 与 财务报表 的文件（1/2）参与统计，
+	// 故仅属 年度 的 3 与仅属 财务报表 的 5 均被排除
+	got, err = idx.SuggestRelatedKeywords("年度 财务报表", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"2024", "2023", "模板"} {
+		if !containsTerm(got, want) {
+			t.Fatalf("年度 财务报表 的相关词应含 %s，实际 %v", want, got)
+		}
+	}
+	for _, bad := range []string{"年度", "年度报告", "财务报表", "总结", "打印"} {
+		if containsTerm(got, bad) {
+			t.Fatalf("相关词不应含 %s，实际 %v", bad, got)
+		}
+	}
+}
+
+func containsTerm(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}

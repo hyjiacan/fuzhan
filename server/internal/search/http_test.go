@@ -21,6 +21,8 @@ func doGET(h *Handler, method, path, query string) *httptest.ResponseRecorder {
 		h.Autocomplete(ctx)
 	case "SpellCheck":
 		h.SpellCheck(ctx)
+	case "Related":
+		h.Related(ctx)
 	}
 	return rr
 }
@@ -90,8 +92,36 @@ func TestSpellCheckHandler(t *testing.T) {
 	}
 }
 
+// TestRelatedHandler 覆盖相关词推荐接口：正常查询返回共现关键词，空 q 返回空数组
+func TestRelatedHandler(t *testing.T) {
+	idx := newTestIndex(t)
+	defer idx.CloseWriter()
+	if err := idx.IndexFile(1, "2024年度财务报表.pdf"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.IndexFile(2, "2023年度财务报表模板.xlsx"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(idx)
+
+	rr := doGET(h, "Related", "/api/v1/search-related", "q=年度")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("期望 200，实际 %d: %s", rr.Code, rr.Body.String())
+	}
+	names := decodeData(t, rr)
+	if !containsTerm(names, "财务报表") {
+		t.Fatalf("q=年度 的相关词应含 财务报表，实际 %v", names)
+	}
+
+	// 空 q 返回空数组
+	rr = doGET(h, "Related", "/api/v1/search-related", "q=")
+	if names = decodeData(t, rr); names == nil {
+		t.Fatal("空 q 应返回空数组而非 null")
+	}
+}
+
+// TestNilIndexHandler 覆盖 idx 为 nil 时各建议接口应返回空数组而不 panic
 func TestNilIndexHandler(t *testing.T) {
-	// idx 为 nil 时接口应返回空数组而不 panic
 	h := NewHandler(nil)
 	rr := doGET(h, "Autocomplete", "/api/v1/search-suggest", "q=read")
 	if rr.Code != http.StatusOK {
@@ -103,5 +133,12 @@ func TestNilIndexHandler(t *testing.T) {
 	rr = doGET(h, "SpellCheck", "/api/v1/search-spellcheck", "q=REEDME")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d", rr.Code)
+	}
+	rr = doGET(h, "Related", "/api/v1/search-related", "q=年度")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("期望 200，实际 %d", rr.Code)
+	}
+	if names := decodeData(t, rr); names == nil {
+		t.Fatal("nil 索引应返回空数组")
 	}
 }

@@ -36,6 +36,7 @@
                   <span class="suggest-name">{{ item.token }}</span>
                 </span>
                 <span v-if="item.corrected" class="suggest-tag">纠错</span>
+                <span v-else-if="item.related" class="suggest-tag suggest-tag--related">相关</span>
               </div>
             </template>
           </el-autocomplete>
@@ -771,6 +772,14 @@ watch(
     background: @primary-color;
     border-radius: 3px;
     white-space: nowrap;
+  }
+
+  /* 相关词候选：弱化处理，与"纠错"徽标区分 */
+  .suggest-tag--related {
+    color: @text-color-secondary;
+    background: transparent;
+    border: 1px solid @text-color-placeholder;
+    line-height: 16px;
   }
 }
 </style>

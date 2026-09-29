@@ -44,18 +44,36 @@ export function useHomeSearch() {
   // 搜索框下拉推荐：自动补全 + 拼写纠错。
   // 按空格把输入拆成若干部分，仅针对最后一部分（用户当前正在输入的部分）请求建议，
   // 选中后替换该部分并保留前面的关键词，使输入的每一段都能获得推荐/纠错。
+  // 末尾为空格时改为请求相关词，给出与已输入各段共现的「下一段」候选。
   // 输入防抖 300ms，避免每键并发两次请求。
   let suggestTimer = null
   const querySuggestions = (queryString, cb) => {
     if (suggestTimer) clearTimeout(suggestTimer)
     suggestTimer = setTimeout(() => {
       const raw = queryString || ''
-      // 末尾为空格表示新的一段尚未开始输入，暂不给出建议
-      if (!raw.trim() || /\s$/.test(raw)) {
+      const trimmed = raw.trim()
+      if (!trimmed) {
         cb([])
         return
       }
-      const parts = raw.trim().split(/\s+/)
+      const parts = trimmed.split(/\s+/)
+      // 末尾为空格：当前段尚未开始输入，改为给出与已输入各段共现的「下一段」候选
+      if (/\s$/.test(raw)) {
+        const prefix = `${trimmed} `
+        SearchApi.related(trimmed)
+          .catch(() => ({ data: [] }))
+          .then((res) => {
+            const names = Array.isArray(res?.data) ? res.data : []
+            cb(names.slice(0, 12).map((name) => ({
+              value: prefix + name,
+              prefix,
+              token: name,
+              corrected: false,
+              related: true
+            })))
+          })
+        return
+      }
       const token = parts[parts.length - 1]
       const prefix = parts.length > 1 ? `${parts.slice(0, -1).join(' ')} ` : ''
       // 并行拉取当前段的自动补全与纠错建议

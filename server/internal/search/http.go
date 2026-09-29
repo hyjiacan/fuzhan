@@ -55,6 +55,26 @@ func (h *Handler) Autocomplete(c *gin.Context) {
 	utils.HandleSuccess(c, http.StatusOK, "", names)
 }
 
+// Related 相关词推荐。
+// GET /api/v1/search-related?q=已输入各段&limit=数量
+// 返回 data: []string（与已输入各段同文件共现的高频关键词），供输入空格后给出下一段候选。
+func (h *Handler) Related(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" || h.idx == nil {
+		utils.HandleSuccess(c, http.StatusOK, "", []string{})
+		return
+	}
+	names, err := h.idx.SuggestRelatedKeywords(q, parseLimit(c.Query("limit"), 10, 30))
+	if err != nil {
+		utils.HandleError(c, http.StatusInternalServerError, 500, "相关词推荐失败", err.Error())
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	utils.HandleSuccess(c, http.StatusOK, "", names)
+}
+
 // SpellCheck 拼写纠错建议。
 // GET /api/v1/search-spellcheck?q=单词&limit=数量
 // 返回 data: []string（最相似的关键词候选，而非完整文件名）。

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/blugelabs/bluge"
 	"github.com/blugelabs/bluge/analysis"
@@ -546,6 +547,110 @@ func (s *SearchIndex) SuggestCorrectKeywords(word string, limit int) ([]string, 
 		out = append(out, cand[i].term)
 	}
 	return out, nil
+}
+
+// relatedDocsLimit 相关词推荐参与共现统计的命中文档上限，用于约束单次请求的分词与聚合开销。
+const relatedDocsLimit = 200
+
+// SuggestRelatedKeywords 相关词推荐：统计与已输入各段（空格分隔）同文件共现的其它关键词，
+// 按共现文档数降序返回，供"输入空格后"给出下一段候选。只做共现、不要求词序相邻。
+// 关键词取自命中文件名的完整词（中文语义单元 / 英文整词），不含 N-gram 碎片；
+// 已输入段本身及其补全（如输入"年度"时的"年度报告"）不计入候选。
+func (s *SearchIndex) SuggestRelatedKeywords(prefix string, limit int) ([]string, error) {
+	terms := strings.Fields(strings.ToLower(strings.TrimSpace(prefix)))
+	if len(terms) == 0 {
+		return []string{}, nil
+	}
+
+	s.rwMu.RLock()
+	defer s.rwMu.RUnlock()
+	if s.writer == nil {
+		return []string{}, nil
+	}
+
+	reader, err := s.writer.Reader()
+	if err != nil {
+		return nil, fmt.Errorf("打开读端失败: %w", err)
+	}
+	defer reader.Close()
+
+	// 各输入段以前缀查询求交（Must），兼容用户当前段尚未输完的情况
+	bq := bluge.NewBooleanQuery()
+	for _, t := range terms {
+		bq.AddMust(bluge.NewPrefixQuery(t).SetField(FieldFileName))
+	}
+
+	dmi, err := reader.Search(context.Background(), bluge.NewTopNSearch(relatedDocsLimit, bq))
+	if err != nil {
+		return nil, fmt.Errorf("相关词查询失败: %w", err)
+	}
+	names, err := collectFileNames(dmi)
+	if err != nil {
+		return nil, err
+	}
+
+	// 按文档去重计数（文档频次），避免同一文件内重复出现的词被高估
+	docFreq := make(map[string]int)
+	for _, name := range names {
+		seen := make(map[string]struct{})
+		for _, w := range fullWords(s.seg, name) {
+			if utf8.RuneCountInString(w) < 2 {
+				continue
+			}
+			// 跳过已输入段本身及其补全：用户敲下空格即视该段已完整，不再推荐同段延伸
+			// （如输入"年度"后不再推荐"年度报告"）
+			if hasAnyPrefix(w, terms) {
+				continue
+			}
+			if _, dup := seen[w]; dup {
+				continue
+			}
+			seen[w] = struct{}{}
+			docFreq[w]++
+		}
+	}
+
+	cand := make([]suggestTerm, 0, len(docFreq))
+	for w, c := range docFreq {
+		cand = append(cand, suggestTerm{term: w, count: uint64(c)})
+	}
+	sort.Slice(cand, func(i, j int) bool {
+		if cand[i].count != cand[j].count {
+			return cand[i].count > cand[j].count
+		}
+		return cand[i].term < cand[j].term
+	})
+
+	out := make([]string, 0, limit)
+	for i := 0; i < len(cand) && len(out) < limit; i++ {
+		out = append(out, cand[i].term)
+	}
+	return out, nil
+}
+
+// hasAnyPrefix 判断 s 是否以 prefixes 中任一前缀开头（含完全相等）。
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// fullWords 将文件名切分为完整词（中文语义单元 / 英文数字整词），不含 N-gram 片段。
+// 与索引写入共用同一分词器，保证词形与倒排一致。
+func fullWords(seg *gse.Segmenter, fileName string) []string {
+	words := seg.Cut(strings.ToLower(fileName), true)
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.TrimSpace(w)
+		if w == "" {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // editDistance 计算两个小写字符串的 Levenshtein 编辑距离（字节级，英文与中文 UTF-8 序列均适用）。
