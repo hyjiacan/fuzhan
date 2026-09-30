@@ -5,8 +5,9 @@
         <h2>系统设置</h2>
         <p class="description">管理系统配置和参数调整</p>
       </div>
-      <div class="dirty-tip" v-if="isDirty">
-        <span class="dot"></span>有未保存的更改
+      <div class="dirty-tip" v-if="isDirty" @click="showChanges = true">
+        <span class="dot"></span>有未保存的更改（{{ changeList.length }} 项）
+        <span class="dirty-link">查看更改</span>
       </div>
     </div>
 
@@ -49,6 +50,9 @@
           <template v-if="isDirty"><span class="dot warning"></span>当前有未保存的更改</template>
         </div>
         <div class="actions-btns">
+          <el-button :disabled="!isDirty" @click="showChanges = true">
+            查看更改{{ changeList.length ? `（${changeList.length}）` : '' }}
+          </el-button>
           <el-button :disabled="!isDirty" @click="handleReset">重置</el-button>
           <el-button type="primary" :loading="saving" :disabled="!isDirty" @click="saveSettings">
             保存配置{{ isDirty ? '' : ' ✓' }}
@@ -56,6 +60,8 @@
         </div>
       </div>
     </div>
+
+    <SettingsChangesDrawer v-model="showChanges" :changes="changeList" @navigate="handleNavigateToPanel" />
   </div>
 </template>
 
@@ -78,6 +84,8 @@ import SettingsDatabase from './settings/SettingsDatabase.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsAuth from './settings/SettingsAuth.vue'
 import SettingsResource from './settings/SettingsResource.vue'
+import SettingsChangesDrawer from './settings/SettingsChangesDrawer.vue'
+import { diffSettings } from './settings/useSettingsDiff'
 import { formatToUnit } from './settings/useSettingsUtils'
 
 const message = ElMessage
@@ -85,6 +93,8 @@ const message = ElMessage
 const saving = ref(false)
 const activePanel = shallowRef('appInfo')
 const collapsed = ref(false)
+// 变更预览抽屉开关
+const showChanges = ref(false)
 
 // 侧栏分节分组：基础 / 服务存储 / 预览类型 / 数据安全 / 资源
 const navGroups = [
@@ -148,6 +158,16 @@ const baselineSnapshot = ref('')
 // 直接序列化响应式对象：若用 toRaw 剥离代理，computed 无法收集字段依赖，isDirty 将永不响应变更
 const serialize = (v) => JSON.stringify(v)
 const isDirty = computed(() => baselineSnapshot.value !== '' && serialize(settings) !== baselineSnapshot.value)
+// 变更明细：逐字段对比当前 settings 与基线快照
+const changeList = computed(() => {
+  if (!isDirty.value || !baselineSnapshot.value) return []
+  try {
+    return diffSettings(settings, JSON.parse(baselineSnapshot.value))
+  } catch (e) {
+    console.error('生成设置变更明细失败', e)
+    return []
+  }
+})
 // 各顶层配置节的基线序列化值，供保存时增量 diff：仅提交发生变化的配置节
 let baselineSections = null
 
@@ -738,6 +758,13 @@ const handleSelect = (key) => {
   activePanel.value = key
 }
 
+// 从变更明细跳转到对应设置分区，并收起抽屉
+const handleNavigateToPanel = (panel) => {
+  if (!panel) return
+  activePanel.value = panel
+  showChanges.value = false
+}
+
 // 导航切换（侧栏折叠/展开由点击菜单标题项切换，这里仅处理面板切换）
 
 // 离开拦截：有未保存更改时提示
@@ -796,12 +823,23 @@ onMounted(() => {
     font-size: @font-size-sm;
     font-weight: 500;
     white-space: nowrap;
+    cursor: pointer;
+    transition: background-color @transition-fast;
+
+    &:hover {
+      background: #fbe9cd;
+    }
 
     .dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
       background: @warning-color;
+    }
+
+    .dirty-link {
+      color: @primary-color;
+      text-decoration: underline;
     }
   }
 
