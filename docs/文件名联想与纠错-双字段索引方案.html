@@ -662,7 +662,7 @@
         <!-- 5. 写入路径改造 -->
         <section id="write-path">
           <h2>五、写入路径改造</h2>
-          <p>写入路径的改动集中在 <code>server/internal/search/search.go</code> 的四个位置，<code>indexer.go</code> 与热替换逻辑无需改动（它们复用同一套构造函数）。</p>
+          <p>写入路径的改动集中在 <code>server/internal/search</code> 的两个文件：字段常量与 <code>buildSearchDoc</code> 在 <code>search.go</code>，分词器与两个分析器在 <code>segmenter.go</code>（gse 依赖集中于此，其余文件只通过包内别名 <code>segmenter</code> 使用分词能力，不直接 import gse）。<code>indexer.go</code> 与热替换逻辑无需改动（它们复用同一套构造函数）。</p>
 
           <h3>5.1 字段常量</h3>
           <div class="code-label">search.go</div>
@@ -671,16 +671,21 @@
     FieldFileName = "file_name"
     // 片段字段：完整词 + N-gram(2~4)；仅索引不 store，供子串召回
     FieldFileNameNgram = "file_name_ngram"
-
+)</code></pre>
+          <div class="code-label">segmenter.go</div>
+          <pre><code>const (
+    // Ngram 英文/数字片段长度范围
     ngramMin = 2
     ngramMax = 4
 )</code></pre>
 
           <h3>5.2 分词器增加 N-gram 开关</h3>
-          <p>给 <code>gseNgramTokenizer</code> 增加 <code>enableNgram</code> 字段，完整词始终保留，仅按开关决定是否补片段。这样两个分析器可共用同一个分词器实现。</p>
-          <div class="code-label">search.go</div>
-          <pre><code>type gseNgramTokenizer struct {
-    seg         *gse.Segmenter
+          <p>给 <code>gseNgramTokenizer</code> 增加 <code>enableNgram</code> 字段，完整词始终保留，仅按开关决定是否补片段。这样两个分析器可共用同一个分词器实现。分词器类型统一使用包内别名 <code>segmenter</code>（<code>gse.Segmenter</code> 的别名），使 gse 依赖只存在于 <code>segmenter.go</code>。</p>
+          <div class="code-label">segmenter.go</div>
+          <pre><code>type segmenter = gse.Segmenter // 包内统一的分词器类型，gse 依赖收敛于此
+
+type gseNgramTokenizer struct {
+    seg         *segmenter
     ngramMin    int
     ngramMax    int
     enableNgram bool
@@ -702,15 +707,15 @@ if isASCIIWord(w) &amp;&amp; len(w) &gt;= 2 {
 
           <h3>5.3 拆出两个分析器</h3>
           <p>把原 <code>newMixedAnalyzer</code> 拆成「完整词」与「片段」两个构造函数。中文分支两者行为一致，差异只在是否补 N-gram。</p>
-          <div class="code-label">search.go</div>
-          <pre><code>func newFullWordAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
+          <div class="code-label">segmenter.go</div>
+          <pre><code>func newFullWordAnalyzer(seg *segmenter) *analysis.Analyzer {
     return &amp;analysis.Analyzer{
         Tokenizer:    &amp;gseNgramTokenizer{seg: seg, ngramMin: ngramMin, ngramMax: ngramMax, enableNgram: false},
         TokenFilters: []analysis.TokenFilter{token.NewLowerCaseFilter()},
     }
 }
 
-func newNgramAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
+func newNgramAnalyzer(seg *segmenter) *analysis.Analyzer {
     return &amp;analysis.Analyzer{
         Tokenizer:    &amp;gseNgramTokenizer{seg: seg, ngramMin: ngramMin, ngramMax: ngramMax, enableNgram: true},
         TokenFilters: []analysis.TokenFilter{token.NewLowerCaseFilter()},
@@ -719,7 +724,7 @@ func newNgramAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
 
           <h3>5.4 构建文档时写入两个字段</h3>
           <div class="code-label">search.go</div>
-          <pre><code>func buildSearchDoc(id, fileName string, seg *gse.Segmenter) *bluge.Document {
+          <pre><code>func buildSearchDoc(id, fileName string, seg *segmenter) *bluge.Document {
     doc := bluge.NewDocument(id)
     doc.AddField(bluge.NewTextField(FieldFileName, fileName).
         StoreValue().
@@ -812,7 +817,7 @@ bq.AddMust(bluge.NewPrefixQuery(t).SetField(FieldFileNameNgram))</code></pre>
             <li>
               <span class="step-no">01</span>
               <div class="step-body">
-                <p><strong>改字段常量与分析器</strong>：新增 <code>FieldFileNameNgram</code>；给分词器加 <code>enableNgram</code>；拆出 <code>newFullWordAnalyzer</code> / <code>newNgramAnalyzer</code>；<code>openBlugeWriter</code> 默认分析器改用完整词分析器。</p>
+                <p><strong>改字段常量与分析器</strong>：在 <code>search.go</code> 新增 <code>FieldFileNameNgram</code>；在 <code>segmenter.go</code> 给分词器加 <code>enableNgram</code>、拆出 <code>newFullWordAnalyzer</code> / <code>newNgramAnalyzer</code>；<code>openBlugeWriter</code> 默认分析器改用完整词分析器。</p>
               </div>
             </li>
             <li>
@@ -1040,7 +1045,12 @@ go build ./...                         # 确认无编译残留（filterTermFragm
                 <tr>
                   <th scope="row"><code>server/internal/search/search.go</code></th>
                   <td>修改</td>
-                  <td>字段常量、分词器开关、两个分析器、<code>buildSearchDoc</code>、查询字段路由、删除 <code>filterTermFragments</code>、词表枚举去过滤</td>
+                  <td>字段常量、<code>buildSearchDoc</code>、查询字段路由、删除 <code>filterTermFragments</code>、词表枚举去过滤</td>
+                </tr>
+                <tr>
+                  <th scope="row"><code>server/internal/search/segmenter.go</code></th>
+                  <td>新增</td>
+                  <td>gse 分词器加载（<code>newSegmenter</code>）、分词器开关（<code>gseNgramTokenizer</code>）、两个分析器、切词辅助（<code>fullWords</code> / <code>isASCIIWord</code>）与 <code>segmenter</code> 别名；gse 依赖集中于此（职责分离）</td>
                 </tr>
                 <tr>
                   <th scope="row"><code>server/internal/search/fragment_test.go</code></th>
@@ -1076,7 +1086,7 @@ go build ./...                         # 确认无编译残留（filterTermFragm
       <footer>
         <h2>来源</h2>
         <ol>
-          <li id="cite-1">项目代码：<code>server/internal/search/search.go</code>、<code>indexer.go</code>、<code>http.go</code>、<code>fragment_test.go</code>（本地仓库，2026-09-29 读取）。</li>
+          <li id="cite-1">项目代码：<code>server/internal/search/search.go</code>、<code>segmenter.go</code>、<code>indexer.go</code>、<code>http.go</code>、<code>fragment_test.go</code>（本地仓库，2026-09-29 读取；<code>segmenter.go</code> 为 2026-09-30 职责分离拆分新增）。</li>
           <li id="cite-2">项目文档：<code>docs/03-文件搜索模块.md</code>「嵌入式检索模块（Bluge + gse）」章节。</li>
           <li id="cite-3">依赖实现：<code>github.com/blugelabs/bluge@v0.2.2</code>（<code>DictionaryIterator</code>、<code>PrefixQuery</code>、<code>FuzzyQuery</code>、<code>TextField</code> / <code>StoreValue</code>）。</li>
         </ol>

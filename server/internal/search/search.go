@@ -24,10 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/blugelabs/bluge"
-	"github.com/blugelabs/bluge/analysis"
-	"github.com/blugelabs/bluge/analysis/token"
 	"github.com/blugelabs/bluge/search"
-	"github.com/go-ego/gse"
 )
 
 const (
@@ -35,10 +32,6 @@ const (
 	FieldFileName = "file_name"
 	// FieldFileNameNgram 片段字段：完整词 + N-gram(2~4)；仅索引不 store，供子串召回
 	FieldFileNameNgram = "file_name_ngram"
-
-	// Ngram 英文/数字片段长度范围
-	ngramMin = 2
-	ngramMax = 4
 )
 
 // SearchIndex 封装 Bluge 索引 Writer，负责文件名的写入与检索。
@@ -52,7 +45,7 @@ const (
 type SearchIndex struct {
 	writer *bluge.Writer
 	dir    string // 本索引的磁盘目录（用于计算影子重建目录）
-	seg    *gse.Segmenter
+	seg    *segmenter
 	mu     sync.Mutex   // 串行化写操作
 	rwMu   sync.RWMutex // 保护 writer 字段生命周期：读共享 / 热替换写独占
 
@@ -67,28 +60,28 @@ type SearchIndex struct {
 }
 
 // OpenIndex 打开（或创建）位于 dir 的搜索索引，并加载 gse 分词词典。
+// 分词器的加载与使用见 segmenter.go，本文件不直接依赖 gse。
 func OpenIndex(dir string) (*SearchIndex, error) {
-	// 加载 gse 中文分词器；优先使用内嵌词典，避免依赖外部字典文件
-	seg, err := gse.NewEmbed()
+	seg, err := newSegmenter()
 	if err != nil {
-		return nil, fmt.Errorf("加载 gse 词典失败: %w", err)
+		return nil, err
 	}
 
-	writer, err := openBlugeWriter(dir, &seg)
+	writer, err := openBlugeWriter(dir, seg)
 	if err != nil {
 		return nil, err
 	}
 	return &SearchIndex{
 		writer:            writer,
 		dir:               dir,
-		seg:               &seg,
+		seg:               seg,
 		suggestDebounceNs: int64(suggestRebuildDebounce), // 写后重建节流窗口
 	}, nil
 }
 
 // openBlugeWriter 在 dir 打开（或创建）Bluge 写端并套用自定义分析器。
 // 影子重建也复用本函数在临时目录构建全新索引。
-func openBlugeWriter(dir string, seg *gse.Segmenter) (*bluge.Writer, error) {
+func openBlugeWriter(dir string, seg *segmenter) (*bluge.Writer, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建索引目录失败: %w", err)
 	}
@@ -107,7 +100,7 @@ func openBlugeWriter(dir string, seg *gse.Segmenter) (*bluge.Writer, error) {
 //   - file_name_ngram（完整词 + N-gram 片段）：不 store，供前缀/模糊等子串召回
 //
 // 与 s 无耦合，供线上与影子重建共用。
-func buildSearchDoc(id, fileName string, seg *gse.Segmenter) *bluge.Document {
+func buildSearchDoc(id, fileName string, seg *segmenter) *bluge.Document {
 	doc := bluge.NewDocument(id)
 	doc.AddField(bluge.NewTextField(FieldFileName, fileName).
 		StoreValue().
@@ -118,7 +111,7 @@ func buildSearchDoc(id, fileName string, seg *gse.Segmenter) *bluge.Document {
 }
 
 // writeEntries 将一批条目写入指定 writer（不涉及锁与词表缓存，供线上 IndexBatch 与影子重建共用）。
-func writeEntries(w *bluge.Writer, seg *gse.Segmenter, entries []IndexEntry) error {
+func writeEntries(w *bluge.Writer, seg *segmenter, entries []IndexEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -134,108 +127,6 @@ func writeEntries(w *bluge.Writer, seg *gse.Segmenter, entries []IndexEntry) err
 		return fmt.Errorf("批量写入检索索引失败: %w", err)
 	}
 	return nil
-}
-
-// newFullWordAnalyzer 构造「完整词」分析器：gse 中文分词 + 英文/数字整词，不补 N-gram 片段。
-// 供 file_name 字段使用，是建议/纠错词表的唯一来源。
-func newFullWordAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
-	return &analysis.Analyzer{
-		Tokenizer: &gseNgramTokenizer{
-			seg:         seg,
-			ngramMin:    ngramMin,
-			ngramMax:    ngramMax,
-			enableNgram: false,
-		},
-		TokenFilters: []analysis.TokenFilter{
-			token.NewLowerCaseFilter(),
-		},
-	}
-}
-
-// newNgramAnalyzer 构造「片段」分析器：完整词 + N-gram(2~4) 片段。
-// 供 file_name_ngram 字段使用，只服务需要子串/中段召回的查询。
-func newNgramAnalyzer(seg *gse.Segmenter) *analysis.Analyzer {
-	return &analysis.Analyzer{
-		Tokenizer: &gseNgramTokenizer{
-			seg:         seg,
-			ngramMin:    ngramMin,
-			ngramMax:    ngramMax,
-			enableNgram: true,
-		},
-		TokenFilters: []analysis.TokenFilter{
-			token.NewLowerCaseFilter(),
-		},
-	}
-}
-
-// gseNgramTokenizer 自定义分词器：先 gse 切词，完整词始终保留，再按开关决定是否对英文/数字段补 N-gram。
-type gseNgramTokenizer struct {
-	seg         *gse.Segmenter
-	ngramMin    int
-	ngramMax    int
-	enableNgram bool
-}
-
-// Tokenize 将输入文本转换为 token 流。
-func (t *gseNgramTokenizer) Tokenize(input []byte) analysis.TokenStream {
-	text := strings.ToLower(string(input))
-	words := t.seg.Cut(text, true)
-
-	var stream analysis.TokenStream
-	pos := 0
-	// 借助 map 去重，避免同一位置产生重复 token
-	emitted := make(map[string]struct{})
-
-	emit := func(term string) {
-		if _, ok := emitted[term]; ok {
-			return
-		}
-		emitted[term] = struct{}{}
-		pos++
-		stream = append(stream, &analysis.Token{
-			Start:        0,
-			End:          len(term),
-			Term:         []byte(term),
-			PositionIncr: 1,
-			Type:         analysis.AlphaNumeric,
-		})
-	}
-
-	for _, w := range words {
-		w = strings.TrimSpace(w)
-		if w == "" {
-			continue
-		}
-		if isASCIIWord(w) && len(w) >= 2 {
-			// 英文/数字：完整词始终保留（供精确前缀/模糊匹配），仅按开关补充 N-gram 片段
-			emit(w)
-			if t.enableNgram {
-				for n := t.ngramMin; n <= t.ngramMax && n <= len(w); n++ {
-					for i := 0; i+n <= len(w); i++ {
-						emit(w[i : i+n])
-					}
-				}
-			}
-		} else {
-			// 中文：gse 已切成语义单元，直接作为 token
-			emit(w)
-		}
-	}
-	return stream
-}
-
-// isASCIIWord 判断字符串是否仅由 ASCII 字母/数字组成
-func isASCIIWord(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
-			return false
-		}
-	}
-	return true
 }
 
 // IndexFile 将一条文件名写入索引。
@@ -625,21 +516,6 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 		}
 	}
 	return false
-}
-
-// fullWords 将文件名切分为完整词（中文语义单元 / 英文数字整词），不含 N-gram 片段。
-// 与索引写入共用同一分词器，保证词形与倒排一致。
-func fullWords(seg *gse.Segmenter, fileName string) []string {
-	words := seg.Cut(strings.ToLower(fileName), true)
-	out := make([]string, 0, len(words))
-	for _, w := range words {
-		w = strings.TrimSpace(w)
-		if w == "" {
-			continue
-		}
-		out = append(out, w)
-	}
-	return out
 }
 
 // editDistance 计算两个小写字符串的 Levenshtein 编辑距离（字节级，英文与中文 UTF-8 序列均适用）。
