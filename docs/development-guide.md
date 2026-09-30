@@ -545,6 +545,34 @@ yarn test
 - import 分组：标准库 / 第三方 / 本地包（`fuzhan/` 前缀）
 - 使用 `internal/` 目录组织核心代码
 
+### 数据库交互规范
+
+项目支持 **SQLite / MySQL / PostgreSQL** 三种数据库，数据库代码必须同时兼容三者。
+
+**1. 一律通过 ORM（GORM）完成**
+
+- 所有数据库读写必须使用 GORM 的模型与条件构造器（`Model` / `Where` / `Select` / `Joins` / `Create` / `Save` / `Updates` / `Delete` 等）；模型必须定义 `TableName()`。
+- 新增/变更表结构与索引统一通过模型定义 + `AutoMigrate` 完成；确需手工处理索引时，使用 `db.Migrator().CreateIndex()` / `HasIndex()` / `DropIndex()`，不得手写 `CREATE INDEX` DDL。
+
+**2. 确需原生 SQL 时（特殊情况）**
+
+复杂聚合、批量更新等确需 `db.Exec` / `db.Raw` / `gorm.Expr` 的场景，必须同时满足以下条件：
+
+- **兼容三种数据库**，不得使用任一引擎专有语法/函数/类型，例如：
+  - `||` 字符串拼接（MySQL 默认按逻辑 OR 解析）→ 改用 `CONCAT()` 或 ORM 表达式；
+  - 两参数 `TRIM(str, chars)`（MySQL 不支持）→ 改用 `TRIM(BOTH chars FROM str)` 或 ORM 表达式；
+  - `CAST(x AS TEXT)`（MySQL 应使用 `CHAR`）；
+  - `CREATE INDEX IF NOT EXISTS`（MySQL 不支持）→ 改用 Migrator；
+  - 反引号标识符 `` `col` ``（PostgreSQL 不支持）→ 直接写列名或交由 ORM 处理；
+  - 其它引擎专有函数（如 `IFNULL` / `strftime` / `ON CONFLICT` 等）。
+- **参数化绑定**：值一律使用 `?` 占位符，禁止拼接用户输入；标识符（表名/列名/排序字段）只能来自白名单，禁止拼接外部输入。
+- 就近注释说明为何无法用 ORM 表达，以及兼容性依据。
+
+**3. 表名与标识符**
+
+- 表名统一取自模型 `TableName()`（如 `db.Table(models.FileRecordPublic{}.TableName())`），禁止在 SQL 中硬编码表名字符串。
+- 动态列名/排序字段必须先经白名单映射再使用。
+
 ### Vue 代码规范
 
 - 组件名: PascalCase

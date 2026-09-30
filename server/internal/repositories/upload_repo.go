@@ -10,35 +10,71 @@ import (
 	"gorm.io/gorm"
 )
 
+// sqlTrimSlashes 生成"去除首尾斜杠"的跨库 SQL 表达式（SQLite / MySQL / PostgreSQL 通用）。
+//
+// 三库没有公共的两参数 TRIM：SQLite 只支持 TRIM(x, y)、MySQL 只支持 TRIM(BOTH y FROM x)、
+// PostgreSQL 两者皆可，因此统一改用 SUBSTR + LENGTH 组合（三库均支持）：先去前导 '/'，
+// 再去尾随 '/'。仅处理首尾各一个斜杠——本系统写入的路径不会出现连续斜杠。
+// 注意：MySQL 的 LENGTH 按字节计数，多字节路径且带尾随斜杠时尾随斜杠不会被去除（此类数据不会出现）。
+func sqlTrimSlashes(col string) string {
+	lead := "CASE WHEN SUBSTR(" + col + ", 1, 1) = '/' THEN SUBSTR(" + col + ", 2) ELSE " + col + " END"
+	return "SUBSTR(" + lead + ", 1, LENGTH(" + lead + ") - CASE WHEN SUBSTR(" + lead + ", LENGTH(" + lead + "), 1) = '/' THEN 1 ELSE 0 END)"
+}
+
 // ApplyExistingFileFilter 为 operation_records 查询追加"文件仍然存在"过滤：
 // 公共文件（upload_type 为 regular 或空）的上传/下载记录，仅当索引表
 // file_records_public 中仍存在对应的 active 记录时返回（文件被删除后不再出现
 // 于最近上传/下载/热门下载等页面）；search 记录与 temp/private 记录不过滤，
 // 分别由各自页面独立管理。
+//
+// 性能约束：两个关联分支必须写成相互独立、各自可被索引定位的 EXISTS，
+// 不能合并进同一个 EXISTS 内部用 OR 连接。若合并，SQLite 无法为 OR 两侧
+// 分别选索引，只能退化为按 status='active' 扫描 file_records_public 的全部
+// 活动行，并对 operation_records 的每一行重复一遍（O(记录数 × 活动文件数)），
+// 使最近上传/下载、热门下载、排行榜等接口随文件数增长而线性劣化。
+// 拆分后：身份分支走 INTEGER PRIMARY KEY(rowid) 等值查找，路径分支走
+// (root_name, status) 索引前缀，单条记录只需常数级查找。
+//
+// 第一个 EXISTS 按文件身份(file_record_id)关联：移动/重命名后 ID 不变；
+// 第二个 EXISTS 供未关联身份的历史记录回退到根目录 + 路径快照匹配。
+// 语句内不写 SQL 注释，避免依赖各方言的注释解析差异。
+//
+// 跨库兼容：字符串拼接统一用 CONCAT（SQLite 3.44+ / MySQL / PostgreSQL 均支持），
+// 不用 `||`（MySQL 默认按逻辑 OR 解析）；路径比较不用两参数 TRIM（三库无公共形式），
+// 改用 sqlTrimSlashes 去除首尾斜杠后比较。表名取自模型，避免硬编码。
 func ApplyExistingFileFilter(q *gorm.DB) *gorm.DB {
-	return q.Where(`(
-		operation_records.action = 'search'
-		OR operation_records.upload_type NOT IN ('regular', '')
-		OR EXISTS (
-			SELECT 1 FROM file_records_public frp
+	opTable := models.OperationRecord{}.TableName()
+	frpTable := models.FileRecordPublic{}.TableName()
+	repl := strings.NewReplacer(
+		"{op}", opTable,
+		"{frp}", frpTable,
+		"{op_fp}", sqlTrimSlashes(opTable+".file_path"),
+		"{frp_fp}", sqlTrimSlashes("frp.file_path"),
+	)
+	return q.Where(repl.Replace(`(
+		{op}.action = 'search'
+		OR {op}.upload_type NOT IN ('regular', '')
+		OR ({op}.file_record_id > 0 AND EXISTS (
+			SELECT 1 FROM {frp} frp
+			WHERE frp.id = {op}.file_record_id
+			  AND frp.status = 'active'
+			  AND frp.deleted_at IS NULL
+		))
+		OR ({op}.file_record_id = 0 AND EXISTS (
+			SELECT 1 FROM {frp} frp
 			WHERE frp.status = 'active'
 			  AND frp.deleted_at IS NULL
+			  AND frp.root_name = {op}.root_name
 			  AND (
-				-- 优先按文件身份(file_record_id)关联：移动/重命名后 ID 不变
-				(operation_records.file_record_id > 0 AND frp.id = operation_records.file_record_id)
-				OR (operation_records.file_record_id = 0
-					AND frp.root_name = operation_records.root_name
-					AND (
-						(operation_records.full_path IS NOT NULL AND operation_records.full_path != ''
-							AND (frp.full_path = operation_records.full_path
-								 OR frp.full_path = ('/' || operation_records.full_path)))
-						OR (operation_records.full_path IS NULL OR operation_records.full_path = ''
-							AND frp.file_name = operation_records.file_name
-							AND TRIM(frp.file_path, '/') = TRIM(operation_records.file_path, '/'))
-					))
+				({op}.full_path IS NOT NULL AND {op}.full_path != ''
+					AND (frp.full_path = {op}.full_path
+						 OR frp.full_path = CONCAT('/', {op}.full_path)))
+				OR ({op}.full_path IS NULL OR {op}.full_path = ''
+					AND frp.file_name = {op}.file_name
+					AND {frp_fp} = {op_fp})
 			  )
-		)
-	)`)
+		))
+	)`))
 }
 
 // SessionRepository 会话仓库
@@ -302,7 +338,7 @@ func (r *RecordRepository) ListRecentAll(limit int, action string) ([]models.Ope
 	var records []models.OperationRecord
 	query := r.db.Model(&models.OperationRecord{})
 	if action != "" {
-		query = query.Where("`action` = ?", action)
+		query = query.Where("action = ?", action)
 	}
 	query = ApplyExistingFileFilter(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
@@ -319,10 +355,12 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	offset := (page - 1) * pageSize
 
 	// 分组键：search 记录不关联文件身份，按关键词去重（相同关键词只保留最新一次）；
-	// 其他记录（upload/download）已关联的按 file_id，未关联的按路径快照
+	// 其他记录（upload/download）已关联的按 file_id，未关联的按路径快照。
+	// 拼接统一用 CONCAT（三库通用）：不用 `||`（MySQL 按逻辑 OR 解析），
+	// 也不用 CAST(... AS TEXT)（MySQL 不接受 TEXT，且 CONCAT 已隐式转字符串）。
 	dedupGroupKey := `(CASE WHEN file_record_id > 0
-		THEN 'f' || CAST(file_record_id AS TEXT)
-		ELSE 'p' || COALESCE(root_name,'') || COALESCE(file_path,'') || COALESCE(file_name,'')
+		THEN CONCAT('f', file_record_id)
+		ELSE CONCAT('p', COALESCE(root_name,''), COALESCE(file_path,''), COALESCE(file_name,''))
 		END)`
 	if action == "search" {
 		dedupGroupKey = `COALESCE(search_query, '')`
@@ -330,9 +368,9 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 
 	// 总数为去重后的不同文件数（GORM 的 Distinct().Count() 会被降级为 COUNT(*)，
 	// 因此用子查询统计 DISTINCT 行数）
-	distinctSub := r.db.Table("operation_records").Select(dedupGroupKey)
+	distinctSub := r.db.Table(models.OperationRecord{}.TableName()).Select(dedupGroupKey)
 	if action != "" {
-		distinctSub = distinctSub.Where("`action` IN ?", ExpandRecordActions(action))
+		distinctSub = distinctSub.Where("action IN ?", ExpandRecordActions(action))
 	}
 	distinctSub = ApplyExistingFileFilter(distinctSub)
 	var total int64
@@ -345,7 +383,7 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 		"*, ROW_NUMBER() OVER (PARTITION BY " + dedupGroupKey + " ORDER BY created_at DESC, id DESC) AS __rn",
 	)
 	if action != "" {
-		rowsQuery = rowsQuery.Where("`action` IN ?", ExpandRecordActions(action))
+		rowsQuery = rowsQuery.Where("action IN ?", ExpandRecordActions(action))
 	}
 	rowsQuery = ApplyExistingFileFilter(rowsQuery)
 
@@ -374,7 +412,7 @@ func (r *RecordRepository) GetAll() ([]models.OperationRecord, error) {
 // GetRecent 获取最近的记录（不限IP）
 func (r *RecordRepository) GetRecent(limit int) ([]models.OperationRecord, error) {
 	var records []models.OperationRecord
-	query := r.db.Where("`action` IN ?", []string{"upload", "download"})
+	query := r.db.Where("action IN ?", []string{"upload", "download"})
 	query = ApplyExistingFileFilter(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&records).Error
 	records = r.AttachCurrentPaths(records)
@@ -384,7 +422,7 @@ func (r *RecordRepository) GetRecent(limit int) ([]models.OperationRecord, error
 // GetRecentSearches 获取最近的搜索记录
 func (r *RecordRepository) GetRecentSearches(limit int) ([]models.OperationRecord, error) {
 	var records []models.OperationRecord
-	err := r.db.Where("`action` = ? AND search_query IS NOT NULL AND search_query != ''", "search").Order("created_at DESC").Limit(limit).Find(&records).Error
+	err := r.db.Where("action = ? AND search_query IS NOT NULL AND search_query != ''", "search").Order("created_at DESC").Limit(limit).Find(&records).Error
 	return records, err
 }
 
@@ -406,7 +444,7 @@ func ExpandRecordActions(action string) []string {
 // DeleteByIDAndAction 按 ID 且限定操作类型删除单条操作记录
 // 返回删除的记录数（0 表示记录不存在或类型不匹配）
 func (r *RecordRepository) DeleteByIDAndAction(id uint, action string) (int64, error) {
-	result := r.db.Where("id = ? AND `action` IN ?", id, ExpandRecordActions(action)).
+	result := r.db.Where("id = ? AND action IN ?", id, ExpandRecordActions(action)).
 		Delete(&models.OperationRecord{})
 	return result.RowsAffected, result.Error
 }
@@ -422,7 +460,7 @@ func (r *RecordRepository) CollectRecountTargets(action string, id uint) (paths 
 		return nil, nil, nil
 	}
 
-	where := "deleted_at IS NULL AND `action` IN (?)"
+	where := "deleted_at IS NULL AND action IN (?)"
 	args := []interface{}{ExpandRecordActions(action)}
 	if id > 0 {
 		where += " AND id = ?"
@@ -431,14 +469,16 @@ func (r *RecordRepository) CollectRecountTargets(action string, id uint) (paths 
 
 	// dl_event=1 即公开下载事件（含 source_type 判定），据此排除临时/私有下载的路径，
 	// 避免把 /temp/<code> 之类的路径带进公共文件重算。
+	// 表名取自模型 TableName()，避免硬编码；条件已参数化（IN ? 由 GORM 展开为占位符列表）。
+	opTable := models.OperationRecord{}.TableName()
 	pathArgs := append(append([]interface{}{}, args...), 1)
-	if err = r.db.Raw("SELECT DISTINCT full_path FROM operation_records WHERE "+where+" AND dl_event = ?", pathArgs...).
+	if err = r.db.Raw("SELECT DISTINCT full_path FROM "+opTable+" WHERE "+where+" AND dl_event = ?", pathArgs...).
 		Scan(&paths).Error; err != nil {
 		return nil, nil, err
 	}
 
 	tempArgs := append(append([]interface{}{}, args...), models.SourceTypeTemp)
-	if err = r.db.Raw("SELECT DISTINCT source_id FROM operation_records WHERE "+where+
+	if err = r.db.Raw("SELECT DISTINCT source_id FROM "+opTable+" WHERE "+where+
 		" AND source_type = ? AND source_id > 0", tempArgs...).Scan(&tempIDs).Error; err != nil {
 		return nil, nil, err
 	}
@@ -455,7 +495,7 @@ func isDownloadAction(action string) bool {
 // recordIDs: 被删除的索引记录 ID（覆盖移动/重命名后保留旧路径快照的记录）。
 func (r *RecordRepository) DeleteByFile(rootName, relPath string, isDir bool, recordIDs []uint) (int64, error) {
 	q := r.db.Model(&models.OperationRecord{}).
-		Where("`action` IN ?", []string{"upload", "download", "download-by-hash"})
+		Where("action IN ?", []string{"upload", "download", "download-by-hash"})
 	if isDir {
 		prefix := "/" + rootName + "/" + strings.Trim(relPath, "/") + "/"
 		if len(recordIDs) > 0 {
@@ -482,6 +522,6 @@ func (r *RecordRepository) DeleteByFile(rootName, relPath string, isDir bool, re
 // （"download" 含 download-by-hash），与列表、计数重算保持同一口径。
 // 返回删除的记录数
 func (r *RecordRepository) DeleteByAction(action string) (int64, error) {
-	result := r.db.Where("`action` IN ?", ExpandRecordActions(action)).Delete(&models.OperationRecord{})
+	result := r.db.Where("action IN ?", ExpandRecordActions(action)).Delete(&models.OperationRecord{})
 	return result.RowsAffected, result.Error
 }

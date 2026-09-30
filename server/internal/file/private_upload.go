@@ -344,7 +344,7 @@ func (h *PrivateUploadHandler) QuotaHandler(c *gin.Context) {
 // getUserUsedSpace 获取用户已使用的空间（从 file_records_private 查询）
 func (h *PrivateUploadHandler) getUserUsedSpace(userID string) (int64, error) {
 	var total int64
-	err := h.db.Table("file_records_private").
+	err := h.db.Table(models.FileRecordPrivate{}.TableName()).
 		Where("owner_id = ? AND status = ? AND is_dir = ?",
 			userID, models.FileStatusActive, false).
 		Select("COALESCE(SUM(file_size), 0)").

@@ -125,7 +125,7 @@ func TestClearDownloadRecords_RecountPublicCounts(t *testing.T) {
 
 	// 预览记录不受影响
 	var previews int64
-	if err := db.Model(&models.OperationRecord{}).Where("`action` = ?", "preview").Count(&previews).Error; err != nil {
+	if err := db.Model(&models.OperationRecord{}).Where("action = ?", "preview").Count(&previews).Error; err != nil {
 		t.Fatalf("统计预览记录失败: %v", err)
 	}
 	if previews != 1 {

@@ -681,7 +681,7 @@ func (s *Service) Lifecycle(from, to time.Time, capDays int) ([]LifecyclePoint, 
 		var rows []row
 		err := s.db.Model(&models.OperationRecord{}).
 			Select("operation_records.created_at AS op_created, frp.created_at AS file_create, operation_records.source_id").
-			Joins("JOIN file_records_public frp ON frp.id = operation_records.source_id AND frp.deleted_at IS NULL AND frp.status = ?", models.FileStatusActive).
+			Joins("JOIN "+models.FileRecordPublic{}.TableName()+" frp ON frp.id = operation_records.source_id AND frp.deleted_at IS NULL AND frp.status = ?", models.FileStatusActive).
 			Where("operation_records.dl_event = ? AND operation_records.dl_ok = ? AND operation_records.source_id > 0 AND operation_records.deleted_at IS NULL",
 				dlOkSuccess, dlOkSuccess).
 			Where("operation_records.created_at >= ? AND operation_records.created_at < ?", from, to).

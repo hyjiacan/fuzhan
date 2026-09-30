@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	xxh3pkg "fuzhan/pkg/xxh3"
 	"gorm.io/gorm"
@@ -120,9 +121,9 @@ func (w *HashWorker) run(ctx context.Context) {
 	}
 
 	tables := []string{
-		"file_records_public",
-		"file_records_temp",
-		"file_records_private",
+		models.FileRecordPublic{}.TableName(),
+		models.FileRecordTemp{}.TableName(),
+		models.FileRecordPrivate{}.TableName(),
 	}
 
 	// 统计总待处理数
@@ -421,12 +422,31 @@ var statSize = func(path string) (int64, error) {
 	return fi.Size(), nil
 }
 
+// indexTableNames 三张索引表的表名白名单（取自模型 TableName()）。
+// batchUpdateHashes 等需把表名拼入 SQL 的场景据此校验，杜绝任意表名注入。
+var indexTableNames = map[string]struct{}{
+	models.FileRecordPublic{}.TableName():  {},
+	models.FileRecordTemp{}.TableName():    {},
+	models.FileRecordPrivate{}.TableName(): {},
+}
+
+// isIndexTable 判断表名是否为受支持的索引表。
+func isIndexTable(name string) bool {
+	_, ok := indexTableNames[name]
+	return ok
+}
+
 // batchUpdateHashes 用单条 "CASE id WHEN ... THEN ..." 批量写入哈希结果，
 // 取代逐条 UPDATE，降低 SQLite 写放大与多次取写锁的交替成本。
 // SQL 形态：UPDATE <table> SET xxh3_hash = CASE id WHEN ? THEN ? ... END,
 //
 //	hash_status=? , hash_error=?, hash_retries=? WHERE id IN (?,...)
+//
+// 表名来自模型 TableName()，并在此处按白名单校验（拼入 SQL 前）。
 func (w *HashWorker) batchUpdateHashes(tableName string, ids []uint, hashes []string) error {
+	if !isIndexTable(tableName) {
+		return fmt.Errorf("非法的索引表名: %s", tableName)
+	}
 	var sb strings.Builder
 	sb.WriteString("UPDATE ")
 	sb.WriteString(tableName)
@@ -474,6 +494,9 @@ func classifyHashError(err error) string {
 
 // markFailed 标记记录为失败
 func (w *HashWorker) markFailed(tableName string, id uint, errMsg string, retries int) {
+	if !isIndexTable(tableName) {
+		return
+	}
 	release := lockWrite()
 	defer release()
 	w.db.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{

@@ -60,15 +60,8 @@ func (SecurityEvent) TableName() string {
 }
 
 // EnsureSecurityEventIndexes 创建安全事件表索引（命名格式：idx__{table}__{col1}_{col2}_...）
-// 幂等：SQLite 不支持 IF NOT EXISTS，仅在索引缺失时创建。
+// 幂等：仅在索引缺失时创建，交由 GORM Migrator 判定并跨库引用标识符。
 func EnsureSecurityEventIndexes(db *gorm.DB) {
 	// 未读高危事件查询：WHERE read=false AND severity=... ORDER BY created_at DESC
-	name := "idx__security_events__read_severity_created"
-	if db.Migrator().HasIndex(&SecurityEvent{}, name) {
-		return
-	}
-	if err := db.Exec("CREATE INDEX " + name + " ON " + SecurityEvent{}.TableName() + " (read, severity, created_at)").Error; err != nil {
-		// 索引创建失败不阻断启动（仅提示）
-		return
-	}
+	createIndexIfMissing(db, &SecurityEvent{}, "idx__security_events__read_severity_created", false, "read", "severity", "created_at")
 }

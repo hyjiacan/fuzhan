@@ -390,10 +390,12 @@ func (s *MonitorService) GetAccessStats() (*AccessStats, error) {
 	fiveMinutesAgo := utils.Now().Add(-5 * time.Minute)
 
 	// 活跃用户数（过去7天有操作的非管理员用户）
+	// 管理员子查询用 GORM 构造（表名取自模型），不硬编码表名。
 	var activeUsers int64
+	adminIDs := s.db.Model(&models.User{}).Select("uuid").Where("role = ?", "admin")
 	s.db.Model(&models.OperationRecord{}).
 		Where("created_at > ? AND user_id != ''", sevenDaysAgo).
-		Where("user_id NOT IN (SELECT uuid FROM users WHERE role = 'admin')").
+		Where("user_id NOT IN (?)", adminIDs).
 		Distinct("user_id").Count(&activeUsers)
 
 	// 在线 IP 数（过去5分钟有操作的）

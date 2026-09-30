@@ -78,7 +78,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 	dbQuery := s.db.Model(&models.User{}).Where("role != ?", "admin")
 	if query != "" {
 		likeQuery := "%" + query + "%"
-		dbQuery = dbQuery.Where("username LIKE ? OR `uuid` LIKE ?", likeQuery, likeQuery)
+		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ?", likeQuery, likeQuery)
 	}
 
 	dbQuery.Count(&total)

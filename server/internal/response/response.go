@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
 )
 
 // EncodeResponse 编码并发送JSON响应（用于标准 http.ResponseWriter）
@@ -77,7 +78,7 @@ func CheckDirectoryQuota(rootPath string, quota int64, additionalSize int64) err
 	}
 
 	var currentSize int64
-	if err := db.Table("file_records_public").
+	if err := db.Table(models.FileRecordPublic{}.TableName()).
 		Where("root_name = ? AND status = ? AND is_dir = ?",
 			rootName, "active", false).
 		Select("COALESCE(SUM(file_size), 0)").

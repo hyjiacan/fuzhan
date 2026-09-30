@@ -14,15 +14,13 @@ import (
 func (s *Service) ListRecords(query ListRecordsQuery) ([]models.FileRecordPublic, int64, error) {
 	query.Normalize()
 
-	// 根据 table 参数选择查询的表
-	tableName := "file_records_public"
+	// 根据 table 参数选择查询的表（表名一律取自模型 TableName()，白名单外回退公共表）
+	tableName := models.FileRecordPublic{}.TableName()
 	switch query.Table {
-	case "file_records_public":
-		tableName = "file_records_public"
-	case "file_records_temp":
-		tableName = "file_records_temp"
-	case "file_records_private":
-		tableName = "file_records_private"
+	case models.FileRecordTemp{}.TableName():
+		tableName = models.FileRecordTemp{}.TableName()
+	case models.FileRecordPrivate{}.TableName():
+		tableName = models.FileRecordPrivate{}.TableName()
 	}
 	dbQuery := s.db.Table(tableName)
 
@@ -122,15 +120,14 @@ func (s *Service) GetStats() (*RecordStatsResponse, error) {
 		return nil, err
 	}
 
-	// 重复文件组数（有重复哈希值的组）
+	// 重复文件组数（有重复哈希值的组）：用 GORM 子查询而非原生 SQL，表名取自模型。
+	// 沿用 Table() 而非 Model()，以保持与原原生查询一致（不额外附加软删除过滤）。
 	var dupGroups int64
-	if err := s.db.Raw(`
-        SELECT COUNT(*) FROM (
-            SELECT xxh3_hash FROM file_records_public
-            WHERE status = ? AND xxh3_hash != '' AND file_size > 0
-            GROUP BY xxh3_hash HAVING COUNT(*) > 1
-        ) dups
-    `, string(models.FileStatusActive)).Scan(&dupGroups).Error; err != nil {
+	dupSub := s.db.Table(models.FileRecordPublic{}.TableName()).
+		Select("xxh3_hash").
+		Where("status = ? AND xxh3_hash != '' AND file_size > 0", string(models.FileStatusActive)).
+		Group("xxh3_hash").Having("COUNT(*) > 1")
+	if err := s.db.Table("(?) AS dups", dupSub).Count(&dupGroups).Error; err != nil {
 		return nil, err
 	}
 

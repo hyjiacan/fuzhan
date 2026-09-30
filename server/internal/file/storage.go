@@ -92,7 +92,7 @@ func GetUserUsedQuota(_ string, userID string) int64 {
 	}
 
 	var total int64
-	if err := db.Table("file_records_private").
+	if err := db.Table(models.FileRecordPrivate{}.TableName()).
 		Where("owner_id = ? AND status = ? AND is_dir = ?",
 			userID, "active", false).
 		Select("COALESCE(SUM(file_size), 0)").

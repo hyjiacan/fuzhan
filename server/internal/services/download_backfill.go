@@ -19,13 +19,16 @@ func BackfillPublicDownloadCounts(db *gorm.DB) {
 		return
 	}
 
-	const stmt = `UPDATE file_records_public
+	// 聚合子查询用原生 UPDATE（ORM 难以表达）；表名取自模型 TableName()，值参数化。
+	frpTable := models.FileRecordPublic{}.TableName()
+	opTable := models.OperationRecord{}.TableName()
+	stmt := `UPDATE ` + frpTable + `
         SET download_count = (
             SELECT COUNT(*)
-            FROM operation_records
-            WHERE operation_records.full_path = file_records_public.full_path
-              AND operation_records.dl_counted = 1
-              AND operation_records.deleted_at IS NULL
+            FROM ` + opTable + `
+            WHERE ` + opTable + `.full_path = ` + frpTable + `.full_path
+              AND ` + opTable + `.dl_counted = 1
+              AND ` + opTable + `.deleted_at IS NULL
         )
         WHERE status = ? AND is_dir = ? AND download_count = 0`
 
@@ -47,7 +50,7 @@ func BackfillDownloadCounted(db *gorm.DB) int64 {
 	if db == nil || !db.Migrator().HasTable(&models.OperationRecord{}) {
 		return 0
 	}
-	result := db.Exec(`UPDATE operation_records
+	result := db.Exec(`UPDATE `+models.OperationRecord{}.TableName()+`
 		SET dl_counted = 1
 		WHERE dl_event = 1 AND dl_ok = 1 AND dl_counted = 0 AND deleted_at IS NULL`)
 	if result.Error != nil {
@@ -75,10 +78,12 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 	const batchSize = 500
 	var affected int64
 	actions := []string{"upload", "download", "download-by-hash"}
+	opTable := models.OperationRecord{}.TableName()
+	frpTable := models.FileRecordPublic{}.TableName()
 	// SQLite 的 UPDATE 语句不支持 LIMIT，改用先取一批待回填记录 id、再按 id 分批更新的方式
 	for {
 		var batchIDs []uint
-		if err := db.Table("operation_records").
+		if err := db.Table(opTable).
 			Where("file_record_id = ? AND action IN ? AND deleted_at IS NULL", 0, actions).
 			Limit(batchSize).
 			Pluck("id", &batchIDs).Error; err != nil {
@@ -88,13 +93,14 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 		if len(batchIDs) == 0 {
 			break
 		}
-		result := db.Exec(`UPDATE operation_records
+		// 字符串拼接用 CONCAT（三库通用），不用 `||`（MySQL 默认按逻辑 OR 解析）。
+		result := db.Exec(`UPDATE `+opTable+`
 			SET file_record_id = (
-				SELECT MIN(frp.id) FROM file_records_public frp
+				SELECT MIN(frp.id) FROM `+frpTable+` frp
 				WHERE frp.status = ? AND frp.deleted_at IS NULL
-				  AND frp.root_name = operation_records.root_name
-				  AND (frp.full_path = operation_records.full_path
-				       OR frp.full_path = ('/' || operation_records.full_path))
+				  AND frp.root_name = `+opTable+`.root_name
+				  AND (frp.full_path = `+opTable+`.full_path
+				       OR frp.full_path = CONCAT('/', `+opTable+`.full_path))
 			)
 			WHERE id IN ?`,
 			models.FileStatusActive, batchIDs)
@@ -120,7 +126,7 @@ func BackfillOperationRecordSource(db *gorm.DB) {
 	if !db.Migrator().HasTable(&models.OperationRecord{}) {
 		return
 	}
-	result := db.Exec(`UPDATE operation_records
+	result := db.Exec(`UPDATE `+models.OperationRecord{}.TableName()+`
 		SET source_type = ?,
 		    source_id = COALESCE(file_record_id, 0)
 		WHERE action IN (?, ?) AND deleted_at IS NULL
@@ -143,7 +149,7 @@ func BackfillDownloadSignature(db *gorm.DB) {
 	if !db.Migrator().HasTable(&models.OperationRecord{}) {
 		return
 	}
-	result := db.Exec(`UPDATE operation_records
+	result := db.Exec(`UPDATE `+models.OperationRecord{}.TableName()+`
 		SET dl_event = CASE
 		      WHEN deleted_at IS NULL
 		       AND action IN ('download', 'download-by-hash')

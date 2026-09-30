@@ -65,7 +65,7 @@ func (r *URLDownloadTaskRepository) ListByStatus(status string, page, pageSize i
 	var tasks []models.URLDownloadTask
 	query := r.db.Model(&models.URLDownloadTask{})
 	if status != "" {
-		query = query.Where("`status` = ?", status)
+		query = query.Where("status = ?", status)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -118,7 +118,7 @@ func (r *URLDownloadTaskRepository) Delete(id string) error {
 
 // ResetToPending 将失败或已取消的任务重置为等待下载
 func (r *URLDownloadTaskRepository) ResetToPending(id string) error {
-	return r.db.Model(&models.URLDownloadTask{}).Where("id = ? AND (`status` = ? OR `status` = ?)", id, models.URLDownloadStatusFailed, models.URLDownloadStatusCancelled).
+	return r.db.Model(&models.URLDownloadTask{}).Where("id = ? AND (status = ? OR status = ?)", id, models.URLDownloadStatusFailed, models.URLDownloadStatusCancelled).
 		Updates(map[string]interface{}{
 			"status":           models.URLDownloadStatusPending,
 			"error_message":    "",

@@ -12,6 +12,7 @@
 - [目录结构](#目录结构)
 - [核心模块](#核心模块)
 - [数据流](#数据流)
+- [数据库访问规范](#数据库访问规范)
 - [安全机制](#安全机制)
 - [部署架构](#部署架构)
 
@@ -506,6 +507,36 @@ POST /uploads/url (创建下载任务)
 ### 数据迁移流程
 
 > 浮栈不内置跨引擎迁移。如需在 SQLite ↔ MySQL ↔ PostgreSQL 之间迁移，推荐使用外部工具 [dbswitch](https://github.com/light-art/dbswitch) 导出并导入数据，然后在配置（`fuzhan.yaml`）中更新 `database.driver` 与 `database.dsn` 指向新库后重启服务。
+
+---
+
+## 数据库访问规范
+
+浮栈支持 **SQLite / MySQL / PostgreSQL** 三种数据库，所有数据库代码必须同时兼容三者。本节为设计层面的强制约束，编码细则见 [开发指南 - 数据库交互规范](./development-guide.md#数据库交互规范)。
+
+### 1. ORM 优先
+
+- 所有数据库交互必须通过 ORM（GORM）完成：使用模型与条件构造器（`Model` / `Where` / `Select` / `Joins` / `Create` / `Save` / `Updates` / `Delete` 等），模型统一提供 `TableName()`。
+- 表结构变更统一由模型定义 + `AutoMigrate` 驱动；索引优先用 GORM 索引标签或 `db.Migrator()` 管理。
+
+### 2. 特殊情况（原生 SQL）的准入条件
+
+复杂聚合、批量更新等确需 `db.Exec` / `db.Raw` / `gorm.Expr` 的场景，必须同时满足：
+
+1. **多数据库兼容**：不得使用任一引擎专有语法、函数或类型。典型禁区：
+   - `||` 字符串拼接（MySQL 默认解析为逻辑 OR）；
+   - 两参数 `TRIM(str, chars)`（MySQL 不支持）；
+   - `CAST(x AS TEXT)`（MySQL 需用 `CHAR`）；
+   - `CREATE INDEX IF NOT EXISTS`（MySQL 不支持，须改用 Migrator）；
+   - 反引号标识符 `` `col` ``（PostgreSQL 不支持）；
+   - 其它引擎专有函数（`IFNULL` / `strftime` / `ON CONFLICT` 等）。
+2. **参数化绑定**：值一律使用占位符，禁止拼接用户输入。
+3. **标识符白名单**：表名取自模型 `TableName()`，列名/排序字段必须来自白名单映射，禁止拼接外部输入。
+4. **注释说明**：就近注明无法用 ORM 表达的原因与兼容性依据。
+
+### 3. 数据库迁移
+
+浮栈不内置跨引擎数据迁移能力，SQLite ↔ MySQL ↔ PostgreSQL 之间迁移请使用外部工具（见 [数据迁移说明](#9-数据迁移说明)），迁移后更新 `database.driver` 与 `database.dsn` 即可。
 
 ---
 
