@@ -91,7 +91,7 @@ func TestDownloadFromURL_Resume(t *testing.T) {
 
 	h := &UploadSessionHandler{
 		db: db, urlTaskRepo: repositories.NewURLDownloadTaskRepository(db),
-		recordRepo: noopAudit{}, downloadSem: make(chan struct{}, 1),
+		recordRepo: noopAudit{},
 	}
 	h.downloadFromURL("t-1", urlTask.URL, urlTask.FileSize, "f.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
 
@@ -155,7 +155,7 @@ func TestDownloadFromURL_Resume_ServerChanged(t *testing.T) {
 
 	h := &UploadSessionHandler{
 		db: db, urlTaskRepo: repositories.NewURLDownloadTaskRepository(db),
-		recordRepo: noopAudit{}, downloadSem: make(chan struct{}, 1),
+		recordRepo: noopAudit{},
 	}
 	h.downloadFromURL("t-2", urlTask.URL, urlTask.FileSize, "g.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
 

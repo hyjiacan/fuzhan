@@ -215,7 +215,7 @@ const settings = reactive({
   upload: {
     chunkSize: 10485760,
     maxFileSize: 17179869184,
-    urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false }
+    urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false, maxConcurrent: 2, maxRetries: 3 }
   },
   download: {
     rateLimit: { windowMinutes: 1, maxRequests: 0, lockAfter: 0, lockMinutes: 10 }
@@ -393,7 +393,15 @@ const loadSettings = async () => {
       settings.tempFilesQuotaGlobal = cfg.tempFiles?.quotaGlobal || 0
       settings.tempFilesQuotaPerIP = cfg.tempFiles?.quotaPerIP || 0
 
-      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false } }
+      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false, maxConcurrent: 2, maxRetries: 3 } }
+      settings.upload.urlUpload = {
+        enabled: false,
+        allowedIPRanges: [],
+        insecureSkipVerify: false,
+        maxConcurrent: 2,
+        maxRetries: 3,
+        ...(settings.upload.urlUpload || {})
+      }
 
       settings.download = {
         rateLimit: {

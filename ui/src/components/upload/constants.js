@@ -1,4 +1,4 @@
-// 上传队列/URL 下载共用的常量与纯状态映射
+// 上传队列/URL 上传共用的常量与纯状态映射
 export const DEP_RELATION_OPTIONS = [
   { label: '依赖 (requires)', value: 'requires' },
   { label: '被引用 (referenced_by)', value: 'referenced_by' },

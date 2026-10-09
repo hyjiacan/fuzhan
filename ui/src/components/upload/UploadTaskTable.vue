@@ -69,7 +69,7 @@ const statusMap = {
   'in_progress': { type: 'info', text: '上传中' },
   'uploading': { type: 'info', text: '上传中' },
   'pending': { type: 'warning', text: '等待中' },
-  'downloading': { type: 'info', text: '下载中' },
+  'downloading': { type: 'info', text: '上传中' },
   'completed': { type: 'success', text: '已完成' },
   'failed': { type: 'error', text: '失败' },
   'cancelled': { type: 'default', text: '已取消' },
@@ -159,7 +159,7 @@ async function loadData() {
   scheduleNextPoll()
 }
 
-// 是否有进行中的任务（上传/下载中、等待中）
+// 是否有进行中的任务（上传中、等待中）
 function hasActiveTasks(list) {
   return list.some(row => ['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status))
 }

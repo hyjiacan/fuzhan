@@ -157,6 +157,8 @@ upload:
     enabled: false              # 是否启用 URL 上传的 SSRF 安全限制（默认 false 不限制）
     allowed_ip_ranges: []       # 允许的 IP 网段 (CIDR 格式)，为空表示不限制（允许所有 IP）
     insecure_skip_verify: false # 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false 即验证证书）
+    max_concurrent: 2           # 全局同时进行的 URL 上传任务数（所有用户共享，超出按入队顺序排队；<=0 时回退默认 2）
+    max_retries: 3              # 失败后自动重试次数（仅网络超时/5xx/408/429 等可重试错误；4xx 不重试；重试任务排到队尾；<=0 时回退默认 3）
 
 # ----------------------------------------
 # 下载限流配置

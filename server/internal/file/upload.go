@@ -33,10 +33,8 @@ type UploadSessionHandler struct {
 	indexSvc    *index.Service
 	taskSvc     *services.TaskService
 	chunkSize   int64
-	downloadSem chan struct{}
+	dispatcher  *URLDownloadDispatcher
 }
-
-const maxConcurrentDownloads = 5
 
 // createSSRFProtectedHTTPClient 创建带 DNS 重绑定防护的 HTTP 客户端
 // 在实际建立连接时再次验证 IP 安全性，防止 DNS 重绑定攻击
@@ -84,8 +82,12 @@ func NewUploadSessionHandler(svc *services.UploadSessionService, db *gorm.DB, ch
 		indexSvc:    indexSvc,
 		taskSvc:     taskSvc,
 		chunkSize:   chunkSize,
-		downloadSem: make(chan struct{}, maxConcurrentDownloads),
 	}
+}
+
+// SetDispatcher 注入 URL 上传后台队列调度器（由 main 装配，避免构造期循环依赖）。
+func (h *UploadSessionHandler) SetDispatcher(d *URLDownloadDispatcher) {
+	h.dispatcher = d
 }
 
 // CreateSessionRequest 创建会话请求

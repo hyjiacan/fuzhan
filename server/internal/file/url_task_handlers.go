@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -73,78 +74,12 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		}
 	}
 
-	var filename string
-	var fileSize int64
-	var etag string
-	var resumeSupported bool
-	var resumeURL string
 	var err error
 
-	if isFTP {
-		// FTP/FTPS 协议：使用 FTP 客户端获取文件信息
-		info, ftpErr := GetFTPFileInfo(req.URL)
-		if ftpErr != nil {
-			utils.HandleErrorCompat(c, http.StatusBadGateway, "获取 FTP 文件信息失败: "+ftpErr.Error(), nil)
-			return
-		}
-		filename = info.FileName
-		fileSize = info.FileSize
-		etag = ""
-		resumeSupported = false
-		resumeURL = req.URL
-	} else {
-		// HTTP/HTTPS 协议：使用 HEAD 请求获取文件信息（含 DNS 重绑定防护）
-		client := createSSRFProtectedHTTPClient(30*time.Second, urlCfg)
-		headReq, headErr := http.NewRequest("HEAD", req.URL, nil)
-		if headErr != nil {
-			utils.HandleErrorCompat(c, http.StatusInternalServerError, "创建请求失败: "+headErr.Error(), nil)
-			return
-		}
-
-		headResp, headDoErr := client.Do(headReq)
-		if headDoErr != nil {
-			utils.HandleErrorCompat(c, http.StatusInternalServerError, "获取文件信息失败: "+headDoErr.Error(), nil)
-			return
-		}
-		headResp.Body.Close()
-
-		if headResp.StatusCode != http.StatusOK {
-			utils.HandleErrorCompat(c, http.StatusBadGateway, "无法访问远程文件，状态码: "+strconv.Itoa(headResp.StatusCode), nil)
-			return
-		}
-
-		filename = req.Filename
-		if filename == "" {
-			cd := headResp.Header.Get("Content-Disposition")
-			if cd != "" {
-				re := regexp.MustCompile(`filename[^;=\n]*=(['"]?)([^;"\n]+)\1`)
-				if matches := re.FindStringSubmatch(cd); len(matches) > 2 {
-					filename = matches[2]
-				}
-			}
-			if filename == "" {
-				filename = filepath.Base(req.URL)
-			}
-		}
-		if filename == "" || filename == "/" || filename == "." {
-			filename = "downloaded_file"
-		}
-
-		fileSize = headResp.ContentLength
-		if fileSize <= 0 {
-			utils.HandleErrorCompat(c, http.StatusBadGateway, "无法获取远程文件大小", nil)
-			return
-		}
-
-		contentType := headResp.Header.Get("Content-Type")
-		if strings.Contains(contentType, "text/html") {
-			utils.HandleErrorCompat(c, http.StatusBadGateway, "远程 URL 返回 HTML 页面，不是有效文件", nil)
-			return
-		}
-
-		etag = headResp.Header.Get("ETag")
-		resumeSupported = strings.Contains(headResp.Header.Get("Accept-Ranges"), "bytes")
-		resumeURL = headResp.Request.URL.String()
+	filename, fileSize, etag, resumeSupported, resumeURL, probeErr := probeRemoteFileInfo(req.URL, urlCfg, req.Filename)
+	if probeErr != nil {
+		utils.HandleErrorCompat(c, http.StatusBadGateway, probeErr.Error(), nil)
+		return
 	}
 
 	targetType := models.TargetTypeRegular
@@ -157,13 +92,10 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 
 	clientIP := utils.GetClientIP(c)
 	var targetPath, uploadingPath string
-	var sessionTargetPath, sessionTargetRoot string
-	var sessionTargetType models.TargetType
+	var sessionTargetPath string
 
 	if targetType == models.TargetTypeTemp {
 		sessionTargetPath = req.Dir
-		sessionTargetRoot = ""
-		sessionTargetType = targetType
 		targetPath, uploadingPath, err = h.buildTempTargetPath(filename, clientIP, req.Dir)
 		if err != nil {
 			utils.HandleBadRequest(c, err.Error(), nil)
@@ -199,18 +131,10 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 			return
 		}
 		sessionTargetPath = session.TargetPath
-		sessionTargetRoot = session.TargetRoot
-		sessionTargetType = session.TargetType
 	}
 
 	if _, err := os.Stat(targetPath); err == nil {
 		utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
-		return
-	}
-	if err := EnsureUploadingFile(uploadingPath, fileSize); err != nil {
-		os.Remove(uploadingPath)
-		utils.Error("URL下载创建上传文件失败", utils.String("path", uploadingPath), utils.Err(err))
-		utils.HandleErrorCompat(c, http.StatusInternalServerError, "创建上传文件失败", nil)
 		return
 	}
 
@@ -229,9 +153,12 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		FileSize:        fileSize,
 		StorageType:     models.URLDownloadStorageType(targetType),
 		RootName:        req.RootName,
-		Status:          models.URLDownloadStatusDownloading,
+		Status:          models.URLDownloadStatusPending, // 入队等待，由后台队列按全局并行上限调度
 		TargetPath:      targetPath,
-		TempFilePath:    uploadingPath, // 记录下载中的临时路径，供中断对账/取消时清理孤儿文件
+		TempFilePath:    uploadingPath, // 记录上传中的临时路径，供队列执行/中断对账/取消时清理
+		ClientIP:        clientIP,
+		SessionDir:      sessionTargetPath,
+		QueuedAt:        utils.Now(), // 入队时间：调度按此排序，重试时刷新以排到队尾
 		Notified:        false,
 		UserID:          userIDPtr,
 		ETag:            etag,
@@ -242,8 +169,8 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		urlTask.AnonymousID = &anonID
 	}
 	if err := h.urlTaskRepo.Create(urlTask); err != nil {
-		utils.Error("创建URL下载任务记录失败", utils.Err(err))
-		utils.HandleErrorCompat(c, http.StatusInternalServerError, "创建下载任务失败", nil)
+		utils.Error("创建URL上传任务记录失败", utils.Err(err))
+		utils.HandleErrorCompat(c, http.StatusInternalServerError, "创建上传任务失败", nil)
 		return
 	}
 
@@ -252,9 +179,196 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		"taskType": "url",
 		"fileName": filename,
 		"fileSize": fileSize,
+		"status":   models.URLDownloadStatusPending,
 	})
 
-	go h.downloadFromURL(taskID, req.URL, fileSize, filename, clientIP, uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType)
+	// 任务已持久化入队，与当前请求/浏览器解耦；唤醒后台调度器按全局并行上限执行
+	if h.dispatcher != nil {
+		h.dispatcher.Notify()
+	}
+}
+
+// probeRemoteFileInfo 对远端 URL 执行探测，返回文件名/大小/ETag/是否支持续传/最终 URL。
+// 支持 http/https（HEAD，含 DNS 重绑定防护）与 ftp/ftps。preferredName 非空时直接采用该文件名。
+func probeRemoteFileInfo(downloadURL string, urlCfg utils.URLUploadConfig, preferredName string) (filename string, fileSize int64, etag string, resumeSupported bool, resumeURL string, err error) {
+	isFTP := strings.HasPrefix(downloadURL, "ftp://") || strings.HasPrefix(downloadURL, "ftps://")
+	if isFTP {
+		info, ftpErr := GetFTPFileInfo(downloadURL)
+		if ftpErr != nil {
+			return "", 0, "", false, "", fmt.Errorf("获取 FTP 文件信息失败: %w", ftpErr)
+		}
+		return info.FileName, info.FileSize, "", false, downloadURL, nil
+	}
+
+	client := createSSRFProtectedHTTPClient(30*time.Second, urlCfg)
+	headReq, headErr := http.NewRequest("HEAD", downloadURL, nil)
+	if headErr != nil {
+		return "", 0, "", false, "", fmt.Errorf("创建请求失败: %w", headErr)
+	}
+	headResp, headDoErr := client.Do(headReq)
+	if headDoErr != nil {
+		return "", 0, "", false, "", fmt.Errorf("获取文件信息失败: %w", headDoErr)
+	}
+	defer headResp.Body.Close()
+
+	if headResp.StatusCode != http.StatusOK {
+		return "", 0, "", false, "", fmt.Errorf("无法访问远程文件，状态码: %d", headResp.StatusCode)
+	}
+
+	filename = preferredName
+	if filename == "" {
+		if cd := headResp.Header.Get("Content-Disposition"); cd != "" {
+			re := regexp.MustCompile(`filename[^;=\n]*=(['"]?)([^;"\n]+)\1`)
+			if matches := re.FindStringSubmatch(cd); len(matches) > 2 {
+				filename = matches[2]
+			}
+		}
+		if filename == "" {
+			filename = filepath.Base(downloadURL)
+		}
+	}
+	if filename == "" || filename == "/" || filename == "." {
+		filename = "downloaded_file"
+	}
+
+	fileSize = headResp.ContentLength
+	if fileSize <= 0 {
+		return "", 0, "", false, "", fmt.Errorf("无法获取远程文件大小")
+	}
+	if strings.Contains(headResp.Header.Get("Content-Type"), "text/html") {
+		return "", 0, "", false, "", fmt.Errorf("远程 URL 返回 HTML 页面，不是有效文件")
+	}
+
+	etag = headResp.Header.Get("ETag")
+	resumeSupported = strings.Contains(headResp.Header.Get("Accept-Ranges"), "bytes")
+	resumeURL = headResp.Request.URL.String()
+	return filename, fileSize, etag, resumeSupported, resumeURL, nil
+}
+
+// URLProbeRequest 批量探测请求
+type URLProbeRequest struct {
+	URLs        []string `json:"urls" binding:"required"`
+	Dir         string   `json:"dir"`
+	RootName    string   `json:"rootName"`
+	StorageType string   `json:"storageType"`
+}
+
+// ProbeURLs 批量探测 URL：串行 HEAD 取文件名/大小，并检查目标文件是否已存在、
+// 该 URL 是否已成功上传过（全局范围）。供前端添加条目时即时提示与文件名编辑。
+func (h *UploadSessionHandler) ProbeURLs(c *gin.Context) {
+	var req URLProbeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+		return
+	}
+	if len(req.URLs) == 0 {
+		utils.HandleBadRequest(c, "请至少提供一个 URL", nil)
+		return
+	}
+	if len(req.URLs) > 100 {
+		utils.HandleBadRequest(c, "单次最多探测 100 个 URL", nil)
+		return
+	}
+
+	urlCfg := utils.URLUploadConfig{
+		Enabled:         appconfig.GlobalConfig.Upload.URLUpload.Enabled,
+		AllowedIPRanges: appconfig.GlobalConfig.Upload.URLUpload.AllowedIPRanges,
+	}
+	clientIP := utils.GetClientIP(c)
+
+	targetType := models.TargetTypeRegular
+	switch req.StorageType {
+	case storageTypeTemp:
+		targetType = models.TargetTypeTemp
+	case storageTypePrivate:
+		targetType = models.TargetTypePrivate
+	}
+
+	items := make([]gin.H, 0, len(req.URLs))
+	// 串行探测：逐个 HEAD，避免对远端造成瞬时压力
+	for _, raw := range req.URLs {
+		item := gin.H{"url": raw}
+		downloadURL := strings.TrimSpace(raw)
+		if downloadURL == "" {
+			item["error"] = "空 URL"
+			items = append(items, item)
+			continue
+		}
+
+		isFTP := strings.HasPrefix(downloadURL, "ftp://") || strings.HasPrefix(downloadURL, "ftps://")
+		isHTTP := strings.HasPrefix(downloadURL, "http://") || strings.HasPrefix(downloadURL, "https://")
+		if !isHTTP && !isFTP {
+			item["error"] = "不支持的 URL 协议，仅支持 http/https/ftp/ftps"
+			items = append(items, item)
+			continue
+		}
+
+		if isFTP {
+			if parsedURL, parseErr := url.Parse(downloadURL); parseErr == nil && parsedURL.Host != "" {
+				ftpHost := parsedURL.Host
+				if hostOnly, _, portErr := net.SplitHostPort(ftpHost); portErr == nil {
+					ftpHost = hostOnly
+				}
+				if err := utils.IsURLSafe("http://"+ftpHost+"/", urlCfg); err != nil {
+					item["error"] = "FTP URL安全验证失败: " + err.Error()
+					items = append(items, item)
+					continue
+				}
+			}
+		} else if err := utils.IsURLSafe(downloadURL, urlCfg); err != nil {
+			item["error"] = "URL安全验证失败: " + err.Error()
+			items = append(items, item)
+			continue
+		}
+
+		filename, fileSize, _, _, _, probeErr := probeRemoteFileInfo(downloadURL, urlCfg, "")
+		if probeErr != nil {
+			item["error"] = probeErr.Error()
+			items = append(items, item)
+			continue
+		}
+		item["fileName"] = filename
+		item["fileSize"] = fileSize
+
+		if targetPath := h.probeTargetPath(targetType, filename, clientIP, req.Dir, req.RootName); targetPath != "" {
+			_, statErr := os.Stat(targetPath)
+			item["targetExists"] = statErr == nil
+		}
+
+		if exists, histErr := h.urlTaskRepo.ExistsCompletedByURL(downloadURL); histErr == nil {
+			item["alreadyUploaded"] = exists
+		} else {
+			item["alreadyUploaded"] = false
+		}
+		items = append(items, item)
+	}
+
+	utils.HandleSuccess(c, http.StatusOK, "", gin.H{"items": items})
+}
+
+// probeTargetPath 计算探测时的目标文件路径（仅用于存在性检查，不落库）。
+func (h *UploadSessionHandler) probeTargetPath(targetType models.TargetType, filename, clientIP, dir, rootName string) string {
+	if targetType == models.TargetTypeTemp {
+		targetPath, _, err := h.buildTempTargetPath(filename, clientIP, dir)
+		if err != nil {
+			return ""
+		}
+		return targetPath
+	}
+	if rootName == "" {
+		return ""
+	}
+	session := &models.UploadSession{
+		FileName:   filename,
+		TargetType: targetType,
+		TargetPath: dir,
+		TargetRoot: rootName,
+	}
+	targetPath, _, err := h.buildTargetPath(session)
+	if err != nil {
+		return ""
+	}
+	return targetPath
 }
 
 // GetURLTask 获取 URL 下载任务进度
@@ -279,6 +393,7 @@ func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
 			"downloadedBytes": task.DownloadedBytes,
 			"status":          task.Status,
 			"errorMessage":    task.ErrorMessage,
+			"retryCount":      task.RetryCount,
 			"createdAt":       task.CreatedAt,
 			"completedAt":     task.CompletedAt,
 		},
@@ -314,8 +429,8 @@ func (h *UploadSessionHandler) CancelURLTask(c *gin.Context) {
 		return
 	}
 
-	if task.TargetPath != "" {
-		os.Remove(task.TargetPath)
+	if task.TempFilePath != "" {
+		os.Remove(task.TempFilePath)
 	}
 
 	middleware.LogOperation(c, "upload.url.cancel", taskID, nil)
@@ -385,6 +500,7 @@ func (h *UploadSessionHandler) ListURLTasks(c *gin.Context) {
 			"downloadedBytes": t.DownloadedBytes,
 			"status":          t.Status,
 			"errorMessage":    t.ErrorMessage,
+			"retryCount":      t.RetryCount,
 			"createdAt":       t.CreatedAt,
 			"completedAt":     t.CompletedAt,
 			"storageType":     t.StorageType,
@@ -426,99 +542,21 @@ func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
 		return
 	}
 
-	uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType := h.buildURLRetryPaths(task)
-
-	// 优先断点续传：复用已存在的部分文件，避免整份重下
-	resumed := false
-	if partial, ok := h.resumableUploadingPath(task, targetPath); ok {
-		uploadingPath = partial
-		resumed = true
-	}
-
-	if !resumed {
-		// 全新下载：清理旧的部分文件与失败残留目标，避免直接写目标或 finalize 误判"目标已存在"
-		if task.TempFilePath != "" && task.TempFilePath != uploadingPath {
-			if rmErr := os.Remove(task.TempFilePath); rmErr != nil && !os.IsNotExist(rmErr) {
-				utils.Warn("清理URL下载旧部分文件失败",
-					utils.String("path", task.TempFilePath), utils.Err(rmErr))
-			}
-		}
-		if targetPath != "" {
-			if rmErr := os.Remove(targetPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				utils.Warn("清理URL下载失败残留目标文件失败",
-					utils.String("path", targetPath), utils.Err(rmErr))
-			}
+	// 清理可能残留的目标文件，避免再次因"目标已存在"失败
+	if task.TargetPath != "" {
+		if rmErr := os.Remove(task.TargetPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			utils.Warn("清理URL上传失败残留目标文件失败",
+				utils.String("path", task.TargetPath), utils.Err(rmErr))
 		}
 	}
-	// 记录本次实际使用的临时路径，供取消/删除/启动对账清理
-	if uploadingPath != "" {
-		_ = h.urlTaskRepo.UpdateTempFilePath(taskID, uploadingPath)
-	}
 
-	go h.downloadFromURL(taskID, task.URL, task.FileSize, task.FileName, "", uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot, sessionTargetType)
+	// 重新入队，由后台队列调度执行；断点续传由 worker 依据 TempFilePath 自动处理
+	if h.dispatcher != nil {
+		h.dispatcher.Notify()
+	}
 
 	middleware.LogOperation(c, "upload.url.retry", taskID, nil)
 	utils.HandleSuccess(c, http.StatusOK, "任务已重试", nil)
-}
-
-// resumableUploadingPath 判断是否可用已有部分文件断点续传：
-// 服务器支持 Range、存在有效（非目录、0<大小<目标）且仍位于目标同目录的部分文件。
-func (h *UploadSessionHandler) resumableUploadingPath(task *models.URLDownloadTask, targetPath string) (string, bool) {
-	if !task.ResumeSupported || task.TempFilePath == "" || targetPath == "" {
-		return "", false
-	}
-	fi, err := os.Stat(task.TempFilePath)
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() <= 0 || fi.Size() >= task.FileSize {
-		return "", false
-	}
-	if filepath.Dir(task.TempFilePath) != filepath.Dir(targetPath) {
-		return "", false
-	}
-	return task.TempFilePath, true
-}
-
-// buildURLRetryPaths 根据已存的下载任务还原重试所需的路径与会话上下文。
-// 重试写入目标所在目录下的专用 `.retry.uploading` 临时文件，避免直接写目标，
-// 下载完成后由 downloadFromURL/finalizeURLDownload 原子重命名到最终路径。
-func (h *UploadSessionHandler) buildURLRetryPaths(task *models.URLDownloadTask) (uploadingPath, targetPath, sessionTargetPath, sessionTargetRoot string, sessionTargetType models.TargetType) {
-	if task.TargetPath == "" {
-		return
-	}
-	targetPath = task.TargetPath
-	base := filepath.Base(targetPath)
-	dir := filepath.Dir(targetPath)
-	// 用任务 ID 保证临时文件唯一且可追溯
-	uploadingPath = filepath.Join(dir, "."+base+"."+task.ID+".retry.uploading")
-
-	switch task.StorageType {
-	case models.URLDownloadStorageRegular:
-		sessionTargetType = models.TargetTypeRegular
-		sessionTargetRoot = task.RootName
-	case models.URLDownloadStoragePrivate:
-		sessionTargetType = models.TargetTypePrivate
-		sessionTargetRoot = task.RootName
-	case models.URLDownloadStorageTemp:
-		sessionTargetType = models.TargetTypeTemp
-	}
-
-	// 还原目标相对根目录的目录（用于记录/索引的完整路径）
-	if sessionTargetRoot != "" {
-		if rootPath := appconfig.RootNames[sessionTargetRoot]; rootPath != "" {
-			if rootAbs, err1 := filepath.Abs(rootPath); err1 == nil {
-				if tgtAbs, err2 := filepath.Abs(targetPath); err2 == nil {
-					sep := string(filepath.Separator)
-					if strings.HasPrefix(tgtAbs, rootAbs+sep) {
-						rel := strings.TrimPrefix(tgtAbs, rootAbs+sep)
-						relDir := filepath.ToSlash(filepath.Dir(rel))
-						if relDir != "." && relDir != "/" {
-							sessionTargetPath = relDir
-						}
-					}
-				}
-			}
-		}
-	}
-	return
 }
 
 // DeleteURLTask 删除 URL 下载任务

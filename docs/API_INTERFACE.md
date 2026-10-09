@@ -420,16 +420,60 @@
 ### 7. 从 URL 上传
 
 - **URL**：`POST /api/v1/uploads/url`
-- **认证**：需要（JWT）
+- **认证**：可选（AuthOptional）
+- **说明**：仅做校验与入队，返回 `taskId`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。
 - **请求体**：
   ```json
   {
     "url": "https://example.com/file.zip",
     "filename": "文件名.zip",
     "rootName": "share1",
-    "dir": "目标目录"
+    "dir": "目标目录",
+    "storageType": "regular"
   }
   ```
+- **响应**：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "taskId": "uuid",
+      "taskType": "url",
+      "fileName": "文件名.zip",
+      "fileSize": 1024000,
+      "status": "pending"
+    }
+  }
+  ```
+
+### 8. 批量探测 URL
+
+- **URL**：`POST /api/v1/uploads/url-probe`
+- **认证**：可选（AuthOptional）
+- **请求体**：`{ "urls": ["https://..."], "dir": "", "rootName": "", "storageType": "" }`
+- **响应**：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "items": [
+        {
+          "url": "https://example.com/file.zip",
+          "fileName": "file.zip",
+          "fileSize": 1024000,
+          "targetExists": false,
+          "alreadyUploaded": false
+        }
+      ]
+    }
+  }
+  ```
+
+### 9. URL 上传任务进度
+
+- **URL**：`GET /api/v1/uploads/url-task/:taskId`
+- **认证**：可选（AuthOptional）
+- **说明**：返回任务状态（`pending`/`downloading`/`completed`/`failed`/`cancelled`）、`downloadedBytes`、`fileSize`、`retryCount`（已自动重试次数）等，供前端轮询进度。
 
 ## 临时文件接口
 

@@ -152,11 +152,89 @@ func EnsureUploadingFile(path string, size int64) error {
 	return nil
 }
 
+// maxURLRetries 读取当前配置的 URL 上传自动重试次数上限（<=0 时回退默认值）。
+func maxURLRetries() int {
+	n := appconfig.GlobalConfig.Upload.URLUpload.MaxRetries
+	if n <= 0 {
+		n = appconfig.DefaultURLUploadMaxRetries
+	}
+	return n
+}
+
+// isRetryableHTTPStatus 判断 HTTP 状态码是否属于可重试错误：
+// 5xx 服务端错误、408 请求超时、429 限流可重试；其余 4xx 客户端错误不重试。
+func isRetryableHTTPStatus(code int) bool {
+	if code >= 500 {
+		return true
+	}
+	return code == http.StatusRequestTimeout || code == http.StatusTooManyRequests
+}
+
+// failURLTask 处理 URL 上传任务的一次失败：
+// 当 retryable 为 true 且未达自动重试上限时，把任务重新入队到队尾并唤醒调度器，返回 true；
+// 否则标记为失败并返回 false。
+func (h *UploadSessionHandler) failURLTask(taskID, msg string, retryable bool) bool {
+	if retryable {
+		maxRetries := maxURLRetries()
+		if task, err := h.urlTaskRepo.GetByID(taskID); err == nil && task != nil && task.RetryCount < maxRetries {
+			rerr := h.urlTaskRepo.RequeueForRetry(taskID)
+			if rerr == nil {
+				utils.Warn("URL上传任务失败，已重新入队等待自动重试",
+					utils.String("taskId", taskID),
+					utils.Int("retry", task.RetryCount+1),
+					utils.Int("maxRetries", maxRetries),
+					utils.String("reason", msg))
+				if h.dispatcher != nil {
+					h.dispatcher.Notify()
+				}
+				return true
+			}
+			utils.Warn("URL上传任务重新入队失败，将直接标记为失败",
+				utils.String("taskId", taskID), utils.Err(rerr))
+		}
+	}
+	_ = h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, msg)
+	return false
+}
+
+// executeURLDownloadTask 由后台队列调度器在领取到任务后调用：
+// 从任务记录还原执行上下文并启动实际下载。并发上限由调度器 worker 数控制。
+func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTask) {
+	if task.TargetPath == "" || task.TempFilePath == "" {
+		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "任务缺少目标路径")
+		return
+	}
+
+	sessionTargetType := models.TargetTypeRegular
+	sessionTargetRoot := task.RootName
+	switch task.StorageType {
+	case models.URLDownloadStorageTemp:
+		sessionTargetType = models.TargetTypeTemp
+		sessionTargetRoot = ""
+	case models.URLDownloadStoragePrivate:
+		sessionTargetType = models.TargetTypePrivate
+	}
+
+	// 目标文件已存在则直接失败（可能被其他任务/用户抢先创建）
+	if _, statErr := os.Stat(task.TargetPath); statErr == nil {
+		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "目标文件已存在")
+		return
+	}
+
+	// 预分配上传临时文件；已存在（断点续传的部分文件）时保留
+	if err := EnsureUploadingFile(task.TempFilePath, task.FileSize); err != nil {
+		os.Remove(task.TempFilePath)
+		utils.Error("URL上传创建临时文件失败", utils.String("path", task.TempFilePath), utils.Err(err))
+		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "创建上传文件失败")
+		return
+	}
+
+	h.downloadFromURL(task.ID, task.URL, task.FileSize, task.FileName, task.ClientIP,
+		task.TempFilePath, task.TargetPath, task.SessionDir, sessionTargetRoot, sessionTargetType)
+}
+
 // downloadFromURL 后台下载文件并记录进度
 func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string, fileSize int64, filename string, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType) {
-	h.downloadSem <- struct{}{}
-	defer func() { <-h.downloadSem }()
-
 	// 创建任务记录（供任务管理页面展示）
 	var taskRecordID uint
 	if h.taskSvc != nil {
@@ -221,7 +299,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		if err := DownloadFromFTP(downloadURL, uploadingPath, progressFn); err != nil {
 			os.Remove(uploadingPath)
 			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "FTP 下载失败: "+err.Error())
+			h.failURLTask(taskID, "FTP 下载失败: "+err.Error(), true)
 			utils.Error("FTP下载失败", utils.String("url", downloadURL), utils.Err(err))
 			return
 		}
@@ -240,7 +318,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 			utils.Warn("FTP下载大小不一致", utils.Int64("expected", fileSize), utils.Int64("actual", downloaded))
 			os.Remove(uploadingPath)
 			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "FTP 下载文件大小不匹配")
+			h.failURLTask(taskID, "FTP 下载文件大小不匹配", true)
 			return
 		}
 	} else {
@@ -268,15 +346,19 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 			outFile.Seek(0, io.SeekStart)
 		}
 
-		// 传输中断时保留部分文件与进度以便续传；数据校验类错误始终清理
-		failTask := func(msg string, keepPartial bool) {
+		// 失败处理：可重试且未达上限时重新入队到队尾（可续传则保留部分文件与进度以便断点续传），
+		// 否则标记失败并清理临时文件
+		failTask := func(msg string, retryable bool) {
 			urlTaskUpdated = true
-			if keepPartial && resumable && downloaded > 0 {
-				_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
-			} else {
-				os.Remove(uploadingPath)
+			if h.failURLTask(taskID, msg, retryable) {
+				if resumable && downloaded > 0 {
+					_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
+				} else {
+					os.Remove(uploadingPath)
+				}
+				return
 			}
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, msg)
+			os.Remove(uploadingPath)
 		}
 
 		getReq, reqErr := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
@@ -319,7 +401,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		if getResp.StatusCode != http.StatusOK && getResp.StatusCode != http.StatusPartialContent {
 			getResp.Body.Close()
 			outFile.Close()
-			failTask("服务器返回异常状态码: "+strconv.Itoa(getResp.StatusCode), false)
+			failTask("服务器返回异常状态码: "+strconv.Itoa(getResp.StatusCode), isRetryableHTTPStatus(getResp.StatusCode))
 			utils.Error("URL下载响应状态异常", utils.Int("status", getResp.StatusCode))
 			return
 		}
@@ -358,7 +440,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 
 		if fileSize > 0 && downloaded != fileSize {
 			utils.Warn("URL下载大小不一致", utils.Int64("expected", fileSize), utils.Int64("actual", downloaded))
-			failTask("下载文件大小不匹配", false)
+			failTask("下载文件大小不匹配", true)
 			return
 		}
 	}

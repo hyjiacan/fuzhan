@@ -101,73 +101,108 @@
         </el-tab-pane>
 
         <el-tab-pane name="url" label="从 URL 上传">
+          <!-- 单条输入（默认） -->
           <el-form-item label="文件的 URL:">
-            <el-input
-              v-model="form.url"
-              :maxlength="2048"
-              placeholder="输入文件的 URL"
-              @input="handleUrlInput"
-            />
-          </el-form-item>
-          <el-form-item v-if="urlFileInfo.name" label="保存文件名:">
-            <el-input
-              v-model="form.filename"
-              :maxlength="255"
-              placeholder="输入保存的文件名"
-            />
-            <span style="color: var(--el-text-color-placeholder); font-size: 12px;">原始文件名: {{ urlFileInfo.name }}，大小: {{ urlFileInfo.size }}</span>
-          </el-form-item>
-          <!-- URL 备注 -->
-          <el-form-item v-if="urlFileInfo.name" label="备注:">
-            <el-input
-              v-model="form.urlNotes"
-              :maxlength="4096"
-              type="textarea"
-              :rows="2"
-              placeholder="输入文件备注（可选）"
-            />
-          </el-form-item>
-          <!-- URL 依赖 -->
-          <el-form-item v-if="urlFileInfo.name" label="依赖:">
-            <div style="display: flex; gap: 6px; width: 100%">
-              <el-autocomplete
-                v-model="form.urlDepFileName"
-                :maxlength="255"
-                :fetch-suggestions="fetchUrlDepSuggestions"
-                placeholder="搜索并选择依赖文件"
+            <div class="url-add-row">
+              <el-input
+                v-model="urlSingleUrl"
+                :maxlength="2048"
+                placeholder="输入文件的 URL"
                 clearable
-                :teleported="true"
                 style="flex: 1"
-                @select="handleUrlDepSelect"
+                @keyup.enter="addSingleUrl"
               />
-              <el-select v-model="form.urlDepRelation" placeholder="依赖关系" :teleported="true" style="width: 150px">
-                <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
+              <el-button type="primary" plain :loading="urlProbing" @click="addSingleUrl">添加</el-button>
+              <el-button link type="primary" @click="toggleUrlBatchMode">
+                {{ urlBatchMode ? '收起批量' : '批量添加' }}
+              </el-button>
             </div>
           </el-form-item>
-          <!-- URL 上传进度 -->
-          <div v-if="urlUploadState.status" class="url-upload-progress">
-            <div class="queue-item">
-              <div class="queue-item-info">
-                <span class="queue-item-name" :title="urlUploadState.fileName">{{ urlUploadState.fileName }}</span>
-                <div class="queue-item-meta">
-                  <span class="queue-item-size">{{ formatFileSize(urlUploadState.fileSize) }}</span>
-                  <div class="queue-item-progress">
-                    <span v-if="urlUploadState.status === 'failed'" class="queue-item-error">{{ urlUploadState.error }}</span>
-                    <span v-if="urlUploadState.displayText" class="queue-item-speed">{{ urlUploadState.displayText }}</span>
-                  </div>
+
+          <!-- 批量输入（默认隐藏） -->
+          <el-form-item v-if="urlBatchMode" label="批量 URL:">
+            <el-input
+              v-model="urlBatchText"
+              type="textarea"
+              :rows="5"
+              placeholder="每行一个 URL，支持 http/https/ftp/ftps"
+            />
+            <div class="url-batch-actions">
+              <el-button type="primary" plain :loading="urlProbing" @click="addBatchUrls">解析并添加</el-button>
+              <el-button link @click="urlBatchText = ''">清空</el-button>
+            </div>
+          </el-form-item>
+
+          <!-- 条目列表 -->
+          <div v-if="urlItems.length" class="url-item-list">
+            <div v-for="item in urlItems" :key="item.id" class="url-item-card">
+              <div class="url-item-body">
+                <div class="url-item-url" :title="item.url">{{ item.url }}</div>
+                <div class="url-item-row">
+                  <el-input
+                    v-model="item.fileName"
+                    size="small"
+                    placeholder="保存文件名"
+                    :disabled="!['draft', 'failed', 'cancelled'].includes(item.status)"
+                    class="url-item-name"
+                  />
+                  <span class="url-item-size">{{ formatFileSize(item.fileSize) }}</span>
+                  <el-tag v-if="item.targetExists" type="warning" size="small">目标已存在</el-tag>
+                  <el-tag v-if="item.alreadyUploaded" type="info" size="small">历史上传过</el-tag>
+                </div>
+                <el-input
+                  v-if="item.status === 'draft'"
+                  v-model="item.notes"
+                  size="small"
+                  :maxlength="4096"
+                  placeholder="备注（可选）"
+                />
+                <div v-if="item.status === 'draft'" class="url-item-dep">
+                  <el-autocomplete
+                    v-model="item.depFileName"
+                    size="small"
+                    :maxlength="255"
+                    :fetch-suggestions="(q, cb) => fetchDepSuggestions(item, q, cb)"
+                    placeholder="搜索并选择依赖文件（可选）"
+                    clearable
+                    :teleported="true"
+                    style="flex: 1"
+                    @select="(opt) => handleDepSelect(item, opt)"
+                  />
+                  <el-select v-model="item.depRelation" size="small" placeholder="依赖关系" :teleported="true" style="width: 150px">
+                    <el-option v-for="opt in depRelationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                  </el-select>
+                </div>
+                <div v-if="item.displayText || item.error" class="url-item-status-line">
+                  <span v-if="item.status === 'failed'" class="url-item-error">{{ item.error }}</span>
+                  <span v-else class="url-item-speed">{{ item.displayText }}</span>
                 </div>
                 <el-progress
-                  v-if="urlUploadState.status === 'uploading' || urlUploadState.status === 'failed'"
-                  :percentage="urlUploadState.progress"
+                  v-if="item.status === 'uploading'"
+                  :percentage="item.progress"
                   :show-text="false"
                   :stroke-width="4"
                 />
               </div>
-              <div class="queue-item-actions">
-                <el-tag :type="elTagType(getUrlUploadStatusTag)" size="small">{{ getUrlUploadStatusText }}</el-tag>
+              <div class="url-item-actions">
+                <el-tag :type="elTagType(urlStatusTag(item.status))" size="small">{{ urlStatusText(item.status) }}</el-tag>
+                <el-button v-if="item.status === 'draft'" size="small" type="primary" link @click="uploadUrlItem(item.id)">上传</el-button>
+                <el-button v-if="item.status === 'pending' || item.status === 'uploading'" size="small" type="danger" link @click="cancelUrlItem(item.id)">取消</el-button>
+                <el-button v-if="item.status === 'failed' || item.status === 'cancelled'" size="small" type="primary" link @click="retryUrlItem(item.id)">重试</el-button>
+                <el-button size="small" link @click="removeUrlItem(item.id)">删除</el-button>
               </div>
             </div>
+          </div>
+          <div v-else class="url-empty-hint">
+            输入 URL 后点击「添加」；如需一次添加多个，点击「批量添加」粘贴多行。
+          </div>
+
+          <!-- 汇总与整体上传 -->
+          <div v-if="urlItems.length" class="url-summary">
+            <span>共 {{ urlItems.length }} 项 · 待上传 {{ urlDraftCount }} · 已完成 {{ urlCompletedCount }} · 失败 {{ urlFailedCount }}</span>
+            <el-button size="small" type="primary" :disabled="urlDraftCount === 0" :loading="urlEnqueuing" @click="uploadAllUrls">
+              开始上传 ({{ urlDraftCount }})
+            </el-button>
           </div>
         </el-tab-pane>
 
@@ -313,10 +348,10 @@
               保存并上传
             </el-button>
           </template>
-          <template v-else>
+          <template v-else-if="form.uploadMethod === 'local'">
             <el-button
               type="primary"
-              @click="handleFooterClick"
+              @click="startUpload"
               :disabled="!canStartUpload"
               :loading="uploading"
             >
@@ -342,7 +377,7 @@ import UploadQueue from './UploadQueue.vue'
 import { useDependency } from './hooks/useDependency'
 import { useUploadQueue } from './hooks/useUploadQueue'
 import { useClipboard } from './hooks/useClipboard'
-import { useUrlUpload } from './hooks/useUrlUpload'
+import { useUrlBatchUpload } from './hooks/useUrlBatchUpload'
 
 const props = defineProps({
   uploadApi: {
@@ -398,19 +433,10 @@ const uploadMessageType = ref('info')
 const form = reactive({
   rootName: '',
   uploadDir: '',
-  uploadMethod: 'local',
-  url: '',
-  filename: '',
-  urlNotes: '',
-  urlDepFileName: '',
-  urlDepRecordId: null,
-  urlDepRelation: 'requires',
-  urlDepDescription: ''
+  uploadMethod: 'local'
 })
 
 // Computed
-const canUrlUpload = computed(() => !!form.url && !!form.filename)
-
 // 是否需要根目录选择（临时文件/私有存储不需要）
 const needsRootSelection = computed(() => {
   const url = getApiUrl('createSession')
@@ -476,13 +502,11 @@ watch(() => store.state.currentPath, (newPath) => {
 })
 
 // ===== 依赖搜索 =====
-const deps = useDependency({ form })
+const deps = useDependency()
 const {
   depRelationOptions,
   fetchDepSuggestions,
   handleDepSelect,
-  fetchUrlDepSuggestions,
-  handleUrlDepSelect,
   extraNotes,
   extraDepFileName,
   extraDepRecordId,
@@ -556,26 +580,38 @@ const {
   uploadClipboard
 } = clipboard
 
-// ===== URL 上传 =====
-const url = useUrlUpload({
+// ===== URL 批量上传 =====
+// 条目仅在前端维护草稿；用户点击「上传」后才入队到后端，由全局队列按并行上限调度
+const {
+  items: urlItems,
+  batchMode: urlBatchMode,
+  batchText: urlBatchText,
+  singleUrl: urlSingleUrl,
+  probing: urlProbing,
+  enqueuing: urlEnqueuing,
+  hasActive: urlHasActive,
+  draftCount: urlDraftCount,
+  completedCount: urlCompletedCount,
+  failedCount: urlFailedCount,
+  statusText: urlStatusText,
+  statusTag: urlStatusTag,
+  addSingle: addSingleUrl,
+  addBatch: addBatchUrls,
+  toggleBatchMode: toggleUrlBatchMode,
+  removeItem: removeUrlItem,
+  uploadItem: uploadUrlItem,
+  uploadAll: uploadAllUrls,
+  retryItem: retryUrlItem,
+  cancelItem: cancelUrlItem,
+  stopAllPolling: stopAllUrlPolling
+} = useUrlBatchUpload({
   form,
   getApiUrl,
   needsRootSelection,
-  uploading,
   uploadMessage,
   uploadMessageType,
   emit
 })
-const {
-  urlFileInfo,
-  urlUploadState,
-  getUrlUploadStatusTag,
-  getUrlUploadStatusText,
-  handleUrlInput,
-  handleUrlUpload,
-  stopUrlPolling,
-  urlInputTimer
-} = url
 
 // ===== 新建文本 =====
 const textFilename = ref('newfile.txt')
@@ -612,29 +648,13 @@ const saveTextFile = async () => {
 }
 
 // ===== 能否开始 / 底部按钮 =====
+// URL 标签页自带「开始上传 (N)」，底部按钮只服务本地上传
 const canStartUpload = computed(() => {
-  if (form.uploadMethod === 'url') {
-    return canUrlUpload.value
-  }
-  if (form.uploadMethod === 'clipboard' || form.uploadMethod === 'text') {
-    return false
-  }
+  if (form.uploadMethod !== 'local') return false
   return uploadQueue.value.some(item => item.status === 'pending')
 })
 
-const handleFooterClick = () => {
-  if (form.uploadMethod === 'url') {
-    handleUrlUpload()
-  } else {
-    startUpload()
-  }
-}
-
-const hasUrlUploading = computed(() =>
-  urlUploadState.value.status === 'uploading'
-)
-
-// 关闭保护：有活跃上传时需确认；URL 下载在后台继续执行
+// 关闭保护：本地上传有活跃任务时需确认；URL 上传任务已入后端队列，关闭后继续执行
 const requestClose = () => {
   if (hasActiveUploads.value) {
     ElMessageBox.confirm('有文件正在上传，关闭弹框将中断所有上传。是否确认关闭？', '上传进行中', {
@@ -647,8 +667,8 @@ const requestClose = () => {
     }).catch(() => {
       // 不关闭，保持打开
     })
-  } else if (hasUrlUploading.value) {
-    ElMessage.info('URL 下载在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
+  } else if (urlHasActive.value) {
+    ElMessage.info('URL 上传在后台继续执行，您可以在通知中查看进度', { duration: 4000 })
     emit('update:modelValue', false)
     emit('close')
   } else {
@@ -788,7 +808,7 @@ watch(api, (newApi) => {
 
 // 页面关闭/刷新时提示
 const handleBeforeUnload = (e) => {
-  if (hasActiveUploads.value || hasUrlUploading.value) {
+  if (hasActiveUploads.value || urlHasActive.value) {
     e.preventDefault()
     e.returnValue = '有文件正在上传中，确定要离开吗？'
     return e.returnValue
@@ -802,12 +822,11 @@ onMounted(() => {
 // 组件卸载时清理定时器
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
-  clearTimeout(urlInputTimer.value)
-  stopUrlPolling()
+  stopAllUrlPolling()
 })
 
 // Expose startUpload
-defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFile: addFileToQueue, hasActiveUploads, hasUrlUploading })
+defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUploads, hasUrlActive: urlHasActive })
 </script>
 
 <style lang="less">
@@ -1025,6 +1044,119 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     font-size: 12px;
   }
 
+  // ===== URL 批量上传 =====
+  .url-add-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .url-batch-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .url-item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .url-item-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid @border-color-light;
+    border-radius: 8px;
+    background: @bg-color-secondary;
+  }
+
+  .url-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .url-item-url {
+    font-size: 12px;
+    color: @text-color-secondary;
+    word-break: break-all;
+    line-height: 1.4;
+  }
+
+  .url-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .url-item-name {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .url-item-size {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: @text-color-placeholder;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .url-item-dep {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .url-item-status-line {
+    font-size: 11px;
+    line-height: 1.4;
+    word-break: break-all;
+    white-space: normal;
+  }
+
+  .url-item-speed {
+    color: @text-color-secondary;
+  }
+
+  .url-item-error {
+    color: @error-color;
+  }
+
+  .url-item-actions {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .url-empty-hint {
+    padding: 16px 0;
+    font-size: 12px;
+    color: @text-color-placeholder;
+    line-height: 1.6;
+  }
+
+  .url-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid @border-color-light;
+    font-size: 12px;
+    color: @text-color-secondary;
+  }
+
   .upload-method-tabs {
     margin-top: 4px;
 
@@ -1039,22 +1171,6 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
     :deep(.el-tabs__content) {
       padding-left: 16px;
     }
-  }
-
-  .upload-footer-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
-    padding-right: 12px;
-  }
-
-  .upload-footer-message {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 12px;
-    font-size: 12px;
   }
 }
 
@@ -1085,6 +1201,36 @@ defineExpose({ startUpload, canUrlUpload, handleUrlUpload, canStartUpload, addFi
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+// 底部提示/错误区：需能容纳超长文本（如含完整 URL 的网络错误），
+// 通过换行 + 限高滚动避免撑破弹窗底部
+.upload-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.upload-footer-message {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  max-height: 84px;
+  overflow-y: auto;
+
+  .el-alert__content {
+    min-width: 0;
+  }
+
+  .el-alert__title {
+    word-break: break-all;
+    white-space: normal;
+    line-height: 1.5;
+  }
 }
 
 .upload-footer-actions {

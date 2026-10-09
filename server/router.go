@@ -477,7 +477,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		uploads.DELETE("/session/:id", uploadSessionHandler.CancelSession)
 		uploads.POST("/chunk", uploadSessionHandler.UploadChunk)
 		uploads.POST("/finalize", authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
-		uploads.POST("/url", uploadSessionHandler.UploadFromURL)          // 从URL上传
+		uploads.POST("/url", uploadSessionHandler.UploadFromURL)          // 从URL上传（入队，后台队列调度）
+		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs) // 批量探测URL（文件名/存在性/历史）
 		uploads.GET("/url-task/:taskId", uploadSessionHandler.GetURLTask) // URL任务进度查询
 		uploads.POST("/url_info", func(c *gin.Context) {
 			file.GetFileInfoFromURL(c.Writer, c.Request)

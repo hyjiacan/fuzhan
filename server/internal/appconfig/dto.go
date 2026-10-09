@@ -141,6 +141,8 @@ type URLUploadDTO struct {
 	Enabled            bool     `json:"enabled"`
 	AllowedIPRanges    []string `json:"allowedIPRanges"`
 	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
+	MaxConcurrent      int      `json:"maxConcurrent"`
+	MaxRetries         int      `json:"maxRetries"`
 }
 
 // DownloadConfigDTO 下载配置 DTO
@@ -317,6 +319,8 @@ func (c *Config) ToDTO() ConfigDTO {
 				Enabled:            c.Upload.URLUpload.Enabled,
 				AllowedIPRanges:    c.Upload.URLUpload.AllowedIPRanges,
 				InsecureSkipVerify: c.Upload.URLUpload.InsecureSkipVerify,
+				MaxConcurrent:      c.Upload.URLUpload.MaxConcurrent,
+				MaxRetries:         c.Upload.URLUpload.MaxRetries,
 			},
 		},
 		Download: DownloadConfigDTO{
@@ -456,6 +460,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Upload.URLUpload.Enabled = dto.Upload.URLUpload.Enabled
 	cfg.Upload.URLUpload.AllowedIPRanges = dto.Upload.URLUpload.AllowedIPRanges
 	cfg.Upload.URLUpload.InsecureSkipVerify = dto.Upload.URLUpload.InsecureSkipVerify
+	cfg.Upload.URLUpload.MaxConcurrent = dto.Upload.URLUpload.MaxConcurrent
+	cfg.Upload.URLUpload.MaxRetries = dto.Upload.URLUpload.MaxRetries
 
 	// 下载限流
 	cfg.Download.RateLimit.WindowMinutes = dto.Download.RateLimit.WindowMinutes

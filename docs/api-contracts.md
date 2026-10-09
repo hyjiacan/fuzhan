@@ -165,7 +165,13 @@ data: {"total":2,"matched":2}
 | DELETE | `/api/v1/uploads/session/:id` | `file.UploadSessionHandler.CancelSession` | 取消会话 |
 | POST | `/api/v1/uploads/chunk` | `file.UploadSessionHandler.UploadChunk` | 上传分片 |
 | POST | `/api/v1/uploads/finalize` | `file.UploadSessionHandler.FinalizeSession` | 完成上传 |
-| POST | `/api/v1/uploads/url` | `modules.UploadFromURL` | 从URL上传 |
+| POST | `/api/v1/uploads/url` | `file.UploadSessionHandler.UploadFromURL` | 从URL上传（入队，后台队列调度） |
+| POST | `/api/v1/uploads/url-probe` | `file.UploadSessionHandler.ProbeURLs` | 批量探测 URL（文件名/大小/存在性/历史） |
+| GET | `/api/v1/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | URL 上传任务进度 |
+| GET | `/api/v1/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户 URL 上传任务 |
+| POST | `/api/v1/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
+| POST | `/api/v1/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
+| DELETE | `/api/v1/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
 | POST | `/api/v1/uploads/url_info` | `modules.GetFileInfoFromURL` | 获取URL文件信息 |
 
 ### 创建会话
@@ -236,12 +242,17 @@ Content-Type: application/json
 
 ---
 
-## URL 下载
+## URL 上传任务
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/url-tasks` | `URLTaskHandler.ListTasks` | 列出我的URL下载任务 |
-| GET | `/api/v1/url-tasks/:id` | `URLTaskHandler.GetTask` | 获取任务详情 |
+| GET | `/api/v1/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户的 URL 上传任务 |
+| GET | `/api/v1/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | 获取任务进度 |
+| POST | `/api/v1/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
+| POST | `/api/v1/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
+| DELETE | `/api/v1/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
+
+**说明：** URL 上传任务以后台全局队列执行，并行上限由 `upload.url_upload.max_concurrent` 控制（所有用户共享，默认 2）；失败自动重试由 `upload.url_upload.max_retries` 控制（默认 3，仅超时/5xx/408/429 等可重试错误，重试任务排到队尾）；任务持久化于 `url_download_tasks`，进程重启后自动恢复。
 
 ---
 

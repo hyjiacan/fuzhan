@@ -193,7 +193,7 @@ const typeOptions = [
   { label: '哈希计算', value: 'hash' },
   { label: '一致性检查', value: 'consistency_check' },
   { label: '清理任务', value: 'cleanup' },
-  { label: 'URL 下载', value: 'url_download' }
+  { label: 'URL 上传', value: 'url_download' }
 ]
 
 const totalPages = computed(() => Math.ceil(totalCount.value / pageSize.value))
@@ -216,7 +216,7 @@ const taskTypeLabels = {
   hash: { label: '哈希计算', type: 'warning' },
   consistency_check: { label: '一致性检查', type: 'success' },
   cleanup: { label: '清理任务', type: 'default' },
-  url_download: { label: 'URL 下载', type: 'primary' },
+  url_download: { label: 'URL 上传', type: 'primary' },
   search_reconcile: { label: '检索索引对齐', type: 'info' }
 }
 

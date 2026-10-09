@@ -152,6 +152,14 @@ func readConfig() {
 		GlobalConfig.Upload.Enabled = *tempConfig.Upload.Enabled
 	}
 	GlobalConfig.Upload.URLUpload = tempConfig.Upload.URLUpload
+	// 全局并行 URL 上传任务数：未配置或非法时回退默认值
+	if GlobalConfig.Upload.URLUpload.MaxConcurrent <= 0 {
+		GlobalConfig.Upload.URLUpload.MaxConcurrent = DefaultURLUploadMaxConcurrent
+	}
+	// URL 上传自动重试次数：未配置或非法时回退默认值
+	if GlobalConfig.Upload.URLUpload.MaxRetries <= 0 {
+		GlobalConfig.Upload.URLUpload.MaxRetries = DefaultURLUploadMaxRetries
+	}
 
 	// 下载限流配置（不配置 max_requests=0 表示不限制）
 	GlobalConfig.Download = tempConfig.Download

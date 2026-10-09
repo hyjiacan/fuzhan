@@ -74,7 +74,7 @@ const state = reactive({
   // 通知
   notifications: [],
 
-  // 是否有活跃的 URL 下载任务（控制通知轮询开关）
+  // 是否有活跃的 URL 上传任务（控制通知轮询开关）
   activeUrlTasks: false
 })
 

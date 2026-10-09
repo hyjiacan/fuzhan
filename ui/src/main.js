@@ -116,7 +116,7 @@ function cleanupNotificationPolling() {
 }
 
 async function pollNotifications() {
-  // 没有活跃下载任务时不轮询
+  // 没有活跃上传任务时不轮询
   if (!store.state.activeUrlTasks) return
 
   try {

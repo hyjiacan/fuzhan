@@ -73,6 +73,8 @@ const FIELD_LABELS = {
   'upload.urlUpload.enabled': '启用 URL 上传',
   'upload.urlUpload.insecureSkipVerify': '跳过证书验证',
   'upload.urlUpload.allowedIPRanges': '允许 IP 网段',
+  'upload.urlUpload.maxConcurrent': '并行上传数',
+  'upload.urlUpload.maxRetries': '自动重试次数',
 
   download: '下载限制',
   'download.rateLimit': '下载频率限制',

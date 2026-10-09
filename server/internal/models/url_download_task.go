@@ -42,10 +42,18 @@ type URLDownloadTask struct {
 	ResumeSupported bool                   `gorm:"default:false" json:"resumeSupported"`
 	ResumeURL       string                 `gorm:"size:2048" json:"resumeURL,omitempty"`
 	TempFilePath    string                 `gorm:"size:512" json:"tempFilePath,omitempty"`
-	Notified        bool                   `gorm:"default:false;index" json:"notified"`
-	CreatedAt       time.Time              `json:"createdAt"`
-	CompletedAt     *time.Time             `json:"completedAt,omitempty"`
-	UpdatedAt       time.Time              `json:"updatedAt"`
+	// ClientIP 入队时的请求方 IP，供后台队列 worker 还原临时文件归属与操作记录
+	ClientIP string `gorm:"size:64" json:"clientIP,omitempty"`
+	// SessionDir 目标目录（会话语义，相对根目录或临时目录），供 worker 落库相对路径
+	SessionDir string `gorm:"size:512" json:"sessionDir,omitempty"`
+	// RetryCount 已自动重试次数（不含首次尝试）
+	RetryCount int `gorm:"default:0" json:"retryCount"`
+	// QueuedAt 入队时间，用于调度排序；重试时刷新以排到队尾（旧的未设置记录视为最早，优先领取）
+	QueuedAt  time.Time `gorm:"index" json:"queuedAt"`
+	Notified  bool      `gorm:"default:false;index" json:"notified"`
+	CreatedAt time.Time `json:"createdAt"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
 // TableName 指定表名

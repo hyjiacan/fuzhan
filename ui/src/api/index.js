@@ -252,6 +252,11 @@ export const UploadApi = {
     return request.post('/uploads/url', { url, filename, dir, rootName })
   },
 
+  // 批量探测 URL：返回文件名/大小、目标是否已存在、该 URL 是否已成功上传过
+  probeUrls(urls, dir = '', rootName = '', storageType = '') {
+    return request.post('/uploads/url-probe', { urls, dir, rootName, storageType }, { skipSuccessToast: true })
+  },
+
   // 分片上传
   session: {
     create(data) {
@@ -280,7 +285,7 @@ export const UploadApi = {
     return request.post('/uploads/finalize', { uploadId })
   },
 
-  // URL 下载任务进度查询
+  // URL 上传任务进度查询
   getURLTask(taskId) {
     return request.get(`/uploads/url-task/${taskId}`)
   },
@@ -485,7 +490,7 @@ export const AdminApi = {
     return request.delete('/admin/files', { params: { path }, skipSuccessToast: true })
   },
 
-  // URL 下载任务管理
+  // URL 上传任务管理
   getURLTasks(page = 1, pageSize = 20, status = '') {
     const params = { page, pageSize }
     if (status) params.status = status

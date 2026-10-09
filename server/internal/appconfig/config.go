@@ -210,7 +210,18 @@ type URLUploadConfig struct {
 	AllowedIPRanges []string `yaml:"allowed_ip_ranges"`
 	// 下载 HTTPS/FTPS URL 时是否跳过 TLS 证书验证（默认 false，即验证证书）
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
+	// 全局并行 URL 上传（下载）任务数上限（<=0 时使用默认值 2）
+	MaxConcurrent int `yaml:"max_concurrent"`
+	// URL 上传任务失败后的自动重试次数上限（<=0 时使用默认值 3）。
+	// 仅在错误可重试（非 4xx 客户端错误）时自动重试，重试任务重新排到队尾。
+	MaxRetries int `yaml:"max_retries"`
 }
+
+// DefaultURLUploadMaxConcurrent URL 上传默认全局并行数
+const DefaultURLUploadMaxConcurrent = 2
+
+// DefaultURLUploadMaxRetries URL 上传默认自动重试次数
+const DefaultURLUploadMaxRetries = 3
 
 // Config 主配置结构体
 type Config struct {

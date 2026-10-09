@@ -406,33 +406,38 @@ func main() {
 	if _, rerr := taskService.ReconcileInterruptedTasks(); rerr != nil {
 		utils.Warn("启动对账失败", utils.Err(rerr))
 	}
-	// 启动对账：URL 下载任务同样收尾上一进程遗留的 pending/downloading 为失败，
-	// 并清理其孤儿临时下载文件（TempFilePath），避免目标目录残留半截 .uploading。
+	// 启动对账：把上一进程遗留的 downloading 任务重新入队为 pending，
+	// 并清理不支持续传的孤儿临时文件，使重启后由后台队列继续执行。
 	urlTaskRepo := repositories.NewURLDownloadTaskRepository(db)
-	if interrupted, rerr := urlTaskRepo.ReconcileInterrupted("进程重启中断"); rerr != nil {
-		utils.Warn("URL下载任务启动对账失败", utils.Err(rerr))
+	requeued, rerr := urlTaskRepo.RequeueInterrupted()
+	if rerr != nil {
+		utils.Warn("URL上传任务启动对账失败", utils.Err(rerr))
 	} else {
-		for _, tk := range interrupted {
-			if tk.TempFilePath == "" {
-				continue
-			}
-			// 支持 Range 续传的任务保留部分文件，供重启后重试断点续传
-			if tk.ResumeSupported {
+		for _, tk := range requeued {
+			if tk.TempFilePath == "" || tk.ResumeSupported {
 				continue
 			}
 			if rmErr := os.Remove(tk.TempFilePath); rmErr != nil && !os.IsNotExist(rmErr) {
-				utils.Warn("清理URL下载孤儿文件失败",
+				utils.Warn("清理URL上传孤儿文件失败",
 					utils.String("task_id", tk.ID),
 					utils.String("path", tk.TempFilePath),
 					utils.Err(rmErr))
 			}
 		}
-		if len(interrupted) > 0 {
-			utils.Info("URL下载任务启动对账: 标记中断并清理孤儿文件",
-				utils.Int("count", len(interrupted)))
+		if len(requeued) > 0 {
+			utils.Info("URL上传任务启动对账: 重新入队并清理孤儿文件", utils.Int("count", len(requeued)))
 		}
 	}
 	uploadSessionHandler := file.NewUploadSessionHandler(uploadSessionSvc, db, chunkSize, recordRepo, indexService, taskService)
+
+	// URL 上传后台队列调度器：全局并行上限来自配置，超出即按入队顺序排队；
+	// 任务持久化在 url_download_tasks，关闭浏览器乃至进程重启后仍可继续执行。
+	urlDispatcher := file.NewURLDownloadDispatcher(urlTaskRepo, uploadSessionHandler, cfg.Upload.URLUpload.MaxConcurrent)
+	uploadSessionHandler.SetDispatcher(urlDispatcher)
+	urlDispatcher.Start()
+	for range requeued {
+		urlDispatcher.Notify()
+	}
 	privateUploadHandler := file.NewPrivateUploadHandler(db, chunkSize, cfg.Storage.Private.Path, indexService)
 	privateStorageHandler := file.NewPrivateStorageHandlers()
 	adminService := services.NewAdminService(db)

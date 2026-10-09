@@ -2,8 +2,8 @@ import { ref } from 'vue'
 import { FileRecordApi } from '@/api'
 import { DEP_RELATION_OPTIONS } from '../constants'
 
-// 依赖文件搜索（el-autocomplete 建议来源），覆盖队列项 / URL / 剪贴板与文本三类输入
-export function useDependency({ form }) {
+// 依赖文件搜索（el-autocomplete 建议来源），覆盖上传队列项 / 剪贴板与文本两类输入
+export function useDependency() {
   // 队列项依赖：按 item.id 缓存建议
   const depAutocompleteCache = {}
   const handleDepSearch = async (item, value) => {
@@ -30,32 +30,6 @@ export function useDependency({ form }) {
   const handleDepSelect = (item, opt) => {
     item.depFileRecordId = opt.id
     item.depFileName = opt.value.split(' (')[0]
-  }
-
-  // URL 上传依赖（写入 form）
-  const urlDepAutocompleteOptions = ref([])
-  const handleUrlDepSearch = async (value) => {
-    if (!value || value.length < 1) {
-      urlDepAutocompleteOptions.value = []
-      return
-    }
-    try {
-      const res = await FileRecordApi.searchFiles(value)
-      if (res.success && res.data.records) {
-        urlDepAutocompleteOptions.value = res.data.records.map(r => ({
-          label: `${r.fileName} (${r.fullPath})`,
-          value: String(r.id)
-        }))
-      }
-    } catch (e) {}
-  }
-  const fetchUrlDepSuggestions = async (query, cb) => {
-    await handleUrlDepSearch(query)
-    cb((urlDepAutocompleteOptions.value || []).map(o => ({ value: o.label, id: parseInt(o.value) })))
-  }
-  const handleUrlDepSelect = (opt) => {
-    form.urlDepRecordId = opt.id
-    form.urlDepFileName = opt.value.split(' (')[0]
   }
 
   // 剪贴板 / 文本上传共用依赖
@@ -93,8 +67,6 @@ export function useDependency({ form }) {
     depRelationOptions: DEP_RELATION_OPTIONS,
     fetchDepSuggestions,
     handleDepSelect,
-    fetchUrlDepSuggestions,
-    handleUrlDepSelect,
     extraNotes,
     extraDepFileName,
     extraDepRecordId,

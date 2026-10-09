@@ -49,6 +49,8 @@ func (h *Handler) GetOptions(c *gin.Context) {
 				"enabled":            currentConfig.Upload.URLUpload.Enabled,
 				"allowedIPRanges":    currentConfig.Upload.URLUpload.AllowedIPRanges,
 				"insecureSkipVerify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
+				"maxConcurrent":      currentConfig.Upload.URLUpload.MaxConcurrent,
+				"maxRetries":         currentConfig.Upload.URLUpload.MaxRetries,
 			},
 		},
 		"download": gin.H{
@@ -313,6 +315,18 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 		updates.Add("upload.url_upload.allowed_ip_ranges", allowedIPRanges)
 		updates.Add("upload.url_upload.insecure_skip_verify", req.Upload.URLUpload.InsecureSkipVerify)
+		maxConcurrent := req.Upload.URLUpload.MaxConcurrent
+		if maxConcurrent <= 0 {
+			maxConcurrent = appconfig.DefaultURLUploadMaxConcurrent
+		}
+		appconfig.GlobalConfig.Upload.URLUpload.MaxConcurrent = maxConcurrent
+		updates.Add("upload.url_upload.max_concurrent", maxConcurrent)
+		maxRetries := req.Upload.URLUpload.MaxRetries
+		if maxRetries <= 0 {
+			maxRetries = appconfig.DefaultURLUploadMaxRetries
+		}
+		appconfig.GlobalConfig.Upload.URLUpload.MaxRetries = maxRetries
+		updates.Add("upload.url_upload.max_retries", maxRetries)
 	}
 
 	// —— 下载限流（max_requests=0 表示不限制）——

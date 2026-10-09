@@ -30,7 +30,27 @@
         <el-form label-width="120px">
           <el-form-item label="启用 URL 上传">
             <el-switch v-model="props.settings.upload.urlUpload.enabled" />
-            <div class="field-hint">开启后可通过远程 URL 下载文件到服务器</div>
+            <div class="field-hint">开启后可通过远程 URL 上传文件到服务器</div>
+          </el-form-item>
+          <el-form-item label="并行上传数">
+            <el-input-number
+              v-model="props.settings.upload.urlUpload.maxConcurrent"
+              :min="1"
+              :max="20"
+              :step="1"
+              controls-position="right"
+            />
+            <div class="field-hint">全局同时进行的 URL 上传任务数，多用户共享；超出部分自动排队</div>
+          </el-form-item>
+          <el-form-item label="自动重试次数">
+            <el-input-number
+              v-model="props.settings.upload.urlUpload.maxRetries"
+              :min="1"
+              :max="20"
+              :step="1"
+              controls-position="right"
+            />
+            <div class="field-hint">URL 上传失败后自动重试次数（仅网络超时/5xx 等可重试错误；4xx 不重试），用尽后报失败，重试任务排到队尾</div>
           </el-form-item>
           <el-form-item label="跳过证书验证">
             <el-switch v-model="props.settings.upload.urlUpload.insecureSkipVerify" />

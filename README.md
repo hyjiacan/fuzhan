@@ -156,7 +156,9 @@ upload:
   max_file_size: 17179869184   # 最大文件 16GB
   url_upload:
     enabled: false
-    allowed_ip_ranges: []      # URL 下载源 IP 白名单（留空默认拒绝保留地址）
+    allowed_ip_ranges: []      # URL 上传源 IP 白名单（留空默认拒绝保留地址）
+    max_concurrent: 2          # 全局同时进行的 URL 上传任务数（所有用户共享，超出排队）
+    max_retries: 3             # 失败后自动重试次数（仅超时/5xx/408/429 等可重试错误，4xx 不重试；重试任务排到队尾）
 
 ftp:
   enabled: true
