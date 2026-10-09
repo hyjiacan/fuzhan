@@ -111,9 +111,8 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 				Status:  "ok",
 				Message: dirPath,
 			})
-			utils.AppLogger().Debug("健康检查: 存储目录正常",
-				zap.String("path", dirPath),
-			)
+			// 正常目录不再逐条打印日志：健康检查会被前端高频调用，
+			// 成功路径的逐目录日志只会刷屏而无助于排查（异常路径仍会记录）。
 		}
 	}
 	checks["storage"] = CheckResult{Status: "ok"}

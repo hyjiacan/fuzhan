@@ -45,14 +45,14 @@ func (s *Storage) Paths(session *models.UploadSession) (targetPath string, uploa
 		cleanDir = filepath.Clean(cleanDir)
 		if cleanDir == "." || filepath.IsAbs(cleanDir) || cleanDir == ".." ||
 			strings.HasPrefix(cleanDir, ".."+string(filepath.Separator)) {
-			err = fmt.Errorf("无效的目标路径")
+			err = fmt.Errorf("无效的目标路径: %q", session.TargetPath)
 			return
 		}
 	}
 
 	dir := filepath.Join(basePath, cleanDir)
 	if !isPathWithinRoot(basePath, dir) {
-		err = fmt.Errorf("路径越界")
+		err = fmt.Errorf("路径越界: %q 不在临时存储根目录 %q 内", dir, basePath)
 		return
 	}
 

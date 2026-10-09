@@ -13,6 +13,7 @@ import (
 	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/cli"
 	configh "fuzhan/internal/config"
+	"fuzhan/internal/constants"
 	"fuzhan/internal/file"
 	"fuzhan/internal/ftp"
 	"fuzhan/internal/health"
@@ -156,6 +157,16 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 	}))
 	// 设置 FTP 操作录制回调（走全局有界记录器，避免每次操作起新协程）
 	ftpHandler.SetRecordFunc(func(action, filePath, fileName, rootName, fileTypeTag, clientIP, userUUID string, fileSize int64) {
+		// FTP 操作访问日志（独立写入 ftp.log，便于跟踪与分析）
+		utils.FTPAccess("FTP操作",
+			utils.String("action", action),
+			utils.String("root", rootName),
+			utils.String("path", filePath),
+			utils.String("file", fileName),
+			utils.Int64("size", fileSize),
+			utils.String("client_ip", clientIP),
+			utils.String("user", userUUID),
+		)
 		rec := &models.OperationRecord{
 			FileName: fileName,
 			FilePath: filePath,
@@ -477,9 +488,9 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		uploads.DELETE("/session/:id", uploadSessionHandler.CancelSession)
 		uploads.POST("/chunk", uploadSessionHandler.UploadChunk)
 		uploads.POST("/finalize", authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
-		uploads.POST("/url", uploadSessionHandler.UploadFromURL)          // 从URL上传（入队，后台队列调度）
+		uploads.POST("/url", uploadSessionHandler.UploadFromURL)                                  // 从URL上传（入队，后台队列调度）
 		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs) // 批量探测URL（文件名/存在性/历史）
-		uploads.GET("/url-task/:taskId", uploadSessionHandler.GetURLTask) // URL任务进度查询
+		uploads.GET("/url-task/:taskId", uploadSessionHandler.GetURLTask)                         // URL任务进度查询
 		uploads.POST("/url_info", func(c *gin.Context) {
 			file.GetFileInfoFromURL(c.Writer, c.Request)
 		})
@@ -592,10 +603,10 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		// 操作录制（审计）：优先走全局有界记录器，与 FTP 行为一致
 		recordingFS := webdav.NewRecordingFileSystem(unifiedFS, &webdavRecordingRepo{store: rt.recordRepo})
 
-		davHandler := webdav.NewHandler("/api/v1/webdav", recordingFS)
+		davHandler := webdav.NewHandler(constants.WebDAVPathPrefix, recordingFS)
 		// 挂到 /api/v1/webdav 子组，避免 /*path 通配符与 /api/v1 下同级静态路由冲突
 		webdav.SetupUnifiedRouter(api.Group("/webdav"), davHandler, authenticate, rt.cfg.Upload.MaxFileSize)
-		utils.Info("WebDAV 统一端点已启用", utils.String("path", "/api/v1/webdav"))
+		utils.Info("WebDAV 统一端点已启用", utils.String("path", constants.WebDAVPathPrefix))
 	} else {
 		utils.Info("WebDAV 服务未启用")
 	}

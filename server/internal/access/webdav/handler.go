@@ -17,7 +17,9 @@ func NewHandler(prefix string, fs webdav.FileSystem) *webdav.Handler {
 		LockSystem: webdav.NewMemLS(),
 		Logger: func(r *http.Request, err error) {
 			if err != nil {
-				utils.Debug("WebDAV operation error",
+				// WebDAV 操作异常记入 webdav.log（Warn 级）：既能在渠道日志中跟踪，
+				// 又避免把客户端常见的 404/405 之类刷进 error.log。
+				utils.WebDAVWarn("WebDAV 操作异常",
 					utils.String("method", r.Method),
 					utils.String("path", r.URL.Path),
 					utils.Err(err))

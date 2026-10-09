@@ -27,7 +27,8 @@ import (
 func (h *UploadSessionHandler) buildTargetPath(session *models.UploadSession) (targetPath string, uploadingPath string, err error) {
 	rootPath := appconfig.RootNames[session.TargetRoot]
 	if rootPath == "" {
-		err = fmt.Errorf("无效的目标根目录")
+		err = fmt.Errorf("无效的目标根目录: %q（已配置的根目录: %v）",
+			session.TargetRoot, appconfig.RootNameKeys())
 		return
 	}
 
@@ -38,28 +39,28 @@ func (h *UploadSessionHandler) buildTargetPath(session *models.UploadSession) (t
 		cleanDir = filepath.Clean(cleanDir)
 	}
 	if filepath.IsAbs(cleanDir) || cleanDir == ".." || (len(cleanDir) > 256 && cleanDir != "") {
-		err = fmt.Errorf("无效的目标路径")
+		err = fmt.Errorf("无效的目标路径: %q", session.TargetPath)
 		return
 	}
 
 	targetDir := filepath.Join(rootPath, cleanDir)
 	absTargetDir, absErr := filepath.Abs(targetDir)
 	if absErr != nil {
-		err = fmt.Errorf("路径解析失败")
+		err = fmt.Errorf("目标路径解析失败: %q: %w", targetDir, absErr)
 		return
 	}
 	absRootPath, absErr := filepath.Abs(rootPath)
 	if absErr != nil {
-		err = fmt.Errorf("根路径解析失败")
+		err = fmt.Errorf("根路径解析失败: %q: %w", rootPath, absErr)
 		return
 	}
 	if !strings.HasPrefix(absTargetDir, absRootPath) {
-		err = fmt.Errorf("路径越界")
+		err = fmt.Errorf("路径越界: 目标 %q 不在根目录 %q 内", absTargetDir, absRootPath)
 		return
 	}
 
 	if err = os.MkdirAll(targetDir, 0755); err != nil {
-		err = fmt.Errorf("创建目标目录失败: %w", err)
+		err = fmt.Errorf("创建目标目录失败: %q: %w", targetDir, err)
 		return
 	}
 
@@ -70,7 +71,7 @@ func (h *UploadSessionHandler) buildTargetPath(session *models.UploadSession) (t
 		cleanFilename == ".." ||
 		strings.Contains(cleanFilename, "/") ||
 		strings.Contains(cleanFilename, "\\") {
-		err = fmt.Errorf("无效的文件名")
+		err = fmt.Errorf("无效的文件名: %q", session.FileName)
 		return
 	}
 

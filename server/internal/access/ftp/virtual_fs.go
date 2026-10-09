@@ -454,7 +454,7 @@ func (fs *MultiRootFs) wrapWriteFile(f afero.File, name, realPath string, isPubl
 		}
 		if isPrivate && fs.userUUID != "" {
 			if err := fs.backend.AddPrivateFile(fs.userUUID, relPath, filepath.Base(name), size); err != nil {
-				utils.Warn("FTP 私有上传写入索引失败",
+				utils.FTPWarn("FTP 私有上传写入索引失败",
 					utils.String("path", relPath),
 					utils.Err(err))
 				return err

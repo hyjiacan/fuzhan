@@ -3,6 +3,7 @@ package utils
 import (
 	"net/http"
 
+	"fuzhan/internal/constants"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -63,7 +64,30 @@ func HandleError(c *gin.Context, statusCode int, code int, message string, error
 				fields = append(fields, String("request_id", id))
 			}
 		}
-		Error("请求处理异常", fields...)
+		// 补充身份与请求细节，便于按用户/参数定位问题
+		if uid, exists := c.Get(string(constants.ContextKeyUserID)); exists {
+			if s, ok := uid.(string); ok && s != "" {
+				fields = append(fields, String("user_id", s))
+			}
+		}
+		if user, exists := c.Get(string(constants.ContextKeyUsername)); exists {
+			if s, ok := user.(string); ok && s != "" {
+				fields = append(fields, String("username", s))
+			}
+		}
+		if raw := c.Request.URL.RawQuery; raw != "" {
+			fields = append(fields, String("query", raw))
+		}
+		// 按请求渠道分流：WebDAV/API 的异常同步写入各自渠道日志，便于单独跟踪，
+		// 同时仍写入 error.log 汇总；其余走通用错误日志。
+		switch {
+		case IsWebDAVPath(c.Request.URL.Path):
+			WebDAVError("请求处理异常", fields...)
+		case IsAPIPath(c.Request.URL.Path):
+			APIError("请求处理异常", fields...)
+		default:
+			Error("请求处理异常", fields...)
+		}
 	}
 	c.JSON(statusCode, ErrorResponse{
 		Success: false,

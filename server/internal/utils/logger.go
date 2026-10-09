@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"fuzhan/internal/constants"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -41,6 +42,11 @@ type LoggerManager struct {
 	appLogger    *zap.Logger
 	errorLogger  *zap.Logger
 	accessLogger *zap.Logger
+	// 以下三个为按调用渠道分离的访问日志（access_log 开启时生效）：
+	// 便于分别跟踪 HTTP API / WebDAV / FTP 的请求与操作，互不干扰。
+	apiLogger    *zap.Logger
+	webdavLogger *zap.Logger
+	ftpLogger    *zap.Logger
 	mu           sync.RWMutex
 	config       LogConfig
 	logWriters   []io.Closer // 需要关闭的日志写入器
@@ -93,6 +99,18 @@ func (lm *LoggerManager) close() {
 	lm.logWriters = nil
 }
 
+// CloseLogger 同步并关闭全局日志写入器，释放文件句柄。
+// 进程退出或测试收尾时调用，避免文件句柄未释放。
+func CloseLogger() {
+	globalLogMu.Lock()
+	defer globalLogMu.Unlock()
+	if globalLogManager != nil {
+		globalLogManager.syncLoggers()
+		globalLogManager.close()
+		globalLogManager = nil
+	}
+}
+
 // syncLoggers 同步日志缓冲区
 func (lm *LoggerManager) syncLoggers() {
 	if lm.appLogger != nil {
@@ -103,6 +121,15 @@ func (lm *LoggerManager) syncLoggers() {
 	}
 	if lm.accessLogger != nil {
 		lm.accessLogger.Sync()
+	}
+	if lm.apiLogger != nil {
+		lm.apiLogger.Sync()
+	}
+	if lm.webdavLogger != nil {
+		lm.webdavLogger.Sync()
+	}
+	if lm.ftpLogger != nil {
+		lm.ftpLogger.Sync()
 	}
 }
 
@@ -191,8 +218,18 @@ func (lm *LoggerManager) setup() error {
 			zap.AddCaller(),
 			zap.AddCallerSkip(1),
 		)
+
+		// 按调用渠道分离的访问日志：api.log / webdav.log / ftp.log。
+		// 各自独立轮转，便于分别跟踪与统计分析。
+		lm.apiLogger = lm.createChannelLogger("api.log", encoderConfig)
+		lm.webdavLogger = lm.createChannelLogger("webdav.log", encoderConfig)
+		lm.ftpLogger = lm.createChannelLogger("ftp.log", encoderConfig)
 	} else {
 		lm.accessLogger = zap.NewNop()
+		// 渠道日志未启用时置 nil，调用方回退到 appLogger，避免日志丢失
+		lm.apiLogger = nil
+		lm.webdavLogger = nil
+		lm.ftpLogger = nil
 	}
 
 	lm.appLogger.Info("日志系统初始化完成",
@@ -227,6 +264,22 @@ func (lm *LoggerManager) createWriters(filename string, minLevel zapcore.Level) 
 	}
 
 	return zapcore.AddSync(fileWriter)
+}
+
+// createChannelLogger 创建渠道访问日志器（api/webdav/ftp），
+// 采用无颜色的文本编码，独立轮转，最小级别固定为 debug（由日志级别过滤在写入端体现）。
+func (lm *LoggerManager) createChannelLogger(filename string, cfg zapcore.EncoderConfig) *zap.Logger {
+	channelCfg := cfg
+	channelCfg.EncodeLevel = zapcore.CapitalLevelEncoder
+	return zap.New(
+		zapcore.NewCore(
+			zapcore.NewConsoleEncoder(channelCfg),
+			lm.createWriters(filename, zapcore.DebugLevel),
+			zapcore.DebugLevel,
+		),
+		zap.AddCaller(),
+		zap.AddCallerSkip(1),
+	)
 }
 
 // getLevel 解析日志级别
@@ -275,6 +328,47 @@ func AccessLogger() *zap.Logger {
 	globalLogManager.mu.RLock()
 	defer globalLogManager.mu.RUnlock()
 	return globalLogManager.accessLogger
+}
+
+// channelLoggerOf 取出指定渠道的日志器；未启用（access_log=false）时回退到 appLogger，
+// 保证日志始终有落点，不会因渠道关闭而丢失。
+func channelLoggerOf(pick func(*LoggerManager) *zap.Logger) *zap.Logger {
+	if globalLogManager == nil {
+		return zap.NewNop()
+	}
+	globalLogManager.mu.RLock()
+	l := pick(globalLogManager)
+	globalLogManager.mu.RUnlock()
+	if l == nil {
+		return AppLogger()
+	}
+	return l
+}
+
+// APIAccessLogger 获取 API 访问日志器（api.log）
+func APIAccessLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.apiLogger })
+}
+
+// WebDAVAccessLogger 获取 WebDAV 访问日志器（webdav.log）
+func WebDAVAccessLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.webdavLogger })
+}
+
+// FTPAccessLogger 获取 FTP 访问日志器（ftp.log）
+func FTPAccessLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.ftpLogger })
+}
+
+// IsWebDAVPath 判断请求路径是否属于 WebDAV 渠道。
+func IsWebDAVPath(path string) bool {
+	return path == constants.WebDAVPathPrefix || strings.HasPrefix(path, constants.WebDAVPathPrefix+"/")
+}
+
+// IsAPIPath 判断请求路径是否属于 HTTP API 渠道（WebDAV 亦以 /api/ 开头，
+// 调用方需先判定 IsWebDAVPath）。
+func IsAPIPath(path string) bool {
+	return strings.HasPrefix(path, constants.APIPathPrefix)
 }
 
 // Debug 调试日志
@@ -349,6 +443,69 @@ func Access(msg string, fields ...zap.Field) {
 	AccessLogger().Info(msg, fields...)
 }
 
+// APIAccess API 访问日志（写入 api.log）
+func APIAccess(msg string, fields ...zap.Field) {
+	APIAccessLogger().Info(msg, fields...)
+}
+
+// APIDebug API 调试日志（写入 api.log）
+func APIDebug(msg string, fields ...zap.Field) {
+	APIAccessLogger().Debug(msg, fields...)
+}
+
+// APIWarn API 警告日志（写入 api.log）
+func APIWarn(msg string, fields ...zap.Field) {
+	APIAccessLogger().Warn(msg, fields...)
+}
+
+// APIError API 错误日志（写入 api.log，并同步写入 error.log）
+func APIError(msg string, fields ...zap.Field) {
+	APIAccessLogger().Error(msg, fields...)
+	ErrorLogger().Error(msg, fields...)
+}
+
+// WebDAVAccess WebDAV 访问日志（写入 webdav.log）
+func WebDAVAccess(msg string, fields ...zap.Field) {
+	WebDAVAccessLogger().Info(msg, fields...)
+}
+
+// WebDAVDebug WebDAV 调试日志（写入 webdav.log）
+func WebDAVDebug(msg string, fields ...zap.Field) {
+	WebDAVAccessLogger().Debug(msg, fields...)
+}
+
+// WebDAVWarn WebDAV 警告日志（写入 webdav.log）
+func WebDAVWarn(msg string, fields ...zap.Field) {
+	WebDAVAccessLogger().Warn(msg, fields...)
+}
+
+// WebDAVError WebDAV 错误日志（写入 webdav.log，并同步写入 error.log）
+func WebDAVError(msg string, fields ...zap.Field) {
+	WebDAVAccessLogger().Error(msg, fields...)
+	ErrorLogger().Error(msg, fields...)
+}
+
+// FTPAccess FTP 访问/操作日志（写入 ftp.log）
+func FTPAccess(msg string, fields ...zap.Field) {
+	FTPAccessLogger().Info(msg, fields...)
+}
+
+// FTPDebug FTP 调试日志（写入 ftp.log）
+func FTPDebug(msg string, fields ...zap.Field) {
+	FTPAccessLogger().Debug(msg, fields...)
+}
+
+// FTPWarn FTP 警告日志（写入 ftp.log）
+func FTPWarn(msg string, fields ...zap.Field) {
+	FTPAccessLogger().Warn(msg, fields...)
+}
+
+// FTPError FTP 错误日志（写入 ftp.log，并同步写入 error.log）
+func FTPError(msg string, fields ...zap.Field) {
+	FTPAccessLogger().Error(msg, fields...)
+	ErrorLogger().Error(msg, fields...)
+}
+
 // Sync 同步日志缓冲区
 func Sync() {
 	if globalLogManager != nil {
@@ -361,6 +518,15 @@ func Sync() {
 		}
 		if globalLogManager.accessLogger != nil {
 			globalLogManager.accessLogger.Sync()
+		}
+		if globalLogManager.apiLogger != nil {
+			globalLogManager.apiLogger.Sync()
+		}
+		if globalLogManager.webdavLogger != nil {
+			globalLogManager.webdavLogger.Sync()
+		}
+		if globalLogManager.ftpLogger != nil {
+			globalLogManager.ftpLogger.Sync()
 		}
 		globalLogManager.mu.RUnlock()
 	}

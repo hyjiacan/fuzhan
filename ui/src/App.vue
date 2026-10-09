@@ -17,6 +17,7 @@ import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
 import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
 import { useTheme } from '@/composables/useTheme'
+import store from '@/store'
 
 // 初始化主题（配合 index.html 首屏脚本，跟随系统 + 手动切换 + 持久化）
 const { init: initTheme } = useTheme()
@@ -28,18 +29,21 @@ setGlobalErrorHandler((error) => {
   toast.fromError(error)
 })
 
-// 健康检查
+// 健康检查（全局仅此一处发起，结果写入 store 供其他组件复用）
 const checkHealth = async () => {
   try {
     const res = await SystemApi.health()
-    if (res.success && res.data && res.data.status !== 'healthy') {
-      const checks = res.data.checks || {}
+    if (res.success && res.data) {
+      store.setHealth(res.data)
+      if (res.data.status !== 'healthy') {
+        const checks = res.data.checks || {}
 
-      if (checks.database?.status !== 'ok') {
-        toast.warning('数据库: ' + (checks.database?.message || '连接失败'))
-      }
-      if (checks.storage?.status !== 'ok') {
-        toast.warning('存储: ' + (checks.storage?.message || '不可用'))
+        if (checks.database?.status !== 'ok') {
+          toast.warning('数据库: ' + (checks.database?.message || '连接失败'))
+        }
+        if (checks.storage?.status !== 'ok') {
+          toast.warning('存储: ' + (checks.storage?.message || '不可用'))
+        }
       }
     }
   } catch (e) {

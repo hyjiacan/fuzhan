@@ -95,7 +95,7 @@ func (b *ftpBackend) SyncPublicFile(rootName, relPath, uploaderIP string) {
 		return
 	}
 	if err := b.indexSvc.SyncFile(rootName, relPath); err != nil {
-		utils.Warn("FTP上传后同步索引失败",
+		utils.FTPWarn("FTP上传后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("path", relPath),
 			utils.Err(err))
@@ -106,7 +106,7 @@ func (b *ftpBackend) SyncPublicFile(rootName, relPath, uploaderIP string) {
 		if err := b.db.Model(&models.FileRecordPublic{}).
 			Where("root_name = ? AND file_path = ?", rootName, relPath).
 			UpdateColumn("uploader_ip", uploaderIP).Error; err != nil {
-			utils.Warn("FTP写入上传者IP失败",
+			utils.FTPWarn("FTP写入上传者IP失败",
 				utils.String("root", rootName),
 				utils.String("path", relPath),
 				utils.Err(err))
@@ -121,7 +121,7 @@ func (b *ftpBackend) RemovePublicFile(rootName, relPath string) {
 		return
 	}
 	if err := b.indexSvc.RemoveFile(rootName, relPath); err != nil {
-		utils.Warn("FTP删除后同步索引失败",
+		utils.FTPWarn("FTP删除后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("path", relPath),
 			utils.Err(err))
@@ -134,7 +134,7 @@ func (b *ftpBackend) MovePublicFile(rootName, oldRelPath, newRelPath string) {
 		return
 	}
 	if err := b.indexSvc.MoveFile(rootName, oldRelPath, newRelPath); err != nil {
-		utils.Warn("FTP重命名后同步索引失败",
+		utils.FTPWarn("FTP重命名后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("oldPath", oldRelPath),
 			utils.String("newPath", newRelPath),

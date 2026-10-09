@@ -3,6 +3,7 @@ package appconfig
 import (
 	"embed"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -473,6 +474,17 @@ var (
 	UserHtmlTemplate string
 	RootNames        map[string]string = map[string]string{}
 )
+
+// RootNameKeys 返回当前已配置的根目录名称（已排序），用于错误提示与诊断。
+// 未配置任何根目录时返回空切片。
+func RootNameKeys() []string {
+	names := make([]string, 0, len(RootNames))
+	for name := range RootNames {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // LockConfig 获取写锁，用于修改 GlobalConfig 时保护并发访问
 func LockConfig() { configMu.Lock() }

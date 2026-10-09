@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import store from '@/store'
 import IndexStatusBar from './IndexStatusBar.vue'
@@ -154,7 +154,9 @@ const showUploadStatus = ref(false)
 const showHelp = ref(false)
 const activeHelpTab = ref('basic')
 const showAbout = ref(false)
-const aboutInfo = ref({})
+
+// 复用 App.vue 启动时拉取的健康检查结果，避免重复请求同一接口
+const aboutInfo = computed(() => store.state.health || {})
 
 const statusText = computed(() => {
   const s = aboutInfo.value.status
@@ -171,22 +173,6 @@ const statusClass = computed(() => {
   if (s === 'unhealthy') return 'bad'
   return 'unknown'
 })
-
-const fetchRuntimeInfo = async () => {
-  try {
-    const res = await fetch('/api/v1/health')
-    if (res.ok) {
-      const body = await res.json()
-      aboutInfo.value = body.data || {}
-    }
-  } catch {
-    aboutInfo.value = {}
-  }
-}
-
-onMounted(() => {
-    fetchRuntimeInfo()
-  })
 </script>
 
 <style lang="less">

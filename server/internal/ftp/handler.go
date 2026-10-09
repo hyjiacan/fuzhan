@@ -115,7 +115,7 @@ func (d *ftpDriver) ClientConnected(cc ftpserver.ClientContext) (string, error) 
 		n := atomic.AddInt32(&d.activeConns, 1)
 		if n > d.maxConns {
 			atomic.AddInt32(&d.activeConns, -1)
-			utils.Warn("FTP连接数已达上限，拒绝新连接",
+			utils.FTPWarn("FTP连接数已达上限，拒绝新连接",
 				utils.Int("active", int(n-1)),
 				utils.Int("max", int(d.maxConns)),
 				utils.Stringer("addr", cc.RemoteAddr()))
@@ -125,7 +125,7 @@ func (d *ftpDriver) ClientConnected(cc ftpserver.ClientContext) (string, error) 
 		atomic.AddInt32(&d.activeConns, 1)
 	}
 	connID := cc.ID()
-	utils.Info("FTP客户端连接",
+	utils.FTPAccess("FTP客户端连接",
 		utils.Int("id", int(connID)),
 		utils.Stringer("addr", cc.RemoteAddr()),
 		utils.Int("activeConns", int(atomic.LoadInt32(&d.activeConns))))
@@ -134,7 +134,7 @@ func (d *ftpDriver) ClientConnected(cc ftpserver.ClientContext) (string, error) 
 
 func (d *ftpDriver) ClientDisconnected(cc ftpserver.ClientContext) {
 	atomic.AddInt32(&d.activeConns, -1)
-	utils.Info("FTP客户端断开",
+	utils.FTPAccess("FTP客户端断开",
 		utils.Int("id", int(cc.ID())),
 		utils.Int("activeConns", int(atomic.LoadInt32(&d.activeConns))))
 }
@@ -182,7 +182,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 
 	if entry.count >= maxLoginFailures {
 		d.failMu.Unlock()
-		utils.Warn("FTP登录频率过高，暂时拒绝",
+		utils.FTPWarn("FTP登录频率过高，暂时拒绝",
 			utils.String("user", user),
 			utils.String("ip", clientIP))
 		time.Sleep(loginRateLimitDelay)
@@ -197,7 +197,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		anonUser = "public"
 	}
 	if user == "anonymous" || user == anonUser {
-		utils.Info("FTP匿名用户登录成功",
+		utils.FTPAccess("FTP匿名用户登录成功",
 			utils.String("user", user),
 			utils.String("ip", clientIP))
 		multiFs := ftpfs.NewMultiRootFs(d.rootDirs, "", "", clientIP, d.recordFn, d.backend)
@@ -218,7 +218,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		entry.lastFail = time.Now()
 		d.failMu.Unlock()
 
-		utils.Warn("FTP登录失败",
+		utils.FTPWarn("FTP登录失败",
 			utils.String("user", user),
 			utils.String("ip", clientIP),
 			utils.Int("failCount", entry.count))
@@ -233,7 +233,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 	delete(d.failCounts, clientIP)
 	d.failMu.Unlock()
 
-	utils.Info("FTP用户登录成功",
+	utils.FTPAccess("FTP用户登录成功",
 		utils.String("user", user),
 		utils.String("ip", clientIP))
 	multiFs := ftpfs.NewMultiRootFs(d.rootDirs, d.privateDir, uuid, clientIP, d.recordFn, d.backend)

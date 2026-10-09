@@ -39,7 +39,9 @@ type PublicStorage struct{}
 func (PublicStorage) Paths(session *models.UploadSession) (targetPath string, uploadingPath string, err error) {
 	rootPath := appconfig.RootNames[session.TargetRoot]
 	if rootPath == "" {
-		err = fmt.Errorf("无效的目标根目录")
+		// 带上实际的根目录名与当前已配置的根目录清单，便于直接定位是配置问题还是请求参数问题
+		err = fmt.Errorf("无效的目标根目录: %q（已配置的根目录: %v）",
+			session.TargetRoot, appconfig.RootNameKeys())
 		return
 	}
 
@@ -50,29 +52,29 @@ func (PublicStorage) Paths(session *models.UploadSession) (targetPath string, up
 		cleanDir = filepath.Clean(cleanDir)
 	}
 	if filepath.IsAbs(cleanDir) || cleanDir == ".." || (len(cleanDir) > 256 && cleanDir != "") {
-		err = fmt.Errorf("无效的目标路径")
+		err = fmt.Errorf("无效的目标路径: %q", session.TargetPath)
 		return
 	}
 
 	targetDir := filepath.Join(rootPath, cleanDir)
 	absTargetDir, absErr := filepath.Abs(targetDir)
 	if absErr != nil {
-		err = fmt.Errorf("路径解析失败")
+		err = fmt.Errorf("目标路径解析失败: %q: %w", targetDir, absErr)
 		return
 	}
 	absRootPath, absErr := filepath.Abs(rootPath)
 	if absErr != nil {
-		err = fmt.Errorf("根路径解析失败")
+		err = fmt.Errorf("根路径解析失败: %q: %w", rootPath, absErr)
 		return
 	}
 	if absTargetDir != absRootPath && !strings.HasPrefix(absTargetDir, absRootPath+string(os.PathSeparator)) {
-		err = fmt.Errorf("路径越界")
+		err = fmt.Errorf("路径越界: 目标 %q 不在根目录 %q 内", absTargetDir, absRootPath)
 		return
 	}
 
 	cleanFilename := filepath.Clean(session.FileName)
 	if strings.Contains(cleanFilename, "..") || strings.Contains(cleanFilename, "/") || strings.Contains(cleanFilename, "\\") {
-		err = fmt.Errorf("无效的文件名")
+		err = fmt.Errorf("无效的文件名: %q", session.FileName)
 		return
 	}
 
@@ -81,7 +83,7 @@ func (PublicStorage) Paths(session *models.UploadSession) (targetPath string, up
 
 	absTarget, _ := filepath.Abs(targetPath)
 	if !strings.HasPrefix(absTarget, absRootPath+string(os.PathSeparator)) {
-		err = fmt.Errorf("路径越界")
+		err = fmt.Errorf("路径越界: 目标文件 %q 不在根目录 %q 内", absTarget, absRootPath)
 		return
 	}
 

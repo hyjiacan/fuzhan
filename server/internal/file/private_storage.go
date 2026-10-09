@@ -31,7 +31,7 @@ func NewPrivateStorage(basePath string) *PrivateStorage {
 func (st *PrivateStorage) Paths(session *models.UploadSession) (targetPath string, uploadingPath string, err error) {
 	basePath := st.basePath
 	if basePath == "" {
-		err = fmt.Errorf("私有存储未配置")
+		err = fmt.Errorf("私有存储未配置（storage.private.path 为空）")
 		return
 	}
 	userDir := GetPrivateUserPath(basePath, session.UserID)
@@ -53,7 +53,7 @@ func (st *PrivateStorage) Paths(session *models.UploadSession) (targetPath strin
 
 	cleanFilename := filepath.Clean(session.FileName)
 	if strings.Contains(cleanFilename, "..") || strings.Contains(cleanFilename, "/") || strings.Contains(cleanFilename, `\`) {
-		err = fmt.Errorf("无效的文件名")
+		err = fmt.Errorf("无效的文件名: %q", session.FileName)
 		return
 	}
 
@@ -75,7 +75,7 @@ func cleanPrivateDir(d string) (string, error) {
 	}
 	if filepath.IsAbs(d) || d == ".." || strings.HasPrefix(d, ".."+string(os.PathSeparator)) ||
 		strings.Contains(d, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("无效的目标路径")
+		return "", fmt.Errorf("无效的目标路径: %q", d)
 	}
 	return d, nil
 }
@@ -84,14 +84,14 @@ func cleanPrivateDir(d string) (string, error) {
 func validateUnderUserDir(absDir, userDir string) error {
 	absDir, err := filepath.Abs(absDir)
 	if err != nil {
-		return fmt.Errorf("路径解析失败")
+		return fmt.Errorf("路径解析失败: %q: %w", absDir, err)
 	}
 	absRoot, err := filepath.Abs(userDir)
 	if err != nil {
-		return fmt.Errorf("根路径解析失败")
+		return fmt.Errorf("根路径解析失败: %q: %w", userDir, err)
 	}
 	if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(os.PathSeparator)) {
-		return fmt.Errorf("路径越界")
+		return fmt.Errorf("路径越界: %q 不在用户目录 %q 内", absDir, absRoot)
 	}
 	return nil
 }

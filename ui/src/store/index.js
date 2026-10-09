@@ -75,7 +75,10 @@ const state = reactive({
   notifications: [],
 
   // 是否有活跃的 URL 上传任务（控制通知轮询开关）
-  activeUrlTasks: false
+  activeUrlTasks: false,
+
+  // 健康检查结果（由 App.vue 启动时统一拉取一次，供页脚等组件复用，避免重复请求）
+  health: null
 })
 
 // 状态变更方法
@@ -196,6 +199,11 @@ const mutations = {
   // 设置活跃任务状态
   setActiveUrlTasks(active) {
     state.activeUrlTasks = active
+  },
+
+  // 设置健康检查结果
+  setHealth(health) {
+    state.health = health || null
   },
 
   // 设置通知列表
