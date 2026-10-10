@@ -22,6 +22,7 @@ import (
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -224,9 +225,28 @@ func probeRemoteFileInfo(downloadURL string, urlCfg utils.URLUploadConfig, prefe
 	filename = preferredName
 	if filename == "" {
 		if cd := headResp.Header.Get("Content-Disposition"); cd != "" {
-			re := regexp.MustCompile(`filename[^;=\n]*=(['"]?)([^;"\n]+)\1`)
-			if matches := re.FindStringSubmatch(cd); len(matches) > 2 {
-				filename = matches[2]
+			// 优先取 filename*= (RFC 5987)
+			reStar := regexp.MustCompile(`filename\*\s*=\s*([^;\n]+)`)
+			if m := reStar.FindStringSubmatch(cd); m != nil {
+				v := strings.TrimSpace(m[1])
+				if _, after, ok := strings.Cut(v, "''"); ok {
+					if decoded, err := url.QueryUnescape(after); err == nil {
+						filename = decoded
+					}
+				}
+			}
+
+			// 回退到普通 filename=
+			if filename == "" {
+				re := regexp.MustCompile(`filename[^;=\n]*=(?:'([^';\n]+)'|"([^";\n]+)"|([^;"\n]+))`)
+				if matches := re.FindStringSubmatch(cd); matches != nil {
+					for i := 1; i <= 3; i++ {
+						if matches[i] != "" {
+							filename = matches[i]
+							break
+						}
+					}
+				}
 			}
 		}
 		if filename == "" {
