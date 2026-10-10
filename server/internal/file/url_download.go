@@ -154,12 +154,26 @@ func EnsureUploadingFile(path string, size int64) error {
 }
 
 // maxURLRetries 读取当前配置的 URL 上传自动重试次数上限（<=0 时回退默认值）。
+// 通过 GetConfig 加读锁读取，避免与配置热更新的写操作产生数据竞争。
 func maxURLRetries() int {
-	n := appconfig.GlobalConfig.Upload.URLUpload.MaxRetries
+	n := appconfig.GetConfig().Upload.URLUpload.MaxRetries
 	if n <= 0 {
 		n = appconfig.DefaultURLUploadMaxRetries
 	}
 	return n
+}
+
+// retryBackoff 计算第 retry 次自动重试前的最小等待时间，避免持续失败的远端被连续重试打满。
+// 随重试次数线性增长，上限 5 分钟。
+func retryBackoff(retry int) time.Duration {
+	if retry < 1 {
+		retry = 1
+	}
+	d := time.Duration(retry) * 30 * time.Second
+	if d > 5*time.Minute {
+		d = 5 * time.Minute
+	}
+	return d
 }
 
 // isRetryableHTTPStatus 判断 HTTP 状态码是否属于可重试错误：
@@ -171,15 +185,26 @@ func isRetryableHTTPStatus(code int) bool {
 	return code == http.StatusRequestTimeout || code == http.StatusTooManyRequests
 }
 
+// setURLTaskFailed 将仍处于 downloading 的任务置为失败，并记录状态写入错误。
+// 加状态守卫是为了避免覆盖用户在此期间发起的取消（cancelled）。
+func (h *UploadSessionHandler) setURLTaskFailed(taskID, msg string) {
+	if _, err := h.urlTaskRepo.UpdateStatusFrom(taskID,
+		[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+		models.URLDownloadStatusFailed, msg); err != nil {
+		utils.Error("URL上传任务状态写入失败", utils.String("taskId", taskID), utils.Err(err))
+	}
+}
+
 // failURLTask 处理 URL 上传任务的一次失败：
-// 当 retryable 为 true 且未达自动重试上限时，把任务重新入队到队尾并唤醒调度器，返回 true；
+// 当 retryable 为 true 且未达自动重试上限时，把任务重新入队到队尾（带退避）并唤醒调度器，返回 true；
 // 否则标记为失败并返回 false。
 func (h *UploadSessionHandler) failURLTask(taskID, msg string, retryable bool) bool {
 	if retryable {
 		maxRetries := maxURLRetries()
 		if task, err := h.urlTaskRepo.GetByID(taskID); err == nil && task != nil && task.RetryCount < maxRetries {
-			rerr := h.urlTaskRepo.RequeueForRetry(taskID)
-			if rerr == nil {
+			// 仅当任务仍处于 downloading 时才重排，避免复活已被用户取消的任务
+			ok, rerr := h.urlTaskRepo.RequeueForRetry(taskID, retryBackoff(task.RetryCount+1))
+			if rerr == nil && ok {
 				utils.Warn("URL上传任务失败，已重新入队等待自动重试",
 					utils.String("taskId", taskID),
 					utils.Int("retry", task.RetryCount+1),
@@ -190,20 +215,49 @@ func (h *UploadSessionHandler) failURLTask(taskID, msg string, retryable bool) b
 				}
 				return true
 			}
-			utils.Warn("URL上传任务重新入队失败，将直接标记为失败",
-				utils.String("taskId", taskID), utils.Err(rerr))
+			if rerr != nil {
+				utils.Warn("URL上传任务重新入队失败，将直接标记为失败",
+					utils.String("taskId", taskID), utils.Err(rerr))
+			}
 		}
 	}
-	_ = h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, msg)
+	// 仅当任务仍在 downloading 时才置为失败，避免覆盖用户取消
+	if _, err := h.urlTaskRepo.UpdateStatusFrom(taskID, []models.URLDownloadStatus{models.URLDownloadStatusDownloading}, models.URLDownloadStatusFailed, msg); err != nil {
+		utils.Error("URL上传任务状态写入失败", utils.String("taskId", taskID), utils.Err(err))
+	}
 	return false
 }
 
 // executeURLDownloadTask 由后台队列调度器在领取到任务后调用：
 // 从任务记录还原执行上下文并启动实际下载。并发上限由调度器 worker 数控制。
+// 每个任务持有可取消的 context 并登记到调度器，使用户取消/删除任务时能真正中断下载。
 func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTask) {
+	// worker 入口兜底：任何未预期的 panic 都不能拖垮整个进程
+	defer func() {
+		if r := recover(); r != nil {
+			utils.Error("URL上传任务执行发生内部错误",
+				utils.String("taskId", task.ID), utils.Any("recover", r))
+			if _, err := h.urlTaskRepo.UpdateStatusFrom(task.ID,
+				[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+				models.URLDownloadStatusFailed, "执行过程发生内部错误"); err != nil {
+				utils.Error("URL上传任务状态写入失败", utils.String("taskId", task.ID), utils.Err(err))
+			}
+		}
+	}()
+
 	if task.TargetPath == "" || task.TempFilePath == "" {
-		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "任务缺少目标路径")
+		_, _ = h.urlTaskRepo.UpdateStatusFrom(task.ID,
+			[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+			models.URLDownloadStatusFailed, "任务缺少目标路径")
 		return
+	}
+
+	// 可取消 context：供取消/删除任务时中断进行中的下载
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if h.dispatcher != nil {
+		h.dispatcher.RegisterCancel(task.ID, cancel)
+		defer h.dispatcher.UnregisterCancel(task.ID)
 	}
 
 	sessionTargetType := models.TargetTypeRegular
@@ -218,7 +272,9 @@ func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTa
 
 	// 目标文件已存在则直接失败（可能被其他任务/用户抢先创建）
 	if _, statErr := os.Stat(task.TargetPath); statErr == nil {
-		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "目标文件已存在")
+		_, _ = h.urlTaskRepo.UpdateStatusFrom(task.ID,
+			[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+			models.URLDownloadStatusFailed, "目标文件已存在")
 		return
 	}
 
@@ -226,16 +282,18 @@ func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTa
 	if err := EnsureUploadingFile(task.TempFilePath, task.FileSize); err != nil {
 		os.Remove(task.TempFilePath)
 		utils.Error("URL上传创建临时文件失败", utils.String("path", task.TempFilePath), utils.Err(err))
-		_ = h.urlTaskRepo.UpdateStatus(task.ID, models.URLDownloadStatusFailed, "创建上传文件失败")
+		_, _ = h.urlTaskRepo.UpdateStatusFrom(task.ID,
+			[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+			models.URLDownloadStatusFailed, "创建上传文件失败")
 		return
 	}
 
-	h.downloadFromURL(task.ID, task.URL, task.FileSize, task.FileName, task.ClientIP,
+	h.downloadFromURL(ctx, task.ID, task.URL, task.FileSize, task.FileName, task.ClientIP,
 		task.TempFilePath, task.TargetPath, task.SessionDir, sessionTargetRoot, sessionTargetType)
 }
 
-// downloadFromURL 后台下载文件并记录进度
-func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string, fileSize int64, filename string, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType) {
+// downloadFromURL 后台下载文件并记录进度。parentCtx 由调度器注入，用于取消/删除时中断下载。
+func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID string, downloadURL string, fileSize int64, filename string, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType) {
 	// 创建任务记录（供任务管理页面展示）
 	var taskRecordID uint
 	if h.taskSvc != nil {
@@ -255,13 +313,36 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		}
 	}
 
+	// isCancelled 判断任务是否已被用户取消（context 取消或状态已为 cancelled）
+	isCancelled := func() bool {
+		if parentCtx.Err() != nil {
+			return true
+		}
+		if t, err := h.urlTaskRepo.GetByID(taskID); err == nil && t != nil {
+			return t.Status == models.URLDownloadStatusCancelled
+		}
+		return false
+	}
+	// markCancelled 把任务收敛为已取消（仅当仍处于 downloading），并清理临时文件
+	markCancelled := func() {
+		os.Remove(uploadingPath)
+		_, _ = h.urlTaskRepo.UpdateStatusFrom(taskID,
+			[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+			models.URLDownloadStatusCancelled, "用户取消")
+	}
+
 	var urlTaskUpdated bool
 	var outFile *os.File
 	var taskSucceeded bool
 	var taskErrMsg string
 	defer func() {
 		if !urlTaskUpdated {
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "意外退出：状态未更新")
+			// 仅当任务仍在 downloading 时才置失败，避免覆盖用户取消
+			if _, err := h.urlTaskRepo.UpdateStatusFrom(taskID,
+				[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+				models.URLDownloadStatusFailed, "意外退出：状态未更新"); err != nil {
+				utils.Error("URL上传任务状态写入失败", utils.String("taskId", taskID), utils.Err(err))
+			}
 		}
 		completeTask(taskSucceeded, taskErrMsg)
 	}()
@@ -273,7 +354,9 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 				outFile.Close()
 			}
 			os.Remove(uploadingPath)
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "下载过程发生内部错误")
+			_, _ = h.urlTaskRepo.UpdateStatusFrom(taskID,
+				[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+				models.URLDownloadStatusFailed, "下载过程发生内部错误")
 		}
 	}()
 
@@ -283,7 +366,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 	if err != nil {
 		os.Remove(uploadingPath)
 		urlTaskUpdated = true
-		h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "打开上传文件失败")
+		h.setURLTaskFailed(taskID, "打开上传文件失败")
 		utils.Error("URL下载打开上传文件失败", utils.Err(err))
 		return
 	}
@@ -298,10 +381,20 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		}
 
 		if err := DownloadFromFTP(downloadURL, uploadingPath, progressFn); err != nil {
-			os.Remove(uploadingPath)
 			urlTaskUpdated = true
+			if isCancelled() {
+				markCancelled()
+				return
+			}
+			os.Remove(uploadingPath)
 			h.failURLTask(taskID, "FTP 下载失败: "+err.Error(), true)
 			utils.Error("FTP下载失败", utils.String("url", downloadURL), utils.Err(err))
+			return
+		}
+
+		if isCancelled() {
+			urlTaskUpdated = true
+			markCancelled()
 			return
 		}
 
@@ -309,7 +402,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 		if fiErr != nil {
 			os.Remove(uploadingPath)
 			urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "获取 FTP 下载文件信息失败")
+			h.setURLTaskFailed(taskID, "获取 FTP 下载文件信息失败")
 			utils.Error("FTP下载获取文件信息失败", utils.Err(fiErr))
 			return
 		}
@@ -323,7 +416,7 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 			return
 		}
 	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
 		defer cancel()
 
 		// ---- 断点续传判定：服务器支持 Range 且存在有效部分文件且未下满 ----
@@ -347,10 +440,15 @@ func (h *UploadSessionHandler) downloadFromURL(taskID string, downloadURL string
 			outFile.Seek(0, io.SeekStart)
 		}
 
-		// 失败处理：可重试且未达上限时重新入队到队尾（可续传则保留部分文件与进度以便断点续传），
-		// 否则标记失败并清理临时文件
+		// 失败处理：先判断是否被用户取消；可重试且未达上限时重新入队到队尾（可续传则保留部分文件与进度
+		// 以便断点续传），否则标记失败并清理临时文件
 		failTask := func(msg string, retryable bool) {
 			urlTaskUpdated = true
+			// 取消优先于失败/重试：避免取消中的任务被重排或标记为失败
+			if isCancelled() {
+				markCancelled()
+				return
+			}
 			if h.failURLTask(taskID, msg, retryable) {
 				if resumable && downloaded > 0 {
 					_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
@@ -461,7 +559,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 	if _, err := os.Stat(targetPath); err == nil {
 		os.Remove(uploadingPath)
 		*urlTaskUpdated = true
-		h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "目标文件已存在")
+		h.setURLTaskFailed(taskID, "目标文件已存在")
 		utils.Error("URL下载目标文件已存在", utils.String("target", targetPath))
 		return
 	}
@@ -472,7 +570,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 			if copyErr := utils.CopyFile(uploadingPath, targetPath); copyErr != nil {
 				os.Remove(uploadingPath)
 				*urlTaskUpdated = true
-				h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "跨设备复制文件失败")
+				h.setURLTaskFailed(taskID, "跨设备复制文件失败")
 				utils.Error("跨设备复制文件失败", utils.Err(copyErr))
 				return
 			}
@@ -480,7 +578,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 		} else {
 			os.Remove(uploadingPath)
 			*urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "重命名文件失败")
+			h.setURLTaskFailed(taskID, "重命名文件失败")
 			utils.Error("URL下载重命名文件失败", utils.Err(err))
 			return
 		}
@@ -491,7 +589,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 		if codeErr != nil {
 			os.Remove(targetPath)
 			*urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "生成访问码失败")
+			h.setURLTaskFailed(taskID, "生成访问码失败")
 			utils.Error("URL下载生成临时访问码失败", utils.Err(codeErr))
 			return
 		}
@@ -506,14 +604,14 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 				if copyErr := utils.CopyFile(targetPath, tempFilePath); copyErr != nil {
 					os.Remove(targetPath)
 					*urlTaskUpdated = true
-					h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "移动文件失败")
+					h.setURLTaskFailed(taskID, "移动文件失败")
 					return
 				}
 				os.Remove(targetPath)
 			} else {
 				os.Remove(targetPath)
 				*urlTaskUpdated = true
-				h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "移动文件失败")
+				h.setURLTaskFailed(taskID, "移动文件失败")
 				return
 			}
 		}
@@ -536,7 +634,7 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 		if err := h.db.Create(tempFile).Error; err != nil {
 			os.Remove(tempFilePath)
 			*urlTaskUpdated = true
-			h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusFailed, "创建临时文件记录失败")
+			h.setURLTaskFailed(taskID, "创建临时文件记录失败")
 			utils.Error("URL下载创建临时文件记录失败", utils.Err(err))
 			return
 		}
@@ -626,7 +724,22 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 	}
 
 	*urlTaskUpdated = true
-	h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusCompleted, "")
+	// 仅当任务仍处于 downloading 时才置为完成，避免覆盖用户在此期间发起的取消
+	updated, err := h.urlTaskRepo.UpdateStatusFrom(taskID,
+		[]models.URLDownloadStatus{models.URLDownloadStatusDownloading},
+		models.URLDownloadStatusCompleted, "")
+	if err != nil {
+		utils.Error("URL上传任务状态写入失败", utils.String("taskId", taskID), utils.Err(err))
+	} else if !updated {
+		utils.Warn("URL上传任务完成态写入被跳过（状态已被并发修改）", utils.String("taskId", taskID))
+	}
+
+	// 临时文件完成时已移动到哈希命名的新位置，回写真实路径，供后续校验值计算等使用
+	if sessionTargetType == models.TargetTypeTemp {
+		if err := h.urlTaskRepo.UpdateTargetPath(taskID, targetPath); err != nil {
+			utils.Warn("URL下载回写临时文件最终路径失败", utils.String("taskId", taskID), utils.Err(err))
+		}
+	}
 
 	utils.Info("URL文件下载完成", utils.String("filename", filename), utils.Int64("size", downloaded))
 }

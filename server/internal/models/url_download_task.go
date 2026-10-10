@@ -34,7 +34,7 @@ type URLDownloadTask struct {
 	TargetPath      string                 `gorm:"size:512" json:"targetPath"`
 	StorageType     URLDownloadStorageType `gorm:"size:20;not null;default:temp" json:"storageType"`
 	RootName        string                 `gorm:"size:64" json:"rootName,omitempty"` // 目标根目录名，供重试还原会话上下文
-	Status          URLDownloadStatus      `gorm:"size:20;not null;default:pending" json:"status"`
+	Status          URLDownloadStatus      `gorm:"size:20;not null;default:pending;index:idx_url_task_status_queued,priority:1" json:"status"`
 	ErrorMessage    string                 `gorm:"size:1024" json:"errorMessage,omitempty"`
 	FileSize        int64                  `gorm:"default:0" json:"fileSize"`
 	DownloadedBytes int64                  `gorm:"default:0" json:"downloadedBytes"`
@@ -49,9 +49,10 @@ type URLDownloadTask struct {
 	// RetryCount 已自动重试次数（不含首次尝试）
 	RetryCount int `gorm:"default:0" json:"retryCount"`
 	// QueuedAt 入队时间，用于调度排序；重试时刷新以排到队尾（旧的未设置记录视为最早，优先领取）
-	QueuedAt  time.Time `gorm:"index" json:"queuedAt"`
-	Notified  bool      `gorm:"default:false;index" json:"notified"`
-	CreatedAt time.Time `json:"createdAt"`
+	// 与 status 组成复合索引，支撑调度热路径的 WHERE status=? ORDER BY queued_at 查询。
+	QueuedAt    time.Time  `gorm:"index;index:idx_url_task_status_queued,priority:2" json:"queuedAt"`
+	Notified    bool       `gorm:"default:false;index" json:"notified"`
+	CreatedAt   time.Time  `json:"createdAt"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }

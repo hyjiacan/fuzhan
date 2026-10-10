@@ -139,9 +139,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import store from '@/store'
+import { SystemApi } from '@/api/index.js'
 import IndexStatusBar from './IndexStatusBar.vue'
 import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 
@@ -157,6 +158,18 @@ const showAbout = ref(false)
 
 // 复用 App.vue 启动时拉取的健康检查结果，避免重复请求同一接口
 const aboutInfo = computed(() => store.state.health || {})
+
+// App.vue 的健康检查延迟到浏览器空闲时执行（最长 8s），在此之前页脚会显示"未知"。
+// 若进入页面时 store 尚无健康数据，由页脚兜底拉取一次，保证状态尽早可见。
+onMounted(async () => {
+  if (store.state.health) return
+  try {
+    const res = await SystemApi.health()
+    if (res.success && res.data) store.setHealth(res.data)
+  } catch (e) {
+    // 静默失败：App.vue 的兜底检查会再次尝试并给出提示
+  }
+})
 
 const statusText = computed(() => {
   const s = aboutInfo.value.status

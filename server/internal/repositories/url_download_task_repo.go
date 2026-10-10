@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"time"
 
 	"fuzhan/internal/utils"
 
@@ -35,8 +36,17 @@ func (r *URLDownloadTaskRepository) GetByID(id string) (*models.URLDownloadTask,
 	return &task, nil
 }
 
-// UpdateStatus 更新任务状态
+// UpdateStatus 更新任务状态（无条件）。
+// 并发场景（worker 终态写入与用户取消竞争）应改用 UpdateStatusFrom 加状态守卫。
 func (r *URLDownloadTaskRepository) UpdateStatus(id string, status models.URLDownloadStatus, errorMsg string) error {
+	_, err := r.UpdateStatusFrom(id, nil, status, errorMsg)
+	return err
+}
+
+// UpdateStatusFrom 条件更新任务状态：仅当任务当前状态在 from 中时才更新为目标状态。
+// from 为空表示不加状态条件。返回是否实际更新（false 表示状态已被并发修改，如用户已取消）。
+// 用于保证 worker 的终态写入不会覆盖取消等并发状态变更。
+func (r *URLDownloadTaskRepository) UpdateStatusFrom(id string, from []models.URLDownloadStatus, status models.URLDownloadStatus, errorMsg string) (bool, error) {
 	updates := map[string]interface{}{
 		"status": status,
 	}
@@ -47,13 +57,28 @@ func (r *URLDownloadTaskRepository) UpdateStatus(id string, status models.URLDow
 		now := utils.Now()
 		updates["completed_at"] = &now
 	}
-	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).Updates(updates).Error
+	query := r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id)
+	if len(from) > 0 {
+		query = query.Where("status IN ?", from)
+	}
+	res := query.Updates(updates)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // UpdateProgress 更新下载进度
 func (r *URLDownloadTaskRepository) UpdateProgress(id string, downloadedBytes int64) error {
 	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).
 		Update("downloaded_bytes", downloadedBytes).Error
+}
+
+// UpdateTargetPath 回写任务最终文件路径。
+// 临时文件在完成时会被移动到哈希命名的新位置，需回写真实路径供后续（如校验值计算）使用。
+func (r *URLDownloadTaskRepository) UpdateTargetPath(id string, targetPath string) error {
+	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).
+		Update("target_path", targetPath).Error
 }
 
 // ListByStatus 按状态查询任务（分页，管理端用）
@@ -127,16 +152,27 @@ func (r *URLDownloadTaskRepository) ResetToPending(id string) error {
 }
 
 // RequeueForRetry 将失败任务重新入队以进行自动重试：重试计数 +1、状态回到 pending、
-// 清空错误信息、刷新入队时间（排到队尾）。保留 downloaded_bytes 与临时文件，以便断点续传。
-func (r *URLDownloadTaskRepository) RequeueForRetry(id string) error {
-	return r.db.Model(&models.URLDownloadTask{}).Where("id = ?", id).
+// 清空错误信息、按退避时间刷新入队时间（排到队尾且延后领取）。保留 downloaded_bytes 与临时文件，以便断点续传。
+// 仅当任务仍处于 downloading（即确由 worker 在执行）时才生效，避免复活已被用户取消的任务。
+// delay 为最小重试间隔（<=0 表示不延迟）。
+func (r *URLDownloadTaskRepository) RequeueForRetry(id string, delay time.Duration) (bool, error) {
+	queuedAt := utils.Now()
+	if delay > 0 {
+		queuedAt = queuedAt.Add(delay)
+	}
+	res := r.db.Model(&models.URLDownloadTask{}).
+		Where("id = ? AND status = ?", id, models.URLDownloadStatusDownloading).
 		Updates(map[string]interface{}{
 			"status":        models.URLDownloadStatusPending,
 			"retry_count":   gorm.Expr("retry_count + 1"),
 			"error_message": "",
-			"queued_at":     utils.Now(),
+			"queued_at":     queuedAt,
 			"completed_at":  nil,
-		}).Error
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // ListNotNotified 获取未通知的任务列表
@@ -176,11 +212,12 @@ func (r *URLDownloadTaskRepository) MergeAnonymousToUser(anonymousID string, use
 
 // ClaimNextPending 原子领取最早的等待中任务：将其置为 downloading 并返回。
 // 排序按入队时间（queued_at）升序，使重试任务排到队尾；历史未设置 queued_at 的记录视为最早。
+// 仅领取 queued_at 已到期的任务，从而支持重试退避（重试任务在退避期结束前不会被领取）。
 // 返回 (nil, nil) 表示当前没有可领取的任务。多个 worker 并发调用时不会重复领取同一任务。
 func (r *URLDownloadTaskRepository) ClaimNextPending() (*models.URLDownloadTask, error) {
 	var task models.URLDownloadTask
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status = ?", models.URLDownloadStatusPending).
+		if err := tx.Where("status = ? AND queued_at <= ?", models.URLDownloadStatusPending, utils.Now()).
 			Order("queued_at ASC, created_at ASC").First(&task).Error; err != nil {
 			return err
 		}

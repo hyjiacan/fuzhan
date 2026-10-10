@@ -1,7 +1,13 @@
 package file
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -385,6 +391,11 @@ func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
 		return
 	}
 
+	if !h.checkTaskOwnership(c, task) {
+		utils.HandleErrorCompat(c, http.StatusForbidden, "无权查看此任务", nil)
+		return
+	}
+
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"task": gin.H{
 			"id":              task.ID,
@@ -424,12 +435,21 @@ func (h *UploadSessionHandler) CancelURLTask(c *gin.Context) {
 		return
 	}
 
-	if err := h.urlTaskRepo.UpdateStatus(taskID, models.URLDownloadStatusCancelled, "用户取消"); err != nil {
+	// 先中断进行中的下载（若在跑），再置为已取消；状态带守卫，避免被 worker 的终态写入覆盖
+	running := false
+	if h.dispatcher != nil {
+		running = h.dispatcher.CancelTask(taskID)
+	}
+	if _, err := h.urlTaskRepo.UpdateStatusFrom(taskID,
+		[]models.URLDownloadStatus{models.URLDownloadStatusPending, models.URLDownloadStatusDownloading},
+		models.URLDownloadStatusCancelled, "用户取消"); err != nil {
 		utils.HandleErrorCompat(c, http.StatusInternalServerError, "取消失败", nil)
 		return
 	}
 
-	if task.TempFilePath != "" {
+	// 仅当任务未被 worker 执行时才由请求方清理临时文件，避免与 worker 写文件竞争；
+	// 正在执行的任务由 worker 感知取消后自行清理。
+	if !running && task.TempFilePath != "" {
 		os.Remove(task.TempFilePath)
 	}
 
@@ -542,13 +562,9 @@ func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
 		return
 	}
 
-	// 清理可能残留的目标文件，避免再次因"目标已存在"失败
-	if task.TargetPath != "" {
-		if rmErr := os.Remove(task.TargetPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			utils.Warn("清理URL上传失败残留目标文件失败",
-				utils.String("path", task.TargetPath), utils.Err(rmErr))
-		}
-	}
+	// 安全清理可能残留的目标文件：仅当目标确由本任务上传者创建时才删除，
+	// 避免误删共享目录中他人的同名文件（否则重试会因"目标已存在"失败，但不会造成破坏）
+	h.removeTargetIfOwned(task)
 
 	// 重新入队，由后台队列调度执行；断点续传由 worker 依据 TempFilePath 自动处理
 	if h.dispatcher != nil {
@@ -557,6 +573,52 @@ func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
 
 	middleware.LogOperation(c, "upload.url.retry", taskID, nil)
 	utils.HandleSuccess(c, http.StatusOK, "任务已重试", nil)
+}
+
+// removeTargetIfOwned 在重试前安全清理目标文件：
+// 临时目录按客户端 IP 隔离，可安全删除；公共目录则仅当索引记录的上传者 IP 与本任务一致时才删除，
+// 无法确认归属时一律跳过（宁可让重试以"目标已存在"失败，也不误删他人文件）。
+func (h *UploadSessionHandler) removeTargetIfOwned(task *models.URLDownloadTask) {
+	if task.TargetPath == "" {
+		return
+	}
+	if task.StorageType == models.URLDownloadStorageTemp {
+		if err := os.Remove(task.TargetPath); err != nil && !os.IsNotExist(err) {
+			utils.Warn("清理URL上传残留目标文件失败",
+				utils.String("path", task.TargetPath), utils.Err(err))
+		}
+		return
+	}
+	if task.RootName == "" || task.ClientIP == "" {
+		return
+	}
+	rootPath := appconfig.RootNames[task.RootName]
+	if rootPath == "" {
+		return
+	}
+	rel, err := filepath.Rel(rootPath, task.TargetPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return
+	}
+	relPath := "/" + filepath.ToSlash(rel)
+	var owner string
+	if err := h.db.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND file_path = ?", task.RootName, relPath).
+		Pluck("uploader_ip", &owner).Error; err != nil {
+		utils.Warn("查询目标文件归属失败，跳过清理",
+			utils.String("path", task.TargetPath), utils.Err(err))
+		return
+	}
+	if owner == "" || owner != task.ClientIP {
+		utils.Warn("重试跳过删除目标文件（非本任务上传者创建，避免误删）",
+			utils.String("path", task.TargetPath),
+			utils.String("taskId", task.ID))
+		return
+	}
+	if err := os.Remove(task.TargetPath); err != nil && !os.IsNotExist(err) {
+		utils.Warn("清理URL上传残留目标文件失败",
+			utils.String("path", task.TargetPath), utils.Err(err))
+	}
 }
 
 // DeleteURLTask 删除 URL 下载任务
@@ -578,6 +640,10 @@ func (h *UploadSessionHandler) DeleteURLTask(c *gin.Context) {
 		return
 	}
 
+	// 先中断进行中的下载，避免删除记录后 worker 仍继续写入产生孤儿文件
+	if h.dispatcher != nil {
+		h.dispatcher.CancelTask(taskID)
+	}
 	if err := h.urlTaskRepo.Delete(taskID); err != nil {
 		utils.HandleErrorCompat(c, http.StatusInternalServerError, "删除失败", nil)
 		return
@@ -585,4 +651,94 @@ func (h *UploadSessionHandler) DeleteURLTask(c *gin.Context) {
 
 	middleware.LogOperation(c, "upload.url.delete", taskID, nil)
 	utils.HandleSuccess(c, http.StatusOK, "任务已删除", nil)
+}
+
+// URLTaskChecksumRequest 计算校验值请求：algorithms 为 md5/sha1/sha256 的任意子集
+type URLTaskChecksumRequest struct {
+	Algorithms []string `json:"algorithms" binding:"required"`
+}
+
+// supportedChecksumAlgorithms 支持的校验算法白名单
+var supportedChecksumAlgorithms = map[string]func() hash.Hash{
+	"md5":    md5.New,
+	"sha1":   sha1.New,
+	"sha256": sha256.New,
+}
+
+// ComputeURLTaskChecksum 计算已完成 URL 上传任务的校验值（md5/sha1/sha256，可多选）。
+// 文件已落盘在服务器，按所选算法单次流式读取计算；结果仅返回给调用方，不落库。
+func (h *UploadSessionHandler) ComputeURLTaskChecksum(c *gin.Context) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		utils.HandleBadRequest(c, "无效的任务ID", nil)
+		return
+	}
+
+	var req URLTaskChecksumRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+		return
+	}
+	if len(req.Algorithms) == 0 {
+		utils.HandleBadRequest(c, "请至少选择一种校验算法", nil)
+		return
+	}
+
+	// 先校验任务归属，再做算法白名单校验，避免未授权调用方通过错误信息区分算法是否受支持
+	task, err := h.urlTaskRepo.GetByID(taskID)
+	if err != nil {
+		utils.HandleNotFound(c, "任务不存在")
+		return
+	}
+	if !h.checkTaskOwnership(c, task) {
+		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作此任务", nil)
+		return
+	}
+
+	// 校验算法白名单并按去重后的顺序构造哈希器
+	hashers := make(map[string]hash.Hash, len(req.Algorithms))
+	writers := make([]io.Writer, 0, len(req.Algorithms))
+	for _, algo := range req.Algorithms {
+		name := strings.ToLower(strings.TrimSpace(algo))
+		if _, exists := hashers[name]; exists {
+			continue
+		}
+		newHash, ok := supportedChecksumAlgorithms[name]
+		if !ok {
+			utils.HandleBadRequest(c, "不支持的校验算法: "+algo, nil)
+			return
+		}
+		h := newHash()
+		hashers[name] = h
+		writers = append(writers, h)
+	}
+
+	if task.Status != models.URLDownloadStatusCompleted {
+		utils.HandleErrorCompat(c, http.StatusBadRequest, "仅已完成的任务可计算校验值", nil)
+		return
+	}
+	if task.TargetPath == "" {
+		utils.HandleErrorCompat(c, http.StatusBadRequest, "任务缺少目标文件路径", nil)
+		return
+	}
+
+	file, err := os.Open(task.TargetPath)
+	if err != nil {
+		utils.HandleErrorCompat(c, http.StatusNotFound, "目标文件不存在或不可读", nil)
+		return
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(io.MultiWriter(writers...), file); err != nil {
+		utils.HandleErrorCompat(c, http.StatusInternalServerError, "计算校验值失败: "+err.Error(), nil)
+		return
+	}
+
+	checksums := make(map[string]string, len(hashers))
+	for name, h := range hashers {
+		checksums[name] = hex.EncodeToString(h.Sum(nil))
+	}
+
+	middleware.LogOperation(c, "upload.url.checksum", taskID, nil)
+	utils.HandleSuccess(c, http.StatusOK, "", gin.H{"checksums": checksums})
 }

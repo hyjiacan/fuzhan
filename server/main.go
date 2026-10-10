@@ -422,6 +422,13 @@ func main() {
 					utils.String("task_id", tk.ID),
 					utils.String("path", tk.TempFilePath),
 					utils.Err(rmErr))
+				// 删除失败则保留进度，避免进度与残留文件不一致
+				continue
+			}
+			// 半截文件已清理且不支持续传，同步清零进度，避免重启后进度与实际不符
+			if perr := urlTaskRepo.UpdateProgress(tk.ID, 0); perr != nil {
+				utils.Warn("重置URL上传任务进度失败",
+					utils.String("task_id", tk.ID), utils.Err(perr))
 			}
 		}
 		if len(requeued) > 0 {
@@ -447,6 +454,8 @@ func main() {
 	notificationHandler := notification.NewHandler(db)
 	securityHandler := security.NewHandler(secRepo)
 	adminURLDownloadHandler := admin.NewURLDownloadHandler(db)
+	// 注入调度器钩子：管理员重试可立即唤醒队列，删除可中断执行中的下载
+	adminURLDownloadHandler.SetTaskHooks(urlDispatcher.Notify, urlDispatcher.CancelTask)
 	taskHandler := admin.NewTaskHandler(taskService)
 	// 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
 	indexService.SetTaskService(taskService)

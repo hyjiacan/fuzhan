@@ -53,12 +53,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadApi } from '../../api'
 
 const props = defineProps({
-  type: { type: String, required: true }
+  type: { type: String, required: true },
+  // 所属弹框是否可见：每次弹框打开时重新拉取，避免内容只挂载一次导致新任务看不到
+  visible: { type: Boolean, default: true }
 })
 
 const loading = ref(false)
@@ -185,6 +187,10 @@ function scheduleNextPoll() {
 
 onMounted(async () => {
   await loadData()
+})
+
+watch(() => props.visible, (v) => {
+  if (v) loadData()
 })
 
 onUnmounted(() => {

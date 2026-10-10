@@ -472,8 +472,35 @@
 ### 9. URL 上传任务进度
 
 - **URL**：`GET /api/v1/uploads/url-task/:taskId`
-- **认证**：可选（AuthOptional）
+- **认证**：可选（AuthOptional，仅任务归属者可用）
 - **说明**：返回任务状态（`pending`/`downloading`/`completed`/`failed`/`cancelled`）、`downloadedBytes`、`fileSize`、`retryCount`（已自动重试次数）等，供前端轮询进度。
+- **错误**：任务不存在返回 404；非任务归属者返回 403。
+
+### 10. 计算 URL 上传任务校验值
+
+- **URL**：`POST /api/v1/uploads/url-tasks/:taskId/checksum`
+- **认证**：可选（AuthOptional，仅任务归属者可用）
+- **说明**：为已完成（`completed`）的 URL 上传任务计算校验值，供用户执行完整性校验。服务端对已落盘文件单次流式读取，按所选算法并行计算；结果仅返回前端，**不落库**。
+- **请求体**：
+  ```json
+  {
+    "algorithms": ["md5", "sha1", "sha256"]
+  }
+  ```
+  `algorithms` 为 `md5`/`sha1`/`sha256` 的任意非空子集（可多选），重复项自动去重，未知算法返回 400。
+- **响应**：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "checksums": {
+        "md5": "d41d8cd98f00b204e9800998ecf8427e",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+  ```
+- **错误**：任务不存在返回 404；无权操作返回 403；任务未完成或缺少目标文件路径返回 400；目标文件不存在返回 404。
 
 ## 临时文件接口
 

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fuzhan/internal/constants"
@@ -52,14 +53,16 @@ type LoggerManager struct {
 	logWriters   []io.Closer // 需要关闭的日志写入器
 }
 
+// globalLogManager 全局日志管理器指针。用 atomic.Pointer 保证热重载/关闭时
+// 与并发写日志之间不存在指针读取的数据竞争；globalLogMu 仅用于串行化初始化/关闭。
 var (
-	globalLogManager *LoggerManager
+	globalLogManager atomic.Pointer[LoggerManager]
 	globalLogMu      sync.Mutex
 )
 
 // GetLogManager 获取全局日志管理器
 func GetLogManager() *LoggerManager {
-	return globalLogManager
+	return globalLogManager.Load()
 }
 
 // InitLogger 初始化日志系统
@@ -70,7 +73,11 @@ func InitLogger(cfg LogConfig) error {
 	if err := manager.setup(); err != nil {
 		return err
 	}
-	globalLogManager = manager
+	// 先切换新管理器，再关闭旧管理器，避免切换过程中日志写入被中断
+	if old := globalLogManager.Swap(manager); old != nil {
+		old.syncLoggers()
+		old.close()
+	}
 	return nil
 }
 
@@ -78,16 +85,15 @@ func InitLogger(cfg LogConfig) error {
 func ReinitLogger(cfg LogConfig) error {
 	globalLogMu.Lock()
 	defer globalLogMu.Unlock()
-	// 同步并关闭旧日志写入器，避免文件描述符泄漏
-	if globalLogManager != nil {
-		globalLogManager.syncLoggers()
-		globalLogManager.close()
-	}
 	manager := &LoggerManager{config: cfg}
 	if err := manager.setup(); err != nil {
 		return err
 	}
-	globalLogManager = manager
+	// 先切换新管理器，再同步并关闭旧写入器，避免文件描述符泄漏
+	if old := globalLogManager.Swap(manager); old != nil {
+		old.syncLoggers()
+		old.close()
+	}
 	return nil
 }
 
@@ -104,10 +110,9 @@ func (lm *LoggerManager) close() {
 func CloseLogger() {
 	globalLogMu.Lock()
 	defer globalLogMu.Unlock()
-	if globalLogManager != nil {
-		globalLogManager.syncLoggers()
-		globalLogManager.close()
-		globalLogManager = nil
+	if old := globalLogManager.Swap(nil); old != nil {
+		old.syncLoggers()
+		old.close()
 	}
 }
 
@@ -302,43 +307,47 @@ func getLevelFromString(levelStr string) zapcore.Level {
 
 // AppLogger 获取应用日志器
 func AppLogger() *zap.Logger {
-	if globalLogManager == nil {
+	lm := globalLogManager.Load()
+	if lm == nil {
 		return zap.NewNop()
 	}
-	globalLogManager.mu.RLock()
-	defer globalLogManager.mu.RUnlock()
-	return globalLogManager.appLogger
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	return lm.appLogger
 }
 
 // ErrorLogger 获取错误日志器
 func ErrorLogger() *zap.Logger {
-	if globalLogManager == nil {
+	lm := globalLogManager.Load()
+	if lm == nil {
 		return zap.NewNop()
 	}
-	globalLogManager.mu.RLock()
-	defer globalLogManager.mu.RUnlock()
-	return globalLogManager.errorLogger
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	return lm.errorLogger
 }
 
 // AccessLogger 获取访问日志器
 func AccessLogger() *zap.Logger {
-	if globalLogManager == nil {
+	lm := globalLogManager.Load()
+	if lm == nil {
 		return zap.NewNop()
 	}
-	globalLogManager.mu.RLock()
-	defer globalLogManager.mu.RUnlock()
-	return globalLogManager.accessLogger
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	return lm.accessLogger
 }
 
 // channelLoggerOf 取出指定渠道的日志器；未启用（access_log=false）时回退到 appLogger，
 // 保证日志始终有落点，不会因渠道关闭而丢失。
 func channelLoggerOf(pick func(*LoggerManager) *zap.Logger) *zap.Logger {
-	if globalLogManager == nil {
+	lm := globalLogManager.Load()
+	if lm == nil {
 		return zap.NewNop()
 	}
-	globalLogManager.mu.RLock()
-	l := pick(globalLogManager)
-	globalLogManager.mu.RUnlock()
+	lm.mu.RLock()
+	l := pick(lm)
+	lm.mu.RUnlock()
 	if l == nil {
 		return AppLogger()
 	}
@@ -373,7 +382,7 @@ func IsAPIPath(path string) bool {
 
 // Debug 调试日志
 func Debug(msg string, fields ...zap.Field) {
-	if globalLogManager == nil {
+	if globalLogManager.Load() == nil {
 		return // Debug 在未初始化时静默丢弃
 	}
 	AppLogger().Debug(msg, fields...)
@@ -381,7 +390,7 @@ func Debug(msg string, fields ...zap.Field) {
 
 // Info 信息日志
 func Info(msg string, fields ...zap.Field) {
-	if globalLogManager == nil {
+	if globalLogManager.Load() == nil {
 		fmt.Fprintf(os.Stderr, "[INFO] %s\n", msg)
 		return
 	}
@@ -390,7 +399,7 @@ func Info(msg string, fields ...zap.Field) {
 
 // Warn 警告日志
 func Warn(msg string, fields ...zap.Field) {
-	if globalLogManager == nil {
+	if globalLogManager.Load() == nil {
 		fmt.Fprintf(os.Stderr, "[WARN] %s\n", msg)
 		return
 	}
@@ -399,7 +408,7 @@ func Warn(msg string, fields ...zap.Field) {
 
 // Error 错误日志
 func Error(msg string, fields ...zap.Field) {
-	if globalLogManager == nil {
+	if globalLogManager.Load() == nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] %s\n", msg)
 		return
 	}
@@ -412,7 +421,7 @@ func Error(msg string, fields ...zap.Field) {
 // Fatal 致命错误日志
 // 当日志系统未初始化时，直接输出到 stderr 并退出，确保用户能看到错误信息
 func Fatal(msg string, fields ...zap.Field) {
-	if globalLogManager == nil {
+	if globalLogManager.Load() == nil {
 		fmt.Fprintf(os.Stderr, "\n[FATAL] %s\n", msg)
 		for _, f := range fields {
 			// f.String 对 String 类型返回实际值，对 Error 类型返回空
@@ -508,27 +517,29 @@ func FTPError(msg string, fields ...zap.Field) {
 
 // Sync 同步日志缓冲区
 func Sync() {
-	if globalLogManager != nil {
-		globalLogManager.mu.RLock()
-		if globalLogManager.appLogger != nil {
-			globalLogManager.appLogger.Sync()
-		}
-		if globalLogManager.errorLogger != nil {
-			globalLogManager.errorLogger.Sync()
-		}
-		if globalLogManager.accessLogger != nil {
-			globalLogManager.accessLogger.Sync()
-		}
-		if globalLogManager.apiLogger != nil {
-			globalLogManager.apiLogger.Sync()
-		}
-		if globalLogManager.webdavLogger != nil {
-			globalLogManager.webdavLogger.Sync()
-		}
-		if globalLogManager.ftpLogger != nil {
-			globalLogManager.ftpLogger.Sync()
-		}
-		globalLogManager.mu.RUnlock()
+	lm := globalLogManager.Load()
+	if lm == nil {
+		return
+	}
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	if lm.appLogger != nil {
+		lm.appLogger.Sync()
+	}
+	if lm.errorLogger != nil {
+		lm.errorLogger.Sync()
+	}
+	if lm.accessLogger != nil {
+		lm.accessLogger.Sync()
+	}
+	if lm.apiLogger != nil {
+		lm.apiLogger.Sync()
+	}
+	if lm.webdavLogger != nil {
+		lm.webdavLogger.Sync()
+	}
+	if lm.ftpLogger != nil {
+		lm.ftpLogger.Sync()
 	}
 }
 

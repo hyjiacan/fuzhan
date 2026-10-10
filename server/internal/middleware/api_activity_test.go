@@ -107,23 +107,28 @@ func TestSanitizeJSON(t *testing.T) {
 	}
 }
 
-func TestSanitizeQuery(t *testing.T) {
-	got := sanitizeQuery("token=abc&page=2")
-	if strings.Contains(got, "abc") {
-		t.Errorf("query 中的 token 未脱敏: %s", got)
+func TestSanitizeJSONFallbackScrubsSecrets(t *testing.T) {
+	// 非法 JSON（如被截断/转义错误）：兜底按文本脱敏，绝不原样输出
+	malformed := `{"jwt_secret":"top-secret-value","auth":{"bind_password":"ldap-pass"},"name":"ok"`
+	got := sanitizeJSON([]byte(malformed))
+	for _, leaked := range []string{"top-secret-value", "ldap-pass"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("非法 JSON 兜底脱敏失败，泄漏 %q: %s", leaked, got)
+		}
 	}
-	if !strings.Contains(got, "page=2") {
-		t.Errorf("非敏感参数被误改: %s", got)
+	if !strings.Contains(got, "ok") {
+		t.Errorf("非敏感字段被误删: %s", got)
 	}
 }
 
-func TestTruncateUTF8(t *testing.T) {
-	s := strings.Repeat("中", 10) // 每个 3 字节
-	got := truncateUTF8(s, 4)    // 截到不足 4 字节的多字节边界
-	if len(got) > 4+len("…(截断)") {
-		t.Errorf("截断长度异常: %q", got)
+func TestSanitizeJSONLargeBodyRedacts(t *testing.T) {
+	// 大请求体（>2KB）此前会被截断成非法 JSON 而漏出原文；现应完整脱敏
+	big := strings.Repeat("a", 4096)
+	got := sanitizeJSON([]byte(`{"jwt_secret":"` + big + `","keep":"v"}`))
+	if strings.Contains(got, big) {
+		t.Errorf("大请求体中的 jwt_secret 未脱敏")
 	}
-	if strings.ContainsRune(got, '\uFFFD') {
-		t.Errorf("截断破坏了多字节字符: %q", got)
+	if !strings.Contains(got, `"keep":"v"`) {
+		t.Errorf("非敏感字段被误改: %s", got)
 	}
 }

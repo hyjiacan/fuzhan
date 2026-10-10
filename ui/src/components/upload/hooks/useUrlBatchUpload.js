@@ -36,6 +36,13 @@ const mapTaskStatus = (s) => {
 let localSeq = 0
 const nextId = () => `url-${Date.now()}-${++localSeq}`
 
+// 支持的校验算法（用于「计算校验值」选择）
+export const CHECKSUM_ALGORITHMS = [
+  { value: 'md5', label: 'MD5' },
+  { value: 'sha1', label: 'SHA1' },
+  { value: 'sha256', label: 'SHA256' }
+]
+
 // URL 批量上传：单条/多行添加、探测去重、逐条或整体入队（后端全局队列调度）、进度轮询
 export function useUrlBatchUpload({
   form,
@@ -124,7 +131,12 @@ export function useUrlBatchUpload({
           retryCount: 0,
           displayText: '',
           error: '',
-          taskId: null
+          taskId: null,
+          // 校验值：用户勾选的算法、计算结果、加载/错误状态（不落库，仅回显）
+          checksumAlgorithms: [],
+          checksums: null,
+          checksumLoading: false,
+          checksumError: ''
         })
         added++
       }
@@ -229,6 +241,9 @@ export function useUrlBatchUpload({
   const retryItem = async (id) => {
     const item = items.value.find(i => i.id === id)
     if (!item) return
+    // 重试后文件内容可能变化，清空上次校验结果
+    item.checksums = null
+    item.checksumError = ''
     if (!item.taskId) {
       item.status = 'draft'
       return uploadItem(id)
@@ -243,6 +258,28 @@ export function useUrlBatchUpload({
       startPolling(item)
     } catch (e) {
       item.error = formatErrorMessage(e, '重试失败')
+    }
+  }
+
+  // 计算已完成任务的校验值：按条目勾选的算法请求后端流式计算，结果仅回显不落库
+  const computeChecksum = async (id) => {
+    const item = items.value.find(i => i.id === id)
+    if (!item || !item.taskId) return
+    const algorithms = item.checksumAlgorithms || []
+    if (algorithms.length === 0) {
+      setMessage('请至少选择一种校验算法', 'warning')
+      return
+    }
+    item.checksumLoading = true
+    item.checksumError = ''
+    try {
+      const res = await UploadApi.computeChecksum(item.taskId, algorithms)
+      item.checksums = res?.data?.checksums || null
+    } catch (e) {
+      item.checksumError = formatErrorMessage(e, '计算校验值失败')
+      setMessage(item.checksumError, 'error')
+    } finally {
+      item.checksumLoading = false
     }
   }
 
@@ -382,6 +419,7 @@ export function useUrlBatchUpload({
     uploadAll,
     retryItem,
     cancelItem,
+    computeChecksum,
     stopPolling,
     stopAllPolling,
     clearAll

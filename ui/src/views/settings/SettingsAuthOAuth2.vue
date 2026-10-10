@@ -111,6 +111,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ConfigApi } from '@/api'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps({
   settings: { type: Object, required: true }
@@ -152,10 +153,10 @@ const buildPayload = () => {
 }
 
 const copyCallback = async () => {
-  try {
-    await navigator.clipboard.writeText(defaultCallback.value)
+  const ok = await copyToClipboard(defaultCallback.value)
+  if (ok) {
     ElMessage.success('回调地址已复制')
-  } catch {
+  } else {
     ElMessage.warning('复制失败，请手动复制')
   }
 }

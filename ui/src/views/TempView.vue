@@ -158,6 +158,7 @@ import { ElMessage, ElButton, ElTag, ElIcon } from 'element-plus'
 import { TempApi } from '@/api'
 import { TableConst, NumberUtils, TimeUtils } from '@/utils'
 import { keyNav } from '@/utils/a11y'
+import { copyToClipboard } from '@/utils/clipboard'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 
@@ -474,12 +475,13 @@ const loadFiles = async (dir) => {
   }
 }
 
-const copyCode = (code) => {
-  navigator.clipboard.writeText(code).then(() => {
+const copyCode = async (code) => {
+  const ok = await copyToClipboard(code)
+  if (ok) {
     ElMessage.success('访问码已复制')
-  }).catch(() => {
+  } else {
     ElMessage.error('复制失败')
-  })
+  }
 }
 
 const downloadFile = (code) => {

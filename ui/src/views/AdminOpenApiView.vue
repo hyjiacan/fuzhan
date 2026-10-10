@@ -177,6 +177,7 @@ import { ElMessage, ElButton, ElTag } from 'element-plus'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
 import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
+import { copyToClipboard } from '@/utils/clipboard'
 import store from '@/store'
 
 // Icons
@@ -436,12 +437,13 @@ async function handleCreate() {
   }
 }
 
-function copyRawKey() {
-  navigator.clipboard.writeText(rawKey.value).then(() => {
+async function copyRawKey() {
+  const ok = await copyToClipboard(rawKey.value)
+  if (ok) {
     ElMessage.success('已复制到剪贴板')
-  }).catch(() => {
+  } else {
     ElMessage.error('复制失败')
-  })
+  }
 }
 
 async function toggleStatus(row) {

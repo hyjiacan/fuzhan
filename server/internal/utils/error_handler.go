@@ -65,18 +65,17 @@ func HandleError(c *gin.Context, statusCode int, code int, message string, error
 			}
 		}
 		// 补充身份与请求细节，便于按用户/参数定位问题
-		if uid, exists := c.Get(string(constants.ContextKeyUserID)); exists {
-			if s, ok := uid.(string); ok && s != "" {
-				fields = append(fields, String("user_id", s))
-			}
+		if uid := UserIDForLog(c); uid != "" {
+			fields = append(fields, String("user_id", uid))
 		}
 		if user, exists := c.Get(string(constants.ContextKeyUsername)); exists {
 			if s, ok := user.(string); ok && s != "" {
 				fields = append(fields, String("username", s))
 			}
 		}
-		if raw := c.Request.URL.RawQuery; raw != "" {
-			fields = append(fields, String("query", raw))
+		// 查询串可能含 token 等敏感参数，落盘前脱敏
+		if q := SanitizeQuery(c.Request.URL.RawQuery); q != "" {
+			fields = append(fields, String("query", q))
 		}
 		// 按请求渠道分流：WebDAV/API 的异常同步写入各自渠道日志，便于单独跟踪，
 		// 同时仍写入 error.log 汇总；其余走通用错误日志。

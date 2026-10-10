@@ -11,7 +11,7 @@
 - [UploadSession 上传会话模型](#uploadsession-上传会话模型)
 - [UploadedChunk 已上传分片模型](#uploadedchunk-已上传分片模型)
 - [OperationRecord 操作记录模型](#operationrecord-操作记录模型)
-- [URLDownloadTask URL下载任务模型](#urldownloadtask-url下载任务模型)
+- [URLDownloadTask URL 上传任务模型](#urldownloadtask-url-上传任务模型)
 - [Notification 通知模型](#notification-通知模型)
 - [SecurityEvent 安全事件模型](#securityevent-安全事件模型)
 - [关联关系图](#关联关系图)
@@ -183,31 +183,41 @@
 
 ---
 
-## URLDownloadTask URL下载任务模型
+## URLDownloadTask URL 上传任务模型
 
 - **表名**: `url_download_tasks`
-- **说明**: URL 下载任务
+- **说明**: URL 上传任务（后台持久化队列；`POST /api/v1/uploads/url` 入队后由全局调度器执行，进程重启后自动恢复）
 
 | 字段名 | 类型 | 约束 | 说明 |
 |--------|------|------|------|
-| ID | uint | primaryKey | 自增主键 |
-| URL | string(2048) | not null | 下载URL |
-| Status | TaskStatus | size:20, not null, default: "pending" | 任务状态 |
-| FileName | string(255) | - | 文件名 |
-| FileSize | int64 | - | 文件大小 |
-| DownloadedSize | int64 | default: 0 | 已下载大小 |
-| StorageType | TargetType | size:20, not null, default: "regular" | 存储类型 |
-| TargetPath | string(512) | - | 目标路径 |
-| TargetRoot | string(255) | - | 目标根目录 |
-| ResumeSupported | bool | default: false | 是否支持断点续传 |
-| UserID | string(64) | index | 用户ID |
-| AnonymousID | string(64) | index | 匿名用户标识 |
+| ID | string(36) | primaryKey | 任务ID（UUID） |
+| UserID | *string(64) | index | 登录用户ID（AuthOptional 下已登录时落库） |
+| AnonymousID | *string(36) | index | 匿名用户标识（未登录时落库） |
+| URL | string(2048) | not null | 源 URL（http/https/ftp/ftps） |
+| FileName | string(255) | not null | 文件名 |
+| TargetPath | string(512) | - | 目标文件绝对路径（temp 完成时回写为哈希命名后的真实路径） |
+| StorageType | URLDownloadStorageType | size:20, not null, default: "temp" | 存储类型：temp/private/regular |
+| RootName | string(64) | - | 目标根目录名（供重试还原会话上下文） |
+| Status | URLDownloadStatus | size:20, not null, default: "pending" | 任务状态 |
 | ErrorMessage | string(1024) | - | 错误信息 |
+| FileSize | int64 | default: 0 | 文件大小 |
+| DownloadedBytes | int64 | default: 0 | 已下载字节数（断点续传依据） |
+| ETag | string(255) | - | 远端 ETag（断点续传校验） |
+| ResumeSupported | bool | default: false | 是否支持断点续传 |
+| ResumeURL | string(2048) | - | 续传使用的 URL |
+| TempFilePath | string(512) | - | 下载中的临时文件路径 |
+| ClientIP | string(64) | - | 入队请求方 IP（worker 还原归属与操作记录） |
+| SessionDir | string(512) | - | 目标目录（会话语义，相对根目录或临时目录） |
+| RetryCount | int | default: 0 | 已自动重试次数（不含首次尝试） |
+| QueuedAt | time.Time | index | 入队时间，用于调度排序；重试时刷新以排到队尾 |
+| Notified | bool | default: false, index | 是否已发送完成/失败通知 |
 | CreatedAt | time.Time | - | 创建时间 |
+| CompletedAt | *time.Time | - | 完成时间 |
 | UpdatedAt | time.Time | - | 更新时间 |
-| DeletedAt | gorm.DeletedAt | index | 软删除 |
 
-### TaskStatus 枚举
+> 注：任务为**硬删除**（无 `DeletedAt` 软删除字段），删除即移除记录。
+
+### URLDownloadStatus 枚举
 
 | 值 | 说明 |
 |----|------|
@@ -216,6 +226,14 @@
 | completed | 已完成 |
 | failed | 失败 |
 | cancelled | 已取消 |
+
+### URLDownloadStorageType 枚举
+
+| 值 | 说明 |
+|----|------|
+| temp | 临时文件 |
+| private | 私有存储 |
+| regular | 普通文件 |
 
 ---
 

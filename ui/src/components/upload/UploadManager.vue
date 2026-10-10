@@ -183,6 +183,34 @@
                   :show-text="false"
                   :stroke-width="4"
                 />
+                <!-- 已完成：可选择算法计算校验值（md5/sha1/sha256，可多选），结果仅回显供完整性校验 -->
+                <div v-if="item.status === 'completed'" class="url-item-checksum">
+                  <div class="url-item-checksum-controls">
+                    <span class="url-item-checksum-hint">校验值:</span>
+                    <el-checkbox-group v-model="item.checksumAlgorithms" size="small" :disabled="item.checksumLoading">
+                      <el-checkbox v-for="algo in CHECKSUM_ALGORITHMS" :key="algo.value" :label="algo.value">{{ algo.label }}</el-checkbox>
+                    </el-checkbox-group>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      plain
+                      :loading="item.checksumLoading"
+                      :disabled="!item.checksumAlgorithms.length"
+                      @click="computeUrlChecksum(item.id)"
+                    >
+                      计算校验值
+                    </el-button>
+                    <el-button v-if="item.checksums" size="small" link type="primary" @click="copyAllChecksums(item)">全部复制</el-button>
+                  </div>
+                  <div v-if="item.checksums" class="url-item-checksum-results">
+                    <div v-for="algo in CHECKSUM_ALGORITHMS" :key="algo.value" v-show="item.checksums[algo.value]" class="url-item-checksum-row">
+                      <span class="url-item-checksum-label">{{ algo.label }}</span>
+                      <span class="url-item-checksum-value">{{ item.checksums[algo.value] }}</span>
+                      <el-button size="small" link type="primary" @click="copyChecksum(item, algo.value)">复制</el-button>
+                    </div>
+                  </div>
+                  <div v-if="item.checksumError" class="url-item-error">{{ item.checksumError }}</div>
+                </div>
               </div>
               <div class="url-item-actions">
                 <el-tag :type="elTagType(urlStatusTag(item.status))" size="small">{{ urlStatusText(item.status) }}</el-tag>
@@ -377,7 +405,8 @@ import UploadQueue from './UploadQueue.vue'
 import { useDependency } from './hooks/useDependency'
 import { useUploadQueue } from './hooks/useUploadQueue'
 import { useClipboard } from './hooks/useClipboard'
-import { useUrlBatchUpload } from './hooks/useUrlBatchUpload'
+import { useUrlBatchUpload, CHECKSUM_ALGORITHMS } from './hooks/useUrlBatchUpload'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps({
   uploadApi: {
@@ -603,6 +632,7 @@ const {
   uploadAll: uploadAllUrls,
   retryItem: retryUrlItem,
   cancelItem: cancelUrlItem,
+  computeChecksum: computeUrlChecksum,
   stopAllPolling: stopAllUrlPolling
 } = useUrlBatchUpload({
   form,
@@ -612,6 +642,29 @@ const {
   uploadMessageType,
   emit
 })
+
+// 复制文本到剪贴板（统一走 utils/clipboard，非安全上下文自动降级）
+const copyText = async (text) => {
+  if (!text) return
+  const ok = await copyToClipboard(text)
+  if (ok) {
+    message.success('已复制')
+  } else {
+    message.error('复制失败')
+  }
+}
+
+// 复制某个算法的校验值
+const copyChecksum = (item, algo) => copyText(item.checksums?.[algo])
+
+// 复制条目下已计算的全部校验值（算法: 值，逐行）
+const copyAllChecksums = (item) => {
+  if (!item.checksums) return
+  const lines = CHECKSUM_ALGORITHMS
+    .filter(a => item.checksums[a.value])
+    .map(a => `${a.label}: ${item.checksums[a.value]}`)
+  copyText(lines.join('\n'))
+}
 
 // ===== 新建文本 =====
 const textFilename = ref('newfile.txt')
@@ -1128,6 +1181,53 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
 
   .url-item-error {
     color: @error-color;
+  }
+
+  .url-item-checksum {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed @border-color-light;
+  }
+
+  .url-item-checksum-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .url-item-checksum-hint {
+    font-size: 12px;
+    color: @text-color-secondary;
+  }
+
+  .url-item-checksum-results {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .url-item-checksum-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .url-item-checksum-label {
+    flex-shrink: 0;
+    width: 56px;
+    color: @text-color-secondary;
+  }
+
+  .url-item-checksum-value {
+    flex: 1;
+    min-width: 0;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    color: @text-color;
+    word-break: break-all;
   }
 
   .url-item-actions {

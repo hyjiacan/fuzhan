@@ -148,8 +148,8 @@ func TestURLDownloadTaskRepo_RequeueForRetry(t *testing.T) {
 		t.Fatalf("应先领取 a, got task=%v err=%v", task, err)
 	}
 
-	if err := repo.RequeueForRetry("a"); err != nil {
-		t.Fatalf("重新入队失败: %v", err)
+	if ok, err := repo.RequeueForRetry("a", 0); err != nil || !ok {
+		t.Fatalf("重新入队失败: ok=%v err=%v", ok, err)
 	}
 	got, err := repo.GetByID("a")
 	if err != nil {

@@ -307,6 +307,11 @@ export const UploadApi = {
     return request.post(`/uploads/url-tasks/${taskId}/retry`, null, { skipSuccessToast: true })
   },
 
+  // 计算已完成 URL 上传任务的校验值（algorithms: md5/sha1/sha256 的任意子集）
+  computeChecksum(taskId, algorithms) {
+    return request.post(`/uploads/url-tasks/${taskId}/checksum`, { algorithms }, { skipSuccessToast: true })
+  },
+
   deleteURLTask(taskId) {
     return request.delete(`/uploads/url-tasks/${taskId}`, { skipSuccessToast: true })
   },

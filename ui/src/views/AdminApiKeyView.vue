@@ -149,6 +149,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { ApiKeyApi, AuthApi } from '../api'
 import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
+import { copyToClipboard } from '@/utils/clipboard'
 
 // Icons
 const AddIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -353,12 +354,13 @@ async function handleCreate() {
   }
 }
 
-function copyRawKey() {
-  navigator.clipboard.writeText(rawKey.value).then(() => {
+async function copyRawKey() {
+  const ok = await copyToClipboard(rawKey.value)
+  if (ok) {
     ElMessage.success('已复制到剪贴板')
-  }).catch(() => {
+  } else {
     ElMessage.error('复制失败')
-  })
+  }
 }
 
 async function toggleStatus(row) {

@@ -113,10 +113,8 @@ func MonitoringMiddleware() gin.HandlerFunc {
 // userIdentityFields 提取已认证用户身份，便于按用户定位 API 调用。
 func userIdentityFields(c *gin.Context) []zap.Field {
 	fields := make([]zap.Field, 0, 2)
-	if uid, ok := c.Get(string(constants.ContextKeyUserID)); ok {
-		if s, ok := uid.(string); ok && s != "" {
-			fields = append(fields, utils.String("user_id", s))
-		}
+	if uid := utils.UserIDForLog(c); uid != "" {
+		fields = append(fields, utils.String("user_id", uid))
 	}
 	if uname, ok := c.Get(string(constants.ContextKeyUsername)); ok {
 		if s, ok := uname.(string); ok && s != "" {

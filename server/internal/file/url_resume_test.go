@@ -2,6 +2,7 @@ package file
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -93,7 +94,7 @@ func TestDownloadFromURL_Resume(t *testing.T) {
 		db: db, urlTaskRepo: repositories.NewURLDownloadTaskRepository(db),
 		recordRepo: noopAudit{},
 	}
-	h.downloadFromURL("t-1", urlTask.URL, urlTask.FileSize, "f.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
+	h.downloadFromURL(context.Background(), "t-1", urlTask.URL, urlTask.FileSize, "f.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
 
 	if srvRange != "bytes="+strconv.FormatInt(offset, 10)+"-" {
 		t.Fatalf("应发送 Range 续传请求, got %q", srvRange)
@@ -157,7 +158,7 @@ func TestDownloadFromURL_Resume_ServerChanged(t *testing.T) {
 		db: db, urlTaskRepo: repositories.NewURLDownloadTaskRepository(db),
 		recordRepo: noopAudit{},
 	}
-	h.downloadFromURL("t-2", urlTask.URL, urlTask.FileSize, "g.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
+	h.downloadFromURL(context.Background(), "t-2", urlTask.URL, urlTask.FileSize, "f.bin", "", partial, targetPath, "", "", models.TargetTypeRegular)
 
 	got, err := os.ReadFile(targetPath)
 	if err != nil {
