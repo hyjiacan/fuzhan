@@ -48,6 +48,9 @@ type URLDownloadTask struct {
 	SessionDir string `gorm:"size:512" json:"sessionDir,omitempty"`
 	// RetryCount 已自动重试次数（不含首次尝试）
 	RetryCount int `gorm:"default:0" json:"retryCount"`
+	// Priority 调度优先级：0=新任务/手动重试（高），1=自动重试（低）。
+	// 自动重试永远排在新任务与手动重试之后，保证用户可见任务优先。
+	Priority int `gorm:"default:0" json:"priority"`
 	// QueuedAt 入队时间，用于调度排序；重试时刷新以排到队尾（旧的未设置记录视为最早，优先领取）
 	// 与 status 组成复合索引，支撑调度热路径的 WHERE status=? ORDER BY queued_at 查询。
 	QueuedAt    time.Time  `gorm:"index;index:idx_url_task_status_queued,priority:2" json:"queuedAt"`

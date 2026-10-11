@@ -138,7 +138,7 @@ func (r *URLDownloadTaskRepository) Delete(id string) error {
 }
 
 // ResetToPending 将失败或已取消的任务重置为等待下载（用户手动重试）。
-// 同时清零自动重试计数并刷新入队时间，使手动重试获得全新的重试额度并排到队尾。
+// 同时清零自动重试计数、恢复高优先级并刷新入队时间，使手动重试获得全新的重试额度并排到队尾。
 func (r *URLDownloadTaskRepository) ResetToPending(id string) error {
 	return r.db.Model(&models.URLDownloadTask{}).Where("id = ? AND (status = ? OR status = ?)", id, models.URLDownloadStatusFailed, models.URLDownloadStatusCancelled).
 		Updates(map[string]interface{}{
@@ -146,13 +146,14 @@ func (r *URLDownloadTaskRepository) ResetToPending(id string) error {
 			"error_message":    "",
 			"downloaded_bytes": 0,
 			"retry_count":      0,
+			"priority":         0,
 			"queued_at":        utils.Now(),
 			"completed_at":     nil,
 		}).Error
 }
 
 // RequeueForRetry 将失败任务重新入队以进行自动重试：重试计数 +1、状态回到 pending、
-// 清空错误信息、按退避时间刷新入队时间（排到队尾且延后领取）。保留 downloaded_bytes 与临时文件，以便断点续传。
+// 清空错误信息、降为低优先级并按退避时间刷新入队时间（排到队尾且延后领取）。保留 downloaded_bytes 与临时文件，以便断点续传。
 // 仅当任务仍处于 downloading（即确由 worker 在执行）时才生效，避免复活已被用户取消的任务。
 // delay 为最小重试间隔（<=0 表示不延迟）。
 func (r *URLDownloadTaskRepository) RequeueForRetry(id string, delay time.Duration) (bool, error) {
@@ -165,6 +166,7 @@ func (r *URLDownloadTaskRepository) RequeueForRetry(id string, delay time.Durati
 		Updates(map[string]interface{}{
 			"status":        models.URLDownloadStatusPending,
 			"retry_count":   gorm.Expr("retry_count + 1"),
+			"priority":      1,
 			"error_message": "",
 			"queued_at":     queuedAt,
 			"completed_at":  nil,
@@ -211,23 +213,30 @@ func (r *URLDownloadTaskRepository) MergeAnonymousToUser(anonymousID string, use
 }
 
 // ClaimNextPending 原子领取最早的等待中任务：将其置为 downloading 并返回。
-// 排序按入队时间（queued_at）升序，使重试任务排到队尾；历史未设置 queued_at 的记录视为最早。
+// 排序先按优先级（priority 升序，新任务/手动重试在前，自动重试在后），再按入队时间（queued_at）升序，
+// 使重试任务排到队尾；历史未设置 queued_at 的记录视为最早。
 // 仅领取 queued_at 已到期的任务，从而支持重试退避（重试任务在退避期结束前不会被领取）。
 // 返回 (nil, nil) 表示当前没有可领取的任务。多个 worker 并发调用时不会重复领取同一任务。
+// 使用 Find + Limit(1) 而非 First，避免队列为空时产生 gorm.ErrRecordNotFound 日志噪音。
 func (r *URLDownloadTaskRepository) ClaimNextPending() (*models.URLDownloadTask, error) {
 	var task models.URLDownloadTask
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status = ? AND queued_at <= ?", models.URLDownloadStatusPending, utils.Now()).
-			Order("queued_at ASC, created_at ASC").First(&task).Error; err != nil {
-			return err
-		}
-		res := tx.Model(&models.URLDownloadTask{}).
-			Where("id = ? AND status = ?", task.ID, models.URLDownloadStatusPending).
-			Update("status", models.URLDownloadStatusDownloading)
+		res := tx.Where("status = ? AND queued_at <= ?", models.URLDownloadStatusPending, utils.Now()).
+			Order("priority ASC, queued_at ASC, created_at ASC").
+			Limit(1).Find(&task)
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		upd := tx.Model(&models.URLDownloadTask{}).
+			Where("id = ? AND status = ?", task.ID, models.URLDownloadStatusPending).
+			Update("status", models.URLDownloadStatusDownloading)
+		if upd.Error != nil {
+			return upd.Error
+		}
+		if upd.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
 		task.Status = models.URLDownloadStatusDownloading
@@ -240,6 +249,23 @@ func (r *URLDownloadTaskRepository) ClaimNextPending() (*models.URLDownloadTask,
 		return nil, err
 	}
 	return &task, nil
+}
+
+// NextPendingQueuedAt 返回下一个待领取任务（按调度顺序）的入队时间，供调度器计算退避唤醒时刻。
+// 第二个返回值为 false 表示当前没有任何 pending 任务（队列为空）。
+func (r *URLDownloadTaskRepository) NextPendingQueuedAt() (time.Time, bool, error) {
+	var tasks []models.URLDownloadTask
+	res := r.db.Select("queued_at").
+		Where("status = ?", models.URLDownloadStatusPending).
+		Order("priority ASC, queued_at ASC, created_at ASC").
+		Limit(1).Find(&tasks)
+	if res.Error != nil {
+		return time.Time{}, false, res.Error
+	}
+	if len(tasks) == 0 {
+		return time.Time{}, false, nil
+	}
+	return tasks[0].QueuedAt, true, nil
 }
 
 // ExistsCompletedByURL 判断该 URL 是否已有成功完成的上传记录（全局范围，不限用户）

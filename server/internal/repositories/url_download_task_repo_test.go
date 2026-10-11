@@ -170,3 +170,61 @@ func TestURLDownloadTaskRepo_RequeueForRetry(t *testing.T) {
 		t.Fatalf("随后应领取 a, got %v err=%v", second, err)
 	}
 }
+
+func mkURLTask(t *testing.T, db *gorm.DB, id string, queued time.Time, priority int) {
+	t.Helper()
+	task := &models.URLDownloadTask{
+		ID:         id,
+		URL:        "http://example.com/a.bin",
+		FileName:   "a.bin",
+		Status:     models.URLDownloadStatusPending,
+		QueuedAt:   queued,
+		Priority:   priority,
+		TargetPath: "/public/.a.bin",
+	}
+	if err := db.Create(task).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 优先级：自动重试（priority=1）即使入队更早，也应排在新任务（priority=0）之后。
+func TestURLDownloadTaskRepo_ClaimNextPending_Priority(t *testing.T) {
+	db := urlTaskTestDB(t)
+	repo := NewURLDownloadTaskRepository(db)
+	base := utils.Now().Truncate(time.Second).Add(-time.Hour)
+
+	mkURLTask(t, db, "retry", base, 1)                  // 自动重试：入队更早
+	mkURLTask(t, db, "fresh", base.Add(time.Minute), 0) // 新任务：入队更晚
+
+	first, err := repo.ClaimNextPending()
+	if err != nil || first == nil || first.ID != "fresh" {
+		t.Fatalf("新任务应优先于自动重试被领取, got %v err=%v", first, err)
+	}
+	second, err := repo.ClaimNextPending()
+	if err != nil || second == nil || second.ID != "retry" {
+		t.Fatalf("随后应领取自动重试任务, got %v err=%v", second, err)
+	}
+}
+
+// NextPendingQueuedAt：空队列返回 ok=false；有任务时返回调度顺序最靠前任务的入队时间。
+func TestURLDownloadTaskRepo_NextPendingQueuedAt(t *testing.T) {
+	db := urlTaskTestDB(t)
+	repo := NewURLDownloadTaskRepository(db)
+
+	if _, ok, err := repo.NextPendingQueuedAt(); err != nil || ok {
+		t.Fatalf("空队列应返回 ok=false, got ok=%v err=%v", ok, err)
+	}
+
+	base := utils.Now().Truncate(time.Second).Add(-time.Hour)
+	mkURLTask(t, db, "retry", base, 1)                    // 自动重试：入队更早但优先级低
+	mkURLTask(t, db, "fresh", base.Add(2*time.Minute), 0) // 新任务：优先级高
+
+	got, ok, err := repo.NextPendingQueuedAt()
+	if err != nil || !ok {
+		t.Fatalf("应返回存在任务, got ok=%v err=%v", ok, err)
+	}
+	want := base.Add(2 * time.Minute)
+	if diff := got.Sub(want); diff > time.Second || diff < -time.Second {
+		t.Fatalf("应返回优先级最高任务的入队时间, got %v want %v", got, want)
+	}
+}

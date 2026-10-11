@@ -442,6 +442,8 @@ func main() {
 	urlDispatcher := file.NewURLDownloadDispatcher(urlTaskRepo, uploadSessionHandler, cfg.Upload.URLUpload.MaxConcurrent)
 	uploadSessionHandler.SetDispatcher(urlDispatcher)
 	urlDispatcher.Start()
+	// 配置保存后唤醒调度器：后台调大「并行上传数」无需等待任何事件即可立即生效
+	appconfig.AddOnSaveHook(urlDispatcher.Notify)
 	for range requeued {
 		urlDispatcher.Notify()
 	}

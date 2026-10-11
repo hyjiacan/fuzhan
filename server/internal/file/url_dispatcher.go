@@ -13,9 +13,12 @@ import (
 )
 
 // URLDownloadDispatcher URL 上传（下载）任务的后台队列调度器。
-// 全局单例：所有用户共享同一个并行上限，超出部分按入队顺序（queued_at 升序）等待；
+// 全局单例：所有用户共享同一个并行上限，超出部分按优先级与入队顺序等待；
 // 并行上限在每次调度时从配置读取，因此后台修改「并行上传数」无需重启即可生效。
 // 任务持久化在 url_download_tasks 表，关闭浏览器甚至进程重启后仍可继续执行。
+//
+// 调度完全由事件驱动：新任务入队、槽位释放、配置保存都会 Notify 唤醒；
+// 重试退避的到期则由 armTimer 按最近到期时刻设置一次性定时器精确唤醒，不做周期轮询。
 type URLDownloadDispatcher struct {
 	repo     *repositories.URLDownloadTaskRepository
 	handler  *UploadSessionHandler
@@ -25,17 +28,27 @@ type URLDownloadDispatcher struct {
 	stop     chan struct{}
 	stopOnce sync.Once
 
+	// timer 退避到期的按需唤醒定时器，仅在 run 协程内读写。
+	timer *time.Timer
+
 	// cancels 记录执行中任务的取消函数，供「取消/删除任务」真正中断进行中的下载。
 	cancelMu sync.Mutex
 	cancels  map[string]context.CancelFunc
 }
+
+// minWakeDelay 按需唤醒的最小延迟，避免到期时刻恰在当前时刻时造成忙转。
+const minWakeDelay = 100 * time.Millisecond
+
+// errRetryDelay 领取任务失败（多为数据库瞬时故障）后的重试延迟，避免任务停滞。
+// 仅在出错时触发，不是周期轮询。
+const errRetryDelay = 5 * time.Second
 
 // NewURLDownloadDispatcher 创建调度器。workers<=0 时回退为默认并行数。
 func NewURLDownloadDispatcher(repo *repositories.URLDownloadTaskRepository, handler *UploadSessionHandler, workers int) *URLDownloadDispatcher {
 	if workers <= 0 {
 		workers = appconfig.DefaultURLUploadMaxConcurrent
 	}
-	return &URLDownloadDispatcher{
+	d := &URLDownloadDispatcher{
 		repo:     repo,
 		handler:  handler,
 		fallback: workers,
@@ -43,6 +56,10 @@ func NewURLDownloadDispatcher(repo *repositories.URLDownloadTaskRepository, hand
 		stop:     make(chan struct{}),
 		cancels:  make(map[string]context.CancelFunc),
 	}
+	// 初始为一个已停止的定时器，首次调度时会由 armTimer 重置或保持停止。
+	d.timer = time.NewTimer(time.Hour)
+	d.timer.Stop()
+	return d
 }
 
 // currentLimit 读取当前配置的全局并行上限（支持运行期修改）。
@@ -103,11 +120,9 @@ func (d *URLDownloadDispatcher) CancelTask(taskID string) bool {
 	return ok
 }
 
-// run 调度循环：启动即调度一次；此后由入队通知、任务完成通知或兜底定时器触发。
-// 定时器保证后台调大并行上限后即使没有新事件也能在 1s 内生效。
+// run 调度循环：启动即调度一次；此后由入队通知、任务完成通知、配置保存通知
+// 或退避到期定时器触发。不再使用周期轮询。
 func (d *URLDownloadDispatcher) run() {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
 	d.dispatch()
 	for {
 		select {
@@ -115,7 +130,7 @@ func (d *URLDownloadDispatcher) run() {
 			return
 		case <-d.notify:
 			d.dispatch()
-		case <-ticker.C:
+		case <-d.timer.C:
 			d.dispatch()
 		}
 	}
@@ -125,14 +140,16 @@ func (d *URLDownloadDispatcher) run() {
 // 仅由 run 协程调用，故对 inFlight 的读改写不存在并发竞争。
 func (d *URLDownloadDispatcher) dispatch() {
 	limit := int32(d.currentLimit())
+	claimFailed := false
 	for atomic.LoadInt32(&d.inFlight) < limit {
 		task, err := d.repo.ClaimNextPending()
 		if err != nil {
 			utils.Warn("URL上传队列领取任务失败", utils.Err(err))
-			return
+			claimFailed = true
+			break
 		}
 		if task == nil {
-			return
+			break
 		}
 		atomic.AddInt32(&d.inFlight, 1)
 		go func(t *models.URLDownloadTask) {
@@ -142,5 +159,60 @@ func (d *URLDownloadDispatcher) dispatch() {
 			}()
 			d.handler.executeURLDownloadTask(t)
 		}(task)
+	}
+	if claimFailed {
+		// 领取失败：短暂延后重试，避免数据库瞬时故障导致任务永久停滞
+		d.resetTimer(errRetryDelay)
+		return
+	}
+	d.armTimer()
+}
+
+// armTimer 决定下一次按需唤醒。
+// 仅在「取不出任务」时，按最近未到期任务的入队时间设置一次性定时器；
+// 若刚才是因并行额度已满而停止，则不需要定时器（槽位释放会 Notify）。
+// 关键点：「取不出」不等于「没有任务」——退避中的任务需按到期时刻精确唤醒，否则将永远等待。
+func (d *URLDownloadDispatcher) armTimer() {
+	// 额度已满：等槽位释放的 Notify 即可
+	if atomic.LoadInt32(&d.inFlight) >= int32(d.currentLimit()) {
+		d.stopTimer()
+		return
+	}
+	dueAt, ok, err := d.repo.NextPendingQueuedAt()
+	if err != nil {
+		utils.Warn("URL上传队列查询下一任务到期时间失败", utils.Err(err))
+		d.resetTimer(errRetryDelay)
+		return
+	}
+	if !ok {
+		// 队列确实为空：等待事件（入队 / 重试 / 配置保存）
+		d.stopTimer()
+		return
+	}
+	delay := time.Until(dueAt)
+	if delay < minWakeDelay {
+		delay = minWakeDelay
+	}
+	d.resetTimer(delay)
+}
+
+// resetTimer 安全重置按需唤醒定时器（仅 run 协程调用）。
+func (d *URLDownloadDispatcher) resetTimer(delay time.Duration) {
+	if !d.timer.Stop() {
+		select {
+		case <-d.timer.C:
+		default:
+		}
+	}
+	d.timer.Reset(delay)
+}
+
+// stopTimer 停止按需唤醒定时器（仅 run 协程调用）。
+func (d *URLDownloadDispatcher) stopTimer() {
+	if !d.timer.Stop() {
+		select {
+		case <-d.timer.C:
+		default:
+		}
 	}
 }
