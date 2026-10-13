@@ -311,10 +311,6 @@ export const UploadApi = {
   computeChecksum(taskId, algorithms) {
     return request.post(`/uploads/url-tasks/${taskId}/checksum`, { algorithms }, { skipSuccessToast: true })
   },
-
-  deleteURLTask(taskId) {
-    return request.delete(`/uploads/url-tasks/${taskId}`, { skipSuccessToast: true })
-  },
 }
 
 // ========== 文件索引 API ==========

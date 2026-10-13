@@ -6,8 +6,8 @@
       stripe
       max-height="400"
     >
-      <el-table-column prop="fileName" label="文件名" width="200" show-overflow-tooltip />
-      <el-table-column prop="_type" label="上传类型" width="100">
+      <el-table-column prop="fileName" label="文件名" show-overflow-tooltip />
+      <el-table-column prop="_type" label="上传类型" width="105">
         <template #default="{ row }">
           <el-tag :type="elTagType(typeMap[row._type]?.type || 'default')" size="small">{{ typeMap[row._type]?.text || '-' }}</el-tag>
         </template>
@@ -36,7 +36,6 @@
         <template #default="{ row }">
           <el-button v-if="['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status)" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
           <el-button v-if="['failed', 'cancelled'].includes(row.status)" size="small" type="primary" @click="handleRetry(row)">重试</el-button>
-          <el-button v-if="['completed', 'cancelled', 'failed', 'expired'].includes(row.status)" size="small" type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -44,16 +43,15 @@
       v-model:current-page="pagination.page"
       v-model:page-size="pagination.pageSize"
       :page-sizes="pagination.pageSizes"
-      :total="tasks.length"
+      :total="allTasks.length"
       layout="total, sizes, prev, pager, next, jumper"
-      @current-change="loadData"
-      @size-change="loadData"
+      @size-change="onSizeChange"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadApi } from '../../api'
 
@@ -64,8 +62,18 @@ const props = defineProps({
 })
 
 const loading = ref(false)
-const tasks = ref([])
-const pagination = ref({ page: 1, pageSize: 50, showSizePicker: true, pageSizes: [20, 50, 100] })
+const allTasks = ref([])
+const pagination = ref({ page: 1, pageSize: 10, pageSizes: [10, 20, 50, 100] })
+
+// 表格数据为「上传会话 + URL 任务」合并后的当前页切片（客户端分页）
+const tasks = computed(() => {
+  const start = (pagination.value.page - 1) * pagination.value.pageSize
+  return allTasks.value.slice(start, start + pagination.value.pageSize)
+})
+
+function onSizeChange() {
+  pagination.value.page = 1
+}
 
 const statusMap = {
   'in_progress': { type: 'info', text: '上传中' },
@@ -133,26 +141,34 @@ async function handleRetry(row) {
   }
 }
 
-async function handleDelete(row) {
-  try {
-    await UploadApi.deleteURLTask(row.id)
-    ElMessage.success('已删除')
-    await loadData()
-  } catch (e) {
-    ElMessage.error('删除失败')
+// 逐页拉取直到取完（后端 pageSize 上限 100），保证客户端分页数据完整
+async function fetchAllPages(fetcher, key) {
+  const pageSize = 100
+  const items = []
+  for (let page = 1; ; page++) {
+    const res = await fetcher(page, pageSize)
+    const batch = res?.data?.[key] || []
+    items.push(...batch)
+    const total = res?.data?.total ?? items.length
+    if (items.length >= total || batch.length === 0) break
   }
+  return items
 }
 
 async function loadData() {
   loading.value = true
   try {
-    const [sessRes, urlRes] = await Promise.all([
-      UploadApi.listSessions(props.type, pagination.value.page, pagination.value.pageSize),
-      UploadApi.listURLTasks(props.type, pagination.value.page, pagination.value.pageSize)
+    const [sessions, urlTasks] = await Promise.all([
+      fetchAllPages((page, pageSize) => UploadApi.listSessions(props.type, page, pageSize), 'sessions'),
+      fetchAllPages((page, pageSize) => UploadApi.listURLTasks(props.type, page, pageSize), 'tasks')
     ])
-    const sessions = (sessRes?.data?.sessions || []).map(s => ({ ...s, _type: 'session' }))
-    const urlTasks = (urlRes?.data?.tasks || []).map(t => ({ ...t, _type: 'url' }))
-    tasks.value = [...sessions, ...urlTasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    allTasks.value = [
+      ...sessions.map(s => ({ ...s, _type: 'session' })),
+      ...urlTasks.map(t => ({ ...t, _type: 'url' }))
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    // 数据变少导致当前页越界时回退到最后一页
+    const maxPage = Math.max(1, Math.ceil(allTasks.value.length / pagination.value.pageSize))
+    if (pagination.value.page > maxPage) pagination.value.page = maxPage
   } catch (e) {
     ElMessage.error('加载失败')
   } finally {
@@ -179,7 +195,7 @@ function stopPolling() {
 // 仅当存在进行中的任务时，才安排下一次轮询；空闲时停止发请求
 function scheduleNextPoll() {
   stopPolling()
-  if (!hasActiveTasks(tasks.value)) return
+  if (!hasActiveTasks(allTasks.value)) return
   pollTimer = setTimeout(async () => {
     await loadData()
   }, POLL_INTERVAL)

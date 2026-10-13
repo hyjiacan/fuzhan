@@ -41,7 +41,7 @@
     </div>
 
     <!-- 图片文件预览 -->
-    <div v-else-if="fileType === 'image'" style="display: flex; justify-content: center; align-items: center; height: 100%;">
+    <div v-else-if="fileType === 'image'" style="display: flex; justify-content: center; align-items: center; flex: 1; min-height: 0; overflow: hidden;">
       <img
         :src="imageUrl"
         :alt="fileName"
@@ -50,10 +50,10 @@
     </div>
 
     <!-- PDF文件预览 -->
-    <div v-else-if="fileType === 'pdf'" style="height: 100%;">
+    <div v-else-if="fileType === 'pdf'" style="flex: 1; min-height: 0;">
       <iframe
         :src="pdfUrl"
-        style="width: 100%; height: 500px;"
+        style="width: 100%; height: 100%;"
         frameborder="0"
       />
     </div>
@@ -65,6 +65,12 @@
       </el-icon>
       <p style="font-size: 16px; color: var(--el-text-color-regular); margin: 20px 0;">{{ errorMessage || '该文件类型不支持预览' }}</p>
       <el-button type="primary" @click="downloadFile">下载文件</el-button>
+    </div>
+
+    <!-- 备注：所有预览类型均展示（有则显示） -->
+    <div v-if="fileNotes" class="preview-notes">
+      <div class="preview-notes-label">备注</div>
+      <div class="preview-notes-body">{{ fileNotes }}</div>
     </div>
 
   </div>
@@ -115,6 +121,9 @@ const ChevronRightIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', v
 ])
 
 const fileName = computed(() => props.file.name || props.file.filename || '')
+
+// 文件备注（记录中的 notes 字段），为空则不展示
+const fileNotes = computed(() => (props.file?.notes || '').toString().trim())
 
 // 无 path 的来源（临时/私有文件）走 downloadApi 获取下载 URL 完成预览
 const isDownloadBased = computed(() => !props.file?.path && typeof props.downloadApi === 'function')
@@ -359,6 +368,31 @@ watch(() => props.file, () => {
   .el-textarea__inner {
     height: 100% !important;
     min-height: 0;
+  }
+}
+
+.preview-notes {
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--el-border-color-light);
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  max-height: 150px;
+  overflow: auto;
+
+  .preview-notes-label {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    margin-bottom: 4px;
+  }
+
+  .preview-notes-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--el-text-color-regular);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 }
 

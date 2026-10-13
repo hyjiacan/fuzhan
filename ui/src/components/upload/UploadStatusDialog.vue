@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="show" :close-on-click-modal="false" title="上传状态" width="800px">
+  <el-dialog v-model="show" :close-on-click-modal="false" title="上传状态" width="1080px">
     <el-tabs v-model="activeTab">
       <el-tab-pane name="public" label="公共上传">
         <UploadTaskTable type="public" :visible="show" />
