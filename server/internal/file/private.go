@@ -3,6 +3,7 @@ package file
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -313,6 +314,19 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 		return
 	}
 	defer file.Close()
+
+	// 预览请求（preview=true）：内联返回供图片/PDF/文本预览，不写下载记录
+	if c.Query("preview") == "true" {
+		c.Header("Cache-Control", "private, max-age=3600")
+		// 按扩展名推断 Content-Type 以便浏览器内联渲染（未识别时交由浏览器处理）
+		if ct := mime.TypeByExtension(filepath.Ext(rec.FileName)); ct != "" {
+			c.Header("Content-Type", ct)
+		}
+		if _, err := io.Copy(c.Writer, file); err != nil {
+			utils.Error("文件预览失败", utils.Err(err))
+		}
+		return
+	}
 
 	// RFC 5987/RFC 6266 安全编码文件名
 	safeFilename := url.PathEscape(rec.FileName)

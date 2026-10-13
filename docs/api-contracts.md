@@ -312,7 +312,7 @@ Content-Type: application/json
 | GET | `/api/v1/private/quota` | `file.PrivateUploadHandler.QuotaHandler` | 获取配额 |
 | POST | `/api/v1/private/upload` | `file.PrivateStorageHandler.Upload` | 简单上传 |
 | DELETE | `/api/v1/private/files/:code` | `file.PrivateStorageHandler.Delete` | 删除文件 |
-| GET | `/api/v1/share/:code` | `file.PrivateStorageHandler.Download` | 下载分享文件 |
+| GET | `/share/:code` | `file.PrivateStorageHandler.Download` | 下载分享文件（支持 `preview=true` 内联预览） |
 
 ### 私有存储分片上传
 

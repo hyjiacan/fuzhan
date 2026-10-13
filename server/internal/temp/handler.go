@@ -245,6 +245,15 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 		return
 	}
 
+	// 预览请求（preview=true）：内联返回供图片/PDF/文本预览，
+	// 不触发下载即删、不计入下载次数、不写下载记录
+	if c.Query("preview") == "true" {
+		c.Header("Cache-Control", "private, max-age=3600")
+		// 不显式设置 Content-Type，交由 ServeContent 按文件名扩展名推断，保证图片/PDF 可内联渲染
+		http.ServeContent(c.Writer, c.Request, tempFile.Filename, fi.ModTime(), file)
+		return
+	}
+
 	// 设置下载响应头 - RFC 5987安全编码
 	safeFilename := url.PathEscape(tempFile.Filename)
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, tempFile.Filename, safeFilename))

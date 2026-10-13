@@ -75,12 +75,15 @@ import { ref, computed, watch, h } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import { FileApi } from '@/api'
 import { PathUtils } from '@/utils'
+import { isPreviewable, resolveMime } from '@/config/preview'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
 const props = defineProps({
   file: { type: Object, default: () => ({}) },
-  maximized: { type: Boolean, default: false }
+  maximized: { type: Boolean, default: false },
+  // 无 path 的来源（临时/私有文件）通过该函数获取下载 URL 以完成预览
+  downloadApi: { type: Function, default: null }
 })
 
 const emit = defineEmits(['close'])
@@ -111,7 +114,17 @@ const ChevronRightIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', v
   h('path', { d: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' })
 ])
 
-const fileName = computed(() => props.file.name || '')
+const fileName = computed(() => props.file.name || props.file.filename || '')
+
+// 无 path 的来源（临时/私有文件）走 downloadApi 获取下载 URL 完成预览
+const isDownloadBased = computed(() => !props.file?.path && typeof props.downloadApi === 'function')
+
+// 拼接预览 URL：附加 preview=true，后端据此内联返回且不触发下载即删/下载计数
+const buildPreviewUrl = () => {
+  const base = isDownloadBased.value ? (props.downloadApi() || '') : ''
+  if (!base) return ''
+  return base + (base.includes('?') ? '&' : '?') + 'preview=true'
+}
 
 const textContainerStyle = computed(() => {
   if (props.maximized) {
@@ -137,7 +150,7 @@ const inputStyleComputed = computed(() => {
 
 // Markdown 渲染
 const isMarkdown = computed(() => {
-  const ext = props.file?.name?.toLowerCase() || ''
+  const ext = fileName.value.toLowerCase()
   return ext.endsWith('.md') || ext.endsWith('.markdown')
 })
 
@@ -175,18 +188,25 @@ const formatOffset = (offset) => {
 
 // 加载预览内容
 const loadPreviewContent = async () => {
-  if (!props.file?.path || typeof props.file.path !== 'string') {
-    fileType.value = 'unsupported'
-    errorMessage.value = '文件路径无效'
-    return
-  }
-
   loading.value = true
   errorMessage.value = ''
   textContent.value = ''
   chunked.value = false
+  imageUrl.value = ''
+  pdfUrl.value = ''
 
   try {
+    if (isDownloadBased.value) {
+      await loadDownloadBasedPreview()
+      return
+    }
+
+    if (!props.file?.path || typeof props.file.path !== 'string') {
+      fileType.value = 'unsupported'
+      errorMessage.value = '文件路径无效'
+      return
+    }
+
     const fullPath = props.file.path
     const result = await FileApi.preview(fullPath)
 
@@ -229,6 +249,44 @@ const loadPreviewContent = async () => {
   }
 }
 
+// 无 path 来源（临时/私有文件）的预览：文本走 fetch 拉取内容，图片/PDF 直接内联渲染
+const loadDownloadBasedPreview = async () => {
+  const name = fileName.value
+  const mime = props.file?.mimeType || resolveMime(name)
+
+  if (!isPreviewable(name, mime)) {
+    fileType.value = 'unsupported'
+    errorMessage.value = '该文件类型不支持预览'
+    return
+  }
+
+  const url = buildPreviewUrl()
+  if (!url) {
+    fileType.value = 'unsupported'
+    errorMessage.value = '无法获取文件地址'
+    return
+  }
+
+  let type = detectFileType(mime)
+  // MIME 未识别但扩展名在白名单内时，按文本处理
+  if (type === 'unsupported') type = 'text'
+  fileType.value = type
+
+  if (type === 'image') {
+    imageUrl.value = url
+  } else if (type === 'pdf') {
+    pdfUrl.value = url
+  } else {
+    const res = await fetch(url)
+    if (!res.ok) {
+      fileType.value = 'unsupported'
+      errorMessage.value = res.status === 410 ? '文件已过期或已被删除' : '加载预览失败'
+      return
+    }
+    textContent.value = await res.text()
+  }
+}
+
 // 加载指定分段
 const loadChunk = async (chunkIndex) => {
   if (chunkIndex < 0 || chunkIndex >= totalChunks.value) return
@@ -262,8 +320,12 @@ const loadChunk = async (chunkIndex) => {
 
 const downloadFile = () => {
   if (props.file.path) {
-    const fullPath = props.file.path
-    window.open(`/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
+    window.open(`/download/${PathUtils.encodeFilePath(props.file.path)}`, '_blank')
+    return
+  }
+  if (typeof props.downloadApi === 'function') {
+    const url = props.downloadApi()
+    if (url) window.open(url, '_blank')
   }
 }
 

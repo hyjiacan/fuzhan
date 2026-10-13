@@ -599,7 +599,8 @@ export const PrivateApi = {
   },
 
   download(code) {
-    return `${API_BASE}/private/files/${code}/download`
+    // 私有文件下载走免认证的分享码接口（window.open 无法携带 Bearer 令牌）
+    return `/share/${code}`
   }
 }
 

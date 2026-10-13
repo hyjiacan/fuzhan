@@ -79,6 +79,10 @@ export default defineConfig(({ command }) => ({
       '/download': {
         target: 'http://localhost:8888',
         changeOrigin: true
+      },
+      '/share': {
+        target: 'http://localhost:8888',
+        changeOrigin: true
       }
     }
   },

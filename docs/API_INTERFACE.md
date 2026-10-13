@@ -226,6 +226,8 @@
 
 - **URL**：`GET /share/:code`
 - **认证**：无需认证
+- **参数**：
+  - `preview`（可选）：设为 `true` 时以内联方式返回（不设置 `Content-Disposition`，按扩展名推断 `Content-Type`），供图片/PDF/文本在线预览；不写入下载记录
 - **说明**：通过分享码下载私有文件
 
 ## 文件搜索接口
@@ -553,6 +555,8 @@
 
 - **URL**：`GET /api/v1/temp/:code/download`
 - **认证**：无需认证
+- **参数**：
+  - `preview`（可选）：设为 `true` 时以内联方式返回（不设置 `Content-Disposition`，按扩展名推断 `Content-Type`），供图片/PDF/文本在线预览；不触发下载即删、不计入下载次数、不写下载记录
 
 ### 5. 获取临时文件信息
 

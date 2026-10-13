@@ -107,6 +107,7 @@ import { ElMessage, ElMessageBox, ElButton, ElTag, ElIcon } from 'element-plus'
 import { PrivateApi, AuthApi } from '@/api'
 import { TableConst, NumberUtils, TimeUtils } from '@/utils'
 import { keyNav } from '@/utils/a11y'
+import { isPreviewable } from '@/config/preview'
 import { copyToClipboard } from '@/utils/clipboard'
 import { formatErrorMessage } from '@/utils/error'
 import UploadManager from '@/components/upload/UploadManager.vue'
@@ -229,12 +230,8 @@ const getFileIconClass = (row) => {
   return `icon-filetype icon-filetype-${ext}`
 }
 
-// 是否可预览
-const canPreview = (row) => {
-  const ext = row.filename?.split('.').pop()?.toLowerCase() || ''
-  const previewableExts = ['txt', 'md', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml', 'log']
-  return previewableExts.includes(ext)
-}
+// 是否可预览（与公共列表同源：按配置的 MIME/扩展名取并集判定）
+const canPreview = (row) => isPreviewable(row.filename)
 
 // 导航到子目录
 const navigateToDir = (dir) => {
