@@ -41,7 +41,7 @@ func TestAPIActivityLogging(t *testing.T) {
 	r := gin.New()
 	r.Use(MonitoringMiddleware())
 
-	r.POST("/api/v1/echo", func(c *gin.Context) {
+	r.POST("/api/v1/web/echo", func(c *gin.Context) {
 		var body map[string]interface{}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "绑定失败: " + err.Error()})
@@ -58,7 +58,7 @@ func TestAPIActivityLogging(t *testing.T) {
 			"data":    gin.H{"id": 7, "token": "should-be-redacted"},
 		})
 	})
-	r.GET("/api/v1/fail", func(c *gin.Context) {
+	r.GET("/api/v1/web/fail", func(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": `构建目标路径失败: 无效的目标根目录: "X"`,
@@ -66,18 +66,18 @@ func TestAPIActivityLogging(t *testing.T) {
 	})
 
 	// 成功请求：带 JSON body
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/echo", strings.NewReader(`{"name":"报告.pdf","password":"p@ss"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/web/echo", strings.NewReader(`{"name":"报告.pdf","password":"p@ss"}`))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(httptest.NewRecorder(), req)
 
 	// 失败请求：无 body
-	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/fail", nil))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/web/fail", nil))
 
 	utils.Sync()
 	content := readLogFile(t, filepath.Join(dir, "api.log"))
 
 	// 做了什么 + 请求数据
-	for _, want := range []string{"API操作", "/api/v1/echo", "报告.pdf", `"action"`, `"request"`} {
+	for _, want := range []string{"API操作", "/api/v1/web/echo", "报告.pdf", `"action"`, `"request"`} {
 		if !strings.Contains(content, want) {
 			t.Errorf("api.log 缺少 %q\n%s", want, content)
 		}

@@ -48,7 +48,7 @@ func TestSaveConfig_PersistsSecurity(t *testing.T) {
 	appconfig.GlobalConfig = appconfig.Config{} // 关闭私有/临时存储，跳过目录创建副作用
 
 	body := `{"security":{"trustProxy":true,"allowedOrigins":["https://a.example.com","https://b.example.com"]}}`
-	postConfig(t, "/api/v1/config", body, &Handler{})
+	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	if !appconfig.GlobalConfig.Security.TrustProxy {
 		t.Error("SaveConfig 后 GlobalConfig.Security.TrustProxy = false, want true")
@@ -93,7 +93,7 @@ func TestSaveConfig_ClearsSecurity(t *testing.T) {
 	}
 
 	body := `{"security":{"trustProxy":false,"allowedOrigins":[]}}`
-	postConfig(t, "/api/v1/config", body, &Handler{})
+	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	if appconfig.GlobalConfig.Security.TrustProxy {
 		t.Error("SaveConfig 清空后 TrustProxy = true, want false")
@@ -124,7 +124,7 @@ func TestSaveConfig_SecurityAbsent_KeepsValues(t *testing.T) {
 	}
 
 	// 只提交 app 节点名，刻意不含 security
-	postConfig(t, "/api/v1/config", `{"app":{"name":"浮栈"}}`, &Handler{})
+	postConfig(t, "/api/v1/web/config", `{"app":{"name":"浮栈"}}`, &Handler{})
 
 	if !appconfig.GlobalConfig.Security.TrustProxy {
 		t.Error("未提交 security 时 TrustProxy 被重置 = false, want 保留 true")

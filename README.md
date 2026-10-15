@@ -310,28 +310,28 @@ ftps://localhost:2121
 
 ## API 接口
 
-所有 API 通过 `/api/v1/` 前缀访问。OpenAPI 文档（scalar）启用后可在界面查看，或阅读 [API 接口文档](./docs/api-contracts.md)。
+所有 API 通过 `/api/v1/web/` 前缀访问。OpenAPI 文档（scalar）启用后可在界面查看，或阅读 [API 接口文档](./docs/api-contracts.md)。
 
 ### 公开接口（无需认证）
 
 | 接口 | 说明 |
 |------|------|
-| `POST /api/v1/auth/register` | 用户注册 |
-| `POST /api/v1/auth/login` | 用户登录 |
-| `GET /api/v1/files/list` | 目录列表 |
-| `GET /api/v1/search` | 文件搜索 |
-| `GET /api/v1/download/*path` | 文件下载 |
-| `GET /api/v1/files/preview/*path` | 文件预览 |
-| `GET /api/v1/temp/...` | 临时文件相关 |
-| `GET /api/v1/health` | 健康检查 |
+| `POST /api/v1/web/auth/register` | 用户注册 |
+| `POST /api/v1/web/auth/login` | 用户登录 |
+| `GET /api/v1/web/files/list` | 目录列表 |
+| `GET /api/v1/web/search` | 文件搜索 |
+| `GET /api/v1/web/download/*path` | 文件下载 |
+| `GET /api/v1/web/files/preview/*path` | 文件预览 |
+| `GET /api/v1/web/temp/...` | 临时文件相关 |
+| `GET /api/v1/web/health` | 健康检查 |
 
 ### 需认证接口
 
 | 接口 | 说明 |
 |------|------|
-| `GET/POST /api/v1/private/...` | 私有文件列表 / 上传 |
-| `POST /api/v1/files/rename` | 重命名 |
-| `POST /api/v1/files/move` | 移动 |
+| `GET/POST /api/v1/web/private/...` | 私有文件列表 / 上传 |
+| `POST /api/v1/web/files/rename` | 重命名 |
+| `POST /api/v1/web/files/move` | 移动 |
 | `/api/v1/cli/...` | CLI 命令 |
 | `/api/v1/webdav/...` | WebDAV 访问 |
 
@@ -339,9 +339,9 @@ ftps://localhost:2121
 
 | 接口 | 说明 |
 |------|------|
-| `/api/v1/admin/users` | 用户管理 |
-| `/api/v1/admin/files` | 文件管理 |
-| `/api/v1/admin/...` | 任务、上传、统计、安全、OpenAPI/API Key 等 |
+| `/api/v1/web/admin/users` | 用户管理 |
+| `/api/v1/web/admin/files` | 文件管理 |
+| `/api/v1/web/admin/...` | 任务、上传、统计、安全、OpenAPI/API Key 等 |
 
 > 详细且最新的端点清单请以 [API 接口文档](./docs/api-contracts.md) 为准，页面内 OpenAPI 文档为权威来源。
 

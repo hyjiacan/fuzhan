@@ -266,7 +266,7 @@ func TestParseOrDefault(t *testing.T) {
 }
 
 // TestSecurityConfigDTORoundTrip 验证安全配置（信任代理头 / CORS）在
-// ToDTO -> ConfigFromDTO 链路上无损往返，这也是 GET /api/v1/config 与
+// ToDTO -> ConfigFromDTO 链路上无损往返，这也是 GET /api/v1/web/config 与
 // 设置页加载/保存所依赖的序列化路径。
 func TestSecurityConfigDTORoundTrip(t *testing.T) {
 	cfg := Config{

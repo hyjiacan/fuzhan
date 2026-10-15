@@ -265,15 +265,15 @@
 
 | 端点 | 说明 |
 |------|------|
-| `/api/v1/auth/*` | 认证相关 |
-| `/api/v1/files/*` | 文件浏览 |
+| `/api/v1/web/auth/*` | 认证相关 |
+| `/api/v1/web/files/*` | 文件浏览 |
 | `/download/*path` | 文件下载 |
-| `/api/v1/search/*query` | 文件搜索 |
-| `/api/v1/uploads/*` | 分片上传 |
-| `/api/v1/temp/*` | 临时文件 |
-| `/api/v1/private/*` | 私有存储（需认证） |
-| `/api/v1/admin/*` | 管理功能（需管理员） |
-| `/api/v1/api-keys/*` | API Key 管理（需管理员） |
+| `/api/v1/web/search/*query` | 文件搜索 |
+| `/api/v1/web/uploads/*` | 分片上传 |
+| `/api/v1/web/temp/*` | 临时文件 |
+| `/api/v1/web/private/*` | 私有存储（需认证） |
+| `/api/v1/web/admin/*` | 管理功能（需管理员） |
+| `/api/v1/web/api-keys/*` | API Key 管理（需管理员） |
 | `/webdav/*` | WebDAV 协议访问 |
 
 详见 [API_INTERFACE.md](./API_INTERFACE.md) 和 [api-contracts.md](./api-contracts.md)

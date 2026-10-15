@@ -17,7 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetOptions 处理 /api/v1/options 接口（公开配置信息）
+// GetOptions 处理 /api/v1/web/options 接口（公开配置信息）
 func (h *Handler) GetOptions(c *gin.Context) {
 	currentConfig := appconfig.GetConfig()
 	resp := gin.H{

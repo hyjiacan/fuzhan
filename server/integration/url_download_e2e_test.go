@@ -94,12 +94,12 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 
 		router := gin.New()
 		router.Use(middleware.NewAuthMiddleware(nil).AuthOptional())
-		router.GET("/api/v1/notifications", notificationHandler.GetNotifications)
-		router.POST("/api/v1/notifications/read", notificationHandler.MarkRead)
+		router.GET("/api/v1/web/notifications", notificationHandler.GetNotifications)
+		router.POST("/api/v1/web/notifications/read", notificationHandler.MarkRead)
 
 		// 1. 匿名用户获取通知（带 X-Anonymous-ID）
 		t.Run("匿名用户获取未通知任务", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/web/notifications", nil)
 			req.Header.Set("X-Anonymous-ID", "anonymous-test-id")
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
@@ -130,7 +130,7 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 			Update("anonymous_id", "anonymous-test-id").Error
 
 		t.Run("匿名用户获取通知（绑定后）", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/web/notifications", nil)
 			req.Header.Set("X-Anonymous-ID", "anonymous-test-id")
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
@@ -153,7 +153,7 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 		// 3. 标记已读
 		t.Run("标记通知为已读", func(t *testing.T) {
 			body := `{"ids":["e2e-completed-1","e2e-failed-1"]}`
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/read",
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/web/notifications/read",
 				bytes.NewBufferString(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Anonymous-ID", "anonymous-test-id")
@@ -185,13 +185,13 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 
 		router := gin.New()
 		router.Use(authMiddleware.AuthOptional())
-		router.POST("/api/v1/notifications/merge", notificationHandler.MergeAnonymous)
+		router.POST("/api/v1/web/notifications/merge", notificationHandler.MergeAnonymous)
 
 		// 设置 JWT 密钥以便生成测试 token
 		// 使用已有工具函数
 
 		t.Run("未认证用户合并应静默成功", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/merge", nil)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/web/notifications/merge", nil)
 			req.Header.Set("X-Anonymous-ID", "anonymous-test-id")
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
@@ -344,7 +344,7 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 		router := gin.New()
 		router.Use(middleware.NewAuthMiddleware(nil).AuthOptional())
 		router.GET("/admin/url-tasks", adminHandler.ListURLTasks)
-		router.GET("/api/v1/notifications", notificationHandler.GetNotifications)
+		router.GET("/api/v1/web/notifications", notificationHandler.GetNotifications)
 
 		t.Run("空任务列表", func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks", nil)
@@ -371,7 +371,7 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 		})
 
 		t.Run("无通知", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/web/notifications", nil)
 			req.Header.Set("X-Anonymous-ID", "empty-user")
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
@@ -417,11 +417,11 @@ func TestURLDownloadE2E_AnonymousMarkRead(t *testing.T) {
 
 	router := gin.New()
 	router.Use(authMiddleware.AuthOptional())
-	router.POST("/api/v1/notifications/read", notificationHandler.MarkRead)
+	router.POST("/api/v1/web/notifications/read", notificationHandler.MarkRead)
 
 	t.Run("用户1不能标记用户2的任务", func(t *testing.T) {
 		body := `{"ids":["mark-user2"]}`
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/read",
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/web/notifications/read",
 			bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Anonymous-ID", "user1")

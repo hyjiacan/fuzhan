@@ -139,7 +139,7 @@ func (c *Collector) Run(ctx context.Context) {
 	lastCleanup := time.Now()
 	c.cleanup(retention)
 	// 先采集一次硬件配置，保证首个快照与首帧 SSE 就带完整服务器配置
-	c.refreshHardware(time.Now())
+	c.refreshHardware(ctx, time.Now())
 
 	utils.Info("服务器资源监控已启动",
 		utils.Int("sampling_seconds", sampling),
@@ -154,7 +154,7 @@ func (c *Collector) Run(ctx context.Context) {
 			utils.Info("服务器资源监控 worker 已停止")
 			return
 		case now := <-ticker.C:
-			c.sample(now)
+			c.sample(ctx, now)
 			if int(now.Sub(c.lastCollect).Seconds()) >= collect {
 				c.persist(now)
 				c.lastCollect = now
@@ -167,8 +167,9 @@ func (c *Collector) Run(ctx context.Context) {
 	}
 }
 
-// sample 采集一次服务器与程序的资源快照，存入内存缓冲，供实时接口读取
-func (c *Collector) sample(now time.Time) {
+// sample 采集一次服务器与程序的资源快照，存入内存缓冲，供实时接口读取。
+// ctx 用于在关闭时中断耗时的目录遍历与硬件探测，避免阻塞 worker 退出。
+func (c *Collector) sample(ctx context.Context, now time.Time) {
 	server := Point{}
 	prog := Point{}
 
@@ -221,7 +222,7 @@ func (c *Collector) sample(now time.Time) {
 
 	// 程序磁盘占用：按采集节奏刷新（磁盘遍历求和），避免高频遍历大目录
 	if now.Sub(c.lastFootprint) >= time.Duration(footprintRefreshInterval)*time.Second {
-		c.programFootprint = c.queryFootprint()
+		c.programFootprint = c.queryFootprint(ctx)
 		c.lastFootprint = now
 	}
 	prog.DiskUsed = c.programFootprint
@@ -229,7 +230,7 @@ func (c *Collector) sample(now time.Time) {
 	prog.DiskTotal = server.DiskTotal
 
 	// 硬件配置低频刷新（CPU/内存/磁盘/网卡配置）
-	c.refreshHardware(now)
+	c.refreshHardware(ctx, now)
 
 	c.mu.Lock()
 	c.netNICs = nicRates
@@ -244,12 +245,12 @@ func (c *Collector) sample(now time.Time) {
 }
 
 // refreshHardware 按 hardwareRefreshInterval 低频刷新硬件配置缓存
-func (c *Collector) refreshHardware(now time.Time) {
+func (c *Collector) refreshHardware(ctx context.Context, now time.Time) {
 	if now.Sub(c.lastHardware) < time.Duration(hardwareRefreshInterval)*time.Second {
 		return
 	}
 	c.mu.Lock()
-	c.hardware = collectHardware()
+	c.hardware = collectHardware(ctx)
 	c.lastHardware = now
 	hw := c.hardware
 	c.mu.Unlock()
@@ -435,10 +436,14 @@ func (c *Collector) cleanup(retentionDays int) {
 // 口径：本程序本身（可执行文件所在目录）、相关配置（工作目录）、日志目录，
 // 以及配置的各个存储根目录占用之和。重叠路径（如日志/数据/存储根在工作目录内）
 // 只统计一次，避免重复计算。
-func (c *Collector) queryFootprint() uint64 {
+func (c *Collector) queryFootprint(ctx context.Context) uint64 {
 	var total uint64
 	for _, root := range programFootprintDirs() {
-		total += dirDiskUsage(root, footprintWalkTimeout)
+		// 取消后立即停止后续根目录的遍历，避免逐个耗尽超时
+		if ctx.Err() != nil {
+			break
+		}
+		total += dirDiskUsage(ctx, root, footprintWalkTimeout)
 	}
 	return total
 }
@@ -497,9 +502,10 @@ func pathCoveredBy(base, sub string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
-// dirDiskUsage 统计目录实际占用的常规文件字节数（符号链接不跟随，含单目录超时保护）
-func dirDiskUsage(root string, timeout time.Duration) uint64 {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+// dirDiskUsage 统计目录实际占用的常规文件字节数（符号链接不跟随，含单目录超时保护）。
+// 遍历受传入 ctx 与 timeout 双重约束：关闭时 ctx 取消可立即中断，避免拖住 worker 退出。
+func dirDiskUsage(ctx context.Context, root string, timeout time.Duration) uint64 {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var total uint64
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {

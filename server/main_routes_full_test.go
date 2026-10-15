@@ -10,39 +10,40 @@ import (
 
 func dummy(c *gin.Context) {}
 
-// TestMainRouteTreeNoConflict 复刻 main.go 中 /api/v1 与根路由的整棵路由注册
-// （方法+路径，handler 用 dummy），触发 gin 路由树构建，任何 catch-all/static/param
+// TestMainRouteTreeNoConflict 复刻 main.go 中 /api/v1（web/cli/webdav 分组）与根路由的整棵
+// 路由注册（方法+路径，handler 用 dummy），触发 gin 路由树构建，任何 catch-all/static/param
 // 冲突都会在这里 panic。用于确认 WebDAV 修复后再无同类路径问题。
 func TestMainRouteTreeNoConflict(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
 	api := r.Group("/api/v1")
-	api.GET("/health", dummy)
+	web := api.Group("/web")
+	web.GET("/health", dummy)
 	api.GET("/ready", dummy)
 	api.GET("/metrics", dummy)
-	api.GET("/monitor/storage", dummy)
-	api.GET("/monitor/access", dummy)
-	api.GET("/monitor/keywords", dummy)
-	api.GET("/monitor/recent", dummy)
-	api.GET("/monitor/rankings", dummy)
-	api.GET("/monitor/hot-downloads", dummy)
-	api.GET("/options", dummy)
-	api.GET("/files/search-records", dummy)
-	api.GET("/files/list", dummy)
-	api.GET("/files/depends/:id", dummy)
-	api.GET("/download/*path", dummy)
-	api.HEAD("/download/*path", dummy)
-	api.GET("/search/*query", dummy)
+	web.GET("/monitor/storage", dummy)
+	web.GET("/monitor/access", dummy)
+	web.GET("/monitor/keywords", dummy)
+	web.GET("/monitor/recent", dummy)
+	web.GET("/monitor/rankings", dummy)
+	web.GET("/monitor/hot-downloads", dummy)
+	web.GET("/options", dummy)
+	web.GET("/files/search-records", dummy)
+	web.GET("/files/list", dummy)
+	web.GET("/files/depends/:id", dummy)
+	web.GET("/download/*path", dummy)
+	web.HEAD("/download/*path", dummy)
+	web.GET("/search/*query", dummy)
 
-	auth := api.Group("/auth")
+	auth := web.Group("/auth")
 	auth.POST("/register", dummy)
 	auth.POST("/login", dummy)
 
 	r.GET("/share/:code", dummy)
 	r.HEAD("/share/:code", dummy)
 
-	private := api.Group("/private")
+	private := web.Group("/private")
 	private.GET("/files", dummy)
 	private.GET("/quota", dummy)
 	private.POST("/upload", dummy)
@@ -55,17 +56,17 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	pu.POST("/chunk", dummy)
 	pu.POST("/finalize", dummy)
 
-	api.GET("/admin/search/*query", dummy)
-	api.GET("/admin/download/*path", dummy)
-	api.HEAD("/admin/download/*path", dummy)
+	web.GET("/admin/search/*query", dummy)
+	web.GET("/admin/download/*path", dummy)
+	web.HEAD("/admin/download/*path", dummy)
 
-	scan := api.Group("/admin/index")
+	scan := web.Group("/admin/index")
 	scan.POST("/scan", dummy)
 	scan.POST("/scan/trigger", dummy)
 	scan.GET("/scan/progress", dummy)
 	scan.GET("/scan/status", dummy)
 
-	admin := api.Group("/admin")
+	admin := web.Group("/admin")
 	admin.GET("/users", dummy)
 	admin.PUT("/users/:uuid/reset-password", dummy)
 	admin.PUT("/users/:uuid/disabled", dummy)
@@ -106,23 +107,23 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	idx.DELETE("/dependencies/:id", dummy)
 	admin.GET("/open-api/stats", dummy)
 
-	setup := api.Group("/setup")
+	setup := web.Group("/setup")
 	setup.GET("/status", dummy)
 	setup.POST("/save", dummy)
 	setup.POST("/validate-dir", dummy)
 	setup.GET("/network/interfaces", dummy)
 	setup.GET("/default-config", dummy)
 
-	notif := api.Group("/notifications")
+	notif := web.Group("/notifications")
 	notif.GET("", dummy)
 	notif.POST("/read", dummy)
 	notif.POST("/merge", dummy)
 
-	cfgG := api.Group("/config")
+	cfgG := web.Group("/config")
 	cfgG.GET("", dummy)
 	cfgG.POST("", dummy)
 
-	temp := api.Group("/temp")
+	temp := web.Group("/temp")
 	temp.GET("/list", dummy)
 	temp.POST("/upload", dummy)
 	temp.GET("/quota", dummy)
@@ -131,7 +132,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	temp.GET("/:code/download", dummy)
 	temp.HEAD("/:code/download", dummy)
 	temp.DELETE("/:code", dummy)
-	tu := api.Group("/temp/upload")
+	tu := web.Group("/temp/upload")
 	tu.POST("/session", dummy)
 	tu.GET("/session/:uploadId", dummy)
 	tu.POST("/session/:uploadId/resume", dummy)
@@ -139,7 +140,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	tu.POST("/chunk", dummy)
 	tu.POST("/finalize", dummy)
 
-	uploads := api.Group("/uploads")
+	uploads := web.Group("/uploads")
 	uploads.POST("/session", dummy)
 	uploads.GET("/session/:id", dummy)
 	uploads.POST("/session/:id/resume", dummy)
@@ -155,7 +156,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	uploads.POST("/url-tasks/:taskId/retry", dummy)
 	uploads.DELETE("/url-tasks/:taskId", dummy)
 
-	files := api.Group("/files")
+	files := web.Group("/files")
 	files.GET("/recent", dummy)
 	files.GET("/recent/carousel", dummy)
 	files.GET("/preview/*path", dummy)
@@ -167,7 +168,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	files.GET("/record", dummy)
 	files.GET("/scan/status", dummy)
 
-	protected := api.Group("/")
+	protected := web.Group("/")
 	protected.POST("/auth/refresh", dummy)
 	protected.GET("/auth/user", dummy)
 	protected.PUT("/auth/password", dummy)

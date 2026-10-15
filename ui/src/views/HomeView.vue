@@ -156,11 +156,11 @@ import { createColumns } from './home/columns'
 // 上传 API
 const uploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/uploads/session',
-  getSession: (uploadId) => `/api/v1/uploads/session/${uploadId}`,
-  cancel: (uploadId) => `/api/v1/uploads/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/uploads/chunk',
-  finalize: () => '/api/v1/uploads/finalize'
+  createSession: () => '/api/v1/web/uploads/session',
+  getSession: (uploadId) => `/api/v1/web/uploads/session/${uploadId}`,
+  cancel: (uploadId) => `/api/v1/web/uploads/session/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/uploads/chunk',
+  finalize: () => '/api/v1/web/uploads/finalize'
 }
 
 const router = useRouter()

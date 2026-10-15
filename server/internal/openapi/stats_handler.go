@@ -17,7 +17,7 @@ func NewStatsHandler(stat *APICallStat) *StatsHandler {
 	return &StatsHandler{stat: stat}
 }
 
-// GetStats GET /api/v1/admin/open-api/stats
+// GetStats GET /api/v1/web/admin/open-api/stats
 func (h *StatsHandler) GetStats(c *gin.Context) {
 	summary := h.stat.GetSummary()
 	response.HandleSuccess(c, http.StatusOK, "", summary)

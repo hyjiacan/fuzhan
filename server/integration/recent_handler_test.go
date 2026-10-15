@@ -38,11 +38,11 @@ func TestRecentHandler_GetRecent(t *testing.T) {
 	handler := file.NewRecentHandler(recordRepo, db)
 
 	router := gin.New()
-	router.GET("/api/v1/files/recent", handler.GetRecent)
+	router.GET("/api/v1/web/files/recent", handler.GetRecent)
 
 	// 测试默认查询
 	t.Run("默认查询参数", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/files/recent?action=upload", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/web/files/recent?action=upload", nil)
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -66,7 +66,7 @@ func TestRecentHandler_GetRecent(t *testing.T) {
 
 	// 测试自定义 limit
 	t.Run("自定义 limit 参数", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/files/recent?action=upload&limit=10", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/web/files/recent?action=upload&limit=10", nil)
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -78,7 +78,7 @@ func TestRecentHandler_GetRecent(t *testing.T) {
 
 	// 测试无效 limit 参数
 	t.Run("无效 limit 参数使用默认值", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/files/recent?action=upload&limit=-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/web/files/recent?action=upload&limit=-1", nil)
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
@@ -96,9 +96,9 @@ func TestRecentHandler_GetRecentCarousel(t *testing.T) {
 	handler := file.NewRecentHandler(recordRepo, db)
 
 	router := gin.New()
-	router.GET("/api/v1/files/recent/carousel", handler.GetRecentCarousel)
+	router.GET("/api/v1/web/files/recent/carousel", handler.GetRecentCarousel)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/recent/carousel", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/files/recent/carousel", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

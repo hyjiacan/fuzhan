@@ -118,7 +118,7 @@ const props = defineProps({
 })
 
 // 默认回调地址：当前域名 + 后端回调路径
-const defaultCallback = computed(() => `${window.location.origin}/api/v1/auth/oauth2/callback`)
+const defaultCallback = computed(() => `${window.location.origin}/api/v1/web/auth/oauth2/callback`)
 
 // Scopes 数组 <-> 多行文本
 const scopesDisplay = computed({

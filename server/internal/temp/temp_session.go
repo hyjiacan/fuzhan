@@ -333,7 +333,7 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 		"filename":    result.FileName,
 		"fileSize":    session.FileSize,
 		"expiredAt":   expiredAt,
-		"downloadUrl": fmt.Sprintf("/api/v1/temp/%s/download", result.ShareCode),
+		"downloadUrl": fmt.Sprintf("/api/v1/web/temp/%s/download", result.ShareCode),
 	})
 }
 

@@ -220,8 +220,8 @@ fuzhan_format_line() {
     local path
     if [[ "$url" == */download/* ]]; then
         path="${url#*/download/}"
-    elif [[ "$url" == */api/v1/download/* ]]; then
-        path="${url#*/api/v1/download/}"
+    elif [[ "$url" == */api/v1/web/download/* ]]; then
+        path="${url#*/api/v1/web/download/}"
     elif [[ "$url" == */cli/list/* ]]; then
         path="${url#*/cli/list/}"
     else
@@ -253,8 +253,8 @@ fuzhan_format_list_line() {
     local path
     if [[ "$url" == */download/* ]]; then
         path="${url#*/download/}"
-    elif [[ "$url" == */api/v1/download/* ]]; then
-        path="${url#*/api/v1/download/}"
+    elif [[ "$url" == */api/v1/web/download/* ]]; then
+        path="${url#*/api/v1/web/download/}"
     elif [[ "$url" == */cli/list/* ]]; then
         path="${url#*/cli/list/}"
     else

@@ -51,7 +51,7 @@ func TestAutocompleteHandler(t *testing.T) {
 	h := NewHandler(idx)
 
 	// 正常前缀（返回关键词，而非完整文件名）
-	rr := doGET(h, "Autocomplete", "/api/v1/search-suggest", "q=read")
+	rr := doGET(h, "Autocomplete", "/api/v1/web/search-suggest", "q=read")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d: %s", rr.Code, rr.Body.String())
 	}
@@ -61,7 +61,7 @@ func TestAutocompleteHandler(t *testing.T) {
 	}
 
 	// 空 q 返回空数组
-	rr = doGET(h, "Autocomplete", "/api/v1/search-suggest", "q=")
+	rr = doGET(h, "Autocomplete", "/api/v1/web/search-suggest", "q=")
 	names = decodeData(t, rr)
 	if names == nil {
 		t.Fatal("空 q 应返回空数组而非 null")
@@ -76,7 +76,7 @@ func TestSpellCheckHandler(t *testing.T) {
 	}
 	h := NewHandler(idx)
 
-	rr := doGET(h, "SpellCheck", "/api/v1/search-spellcheck", "q=REEDME")
+	rr := doGET(h, "SpellCheck", "/api/v1/web/search-spellcheck", "q=REEDME")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d: %s", rr.Code, rr.Body.String())
 	}
@@ -104,7 +104,7 @@ func TestRelatedHandler(t *testing.T) {
 	}
 	h := NewHandler(idx)
 
-	rr := doGET(h, "Related", "/api/v1/search-related", "q=年度")
+	rr := doGET(h, "Related", "/api/v1/web/search-related", "q=年度")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d: %s", rr.Code, rr.Body.String())
 	}
@@ -114,7 +114,7 @@ func TestRelatedHandler(t *testing.T) {
 	}
 
 	// 空 q 返回空数组
-	rr = doGET(h, "Related", "/api/v1/search-related", "q=")
+	rr = doGET(h, "Related", "/api/v1/web/search-related", "q=")
 	if names = decodeData(t, rr); names == nil {
 		t.Fatal("空 q 应返回空数组而非 null")
 	}
@@ -123,18 +123,18 @@ func TestRelatedHandler(t *testing.T) {
 // TestNilIndexHandler 覆盖 idx 为 nil 时各建议接口应返回空数组而不 panic
 func TestNilIndexHandler(t *testing.T) {
 	h := NewHandler(nil)
-	rr := doGET(h, "Autocomplete", "/api/v1/search-suggest", "q=read")
+	rr := doGET(h, "Autocomplete", "/api/v1/web/search-suggest", "q=read")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d", rr.Code)
 	}
 	if names := decodeData(t, rr); names == nil {
 		t.Fatal("nil 索引应返回空数组")
 	}
-	rr = doGET(h, "SpellCheck", "/api/v1/search-spellcheck", "q=REEDME")
+	rr = doGET(h, "SpellCheck", "/api/v1/web/search-spellcheck", "q=REEDME")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d", rr.Code)
 	}
-	rr = doGET(h, "Related", "/api/v1/search-related", "q=年度")
+	rr = doGET(h, "Related", "/api/v1/web/search-related", "q=年度")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("期望 200，实际 %d", rr.Code)
 	}

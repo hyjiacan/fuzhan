@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { createErrorFromResponse, createNetworkError } from '../utils/error.js'
 import { beginRequest, endRequest } from '../utils/requestLoading.js'
 
-const API_BASE = '/api/v1'
+const API_BASE = '/api/v1/web'
 
 // 创建 axios 实例
 const request = axios.create({

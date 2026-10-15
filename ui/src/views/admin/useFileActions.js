@@ -128,7 +128,7 @@ export const useFileActions = ({
   const adminDownloadHref = (fullPath, pathEncoded) => {
     const p = pathEncoded || PathUtils.encodeFilePath(fullPath)
     const t = localStorage.getItem('token')
-    return `/api/v1/admin/download/${p}${t ? `?token=${encodeURIComponent(t)}` : ''}`
+    return `/api/v1/web/admin/download/${p}${t ? `?token=${encodeURIComponent(t)}` : ''}`
   }
 
   const previewFile = (file) => {

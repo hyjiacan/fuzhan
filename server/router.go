@@ -314,9 +314,14 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		c.File(filepath.Join(webDir, "index.html"))
 	})
 
-	// API 路由组
+	// API 路由组：/api/v1 下按作用域划分，路径本身即可说明调用方
+	//   /api/v1/web     —— Web 界面（含管理后台）直接调用
+	//   /api/v1/cli     —— 命令行工具
+	//   /api/v1/webdav  —— WebDAV 端点
+	//   /api/v1/ready   —— 就绪探针（基础设施）
 	api := r.Group("/api/v1")
-	rt.registerApiRoutes(r, api)
+	web := api.Group("/web")
+	rt.registerApiRoutes(r, api, web)
 
 	// 顶层快捷入口与 Open API 路由组
 	rt.registerTopLevelRoutes(r)
@@ -324,8 +329,10 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 	return r, ftpHandler
 }
 
-// registerApiRoutes 注册 /api/v1 下的全部业务路由
-func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
+// registerApiRoutes 注册 /api/v1 下的全部业务路由。
+// web 为 /api/v1/web 组，承载 Web 界面（含管理后台）直接调用的接口；
+// api 为 /api/v1 组，仅承载非界面渠道（CLI、WebDAV、就绪探针）。
+func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	authMiddleware := rt.authMiddleware
 	configHandler := rt.configHandler
 	authHandler := rt.authHandler
@@ -349,7 +356,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	validator := rt.validator
 
 	// 健康检查路由（无需认证）
-	api.GET("/health", healthHandler.Health)
+	web.GET("/health", healthHandler.Health)
+	// 就绪探针（基础设施，非界面调用）
 	api.GET("/ready", healthHandler.Ready)
 	// 监控指标路由（需要认证，防止信息泄露）
 	api.GET("/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())
@@ -358,18 +366,18 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	// 存储与访问统计是重查询（整盘 Walk / operation_records 计数），仅管理面板使用，
 	// 加管理员认证避免未授权者反复触发磁盘 IO/全表统计（廉价 DoS）。
 	// keywords/recent/rankings/hot-downloads 被公开的 /hot、/recent 页使用，保持可匿名访问。
-	api.GET("/monitor/storage", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Storage)
-	api.GET("/monitor/access", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Access)
-	api.GET("/monitor/keywords", monitorHandler.Keywords)
-	api.GET("/monitor/recent", monitorHandler.RecentKeywords)
-	api.GET("/monitor/rankings", monitorHandler.Rankings)
-	api.GET("/monitor/hot-downloads", monitorHandler.HotDownloads)
+	web.GET("/monitor/storage", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Storage)
+	web.GET("/monitor/access", authMiddleware.AuthRequired(), middleware.RequireAdmin(), monitorHandler.Access)
+	web.GET("/monitor/keywords", monitorHandler.Keywords)
+	web.GET("/monitor/recent", monitorHandler.RecentKeywords)
+	web.GET("/monitor/rankings", monitorHandler.Rankings)
+	web.GET("/monitor/hot-downloads", monitorHandler.HotDownloads)
 
 	// 系统选项路由（无需认证，供前端加载时使用）
-	api.GET("/options", configHandler.GetOptions)
+	web.GET("/options", configHandler.GetOptions)
 
 	// 认证路由（无需认证）
-	auth := api.Group("/auth")
+	auth := web.Group("/auth")
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
@@ -384,7 +392,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	r.HEAD("/share/:code", privateStorageHandler.Download)
 
 	// 私有存储路由（需要认证）
-	private := api.Group("/private")
+	private := web.Group("/private")
 	private.Use(authMiddleware.AuthRequired(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	{
 		private.GET("/files", privateStorageHandler.List)
@@ -405,29 +413,29 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	}
 
 	// 管理页面搜索和下载（需管理员鉴权；下载返回文件流不套 ResponseWrapper）
-	api.GET("/admin/search/*query", authMiddleware.AuthRequired(), middleware.RequireAdmin(), searchHandlers.AdminSearchFiles)
-	api.GET("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
-	api.HEAD("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
+	web.GET("/admin/search/*query", authMiddleware.AuthRequired(), middleware.RequireAdmin(), searchHandlers.AdminSearchFiles)
+	web.GET("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
+	web.HEAD("/admin/download/*path", authMiddleware.AuthRequired(), middleware.RequireAdmin(), downloadHandlers.AdminDownloadFile)
 
 	// 文件记录搜索（用于 autocomplete，无需 admin）
-	api.GET("/files/search-records", authMiddleware.AuthOptional(), middleware.ResponseWrapperMiddleware(), indexHandler.SearchFileRecords)
+	web.GET("/files/search-records", authMiddleware.AuthOptional(), middleware.ResponseWrapperMiddleware(), indexHandler.SearchFileRecords)
 
 	// 扫描状态路由（无需认证，footer 与页面用于展示扫描状态）
-	scanRoutes := api.Group("/admin/index")
+	scanRoutes := web.Group("/admin/index")
 	{
 		scanRoutes.GET("/scan/progress", indexHandler.GetScanProgress)
 		scanRoutes.GET("/scan/status", indexHandler.GetScanStatus)
 	}
 
 	// 管理员路由（需要认证和管理员权限）
-	adminGroup := api.Group("/admin")
+	adminGroup := web.Group("/admin")
 	adminGroup.Use(authMiddleware.AuthRequired(), middleware.RequireAdmin(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	rt.registerAdminRoutes(adminGroup)
 
 	// 配置引导路由（无需认证；初始化后除 status 外的所有 setup 路由返回 404）
-	setup := api.Group("/setup")
+	setup := web.Group("/setup")
 	setup.GET("/status", setupHandler.IsInitialized)
-	setupInitOnly := api.Group("/setup")
+	setupInitOnly := web.Group("/setup")
 	setupInitOnly.Use(func(c *gin.Context) {
 		if appconfig.GlobalConfig.App.Initialized {
 			utils.HandleNotFound(c, "API 路由未找到")
@@ -442,7 +450,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	setupInitOnly.GET("/default-config", setupHandler.GetDefaultConfig)
 
 	// 通知路由（可选认证，同时支持已登录和匿名用户）
-	notifications := api.Group("/notifications")
+	notifications := web.Group("/notifications")
 	notifications.Use(authMiddleware.AuthOptional())
 	{
 		notifications.GET("", notificationHandler.GetNotifications)
@@ -451,7 +459,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	}
 
 	// 系统配置路由（需要管理员认证）
-	configGroup := api.Group("/config")
+	configGroup := web.Group("/config")
 	configGroup.Use(authMiddleware.AuthRequired(), middleware.RequireAdmin(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	configGroup.GET("", configHandler.GetConfig)
 	configGroup.POST("", configHandler.SaveConfig)
@@ -459,7 +467,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	configGroup.POST("/oauth2/test", configHandler.TestOAuth2Config)
 
 	// 临时文件路由（基于IP，无需认证）
-	temp := api.Group("/temp")
+	temp := web.Group("/temp")
 	temp.GET("/list", tempHandler.ListHandler)
 	temp.GET("/quota", tempHandler.QuotaHandler)
 	temp.GET("/client-ip", tempHandler.ClientIPHandler)
@@ -469,7 +477,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	temp.DELETE("/:code", tempHandler.DeleteHandler)
 
 	// 临时文件分片上传路由
-	tempUploads := api.Group("/temp/upload")
+	tempUploads := web.Group("/temp/upload")
 	{
 		tempUploads.POST("/session", tempHandler.CreateTempSessionHandler)
 		tempUploads.GET("/session/:uploadId", tempHandler.GetTempSessionHandler)
@@ -480,7 +488,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	}
 
 	// 上传会话路由（无需认证，支持断点续传）
-	uploads := api.Group("/uploads")
+	uploads := web.Group("/uploads")
 	{
 		uploads.POST("/session", authMiddleware.AuthOptional(), uploadSessionHandler.CreateSession)
 		uploads.GET("/session/:id", uploadSessionHandler.GetSession)
@@ -503,15 +511,15 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	}
 
 	// 无需认证的文件路由
-	api.GET("/files/list", fileHandlers.ListDirectories)
-	api.GET("/files/depends/:id", depHandler.GetDependencyTree)
+	web.GET("/files/list", fileHandlers.ListDirectories)
+	web.GET("/files/depends/:id", depHandler.GetDependencyTree)
 
-	// 下载路由（无需认证）
-	api.GET("/download/*path", downloadHandlers.DownloadFile)
-	api.HEAD("/download/*path", downloadHandlers.DownloadFile)
+	// 下载路由（无需认证；/download/*path 根级别名指向同一 handler）
+	web.GET("/download/*path", downloadHandlers.DownloadFile)
+	web.HEAD("/download/*path", downloadHandlers.DownloadFile)
 
 	// 最近上传路由（无需认证）
-	files := api.Group("/files")
+	files := web.Group("/files")
 	{
 		files.GET("/recent", recentHandler.GetRecent)
 		files.GET("/recent/carousel", recentHandler.GetRecentCarousel)
@@ -526,16 +534,16 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		files.GET("/scan/status", indexHandler.GetScanStatus) // Footer 扫描状态
 
 		// 搜索路由（无需认证）
-		api.GET("/search/*query", searchHandlers.SearchFiles)
+		web.GET("/search/*query", searchHandlers.SearchFiles)
 
 		// 文件名检索：自动补全（搜索框实时联想）与拼写纠错
-		api.GET("/search-suggest", suggestHandler.Autocomplete)
-		api.GET("/search-spellcheck", suggestHandler.SpellCheck)
-		api.GET("/search-related", suggestHandler.Related) // 输入空格后的下一段相关词候选
+		web.GET("/search-suggest", suggestHandler.Autocomplete)
+		web.GET("/search-spellcheck", suggestHandler.SpellCheck)
+		web.GET("/search-related", suggestHandler.Related) // 输入空格后的下一段相关词候选
 	}
 
 	// 需要认证的路由组
-	protected := api.Group("/")
+	protected := web.Group("/")
 	protected.Use(authMiddleware.AuthRequired(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	{
 		// 认证相关路由
@@ -624,7 +632,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 	}
 }
 
-// registerAdminRoutes 注册 /api/v1/admin 下需要管理员权限的路由
+// registerAdminRoutes 注册 /api/v1/web/admin 下需要管理员权限的路由
 func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	adminHandler := rt.adminHandler
 	fileHandlers := rt.fileHandlers
@@ -750,7 +758,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		cliAlias.GET("/fuzhan.sh", rt.cliHandlers.FuzhanScript)
 	}
 
-	// 下载路由别名（无需认证，/download 作为 /api/v1/download 的快捷入口）
+	// 下载路由别名（无需认证，/download 作为 /api/v1/web/download 的快捷入口）
 	downloadAlias := r.Group("/download")
 	{
 		downloadAlias.GET("/*path", rt.downloadHandlers.DownloadFile)

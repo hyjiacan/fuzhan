@@ -19,7 +19,7 @@ func NewApiKeyHandler(svc *ApiKeyService) *ApiKeyHandler {
 }
 
 // CreateApiKey 创建 API Key
-// POST /api/v1/admin/api-keys
+// POST /api/v1/web/admin/api-keys
 func (h *ApiKeyHandler) CreateApiKey(c *gin.Context) {
 	var req CreateApiKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -37,7 +37,7 @@ func (h *ApiKeyHandler) CreateApiKey(c *gin.Context) {
 }
 
 // ListApiKeys 分页查询 API Key 列表
-// GET /api/v1/admin/api-keys
+// GET /api/v1/web/admin/api-keys
 func (h *ApiKeyHandler) ListApiKeys(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
@@ -57,7 +57,7 @@ func (h *ApiKeyHandler) ListApiKeys(c *gin.Context) {
 }
 
 // GetApiKey 获取单个 API Key
-// GET /api/v1/admin/api-keys/:id
+// GET /api/v1/web/admin/api-keys/:id
 func (h *ApiKeyHandler) GetApiKey(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -75,7 +75,7 @@ func (h *ApiKeyHandler) GetApiKey(c *gin.Context) {
 }
 
 // UpdateApiKeyStatus 更新 API Key 状态
-// PUT /api/v1/admin/api-keys/:id/status
+// PUT /api/v1/web/admin/api-keys/:id/status
 func (h *ApiKeyHandler) UpdateApiKeyStatus(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -100,7 +100,7 @@ func (h *ApiKeyHandler) UpdateApiKeyStatus(c *gin.Context) {
 }
 
 // DeleteApiKey 删除 API Key
-// DELETE /api/v1/admin/api-keys/:id
+// DELETE /api/v1/web/admin/api-keys/:id
 func (h *ApiKeyHandler) DeleteApiKey(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {

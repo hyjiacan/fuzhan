@@ -147,8 +147,8 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	utils.PrintRequestInfo(r)
 	ip := utils.GetRealIP(r)
 
-	// 获取 hash 从路径: /api/v1/download/<hash> 或 /download/<hash>
-	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/download/")
+	// 获取 hash 从路径: /api/v1/web/download/<hash> 或 /download/<hash>
+	hash := strings.TrimPrefix(r.URL.Path, "/api/v1/web/download/")
 	hash = strings.TrimPrefix(hash, "/download/")
 	hash = strings.TrimSpace(hash)
 
@@ -267,11 +267,11 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	utils.PrintRequestInfo(r)
 	ip := utils.GetRealIP(r)
 
-	// 路径格式: /api/v1/download/根目录名/子路径
-	// 管理页面路径格式: /api/v1/admin/download/根目录名/子路径
+	// 路径格式: /api/v1/web/download/根目录名/子路径
+	// 管理页面路径格式: /api/v1/web/admin/download/根目录名/子路径
 	// 别名路径格式: /download/根目录名/子路径
-	filename := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/download/")
-	filename = strings.TrimPrefix(filename, "/api/v1/download/")
+	filename := strings.TrimPrefix(r.URL.Path, "/api/v1/web/admin/download/")
+	filename = strings.TrimPrefix(filename, "/api/v1/web/download/")
 	filename = strings.TrimPrefix(filename, "/download/")
 	// 说明：net/http 已对 r.URL.Path 完成百分号解码（%2B→+、%25→%、UTF-8→中文）。
 	// 因此这里不再二次解码，否则文件名含字面 "+" 或用后再被 QueryUnescape 转成空格出错。

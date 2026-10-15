@@ -214,11 +214,11 @@ const pagedData = computed(() => {
 // 私有存储上传 API 配置
 const privateUploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/private/uploads/session',
-  getSession: (uploadId) => `/api/v1/private/uploads/session/${uploadId}`,
-  cancel: (uploadId) => `/api/v1/private/uploads/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/private/uploads/chunk',
-  finalize: () => '/api/v1/private/uploads/finalize'
+  createSession: () => '/api/v1/web/private/uploads/session',
+  getSession: (uploadId) => `/api/v1/web/private/uploads/session/${uploadId}`,
+  cancel: (uploadId) => `/api/v1/web/private/uploads/session/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/private/uploads/chunk',
+  finalize: () => '/api/v1/web/private/uploads/finalize'
 }
 
 // 格式化

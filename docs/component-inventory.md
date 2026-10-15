@@ -205,7 +205,7 @@
 
 ### Axios 配置
 
-- 基础URL: `/api/v1`
+- 基础URL: `/api/v1/web`（Web 界面调用的接口统一挂在该前缀下）
 - 超时: 30秒
 - 请求拦截器: 添加 Authorization header
 - 响应拦截器: 处理 401/403，自动刷新 token

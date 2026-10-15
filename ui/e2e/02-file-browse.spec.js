@@ -91,14 +91,14 @@ test.describe('文件浏览功能', () => {
 
   test('点击文件可以下载', async ({ page }) => {
     // 查找下载链接
-    const downloadLinks = page.locator('a[href*="/api/v1/download/"]')
+    const downloadLinks = page.locator('a[href*="/download/"]')
     const count = await downloadLinks.count()
 
     if (count > 0) {
       // 验证下载链接格式正确
       const firstLink = downloadLinks.first()
       const href = await firstLink.getAttribute('href')
-      expect(href).toContain('/api/v1/download/')
+      expect(href).toContain('/download/')
     } else {
       // 没有可下载文件，跳过测试
       expect(true).toBeTruthy()

@@ -233,7 +233,7 @@ func (h *Handler) oauth2CallbackURL(c *gin.Context) string {
 	if cfg := appconfig.GetConfig().Auth.OAuth2; cfg.RedirectURL != "" {
 		return cfg.RedirectURL
 	}
-	return h.frontendBase(c) + "/api/v1/auth/oauth2/callback"
+	return h.frontendBase(c) + "/api/v1/web/auth/oauth2/callback"
 }
 
 // frontendBase 返回当前请求对应的前端访问基址（scheme://host）

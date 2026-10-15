@@ -37,7 +37,7 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // ListRecords 分页查询文件记录
-// GET /api/v1/admin/index/records
+// GET /api/v1/web/admin/index/records
 // Query: page, pageSize, query, rootName, status, sort, order
 func (h *Handler) ListRecords(c *gin.Context) {
 	var query ListRecordsQuery
@@ -61,7 +61,7 @@ func (h *Handler) ListRecords(c *gin.Context) {
 }
 
 // GetStats 获取文件统计
-// GET /api/v1/admin/index/stats
+// GET /api/v1/web/admin/index/stats
 func (h *Handler) GetStats(c *gin.Context) {
 	stats, err := h.svc.GetStats()
 	if err != nil {
@@ -73,7 +73,7 @@ func (h *Handler) GetStats(c *gin.Context) {
 }
 
 // TriggerScan 触发全量扫描
-// POST /api/v1/admin/index/scan?scope=public
+// POST /api/v1/web/admin/index/scan?scope=public
 // scope: public / temp / private（默认 public）
 func (h *Handler) TriggerScan(c *gin.Context) {
 	scope := ScanScope(c.DefaultQuery("scope", "public"))
@@ -94,7 +94,7 @@ func (h *Handler) TriggerScan(c *gin.Context) {
 }
 
 // GetScanProgress 获取扫描进度
-// GET /api/v1/admin/index/scan/progress?scope=public
+// GET /api/v1/web/admin/index/scan/progress?scope=public
 func (h *Handler) GetScanProgress(c *gin.Context) {
 	scope := ScanScope(c.DefaultQuery("scope", "public"))
 	progress := h.svc.GetScanProgressByScope(scope)
@@ -102,7 +102,7 @@ func (h *Handler) GetScanProgress(c *gin.Context) {
 }
 
 // GetScanStatus 获取扫描状态（供 Footer 状态栏轮询）
-// GET /api/v1/admin/index/scan/status
+// GET /api/v1/web/admin/index/scan/status
 // 无需 admin 权限，前端 Footer 需要公开访问
 func (h *Handler) GetScanStatus(c *gin.Context) {
 	status := h.svc.GetScanStatus()
@@ -110,7 +110,7 @@ func (h *Handler) GetScanStatus(c *gin.Context) {
 }
 
 // TriggerFullScan 触发全量扫描（所有 scope）
-// POST /api/v1/admin/index/scan/trigger
+// POST /api/v1/web/admin/index/scan/trigger
 func (h *Handler) TriggerFullScan(c *gin.Context) {
 	// 检查是否有正在进行的扫描
 	runningScopes := []string{}
@@ -163,7 +163,7 @@ func (h *Handler) TriggerFullScan(c *gin.Context) {
 }
 
 // TriggerConsistencyCheck 触发一致性校验
-// POST /api/v1/admin/index/check
+// POST /api/v1/web/admin/index/check
 func (h *Handler) TriggerConsistencyCheck(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 24*time.Hour)
 	defer cancel()
@@ -178,7 +178,7 @@ func (h *Handler) TriggerConsistencyCheck(c *gin.Context) {
 }
 
 // ListDuplicates 查询重复文件分组
-// GET /api/v1/admin/index/duplicates
+// GET /api/v1/web/admin/index/duplicates
 // Query: minSize, page, pageSize, sort, order
 func (h *Handler) ListDuplicates(c *gin.Context) {
 	var query DuplicateQuery
@@ -202,7 +202,7 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 }
 
 // UpdateNotes 更新文件备注
-// PUT /api/v1/admin/index/records/:id/notes
+// PUT /api/v1/web/admin/index/records/:id/notes
 func (h *Handler) UpdateNotes(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -231,7 +231,7 @@ func (h *Handler) UpdateNotes(c *gin.Context) {
 }
 
 // FindFileRecord 根据路径查找文件记录
-// GET /api/v1/files/record?fileName=xxx&rootName=xxx&filePath=xxx
+// GET /api/v1/web/files/record?fileName=xxx&rootName=xxx&filePath=xxx
 func (h *Handler) FindFileRecord(c *gin.Context) {
 	fileName := c.Query("fileName")
 	rootName := c.Query("rootName")
@@ -255,7 +255,7 @@ func (h *Handler) FindFileRecord(c *gin.Context) {
 }
 
 // SearchFileRecords 搜索文件记录（用于 autocomplete）
-// GET /api/v1/files/search-records?q=xxx
+// GET /api/v1/web/files/search-records?q=xxx
 func (h *Handler) SearchFileRecords(c *gin.Context) {
 	query := c.Query("q")
 	// 限制搜索词长度
@@ -279,7 +279,7 @@ func (h *Handler) SearchFileRecords(c *gin.Context) {
 }
 
 // PublicUpdateNotes 公开更新文件备注（无需 admin）
-// PUT /api/v1/files/records/:id/notes
+// PUT /api/v1/web/files/records/:id/notes
 func (h *Handler) PublicUpdateNotes(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -308,7 +308,7 @@ func (h *Handler) PublicUpdateNotes(c *gin.Context) {
 }
 
 // PublicGetNotes 公开获取文件备注
-// GET /api/v1/files/records/:id/notes
+// GET /api/v1/web/files/records/:id/notes
 func (h *Handler) PublicGetNotes(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -330,7 +330,7 @@ func (h *Handler) PublicGetNotes(c *gin.Context) {
 }
 
 // DeleteRecord 删除索引记录
-// DELETE /api/v1/admin/index/records/:id
+// DELETE /api/v1/web/admin/index/records/:id
 func (h *Handler) DeleteRecord(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -348,7 +348,7 @@ func (h *Handler) DeleteRecord(c *gin.Context) {
 }
 
 // KeepDuplicate 保留指定文件，自动删除同哈希的其他重复文件
-// POST /api/v1/admin/index/duplicates/:id/keep
+// POST /api/v1/web/admin/index/duplicates/:id/keep
 func (h *Handler) KeepDuplicate(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)

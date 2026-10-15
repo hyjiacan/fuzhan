@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,6 +22,9 @@ import (
 
 	"github.com/robfig/cron/v3"
 )
+
+// workerShutdownTimeout 关闭/热重启时等待 worker 退出的上限，超时后打印堆栈快照并强制继续
+const workerShutdownTimeout = 30 * time.Second
 
 // runFTPWorker 运行 FTP 服务器，响应上下文取消时优雅关闭
 func (rt *runCtx) runFTPWorker(ctx context.Context, ftpHandler interface {
@@ -408,29 +412,42 @@ func (rt *runCtx) run() {
 		}()
 	}
 
-	// stopAllWorkers 取消当前迭代的所有 worker
+	// stopAllWorkers 取消当前迭代的所有 worker。
+	// 不在此处删除 cancels 条目：worker 退出时会自行删除，因此该 map 始终反映"仍在运行"的 worker，
+	// 超时诊断时可直接据此列出未退出的 worker。
 	stopAllWorkers := func(wm *workerManager) {
 		wm.mu.Lock()
 		for name, cancel := range wm.cancels {
 			cancel()
-			delete(wm.cancels, name)
 			utils.Info("已停止 worker", utils.String("name", name))
 		}
 		wm.mu.Unlock()
 	}
 
-	// waitWorkersWithTimeout 等待当前迭代的所有 worker 退出，超时则记录警告并继续
+	// waitWorkersWithTimeout 等待当前迭代的所有 worker 退出；
+	// 超时则打印仍未退出的 worker 名单与全量 goroutine 堆栈快照，便于定位阻塞点，然后强制继续
 	waitWorkersWithTimeout := func(wm *workerManager) {
-		c := make(chan struct{}, 1)
+		done := make(chan struct{})
 		go func() {
 			wm.wg.Wait()
-			c <- struct{}{}
+			close(done)
 		}()
 		select {
-		case <-c:
+		case <-done:
 			utils.Info("所有 worker 已退出")
-		case <-time.After(30 * time.Second):
-			utils.Warn("等待 workers 超时 (30s)，强制继续")
+		case <-time.After(workerShutdownTimeout):
+			wm.mu.Lock()
+			names := make([]string, 0, len(wm.cancels))
+			for name := range wm.cancels {
+				names = append(names, name)
+			}
+			wm.mu.Unlock()
+			utils.Warn("等待 workers 超时，强制继续",
+				utils.Int("timeout_seconds", int(workerShutdownTimeout/time.Second)),
+				utils.String("workers", strings.Join(names, ",")))
+			buf := make([]byte, 1<<20)
+			n := runtime.Stack(buf, true)
+			utils.Warn("未退出 worker 堆栈快照\n" + string(buf[:n]))
 		}
 	}
 
@@ -493,7 +510,11 @@ func (rt *runCtx) run() {
 				<-workerCtx.Done()
 				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer shutdownCancel()
-				srv.Shutdown(shutdownCtx)
+				if err := srv.Shutdown(shutdownCtx); err != nil {
+					// 存在未在超时内排空的活跃长连接（如 SSE），强制关闭，避免关闭流程被拖住
+					utils.Warn("HTTP 服务器优雅关闭超时，强制关闭", utils.Err(err))
+					_ = srv.Close()
+				}
 			}()
 			utils.Info("HTTP 服务器启动", utils.String("address", address))
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -526,6 +547,8 @@ func (rt *runCtx) run() {
 			cancel()
 			stopAllWorkers(wm)
 			waitWorkersWithTimeout(wm)
+			// 文件监听器由索引服务内部管理，不随 worker 退出，需在此显式停止
+			rt.indexService.StopWatcher()
 			if rt.idxSearch != nil {
 				if cerr := rt.idxSearch.CloseWriter(); cerr != nil {
 					utils.Warn("关闭文件名检索索引失败", utils.Err(cerr))

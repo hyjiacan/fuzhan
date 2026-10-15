@@ -19,9 +19,9 @@ func init() {
 func TestSetupStatus(t *testing.T) {
 	router := gin.New()
 	handler := setup.NewSetupHandler()
-	router.GET("/api/v1/setup/status", handler.IsInitialized)
+	router.GET("/api/v1/web/setup/status", handler.IsInitialized)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/setup/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/setup/status", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -42,7 +42,7 @@ func TestSetupStatus(t *testing.T) {
 func TestSetupValidateDirectory(t *testing.T) {
 	router := gin.New()
 	handler := setup.NewSetupHandler()
-	router.POST("/api/v1/setup/validate-dir", handler.ValidateDirectory)
+	router.POST("/api/v1/web/setup/validate-dir", handler.ValidateDirectory)
 
 	tests := []struct {
 		name     string
@@ -54,7 +54,7 @@ func TestSetupValidateDirectory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/validate-dir", bytes.NewBufferString(tt.path))
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/web/setup/validate-dir", bytes.NewBufferString(tt.path))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -71,12 +71,12 @@ func TestSetupValidateDirectory(t *testing.T) {
 func TestSetupSaveConfig(t *testing.T) {
 	router := gin.New()
 	handler := setup.NewSetupHandler()
-	router.POST("/api/v1/setup/save", handler.SaveConfig)
+	router.POST("/api/v1/web/setup/save", handler.SaveConfig)
 
 	// 测试空目录列表
 	t.Run("空目录列表应返回错误", func(t *testing.T) {
 		body := `{"appName":"测试","host":"0.0.0.0","port":8080,"rootDirs":[]}`
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/save", bytes.NewBufferString(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/web/setup/save", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -90,7 +90,7 @@ func TestSetupSaveConfig(t *testing.T) {
 	// 测试无效 JSON
 	t.Run("无效 JSON 应返回错误", func(t *testing.T) {
 		body := `{invalid json}`
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/save", bytes.NewBufferString(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/web/setup/save", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 

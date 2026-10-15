@@ -301,11 +301,11 @@ const navigateToDir = (dir) => {
 // 上传 API
 const tempUploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/temp/upload/session',
-  getSession: (uploadId) => `/api/v1/temp/upload/session/${uploadId}`,
-  cancel: (uploadId) => `/api/v1/temp/upload/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/temp/upload/chunk',
-  finalize: () => '/api/v1/temp/upload/finalize'
+  createSession: () => '/api/v1/web/temp/upload/session',
+  getSession: (uploadId) => `/api/v1/web/temp/upload/session/${uploadId}`,
+  cancel: (uploadId) => `/api/v1/web/temp/upload/session/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/temp/upload/chunk',
+  finalize: () => '/api/v1/web/temp/upload/finalize'
 }
 
 const onUploadSuccess = () => {

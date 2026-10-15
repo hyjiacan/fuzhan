@@ -20,7 +20,7 @@ func NewDependencyHandler(svc *DependencyService) *DependencyHandler {
 }
 
 // CreateDependency 创建依赖关系
-// POST /api/v1/admin/index/dependencies
+// POST /api/v1/web/admin/index/dependencies
 func (h *DependencyHandler) CreateDependency(c *gin.Context) {
 	var req struct {
 		FileRecordID uint   `json:"fileRecordId" binding:"required"`
@@ -42,7 +42,7 @@ func (h *DependencyHandler) CreateDependency(c *gin.Context) {
 }
 
 // ListDependencies 分页查询所有依赖关系
-// GET /api/v1/admin/index/dependencies
+// GET /api/v1/web/admin/index/dependencies
 func (h *DependencyHandler) ListDependencies(c *gin.Context) {
 	var query DependencyListQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
@@ -65,7 +65,7 @@ func (h *DependencyHandler) ListDependencies(c *gin.Context) {
 }
 
 // GetDependenciesByRecord 查询指定文件的所有依赖
-// GET /api/v1/admin/index/records/:id/dependencies
+// GET /api/v1/web/admin/index/records/:id/dependencies
 func (h *DependencyHandler) GetDependenciesByRecord(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -87,7 +87,7 @@ func (h *DependencyHandler) GetDependenciesByRecord(c *gin.Context) {
 }
 
 // GetDependencyTree 获取文件依赖树
-// GET /api/v1/files/depends/:id
+// GET /api/v1/web/files/depends/:id
 func (h *DependencyHandler) GetDependencyTree(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -112,7 +112,7 @@ func (h *DependencyHandler) GetDependencyTree(c *gin.Context) {
 }
 
 // CreateDependencyPublic 公开创建依赖关系（无需 admin）
-// POST /api/v1/files/dependencies
+// POST /api/v1/web/files/dependencies
 func (h *DependencyHandler) CreateDependencyPublic(c *gin.Context) {
 	var req struct {
 		FileRecordID uint   `json:"fileRecordId" binding:"required"`
@@ -134,7 +134,7 @@ func (h *DependencyHandler) CreateDependencyPublic(c *gin.Context) {
 }
 
 // DeleteDependencyPublic 公开删除依赖关系（无需 admin）
-// DELETE /api/v1/files/dependencies/:id
+// DELETE /api/v1/web/files/dependencies/:id
 func (h *DependencyHandler) DeleteDependencyPublic(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -152,7 +152,7 @@ func (h *DependencyHandler) DeleteDependencyPublic(c *gin.Context) {
 }
 
 // DeleteDependency 删除依赖关系
-// DELETE /api/v1/admin/index/dependencies/:id
+// DELETE /api/v1/web/admin/index/dependencies/:id
 func (h *DependencyHandler) DeleteDependency(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)

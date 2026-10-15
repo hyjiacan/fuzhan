@@ -18,9 +18,9 @@ func init() {
 func TestHealthCheck(t *testing.T) {
 	router := gin.New()
 	handler := health.NewHealthHandler()
-	router.GET("/api/v1/health", handler.Health)
+	router.GET("/api/v1/web/health", handler.Health)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/health", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

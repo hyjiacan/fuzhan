@@ -581,7 +581,7 @@ const pollServerHealth = (url, maxRetries, interval, onReady) => {
     // 同源下试图访问 API
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 3000)
-    fetch(url + '/api/v1/health', { mode: 'no-cors', signal: controller.signal })
+    fetch(url + '/api/v1/web/health', { mode: 'no-cors', signal: controller.signal })
       .then(() => { clearTimeout(timeoutId); onReady() })
       .catch(() => {
         clearTimeout(timeoutId)

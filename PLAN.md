@@ -23,7 +23,7 @@
 
 ## 工作项 4: 用户管理列表显示配额使用情况
 **难度**: 中 | **影响范围**: 后端 admin 服务, admin handler, 前端 AdminUsersView.vue
-- 后端新增 API 接口 `GET /api/v1/admin/users/quota` 返回用户配额使用情况
+- 后端新增 API 接口 `GET /api/v1/web/admin/users/quota` 返回用户配额使用情况
 - 修改 `UserItem` 结构体引入 `QuotaUsed` 字段
 - 后端在 `ListUsers` 中查询每个用户的私有文件使用量
 - 前端用户列表表格增加"配额使用"列

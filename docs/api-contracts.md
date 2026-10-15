@@ -29,16 +29,16 @@
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| POST | `/api/v1/auth/register` | `auth.Handler.Register` | 用户注册 | 无 |
-| POST | `/api/v1/auth/login` | `auth.Handler.Login` | 用户登录 | 无 |
-| POST | `/api/v1/auth/refresh` | `auth.Handler.RefreshToken` | 刷新Token | JWT |
-| GET | `/api/v1/auth/user` | `auth.Handler.GetCurrentUser` | 获取当前用户 | JWT |
-| POST | `/api/v1/auth/change-password` | `auth.Handler.ChangePassword` | 修改密码 | JWT |
+| POST | `/api/v1/web/auth/register` | `auth.Handler.Register` | 用户注册 | 无 |
+| POST | `/api/v1/web/auth/login` | `auth.Handler.Login` | 用户登录 | 无 |
+| POST | `/api/v1/web/auth/refresh` | `auth.Handler.RefreshToken` | 刷新Token | JWT |
+| GET | `/api/v1/web/auth/user` | `auth.Handler.GetCurrentUser` | 获取当前用户 | JWT |
+| POST | `/api/v1/web/auth/change-password` | `auth.Handler.ChangePassword` | 修改密码 | JWT |
 
 ### 注册请求
 
 ```json
-POST /api/v1/auth/register
+POST /api/v1/web/auth/register
 Content-Type: application/json
 
 {
@@ -61,7 +61,7 @@ Content-Type: application/json
 ### 登录请求/响应
 
 ```json
-POST /api/v1/auth/login
+POST /api/v1/web/auth/login
 Content-Type: application/json
 
 {
@@ -87,21 +87,21 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/files/list` | `file.Handler.ListDirectories` | 目录列表 | 无 |
-| GET | `/api/v1/files/preview/*path` | `file.PreviewHandler.PreviewFile` | 文件预览 | 无 |
-| GET | `/api/v1/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 无 |
-| GET | `/api/v1/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 无 |
-| GET | `/api/v1/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 无 |
+| GET | `/api/v1/web/files/list` | `file.Handler.ListDirectories` | 目录列表 | 无 |
+| GET | `/api/v1/web/files/preview/*path` | `file.PreviewHandler.PreviewFile` | 文件预览 | 无 |
+| GET | `/api/v1/web/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 无 |
+| GET | `/api/v1/web/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 无 |
+| GET | `/api/v1/web/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 无 |
 | GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 无 |
-| GET | `/api/v1/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 无 |
-| POST | `/api/v1/files/rename` | `file.FileHandlers.RenamePublicFileHandler` | 重命名文件 | JWT（上传者IP一致或管理员） |
-| POST | `/api/v1/files/move` | `file.FileHandlers.MoveFileHandler` | 移动文件 | JWT（上传者IP一致或管理员） |
-| DELETE | `/api/v1/files/delete` | `file.FileHandlers.DeleteFileHandler` | 删除文件 | JWT（上传者IP一致或管理员） |
+| GET | `/api/v1/web/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 无 |
+| POST | `/api/v1/web/files/rename` | `file.FileHandlers.RenamePublicFileHandler` | 重命名文件 | JWT（上传者IP一致或管理员） |
+| POST | `/api/v1/web/files/move` | `file.FileHandlers.MoveFileHandler` | 移动文件 | JWT（上传者IP一致或管理员） |
+| DELETE | `/api/v1/web/files/delete` | `file.FileHandlers.DeleteFileHandler` | 删除文件 | JWT（上传者IP一致或管理员） |
 
 ### 目录列表
 
 ```json
-GET /api/v1/files/list?path=rootName/subdir
+GET /api/v1/web/files/list?path=rootName/subdir
 
 // 响应
 {
@@ -135,7 +135,7 @@ GET /api/v1/files/list?path=rootName/subdir
 ### 文件搜索 (SSE)
 
 ```json
-GET /api/v1/search/关键词
+GET /api/v1/web/search/关键词
 
 // SSE 流式响应
 event: result
@@ -159,26 +159,26 @@ data: {"total":2,"matched":2}
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| POST | `/api/v1/uploads/session` | `file.UploadSessionHandler.CreateSession` | 创建上传会话 |
-| GET | `/api/v1/uploads/session/:id` | `file.UploadSessionHandler.GetSession` | 获取会话状态 |
-| POST | `/api/v1/uploads/session/:id/resume` | `file.UploadSessionHandler.ResumeSession` | 续传 |
-| DELETE | `/api/v1/uploads/session/:id` | `file.UploadSessionHandler.CancelSession` | 取消会话 |
-| POST | `/api/v1/uploads/chunk` | `file.UploadSessionHandler.UploadChunk` | 上传分片 |
-| POST | `/api/v1/uploads/finalize` | `file.UploadSessionHandler.FinalizeSession` | 完成上传 |
-| POST | `/api/v1/uploads/url` | `file.UploadSessionHandler.UploadFromURL` | 从URL上传（入队，后台队列调度） |
-| POST | `/api/v1/uploads/url-probe` | `file.UploadSessionHandler.ProbeURLs` | 批量探测 URL（文件名/大小/存在性/历史） |
-| GET | `/api/v1/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | URL 上传任务进度 |
-| GET | `/api/v1/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户 URL 上传任务 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/checksum` | `file.UploadSessionHandler.ComputeURLTaskChecksum` | 计算已完成任务的校验值（md5/sha1/sha256 可选） |
-| DELETE | `/api/v1/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
-| POST | `/api/v1/uploads/url_info` | `modules.GetFileInfoFromURL` | 获取URL文件信息 |
+| POST | `/api/v1/web/uploads/session` | `file.UploadSessionHandler.CreateSession` | 创建上传会话 |
+| GET | `/api/v1/web/uploads/session/:id` | `file.UploadSessionHandler.GetSession` | 获取会话状态 |
+| POST | `/api/v1/web/uploads/session/:id/resume` | `file.UploadSessionHandler.ResumeSession` | 续传 |
+| DELETE | `/api/v1/web/uploads/session/:id` | `file.UploadSessionHandler.CancelSession` | 取消会话 |
+| POST | `/api/v1/web/uploads/chunk` | `file.UploadSessionHandler.UploadChunk` | 上传分片 |
+| POST | `/api/v1/web/uploads/finalize` | `file.UploadSessionHandler.FinalizeSession` | 完成上传 |
+| POST | `/api/v1/web/uploads/url` | `file.UploadSessionHandler.UploadFromURL` | 从URL上传（入队，后台队列调度） |
+| POST | `/api/v1/web/uploads/url-probe` | `file.UploadSessionHandler.ProbeURLs` | 批量探测 URL（文件名/大小/存在性/历史） |
+| GET | `/api/v1/web/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | URL 上传任务进度 |
+| GET | `/api/v1/web/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户 URL 上传任务 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/checksum` | `file.UploadSessionHandler.ComputeURLTaskChecksum` | 计算已完成任务的校验值（md5/sha1/sha256 可选） |
+| DELETE | `/api/v1/web/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
+| POST | `/api/v1/web/uploads/url_info` | `modules.GetFileInfoFromURL` | 获取URL文件信息 |
 
 ### 创建会话
 
 ```json
-POST /api/v1/uploads/session
+POST /api/v1/web/uploads/session
 Content-Type: application/json
 
 {
@@ -204,7 +204,7 @@ Content-Type: application/json
 ### 上传分片
 
 ```json
-POST /api/v1/uploads/chunk
+POST /api/v1/web/uploads/chunk
 Content-Type: multipart/form-data
 
 uploadId: 1
@@ -226,7 +226,7 @@ sessionId: 1
 ### 完成上传
 
 ```json
-POST /api/v1/uploads/finalize
+POST /api/v1/web/uploads/finalize
 Content-Type: application/json
 
 {
@@ -247,16 +247,16 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户的 URL 上传任务 |
-| GET | `/api/v1/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | 获取任务进度 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
-| POST | `/api/v1/uploads/url-tasks/:taskId/checksum` | `file.UploadSessionHandler.ComputeURLTaskChecksum` | 计算已完成任务的校验值 |
-| DELETE | `/api/v1/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
+| GET | `/api/v1/web/uploads/url-tasks` | `file.UploadSessionHandler.ListURLTasks` | 列出当前用户的 URL 上传任务 |
+| GET | `/api/v1/web/uploads/url-task/:taskId` | `file.UploadSessionHandler.GetURLTask` | 获取任务进度 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/cancel` | `file.UploadSessionHandler.CancelURLTask` | 取消任务 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/retry` | `file.UploadSessionHandler.RetryURLTask` | 重试任务 |
+| POST | `/api/v1/web/uploads/url-tasks/:taskId/checksum` | `file.UploadSessionHandler.ComputeURLTaskChecksum` | 计算已完成任务的校验值 |
+| DELETE | `/api/v1/web/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
 
 **说明：** URL 上传任务以后台全局队列执行，并行上限由 `upload.url_upload.max_concurrent` 控制（所有用户共享，默认 2）；失败自动重试由 `upload.url_upload.max_retries` 控制（默认 3，仅超时/5xx/408/429 等可重试错误，重试任务排到队尾）；任务持久化于 `url_download_tasks`，进程重启后自动恢复。
 
-**计算校验值：** `POST /api/v1/uploads/url-tasks/:taskId/checksum`，请求体 `{ "algorithms": ["md5", "sha1", "sha256"] }`（`md5`/`sha1`/`sha256` 的任意非空子集），仅对 `completed` 状态任务有效，服务端单次流式读取按所选算法并行计算，返回 `{ "checksums": { "md5": "...", "sha256": "..." } }`，结果仅返回前端供完整性校验、不落库。
+**计算校验值：** `POST /api/v1/web/uploads/url-tasks/:taskId/checksum`，请求体 `{ "algorithms": ["md5", "sha1", "sha256"] }`（`md5`/`sha1`/`sha256` 的任意非空子集），仅对 `completed` 状态任务有效，服务端单次流式读取按所选算法并行计算，返回 `{ "checksums": { "md5": "...", "sha256": "..." } }`，结果仅返回前端供完整性校验、不落库。
 
 ---
 
@@ -266,23 +266,23 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/temp/list` | `temp.Handler.ListHandler` | 获取临时文件列表 | IP |
-| POST | `/api/v1/temp/upload` | `temp.Handler.UploadHandler` | 上传临时文件 | IP |
-| GET | `/api/v1/temp/quota` | `temp.Handler.QuotaHandler` | 查询IP配额 | IP |
-| GET | `/api/v1/temp/client-ip` | `temp.Handler.ClientIPHandler` | 获取客户端IP | 无 |
-| GET | `/api/v1/temp/:code` | `temp.Handler.InfoHandler` | 获取文件信息 | 无 |
-| GET | `/api/v1/temp/:code/download` | `temp.Handler.DownloadHandler` | 下载临时文件 | 无 |
-| DELETE | `/api/v1/temp/:code` | `temp.Handler.DeleteHandler` | 删除临时文件 | IP |
-| PUT | `/api/v1/temp/:code/extend` | `temp.Handler.ExtendHandler` | 延长有效期 | IP |
+| GET | `/api/v1/web/temp/list` | `temp.Handler.ListHandler` | 获取临时文件列表 | IP |
+| POST | `/api/v1/web/temp/upload` | `temp.Handler.UploadHandler` | 上传临时文件 | IP |
+| GET | `/api/v1/web/temp/quota` | `temp.Handler.QuotaHandler` | 查询IP配额 | IP |
+| GET | `/api/v1/web/temp/client-ip` | `temp.Handler.ClientIPHandler` | 获取客户端IP | 无 |
+| GET | `/api/v1/web/temp/:code` | `temp.Handler.InfoHandler` | 获取文件信息 | 无 |
+| GET | `/api/v1/web/temp/:code/download` | `temp.Handler.DownloadHandler` | 下载临时文件 | 无 |
+| DELETE | `/api/v1/web/temp/:code` | `temp.Handler.DeleteHandler` | 删除临时文件 | IP |
+| PUT | `/api/v1/web/temp/:code/extend` | `temp.Handler.ExtendHandler` | 延长有效期 | IP |
 
 ### 临时文件分片上传
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| POST | `/api/v1/temp/upload/session` | `temp.Handler.CreateTempSessionHandler` | 创建会话 |
-| GET | `/api/v1/temp/upload/session/:uploadId` | `temp.Handler.GetTempSessionHandler` | 获取状态 |
-| POST | `/api/v1/temp/upload/chunk` | `temp.Handler.UploadTempChunkHandler` | 上传分片 |
-| POST | `/api/v1/temp/upload/finalize` | `temp.Handler.FinalizeTempUploadHandler` | 完成上传 |
+| POST | `/api/v1/web/temp/upload/session` | `temp.Handler.CreateTempSessionHandler` | 创建会话 |
+| GET | `/api/v1/web/temp/upload/session/:uploadId` | `temp.Handler.GetTempSessionHandler` | 获取状态 |
+| POST | `/api/v1/web/temp/upload/chunk` | `temp.Handler.UploadTempChunkHandler` | 上传分片 |
+| POST | `/api/v1/web/temp/upload/finalize` | `temp.Handler.FinalizeTempUploadHandler` | 完成上传 |
 
 ### 临时文件响应
 
@@ -295,7 +295,7 @@ Content-Type: application/json
     "filename": "file.zip",
     "fileSize": 1024000,
     "expiredAt": "2026-07-19T10:00:00Z",
-    "downloadUrl": "/api/v1/temp/A1B2C3D4/download"
+    "downloadUrl": "/api/v1/web/temp/A1B2C3D4/download"
   }
 }
 ```
@@ -308,22 +308,22 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/private/files` | `file.PrivateStorageHandler.List` | 获取文件列表 |
-| GET | `/api/v1/private/quota` | `file.PrivateUploadHandler.QuotaHandler` | 获取配额 |
-| POST | `/api/v1/private/upload` | `file.PrivateStorageHandler.Upload` | 简单上传 |
-| DELETE | `/api/v1/private/files/:code` | `file.PrivateStorageHandler.Delete` | 删除文件 |
+| GET | `/api/v1/web/private/files` | `file.PrivateStorageHandler.List` | 获取文件列表 |
+| GET | `/api/v1/web/private/quota` | `file.PrivateUploadHandler.QuotaHandler` | 获取配额 |
+| POST | `/api/v1/web/private/upload` | `file.PrivateStorageHandler.Upload` | 简单上传 |
+| DELETE | `/api/v1/web/private/files/:code` | `file.PrivateStorageHandler.Delete` | 删除文件 |
 | GET | `/share/:code` | `file.PrivateStorageHandler.Download` | 下载分享文件（支持 `preview=true` 内联预览） |
 
 ### 私有存储分片上传
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| POST | `/api/v1/private/uploads/session` | `file.PrivateUploadHandler.CreateSession` | 创建会话 |
-| GET | `/api/v1/private/uploads/session/:id` | `file.PrivateUploadHandler.GetSession` | 获取状态 |
-| POST | `/api/v1/private/uploads/session/:id/resume` | `file.PrivateUploadHandler.ResumeSession` | 续传 |
-| DELETE | `/api/v1/private/uploads/session/:id` | `file.PrivateUploadHandler.CancelSession` | 取消 |
-| POST | `/api/v1/private/uploads/chunk` | `file.PrivateUploadHandler.UploadChunk` | 上传分片 |
-| POST | `/api/v1/private/uploads/finalize` | `file.PrivateUploadHandler.FinalizeSession` | 完成 |
+| POST | `/api/v1/web/private/uploads/session` | `file.PrivateUploadHandler.CreateSession` | 创建会话 |
+| GET | `/api/v1/web/private/uploads/session/:id` | `file.PrivateUploadHandler.GetSession` | 获取状态 |
+| POST | `/api/v1/web/private/uploads/session/:id/resume` | `file.PrivateUploadHandler.ResumeSession` | 续传 |
+| DELETE | `/api/v1/web/private/uploads/session/:id` | `file.PrivateUploadHandler.CancelSession` | 取消 |
+| POST | `/api/v1/web/private/uploads/chunk` | `file.PrivateUploadHandler.UploadChunk` | 上传分片 |
+| POST | `/api/v1/web/private/uploads/finalize` | `file.PrivateUploadHandler.FinalizeSession` | 完成 |
 
 ---
 
@@ -331,9 +331,9 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/notifications` | `notification.Handler.GetNotifications` | 获取通知列表 | JWT/Anonymous |
-| PUT | `/api/v1/notifications/:id/read` | `notification.Handler.MarkAsRead` | 标记已读 | JWT |
-| POST | `/api/v1/notifications/merge` | `notification.Handler.MergeAnonymous` | 合并匿名通知 | JWT |
+| GET | `/api/v1/web/notifications` | `notification.Handler.GetNotifications` | 获取通知列表 | JWT/Anonymous |
+| PUT | `/api/v1/web/notifications/:id/read` | `notification.Handler.MarkAsRead` | 标记已读 | JWT |
+| POST | `/api/v1/web/notifications/merge` | `notification.Handler.MergeAnonymous` | 合并匿名通知 | JWT |
 
 ---
 
@@ -345,34 +345,34 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/admin/users` | `admin.Handler.UsersHandler` | 用户列表 |
-| PUT | `/api/v1/admin/users/:uuid/reset-password` | `admin.Handler.ResetPasswordHandler` | 重置密码 |
-| PUT | `/api/v1/admin/users/:uuid/disabled` | `admin.Handler.SetUserDisabledHandler` | 禁用/启用 |
-| DELETE | `/api/v1/admin/users/:uuid` | `admin.Handler.DeleteUserHandler` | 删除用户 |
-| GET | `/api/v1/admin/sessions` | `admin.Handler.SessionsHandler` | 上传会话列表 |
-| POST | `/api/v1/admin/sessions/cleanup` | `admin.Handler.CleanupSessionsHandler` | 清理会话 |
+| GET | `/api/v1/web/admin/users` | `admin.Handler.UsersHandler` | 用户列表 |
+| PUT | `/api/v1/web/admin/users/:uuid/reset-password` | `admin.Handler.ResetPasswordHandler` | 重置密码 |
+| PUT | `/api/v1/web/admin/users/:uuid/disabled` | `admin.Handler.SetUserDisabledHandler` | 禁用/启用 |
+| DELETE | `/api/v1/web/admin/users/:uuid` | `admin.Handler.DeleteUserHandler` | 删除用户 |
+| GET | `/api/v1/web/admin/sessions` | `admin.Handler.SessionsHandler` | 上传会话列表 |
+| POST | `/api/v1/web/admin/sessions/cleanup` | `admin.Handler.CleanupSessionsHandler` | 清理会话 |
 
 ### 文件管理
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/admin/files/list` | `file.Handler.ListDirectories` | 文件列表 |
-| POST | `/api/v1/admin/files/rename` | `file.Handler.RenameFileHandler` | 重命名 |
-| POST | `/api/v1/admin/files/move` | `file.Handler.MoveFileHandler` | 移动 |
-| DELETE | `/api/v1/admin/files` | `file.Handler.DeleteFileHandler` | 删除 |
+| GET | `/api/v1/web/admin/files/list` | `file.Handler.ListDirectories` | 文件列表 |
+| POST | `/api/v1/web/admin/files/rename` | `file.Handler.RenameFileHandler` | 重命名 |
+| POST | `/api/v1/web/admin/files/move` | `file.Handler.MoveFileHandler` | 移动 |
+| DELETE | `/api/v1/web/admin/files` | `file.Handler.DeleteFileHandler` | 删除 |
 
 ### URL 下载任务管理
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/admin/url-tasks` | `admin.URLDownloadHandler.ListURLTasks` | 任务列表 |
-| DELETE | `/api/v1/admin/url-tasks/:id` | `admin.URLDownloadHandler.DeleteURLTask` | 删除任务 |
+| GET | `/api/v1/web/admin/url-tasks` | `admin.URLDownloadHandler.ListURLTasks` | 任务列表 |
+| DELETE | `/api/v1/web/admin/url-tasks/:id` | `admin.URLDownloadHandler.DeleteURLTask` | 删除任务 |
 
 ### 在线 IP 统计
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/admin/online-ips` | `admin.Handler.OnlineIPs` | 当前在线 IP 列表（含在线时长） |
+| GET | `/api/v1/web/admin/online-ips` | `admin.Handler.OnlineIPs` | 当前在线 IP 列表（含在线时长） |
 
 **说明：** 这里的"在线"与登录状态无关，仅依据最近是否有请求判定。只要某个客户端 IP 在空闲超时（默认 180 秒）内发出过任一元请求即视为在线，距上次请求超过该时长自动离线；超过 24 小时未活动的记录会被清理。
 
@@ -406,10 +406,10 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/admin/security/events` | `security.Handler.ListEvents` | 分页查询（支持过滤） |
-| GET | `/api/v1/admin/security/events/unread-summary` | `security.Handler.UnreadSummary` | 未读汇总（红点与登录强提醒） |
-| POST | `/api/v1/admin/security/events/read` | `security.Handler.MarkRead` | 标记已读（按 ID 或全部） |
-| GET | `/api/v1/admin/security/events/stats` | `security.Handler.Stats` | 统计（级别分布 / 近7日趋势 / TOP IP / TOP 类型 / 近期锁定） |
+| GET | `/api/v1/web/admin/security/events` | `security.Handler.ListEvents` | 分页查询（支持过滤） |
+| GET | `/api/v1/web/admin/security/events/unread-summary` | `security.Handler.UnreadSummary` | 未读汇总（红点与登录强提醒） |
+| POST | `/api/v1/web/admin/security/events/read` | `security.Handler.MarkRead` | 标记已读（按 ID 或全部） |
+| GET | `/api/v1/web/admin/security/events/stats` | `security.Handler.Stats` | 统计（级别分布 / 近7日趋势 / TOP IP / TOP 类型 / 近期锁定） |
 
 **列表过滤参数：** `severity`、`eventType`、`clientIP`、`identity`、`result`、`guard`、`q`（目标/路径/请求ID 关键字）、`unread=1`、`from`、`to`（时间范围）及分页 `page` / `pageSize`。
 
@@ -421,7 +421,7 @@ Content-Type: application/json
   "data": {
     "total": 3,
     "high": 1,
-    "recent": [ { "id": 1, "eventType": "auth.locked", "severity": "high", "clientIP": "10.0.0.5", "target": "admin", "path": "/api/v1/auth/login", "createdAt": "..." } ]
+    "recent": [ { "id": 1, "eventType": "auth.locked", "severity": "high", "clientIP": "10.0.0.5", "target": "admin", "path": "/api/v1/web/auth/login", "createdAt": "..." } ]
   }
 }
 ```
@@ -434,7 +434,7 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| POST | `/api/v1/admin/tls/upload` | `admin.Handler.UploadTLSCertificate` | 上传TLS证书 |
+| POST | `/api/v1/web/admin/tls/upload` | `admin.Handler.UploadTLSCertificate` | 上传TLS证书 |
 
 ---
 
@@ -442,15 +442,15 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/setup/status` | `setup.Handler.IsInitialized` | 检查初始化状态 | 无 |
-| POST | `/api/v1/setup/save` | `setup.Handler.SaveConfig` | 保存初始配置 | 无 |
-| POST | `/api/v1/setup/validate-dir` | `setup.Handler.ValidateDirectory` | 验证目录 | 无 |
-| GET | `/api/v1/setup/network/interfaces` | `setup.Handler.GetNetworkInterfaces` | 获取网络接口 | 无 |
-| GET | `/api/v1/setup/default-config` | `setup.Handler.GetDefaultConfig` | 获取默认配置 | 无 |
-| GET | `/api/v1/config` | `config.Handler.GetConfig` | 获取系统配置 | JWT+Admin |
-| POST | `/api/v1/config` | `config.Handler.SaveConfig` | 保存系统配置 | JWT+Admin |
-| GET | `/api/v1/options` | `config.Handler.GetOptions` | 获取公开配置选项 | 无 |
-| POST | `/api/v1/config/reload` | `config.Handler.ReloadConfig` | 重新加载配置 | JWT+Admin |
+| GET | `/api/v1/web/setup/status` | `setup.Handler.IsInitialized` | 检查初始化状态 | 无 |
+| POST | `/api/v1/web/setup/save` | `setup.Handler.SaveConfig` | 保存初始配置 | 无 |
+| POST | `/api/v1/web/setup/validate-dir` | `setup.Handler.ValidateDirectory` | 验证目录 | 无 |
+| GET | `/api/v1/web/setup/network/interfaces` | `setup.Handler.GetNetworkInterfaces` | 获取网络接口 | 无 |
+| GET | `/api/v1/web/setup/default-config` | `setup.Handler.GetDefaultConfig` | 获取默认配置 | 无 |
+| GET | `/api/v1/web/config` | `config.Handler.GetConfig` | 获取系统配置 | JWT+Admin |
+| POST | `/api/v1/web/config` | `config.Handler.SaveConfig` | 保存系统配置 | JWT+Admin |
+| GET | `/api/v1/web/options` | `config.Handler.GetOptions` | 获取公开配置选项 | 无 |
+| POST | `/api/v1/web/config/reload` | `config.Handler.ReloadConfig` | 重新加载配置 | JWT+Admin |
 
 ---
 
@@ -458,16 +458,16 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/health` | `health.Handler.Health` | 健康检查 | 无 |
+| GET | `/api/v1/web/health` | `health.Handler.Health` | 健康检查 | 无 |
 | GET | `/api/v1/ready` | `health.Handler.Ready` | 就绪检查 | 无 |
 | GET | `/api/v1/metrics` | `PrometheusHandler()` | Prometheus指标 | 无 |
-| GET | `/api/v1/monitor/storage` | `monitor.Handler.Storage` | 存储统计 | 无 |
-| GET | `/api/v1/monitor/access` | `monitor.Handler.Access` | 访问统计 | 无 |
-| GET | `/api/v1/monitor/keywords` | `monitor.Handler.Keywords` | 常用搜索词 | 无 |
-| GET | `/api/v1/monitor/recent` | `monitor.Handler.RecentKeywords` | 最近搜索词 | 无 |
-| GET | `/api/v1/monitor/rankings` | `monitor.Handler.Rankings` | 排行榜 | 无 |
-| GET | `/api/v1/monitor/hot-downloads` | `monitor.Handler.HotDownloads` | 热门下载排行 | 无 |
-| GET | `/api/v1/system/shutdown` | `ShutdownHandler` | 关闭服务 | 本地 |
+| GET | `/api/v1/web/monitor/storage` | `monitor.Handler.Storage` | 存储统计 | 无 |
+| GET | `/api/v1/web/monitor/access` | `monitor.Handler.Access` | 访问统计 | 无 |
+| GET | `/api/v1/web/monitor/keywords` | `monitor.Handler.Keywords` | 常用搜索词 | 无 |
+| GET | `/api/v1/web/monitor/recent` | `monitor.Handler.RecentKeywords` | 最近搜索词 | 无 |
+| GET | `/api/v1/web/monitor/rankings` | `monitor.Handler.Rankings` | 排行榜 | 无 |
+| GET | `/api/v1/web/monitor/hot-downloads` | `monitor.Handler.HotDownloads` | 热门下载排行 | 无 |
+| GET | `/api/v1/web/system/shutdown` | `ShutdownHandler` | 关闭服务 | 本地 |
 
 ### 行为分析（管理端）
 
@@ -476,20 +476,20 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/admin/behavior-analytics/summary` | `behavioranalytics.Handler.SummaryHandle` | 区间总览（成功/文件数/IP/用户/体积/失败） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/trend` | `behavioranalytics.Handler.TrendHandle` | 下载趋势（granularity=day/week/month，可选 id 单文件） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/top-files` | `behavioranalytics.Handler.TopFilesHandle` | Top 下载文件榜（limit，sort=count/spread，含独立IP/扩散比） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/sources` | `behavioranalytics.Handler.SourcesHandle` | 来源分布（by=ip/user，limit） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/failures` | `behavioranalytics.Handler.FailuresHandle` | 失败原因分布（limit） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/file` | `behavioranalytics.Handler.FileDetailHandle` | 单文件明细（id，趋势+IP/用户拆分） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/heatmap` | `behavioranalytics.Handler.HeatmapHandle` | 时段热度分布（周几×24小时，weekday=1..7 周一为1） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/aggregate` | `behavioranalytics.Handler.AggregateHandle` | 目录/类型聚合（dimension=dir/type，limit） | JWT+Admin |
-| GET | `/api/v1/admin/behavior-analytics/lifecycle` | `behavioranalytics.Handler.LifecycleHandle` | 生命周期/衰减曲线（自上传第 capDays 天，上限90，关联权威索引表上传时间） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/summary` | `behavioranalytics.Handler.SummaryHandle` | 区间总览（成功/文件数/IP/用户/体积/失败） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/trend` | `behavioranalytics.Handler.TrendHandle` | 下载趋势（granularity=day/week/month，可选 id 单文件） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/top-files` | `behavioranalytics.Handler.TopFilesHandle` | Top 下载文件榜（limit，sort=count/spread，含独立IP/扩散比） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/sources` | `behavioranalytics.Handler.SourcesHandle` | 来源分布（by=ip/user，limit） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/failures` | `behavioranalytics.Handler.FailuresHandle` | 失败原因分布（limit） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/file` | `behavioranalytics.Handler.FileDetailHandle` | 单文件明细（id，趋势+IP/用户拆分） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/heatmap` | `behavioranalytics.Handler.HeatmapHandle` | 时段热度分布（周几×24小时，weekday=1..7 周一为1） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/aggregate` | `behavioranalytics.Handler.AggregateHandle` | 目录/类型聚合（dimension=dir/type，limit） | JWT+Admin |
+| GET | `/api/v1/web/admin/behavior-analytics/lifecycle` | `behavioranalytics.Handler.LifecycleHandle` | 生命周期/衰减曲线（自上传第 capDays 天，上限90，关联权威索引表上传时间） | JWT+Admin |
 
 ### 存储统计响应
 
 ```json
-GET /api/v1/monitor/storage
+GET /api/v1/web/monitor/storage
 
 {
   "success": true,
@@ -542,14 +542,14 @@ GET /api/v1/monitor/storage
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/api-keys` | `auth.APIKeyHandler.List` | 列出 API Keys |
-| POST | `/api/v1/api-keys` | `auth.APIKeyHandler.Create` | 创建 API Key |
-| DELETE | `/api/v1/api-keys/:id` | `auth.APIKeyHandler.Delete` | 删除 API Key |
+| GET | `/api/v1/web/api-keys` | `auth.APIKeyHandler.List` | 列出 API Keys |
+| POST | `/api/v1/web/api-keys` | `auth.APIKeyHandler.Create` | 创建 API Key |
+| DELETE | `/api/v1/web/api-keys/:id` | `auth.APIKeyHandler.Delete` | 删除 API Key |
 
 ### 创建 API Key
 
 ```json
-POST /api/v1/api-keys
+POST /api/v1/web/api-keys
 Content-Type: application/json
 
 {

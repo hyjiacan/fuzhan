@@ -127,7 +127,7 @@ cd ui && yarn dev
 
 - 前端: `http://localhost:5173`
 - 后端: `http://localhost:8080`
-- 健康检查: `http://localhost:8080/api/v1/health`
+- 健康检查: `http://localhost:8080/api/v1/web/health`
 
 ### 4. 配置
 

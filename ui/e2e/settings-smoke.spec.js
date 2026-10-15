@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 
 test('SettingsView 各 tab 正常渲染', async ({ page }) => {
   // 1. 管理员登录，取回 token
-  const login = await page.request.post('/api/v1/auth/login', {
+  const login = await page.request.post('/api/v1/web/auth/login', {
     data: { username: 'testadmin', password: 'Test12345' }
   })
   expect(login.ok()).toBeTruthy()

@@ -36,7 +36,7 @@ func parseLimit(raw string, def, max int) int {
 }
 
 // Autocomplete 自动补全建议。
-// GET /api/v1/search-suggest?q=前缀&limit=数量
+// GET /api/v1/web/search-suggest?q=前缀&limit=数量
 // 返回 data: []string（最常见的关键词，而非完整文件名）。
 func (h *Handler) Autocomplete(c *gin.Context) {
 	q := c.Query("q")
@@ -56,7 +56,7 @@ func (h *Handler) Autocomplete(c *gin.Context) {
 }
 
 // Related 相关词推荐。
-// GET /api/v1/search-related?q=已输入各段&limit=数量
+// GET /api/v1/web/search-related?q=已输入各段&limit=数量
 // 返回 data: []string（与已输入各段同文件共现的高频关键词），供输入空格后给出下一段候选。
 func (h *Handler) Related(c *gin.Context) {
 	q := c.Query("q")
@@ -76,7 +76,7 @@ func (h *Handler) Related(c *gin.Context) {
 }
 
 // SpellCheck 拼写纠错建议。
-// GET /api/v1/search-spellcheck?q=单词&limit=数量
+// GET /api/v1/web/search-spellcheck?q=单词&limit=数量
 // 返回 data: []string（最相似的关键词候选，而非完整文件名）。
 func (h *Handler) SpellCheck(c *gin.Context) {
 	q := c.Query("q")

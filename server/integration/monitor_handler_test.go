@@ -39,9 +39,9 @@ func TestMonitorHandler_Storage(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/storage", handler.Storage)
+	router.GET("/api/v1/web/monitor/storage", handler.Storage)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/storage", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/storage", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -80,9 +80,9 @@ func TestMonitorHandler_Access(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/access", handler.Access)
+	router.GET("/api/v1/web/monitor/access", handler.Access)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/access", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/access", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -129,9 +129,9 @@ func TestMonitorHandler_Access_WithRecords(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/access", handler.Access)
+	router.GET("/api/v1/web/monitor/access", handler.Access)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/access", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/access", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -165,9 +165,9 @@ func TestMonitorHandler_Keywords(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/keywords", handler.Keywords)
+	router.GET("/api/v1/web/monitor/keywords", handler.Keywords)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/keywords", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/keywords", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -202,9 +202,9 @@ func TestMonitorHandler_Keywords_WithSearchRecords(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/keywords", handler.Keywords)
+	router.GET("/api/v1/web/monitor/keywords", handler.Keywords)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/keywords", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/keywords", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -241,9 +241,9 @@ func TestMonitorHandler_RecentKeywords(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/recent", handler.RecentKeywords)
+	router.GET("/api/v1/web/monitor/recent", handler.RecentKeywords)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/recent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/recent", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -267,9 +267,9 @@ func TestMonitorHandler_Rankings(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/rankings", handler.Rankings)
+	router.GET("/api/v1/web/monitor/rankings", handler.Rankings)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/rankings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/rankings", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -326,9 +326,9 @@ func TestMonitorHandler_Rankings_WithRecords(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/rankings", handler.Rankings)
+	router.GET("/api/v1/web/monitor/rankings", handler.Rankings)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/rankings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/monitor/rankings", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -369,21 +369,21 @@ func TestMonitorHandler_AllEndpoints(t *testing.T) {
 	handler := monitor.NewHandler(services.NewMonitorService(recordRepo, db))
 
 	router := gin.New()
-	router.GET("/api/v1/monitor/storage", handler.Storage)
-	router.GET("/api/v1/monitor/access", handler.Access)
-	router.GET("/api/v1/monitor/keywords", handler.Keywords)
-	router.GET("/api/v1/monitor/recent", handler.RecentKeywords)
-	router.GET("/api/v1/monitor/rankings", handler.Rankings)
+	router.GET("/api/v1/web/monitor/storage", handler.Storage)
+	router.GET("/api/v1/web/monitor/access", handler.Access)
+	router.GET("/api/v1/web/monitor/keywords", handler.Keywords)
+	router.GET("/api/v1/web/monitor/recent", handler.RecentKeywords)
+	router.GET("/api/v1/web/monitor/rankings", handler.Rankings)
 
 	endpoints := []struct {
 		path string
 		name string
 	}{
-		{"/api/v1/monitor/storage", "Storage"},
-		{"/api/v1/monitor/access", "Access"},
-		{"/api/v1/monitor/keywords", "Keywords"},
-		{"/api/v1/monitor/recent", "RecentKeywords"},
-		{"/api/v1/monitor/rankings", "Rankings"},
+		{"/api/v1/web/monitor/storage", "Storage"},
+		{"/api/v1/web/monitor/access", "Access"},
+		{"/api/v1/web/monitor/keywords", "Keywords"},
+		{"/api/v1/web/monitor/recent", "RecentKeywords"},
+		{"/api/v1/web/monitor/rankings", "Rankings"},
 	}
 
 	for _, ep := range endpoints {

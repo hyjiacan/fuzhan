@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -20,7 +21,8 @@ import (
 
 // collectHardware 采集服务器硬件配置（CPU/内存/磁盘/网卡）。
 // 该信息变化频率极低，由采集器低频刷新并缓存，避免每次采样都做昂贵的系统调用。
-func collectHardware() Hardware {
+// ctx 用于在关闭时中断外部进程探测（Windows 下的 Get-NetAdapter）。
+func collectHardware(ctx context.Context) Hardware {
 	hw := Hardware{Disks: []DiskInfo{}, NICs: []NICInfo{}}
 
 	if info, err := host.Info(); err == nil {
@@ -38,7 +40,7 @@ func collectHardware() Hardware {
 	hw.CPU = collectCPUInfo()
 	hw.Memory = collectMemoryInfo()
 	hw.Disks, hw.DiskTotal = collectDiskInfo()
-	hw.NICs = collectNICInfo()
+	hw.NICs = collectNICInfo(ctx)
 	return hw
 }
 
@@ -125,13 +127,13 @@ func collectDiskInfo() ([]DiskInfo, uint64) {
 
 // collectNICInfo 采集物理网卡列表（名称、MAC、MTU、链路速率）。
 // 跳过回环网卡与无 MAC 的虚拟接口，避免列表被无意义条目占满。
-func collectNICInfo() []NICInfo {
+func collectNICInfo(ctx context.Context) []NICInfo {
 	ifaces, err := gnet.Interfaces()
 	if err != nil {
 		utils.Warn("采集网卡信息失败", utils.Err(err))
 		return []NICInfo{}
 	}
-	speeds := nicLinkSpeeds()
+	speeds := nicLinkSpeeds(ctx)
 	list := make([]NICInfo, 0, len(ifaces))
 	for _, iface := range ifaces {
 		if isLoopbackFlags(iface.Flags) || iface.HardwareAddr == "" {
@@ -159,12 +161,12 @@ func isLoopbackFlags(flags []string) bool {
 
 // nicLinkSpeeds 探测各网卡链路速率（Mbps），无法探测的网卡不出现在结果中。
 // 采用平台专用方式：Linux 读 sysfs，Windows 调用 Get-NetAdapter；其它平台返回空。
-func nicLinkSpeeds() map[string]int {
+func nicLinkSpeeds(ctx context.Context) map[string]int {
 	switch runtime.GOOS {
 	case "linux":
 		return linuxNICLinkSpeeds()
 	case "windows":
-		return windowsNICLinkSpeeds()
+		return windowsNICLinkSpeeds(ctx)
 	default:
 		return map[string]int{}
 	}
@@ -194,9 +196,10 @@ func linuxNICLinkSpeeds() map[string]int {
 
 // windowsNICLinkSpeeds 通过 PowerShell Get-NetAdapter 读取网卡链路速率。
 // LinkSpeed 形如 "1 Gbps" / "100 Mbps" / "2.5 Gbps"，解析为 Mbps。
-func windowsNICLinkSpeeds() map[string]int {
+// ctx 取消时立即终止子进程；另设 8 秒兜底超时，避免探测长时间阻塞采集循环。
+func windowsNICLinkSpeeds(ctx context.Context) map[string]int {
 	result := map[string]int{}
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command",
 		"Get-NetAdapter | Select-Object -Property Name,LinkSpeed | ConvertTo-Json -Compress")
 	cmd.SysProcAttr = hiddenWindowAttr()
 	done := make(chan struct{})
