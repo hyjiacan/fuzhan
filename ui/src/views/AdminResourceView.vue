@@ -3,16 +3,16 @@
     <div class="header-section">
       <div class="header-left">
         <h2>服务器资源监控</h2>
-        <p class="description">服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量（实时 + 历史）</p>
+        <p class="description">服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量</p>
       </div>
       <div class="header-right">
         <el-tag v-if="!enabled" type="warning">资源监控未启用</el-tag>
         <el-tag v-else :type="collectorRunning ? 'success' : 'info'" effect="light">
           {{ collectorRunning ? '采集运行中' : '等待首帧' }}
         </el-tag>
-        <el-tag v-if="enabled && realtimeMode" type="success" effect="plain" size="small">
+        <!-- <el-tag v-if="enabled && realtimeMode" type="success" effect="plain" size="small">
           {{ realtimeMode === 'sse' ? '实时推送' : '轮询' }}
-        </el-tag>
+        </el-tag> -->
         <el-button type="primary" size="small" :loading="loading" @click="refreshAll">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -797,17 +797,6 @@ onUnmounted(() => {
 
 .admin-resource {
   padding: @spacing-md @spacing-lg;
-
-  .header-section {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 16px;
-
-    h2 { margin: 0 0 4px; font-size: 20px; color: @text-color; }
-    .description { margin: 0; color: @text-color-secondary; font-size: 13px; }
-    .header-right { display: flex; align-items: center; gap: 8px; }
-  }
 
   .enable-tip { margin-bottom: 16px; }
 

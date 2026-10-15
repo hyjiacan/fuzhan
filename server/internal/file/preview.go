@@ -1,6 +1,8 @@
 package file
 
 import (
+	"encoding/hex"
+	"hash"
 	"io"
 	"mime"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"strings"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -225,4 +228,163 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", result)
+}
+
+// FileChecksumRequest 计算文件校验值请求：
+// - public：需 rootName + path（相对根目录的路径）
+// - private / temp：需 code（私有分享码 / 临时访问码）
+// algorithms 为 md5/sha1/sha256 的任意子集
+type FileChecksumRequest struct {
+	StorageType string   `json:"storageType"`
+	RootName    string   `json:"rootName"`
+	Path        string   `json:"path"`
+	Code        string   `json:"code"`
+	Algorithms  []string `json:"algorithms" binding:"required"`
+}
+
+// ComputeFileChecksum 计算已上传文件在服务器上的校验值（md5/sha1/sha256，可多选）。
+// 与 URL 上传任务的校验值能力一致：文件已落盘在服务器，按所选算法单次流式读取计算，
+// 结果仅返回给调用方，不落库。支持 public/private/temp 三种存储。
+func (h *PreviewHandler) ComputeFileChecksum(c *gin.Context) {
+	var req FileChecksumRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+		return
+	}
+	if len(req.Algorithms) == 0 {
+		response.HandleBadRequest(c, "请至少选择一种校验算法", nil)
+		return
+	}
+
+	fullPath, ok := resolveStoredFilePath(c, &req)
+	if !ok {
+		return
+	}
+
+	info, err := os.Stat(fullPath)
+	if err != nil || info.IsDir() {
+		response.HandleBadRequest(c, "文件不存在", nil)
+		return
+	}
+
+	// 校验算法白名单并按去重后的顺序构造哈希器
+	hashers := make(map[string]hash.Hash, len(req.Algorithms))
+	writers := make([]io.Writer, 0, len(req.Algorithms))
+	for _, algo := range req.Algorithms {
+		name := strings.ToLower(strings.TrimSpace(algo))
+		if _, exists := hashers[name]; exists {
+			continue
+		}
+		newHash, ok := supportedChecksumAlgorithms[name]
+		if !ok {
+			response.HandleBadRequest(c, "不支持的校验算法: "+algo, nil)
+			return
+		}
+		hs := newHash()
+		hashers[name] = hs
+		writers = append(writers, hs)
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		response.HandleBadRequest(c, "读取文件失败", nil)
+		return
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(io.MultiWriter(writers...), file); err != nil {
+		response.HandleError(c, http.StatusInternalServerError, 500, "计算校验值失败: "+err.Error(), nil)
+		return
+	}
+
+	checksums := make(map[string]string, len(hashers))
+	for name, hs := range hashers {
+		checksums[name] = hex.EncodeToString(hs.Sum(nil))
+	}
+
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{"checksums": checksums})
+}
+
+// resolveStoredFilePath 依据存储类型把请求解析为服务器上的物理文件路径。
+// 解析失败时已写入响应，返回 ok=false。
+func resolveStoredFilePath(c *gin.Context, req *FileChecksumRequest) (string, bool) {
+	switch req.StorageType {
+	case "private":
+		if !isValidShareCode(req.Code) {
+			response.HandleBadRequest(c, "无效的分享码格式", nil)
+			return "", false
+		}
+		db := appconfig.GetDB()
+		if db == nil {
+			response.HandleError(c, http.StatusInternalServerError, 500, "服务暂不可用", nil)
+			return "", false
+		}
+		rec, err := resolveShareCodeRecord(db, req.Code, true)
+		if err != nil {
+			response.HandleNotFound(c, "文件不存在")
+			return "", false
+		}
+		basePath := appconfig.GlobalConfig.Storage.Private.Path
+		p, err := privateFileRealPath(basePath, rec.OwnerID, rec)
+		if err != nil {
+			utils.HandleForbidden(c, "无权访问此文件")
+			return "", false
+		}
+		return p, true
+
+	case "temp":
+		db := appconfig.GetDB()
+		if db == nil {
+			response.HandleError(c, http.StatusInternalServerError, 500, "服务暂不可用", nil)
+			return "", false
+		}
+		var tf models.TempFile
+		if err := db.Where("code = ?", strings.ToUpper(strings.TrimSpace(req.Code))).First(&tf).Error; err != nil {
+			response.HandleNotFound(c, "文件不存在")
+			return "", false
+		}
+		if utils.Now().After(tf.ExpiredAt) {
+			response.HandleBadRequest(c, "文件已过期", nil)
+			return "", false
+		}
+		basePath := appconfig.GlobalConfig.Storage.Temp.Path
+		if basePath == "" || !isPathUnderRoot(basePath, tf.FilePath) {
+			utils.HandleForbidden(c, "无权访问此文件")
+			return "", false
+		}
+		return tf.FilePath, true
+
+	default: // public
+		if req.RootName == "" {
+			response.HandleBadRequest(c, "缺少根目录", nil)
+			return "", false
+		}
+		validator := utils.NewPathValidatorWithRoots(req.RootName, appconfig.RootNames)
+		if validator == nil {
+			response.HandleBadRequest(c, "无效的根目录", nil)
+			return "", false
+		}
+		fullPath := validator.Join(strings.TrimPrefix(req.Path, "/"))
+		if err := validator.Validate(fullPath); err != nil {
+			utils.HandleForbidden(c, "路径越权访问")
+			return "", false
+		}
+		return fullPath, true
+	}
+}
+
+// isPathUnderRoot 判断物理路径是否位于指定根目录内（防越界）。
+func isPathUnderRoot(root, p string) bool {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	absPath, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	if absPath == absRoot {
+		return true
+	}
+	return strings.HasPrefix(absPath, absRoot+string(os.PathSeparator))
 }

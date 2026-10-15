@@ -1,8 +1,10 @@
 <template>
   <div class="admin-api-key">
     <div class="header-section">
-      <h2>API Key 管理</h2>
-      <p class="description">管理 Open API 访问密钥，用于外部程序访问</p>
+      <div class="header-left">
+        <h2>API Key 管理</h2>
+        <p class="description">管理 Open API 访问密钥，用于外部程序访问</p>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
@@ -428,22 +430,11 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style lang="less" scoped>
+@import '@/styles/variables.less';
+
 .admin-api-key {
   padding: 24px;
-}
-.header-section {
-  margin-bottom: 20px;
-}
-.header-section h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-}
-.description {
-  color: @text-color-secondary;
-  margin: 4px 0 0;
-  font-size: 14px;
 }
 .stat-card :deep(.el-card__body),
 .stat-card .stat-content {

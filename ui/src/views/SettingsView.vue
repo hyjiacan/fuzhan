@@ -1,13 +1,15 @@
 <template>
   <div class="settings-view">
-    <div class="page-head">
-      <div class="title-wrap">
+    <div class="header-section">
+      <div class="header-left">
         <h2>系统设置</h2>
         <p class="description">管理系统配置和参数调整</p>
       </div>
-      <div class="dirty-tip" v-if="isDirty" @click="showChanges = true">
-        <span class="dot"></span>有未保存的更改（{{ changeList.length }} 项）
-        <span class="dirty-link">查看更改</span>
+      <div class="header-right">
+        <div class="dirty-tip" v-if="isDirty" @click="showChanges = true">
+          <span class="dot"></span>有未保存的更改（{{ changeList.length }} 项）
+          <span class="dirty-link">查看更改</span>
+        </div>
       </div>
     </div>
 
@@ -708,7 +710,7 @@ const doSaveSettings = async () => {
             ftpPort: optionsRes.data.ftp?.port ?? 2121,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
-            anonymousUsername: optionsRes.data.account?.anonymous?.username || 'public'
+            anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || 'public'
           })
         }
       } catch (e) {
@@ -975,11 +977,11 @@ onMounted(() => {
 
   .actions-bar {
     margin-top: @spacing-lg;
-    padding: 16px;
+    padding: 10px;
     background: @bg-color-secondary;
     border-radius: @border-radius-lg;
     position: sticky;
-    bottom: 16px;
+    bottom: 0;
     z-index: 100;
     box-shadow: @shadow-md;
   }

@@ -317,7 +317,7 @@ fuzhan/                              # 项目根目录
 | `TempFile` | 临时文件（码/文件名/大小/IP/目录/下载计数） |
 | `UploadSession` | 上传会话（文件名/分片信息/校验和/目标类型/状态） |
 | `UploadedChunk` | 已上传分片（会话ID/索引/校验和/大小） |
-| `UploadRecord` | 上传记录（路径/类型/IP/用户/操作类型/搜索关键词） |
+| `UploadRecord` | 上传任务（路径/类型/IP/用户/操作类型/搜索关键词） |
 | `URLDownloadTask` | URL 下载任务（URL/状态/存储类型/是否支持断点续传） |
 | `Notification` | 通知（用户ID/任务ID/消息/是否已读） |
 | `ApiKey` | API Key（名称/密钥/过期时间/IP 限制） |

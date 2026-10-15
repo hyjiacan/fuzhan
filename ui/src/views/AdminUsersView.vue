@@ -1,8 +1,10 @@
 <template>
   <div class="admin-users-view">
     <div class="header-section">
-      <h2>用户管理</h2>
-      <p class="description">管理系统用户，重置密码等操作</p>
+      <div class="header-left">
+        <h2>用户管理</h2>
+        <p class="description">管理系统用户，重置密码等操作</p>
+      </div>
     </div>
 
     <el-card class="filter-card" shadow="never">
@@ -347,22 +349,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 8px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .table-card {
     .table-v2-wrap {

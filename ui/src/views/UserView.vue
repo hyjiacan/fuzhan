@@ -1,8 +1,10 @@
 <template>
   <div class="user-view">
     <div class="header-section">
-      <h2>个人中心</h2>
-      <p class="description">管理您的个人信息和存储空间</p>
+      <div class="header-left">
+        <h2>个人中心</h2>
+        <p class="description">管理您的个人信息和存储空间</p>
+      </div>
     </div>
 
     <el-row :gutter="24">
@@ -271,22 +273,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 16px;
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 8px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .el-card {
     transition: transform @transition-smooth, box-shadow @transition-smooth;

@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TaskService 任务管理服务
+// TaskService 系统作业服务
 type TaskService struct {
 	db *gorm.DB
 }

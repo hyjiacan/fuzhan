@@ -93,13 +93,21 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
 		rootNames := fh.getRootNameList()
 		var result []FileRecordInfo
 		for _, rn := range rootNames {
+			// 根目录无索引记录，直接读取文件系统 stat 获取修改时间
+			modifiedTime := ""
+			if rootPath, ok := appconfig.RootNames[rn]; ok {
+				if info, err := os.Stat(rootPath); err == nil {
+					modifiedTime = info.ModTime().Format("2006-01-02T15:04:05")
+				}
+			}
 			result = append(result, FileRecordInfo{
-				Name:     rn,
-				Type:     "directory",
-				Path:     rn,
-				FullPath: rn,
-				RootName: rn,
-				IsDir:    true,
+				Name:         rn,
+				Type:         "directory",
+				Path:         rn,
+				FullPath:     rn,
+				ModifiedTime: modifiedTime,
+				RootName:     rn,
+				IsDir:        true,
 			})
 		}
 		utils.HandleSuccess(c, http.StatusOK, "", result)

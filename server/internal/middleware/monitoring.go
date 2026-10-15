@@ -55,7 +55,8 @@ func MonitoringMiddleware() gin.HandlerFunc {
 		defer utils.AppMetrics.HTTPInFlightRequests.Dec()
 
 		// API 渠道：在 c.Next() 前捕获请求数据并包装响应写入器，
-		// 以便请求结束后记录"做了什么/数据/结果/异常"，而非只有一条访问记录。
+		// 以便请求结束后记录"做了什么/请求数据/异常"，而非只有一条访问记录。
+		// 响应到前端的具体数据不写入日志，避免敏感业务数据落盘。
 		var activity *apiActivity
 		var capture *bodyCaptureWriter
 		if isAPI {
@@ -93,12 +94,12 @@ func MonitoringMiddleware() gin.HandlerFunc {
 		case utils.IsWebDAVPath(path):
 			utils.WebDAVAccess("WebDAV请求", fields...)
 		case isAPI:
-			// 补充操作详情：做了什么（action）、请求数据、结果、异常消息
+			// 补充操作详情：做了什么（action）、请求数据、异常消息。
+			// 不记录响应到前端的具体数据（result），避免业务数据落盘。
 			activity.finish(capture)
 			fields = append(fields,
 				utils.String("action", method+" "+endpoint),
 				utils.String("request", activity.request),
-				utils.String("result", activity.result),
 			)
 			if activity.errMsg != "" {
 				fields = append(fields, utils.String("error", activity.errMsg))

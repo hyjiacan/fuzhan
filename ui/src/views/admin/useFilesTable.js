@@ -85,12 +85,12 @@ export const useFilesTable = (router) => {
   // 更新面包屑（与文件页面保持一致）
   const updateBreadcrumb = () => {
     if (!currentPath.value) {
-      breadcrumb.value = [{ name: '文件管理', path: '/' }]
+      breadcrumb.value = [{ name: '文件', path: '/' }]
       return
     }
     const parts = currentPath.value.split('/').filter(Boolean)
     breadcrumb.value = [
-      { name: '文件管理', path: '/' },
+      { name: '文件', path: '/' },
       ...parts.map((name, index) => ({
         name,
         path: '/' + parts.slice(0, index + 1).join('/')

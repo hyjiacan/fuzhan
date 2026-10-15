@@ -1,6 +1,34 @@
 <template>
   <div class="admin-files">
     <!-- Header -->
+    <div class="header-section">
+      <div class="header-left">
+        <h2>文件管理</h2>
+      </div>
+      <div class="header-right">
+        <div class="header-actions">
+          <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..."
+            class="search-input" clearable name="search-query" @keydown.enter="searchFiles" />
+          <el-button @click="handleRefresh" :loading="loading">刷新</el-button>
+          <el-button v-if="checkedRowKeys.length > 0" type="danger" @click="handleBatchDelete">
+            删除选中 ({{ checkedRowKeys.length }})
+          </el-button>
+          <el-divider direction="vertical" class="action-divider" />
+          <el-button type="primary" @click="handleScan" :loading="scanning" size="small">
+            触发全量扫描
+          </el-button>
+          <span v-if="scanProgress.status === 'running'" class="scan-progress-text">
+            扫描中: {{ scanProgress.scannedFiles }} / {{ scanProgress.totalFiles }}
+          </span>
+          <span v-else-if="scanProgress.status === 'completed'" class="scan-progress-text completed">
+            扫描完成
+          </span>
+          <span v-else-if="scanProgress.status === 'failed'" class="scan-progress-text failed">
+            扫描失败: {{ scanProgress.errorMessage }}
+          </span>
+        </div>
+      </div>
+    </div>
     <div class="content-header">
       <div class="breadcrumb-actions">
         <!-- 搜索状态显示（与 HomeView 一致） -->
@@ -21,28 +49,6 @@
             <span class="breadcrumb-link" @click="navigateToBreadcrumb(index)">{{ item.name }}</span>
           </el-breadcrumb-item>
         </el-breadcrumb>
-        <span v-else class="breadcrumb-root">文件管理</span>
-        <div class="header-actions">
-          <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..." size="small"
-            class="search-input" clearable name="search-query" @keydown.enter="searchFiles" />
-          <el-button size="small" @click="handleRefresh" :loading="loading">刷新</el-button>
-          <el-button v-if="checkedRowKeys.length > 0" size="small" type="danger" @click="handleBatchDelete">
-            删除选中 ({{ checkedRowKeys.length }})
-          </el-button>
-          <el-divider direction="vertical" class="action-divider" />
-          <el-button size="small" type="primary" @click="handleScan" :loading="scanning">
-            触发全量扫描
-          </el-button>
-          <span v-if="scanProgress.status === 'running'" class="scan-progress-text">
-            扫描中: {{ scanProgress.scannedFiles }} / {{ scanProgress.totalFiles }}
-          </span>
-          <span v-else-if="scanProgress.status === 'completed'" class="scan-progress-text completed">
-            扫描完成
-          </span>
-          <span v-else-if="scanProgress.status === 'failed'" class="scan-progress-text failed">
-            扫描失败: {{ scanProgress.errorMessage }}
-          </span>
-        </div>
       </div>
       </div>
 
@@ -332,6 +338,7 @@ onUnmounted(() => {
   .scan-progress-text {
     font-size: @font-size-sm;
     color: @text-color-secondary;
+    word-break: keep-all;
 
     &.completed {
       color: @success-color;
@@ -363,7 +370,7 @@ onUnmounted(() => {
     }
   }
 
-  
+
 }
 
 .file-name-cell {

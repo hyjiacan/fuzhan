@@ -706,21 +706,6 @@ onUnmounted(() => {
   padding: 8px 2px;
   min-width: 0;
 }
-.header-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-}
-.header-left h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-.header-left .description {
-  margin: 0;
-  color: var(--el-text-color-placeholder);
-  font-size: 13px;
-}
 
 .el-card {
   /* 修复塌陷问题 */

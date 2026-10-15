@@ -28,7 +28,7 @@
             :fetch-suggestions="querySuggestions" :trigger-on-focus="false" placeholder="搜索文件..."
             clearable @select="onSuggestionSelect" @keydown.enter="searchFiles"
             @focus="searchInputFocused = true" @blur="searchInputFocused = false"
-            class="search-input" :style="searchInputWidth" size="large">
+            class="search-input" :style="searchInputWidth">
             <template #default="{ item }">
               <div class="suggest-item">
                 <span class="suggest-text">
@@ -40,7 +40,7 @@
               </div>
             </template>
           </el-autocomplete>
-          <el-button @click="searchFiles" size="large">
+          <el-button @click="searchFiles">
             搜索
           </el-button>
           <el-button @click="showUploadDialog" type="primary">

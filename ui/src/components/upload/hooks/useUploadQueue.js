@@ -1,5 +1,5 @@
 import { ref, computed, nextTick } from 'vue'
-import { FileRecordApi, DependencyApi, request } from '@/api'
+import { FileRecordApi, DependencyApi, FileApi, request } from '@/api'
 import { NumberUtils, xxh3Hash } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import { safeStorage } from '@/utils/storage'
@@ -124,7 +124,16 @@ export function useUploadQueue({
               remaining: saved.remaining || '',
               displayText: saved.displayText || '',
               rootName: saved.rootName,
-              uploadDir: saved.uploadDir
+              uploadDir: saved.uploadDir,
+              // 校验值：算法勾选、结果、加载/错误状态与服务器定位信息（仅内存回显，不落库）
+              checksumAlgorithms: [],
+              checksums: null,
+              checksumLoading: false,
+              checksumError: '',
+              checksumStorageType: '',
+              checksumRootName: '',
+              checksumPath: '',
+              checksumCode: ''
             }
             uploadQueue.value.push(queueItem)
             const statusText = restoreStatus === 'needFile' ? '，请重新选择文件' : (restoreStatus === 'paused' ? '（已暂停）' : '')
@@ -142,6 +151,45 @@ export function useUploadQueue({
 
   const calculateXXH3 = async (buffer) => xxh3Hash(buffer)
   const formatFileSize = (bytes) => NumberUtils.formatFileSize(bytes)
+
+  // 判定当前上传的存储类型（用于服务器端校验值定位）
+  const getStorageType = () => {
+    const url = getApiUrl('createSession') || ''
+    if (url.includes('/private/')) return 'private'
+    if (url.includes('/temp/')) return 'temp'
+    return 'public'
+  }
+
+  // 计算校验值：由服务器对已存储的文件计算（MD5/SHA1/SHA256），与 URL 上传一致
+  const computeChecksum = async (item) => {
+    const algorithms = item.checksumAlgorithms || []
+    if (algorithms.length === 0) {
+      message.warning('请至少选择一种校验算法')
+      return
+    }
+    if (!item.checksumStorageType) {
+      message.warning('该文件暂不支持计算校验值')
+      return
+    }
+    const payload = { storageType: item.checksumStorageType, algorithms }
+    if (item.checksumStorageType === 'public') {
+      payload.rootName = item.checksumRootName
+      payload.path = item.checksumPath
+    } else {
+      payload.code = item.checksumCode
+    }
+    item.checksumLoading = true
+    item.checksumError = ''
+    try {
+      const res = await FileApi.computeChecksum(payload)
+      item.checksums = res?.data?.checksums || null
+    } catch (e) {
+      item.checksumError = formatErrorMessage(e, '计算校验值失败')
+      message.error(item.checksumError)
+    } finally {
+      item.checksumLoading = false
+    }
+  }
 
   const scrollToQueueItem = (itemId) => {
     nextTick(() => {
@@ -170,7 +218,16 @@ export function useUploadQueue({
       depDescription: fileData.depDescription || '',
       showNotes: false,
       showDeps: false,
-      uploadDirPath: form.uploadDir
+      uploadDirPath: form.uploadDir,
+      // 校验值：算法勾选、结果、加载/错误状态与服务器定位信息（仅内存回显，不落库）
+      checksumAlgorithms: [],
+      checksums: null,
+      checksumLoading: false,
+      checksumError: '',
+      checksumStorageType: '',
+      checksumRootName: '',
+      checksumPath: '',
+      checksumCode: ''
     }
     uploadQueue.value.push(queueItem)
     emit('upload-change', uploadQueue.value.length)
@@ -303,6 +360,16 @@ export function useUploadQueue({
       nextItem.status = 'completed'
       nextItem.progress = 100
       removeUploadSession(nextItem.uploadId)
+      // 记录服务器端校验值定位信息：文件已落盘，校验值由服务器计算
+      const storageType = getStorageType()
+      nextItem.checksumStorageType = storageType
+      if (storageType === 'public') {
+        const dir = nextItem.uploadDir && nextItem.uploadDir !== '/' ? nextItem.uploadDir.replace(/^\/+/, '') : ''
+        nextItem.checksumRootName = nextItem.rootName || ''
+        nextItem.checksumPath = dir ? '/' + dir + '/' + nextItem.name : '/' + nextItem.name
+      } else {
+        nextItem.checksumCode = result?.code || ''
+      }
     } catch (e) {
       nextItem.status = 'failed'
       nextItem.error = formatErrorMessage(e, '上传失败')
@@ -615,6 +682,7 @@ export function useUploadQueue({
     startUpload,
     restoreUploadSessions,
     saveUploadSessions,
-    clearUploadSessions
+    clearUploadSessions,
+    computeChecksum
   }
 }

@@ -147,6 +147,34 @@
             </el-select>
           </div>
         </div>
+        <!-- 校验值区域：上传完成后可计算 MD5/SHA1/SHA256（文件需仍在内存中），与 URL 上传能力一致 -->
+        <div v-if="canComputeChecksum(item)" class="queue-item-checksum" :style="{ padding: '0 12px 8px' }">
+          <div class="checksum-controls">
+            <span class="checksum-hint">校验值:</span>
+            <el-checkbox-group v-model="item.checksumAlgorithms" size="small" :disabled="item.checksumLoading">
+              <el-checkbox v-for="algo in CHECKSUM_ALGORITHMS" :key="algo.value" :label="algo.value">{{ algo.label }}</el-checkbox>
+            </el-checkbox-group>
+            <el-button
+              size="small"
+              type="primary"
+              plain
+              :loading="item.checksumLoading"
+              :disabled="!item.checksumAlgorithms.length"
+              @click="handlers.computeChecksum(item)"
+            >
+              计算校验值
+            </el-button>
+            <el-button v-if="item.checksums" size="small" link type="primary" @click="copyAllChecksums(item)">全部复制</el-button>
+          </div>
+          <div v-if="item.checksums" class="checksum-results">
+            <div v-for="algo in CHECKSUM_ALGORITHMS" :key="algo.value" v-show="item.checksums[algo.value]" class="checksum-row">
+              <span class="checksum-label">{{ algo.label }}</span>
+              <span class="checksum-value">{{ item.checksums[algo.value] }}</span>
+              <el-button size="small" link type="primary" @click="copyChecksum(item, algo.value)">复制</el-button>
+            </div>
+          </div>
+          <div v-if="item.checksumError" class="queue-item-error">{{ item.checksumError }}</div>
+        </div>
       </template>
     </div>
   </div>
@@ -154,9 +182,12 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import { NumberUtils } from '@/utils'
 import { elTagType, getStatusText, getStatusTagType, DEP_RELATION_OPTIONS } from './constants'
 import { DeleteIcon } from './icons'
+import { CHECKSUM_ALGORITHMS } from './hooks/useUrlBatchUpload'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps({
   items: {
@@ -225,4 +256,23 @@ const cancelRename = () => {
 const formatFileSize = (bytes) => NumberUtils.formatFileSize(bytes)
 
 const depRelationOptions = DEP_RELATION_OPTIONS
+
+// 上传完成且已记录服务器定位信息时可计算校验值（校验值由服务器对已存储文件计算）
+const canComputeChecksum = (item) => item.status === 'completed' && (!!item.checksumPath || !!item.checksumCode)
+
+const copyChecksum = async (item, algo) => {
+  const text = item.checksums?.[algo]
+  if (!text) return
+  const ok = await copyToClipboard(text)
+  ok ? ElMessage.success('已复制') : ElMessage.error('复制失败')
+}
+
+const copyAllChecksums = async (item) => {
+  if (!item.checksums) return
+  const lines = CHECKSUM_ALGORITHMS
+    .filter(a => item.checksums[a.value])
+    .map(a => `${a.label}: ${item.checksums[a.value]}`)
+  const ok = await copyToClipboard(lines.join('\n'))
+  ok ? ElMessage.success('已复制') : ElMessage.error('复制失败')
+}
 </script>

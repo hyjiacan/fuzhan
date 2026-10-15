@@ -1,8 +1,10 @@
 <template>
   <div class="admin-uploads">
     <div class="header-section">
-      <h2>上传管理</h2>
-      <p class="description">管理僵尸文件和 URL 上传任务</p>
+      <div class="header-left">
+        <h2>上传任务</h2>
+        <p class="description">管理僵尸文件和 URL 上传任务</p>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab">
@@ -322,22 +324,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 0;
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .stat-card :deep(.el-card__body) {
     padding: 16px;

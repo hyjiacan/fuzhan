@@ -18,6 +18,7 @@ import (
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -39,7 +40,7 @@ func NewHandler(adminService *services.AdminService, db *gorm.DB, analytics *beh
 	}
 }
 
-// validRecordActions 记录管理支持的记录类型
+// validRecordActions 操作记录支持的记录类型
 var validRecordActions = map[string]bool{
 	"search":   true,
 	"upload":   true,

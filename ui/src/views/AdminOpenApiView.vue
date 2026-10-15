@@ -1,8 +1,10 @@
 <template>
   <div class="admin-openapi">
     <div class="header-section">
-      <h2>Open API 管理</h2>
-      <p class="description">管理 Open API 服务配置和访问密钥</p>
+      <div class="header-left">
+        <h2>Open API 管理</h2>
+        <p class="description">管理 Open API 服务配置和访问密钥</p>
+      </div>
     </div>
 
     <!-- OpenAPI 服务配置 -->
@@ -506,22 +508,6 @@ onUnmounted(() => {
 
 .admin-openapi {
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 24px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .field-hint {
     font-size: 12px;

@@ -22,7 +22,7 @@ func readLogFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-// TestAPIActivityLogging 验证 API 访问日志包含"做了什么/数据/结果/异常"，且敏感字段脱敏。
+// TestAPIActivityLogging 验证 API 访问日志包含"做了什么/请求数据/异常"，且不记录响应到前端的具体数据。
 func TestAPIActivityLogging(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	utils.InitMetrics()
@@ -76,8 +76,8 @@ func TestAPIActivityLogging(t *testing.T) {
 	utils.Sync()
 	content := readLogFile(t, filepath.Join(dir, "api.log"))
 
-	// 做了什么 + 请求数据 + 结果字段
-	for _, want := range []string{"API操作", "/api/v1/echo", "报告.pdf", `"action"`, `"request"`, `"result"`} {
+	// 做了什么 + 请求数据
+	for _, want := range []string{"API操作", "/api/v1/echo", "报告.pdf", `"action"`, `"request"`} {
 		if !strings.Contains(content, want) {
 			t.Errorf("api.log 缺少 %q\n%s", want, content)
 		}
@@ -86,12 +86,15 @@ func TestAPIActivityLogging(t *testing.T) {
 	if !strings.Contains(content, "无效的目标根目录") {
 		t.Errorf("api.log 未记录异常消息\n%s", content)
 	}
-	// 脱敏
+	// 请求数据脱敏
 	if strings.Contains(content, "p@ss") {
 		t.Errorf("请求中的 password 未脱敏\n%s", content)
 	}
-	if strings.Contains(content, "should-be-redacted") {
-		t.Errorf("响应中的 token 未脱敏\n%s", content)
+	// 响应到前端的具体数据不应写入日志（含其中的敏感字段）
+	for _, leaked := range []string{`"result"`, "should-be-redacted", `"id":7`} {
+		if strings.Contains(content, leaked) {
+			t.Errorf("响应数据不应写入日志，发现 %q\n%s", leaked, content)
+		}
 	}
 }
 

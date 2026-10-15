@@ -58,7 +58,7 @@ async function loadConfigAndCheckSetup() {
         ftpPort: d.ftp?.port ?? 2121,
         webdavEnabled: d.webdav?.enabled ?? false,
         openApiEnabled: d.openApi?.enabled ?? false,
-        anonymousUsername: d.account?.anonymous?.username || 'public'
+        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || 'public'
       })
       // 更新页面标题
       if (d.app?.name) {

@@ -633,3 +633,35 @@
     will-change: unset !important;
   }
 }
+
+// 管理页面的 header 布局
+.header-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+
+  .header-left {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .header-right {
+    padding-right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2 {
+    font-size: @font-size-xxl;
+    font-weight: 600;
+  }
+
+  .description {
+    margin: 0;
+    color: @text-color-secondary;
+    font-size: @font-size-base;
+  }
+}

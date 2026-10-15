@@ -17,7 +17,7 @@ func (s *Scanner) runScan(ctx context.Context, trigger string) {
 	startTime := utils.Now()
 	scanRecord := s.createScanRecord()
 
-	// 创建任务记录（供任务管理页面展示）
+	// 创建任务记录（供系统作业页面展示）
 	var taskID uint
 	if s.taskService != nil {
 		if task, err := s.taskService.CreateTask("scan", "全量扫描", trigger); err == nil {

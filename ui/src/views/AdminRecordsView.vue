@@ -2,7 +2,7 @@
   <div class="admin-records">
     <div class="header-section">
       <div class="header-left">
-        <h2>记录管理</h2>
+        <h2>操作记录</h2>
         <p class="description">查看公开文件的操作记录</p>
       </div>
       <div class="header-right">
@@ -259,7 +259,7 @@ const getFileIconClass = (fullPath) => {
   return `icon-filetype-${ext}`
 }
 
-// 记录管理页文件路径列：与"最近"页一致，把路径段拆分渲染，目录段可点击，
+// 操作记录页文件路径列：与"最近"页一致，把路径段拆分渲染，目录段可点击，
 // 但跳转目标是「文件管理」页（/admin/files/<目录>）而非公共文件页。
 const renderRecordPathCell = (row) => {
   const fullPath = row.fullPath || ''
@@ -498,36 +498,6 @@ watch(activeTab, () => {
   flex-direction: column;
   height: 100%;
   padding: @container-padding;
-
-  .header-section {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    gap: 16px;
-    flex-shrink: 0;
-
-    .header-left {
-      h2 {
-        margin: 0 0 8px 0;
-        font-size: @font-size-xxl;
-        font-weight: 600;
-      }
-
-      .description {
-        margin: 0;
-        color: @text-color-secondary;
-        font-size: @font-size-base;
-      }
-    }
-
-    .header-right {
-      display: flex;
-      gap: 8px;
-      flex-shrink: 0;
-      padding-top: 4px;
-    }
-  }
 
   .records-tabs {
     flex: 1 1 auto;

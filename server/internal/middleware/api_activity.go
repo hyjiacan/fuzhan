@@ -11,12 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// apiActivity 记录一次 API 请求的“做了什么 / 数据 / 结果 / 异常”。
+// apiActivity 记录一次 API 请求的“做了什么 / 请求数据 / 异常”。
 // 请求体仅捕获 JSON；响应体仅捕获 JSON。为便于排查不设长度上限，
 // 但仅缓存 JSON 响应，避免文件下载等大响应被整体驻留内存。
+// 响应到前端的具体数据（data）不记录，仅从响应中提取异常消息。
 type apiActivity struct {
 	request string // 请求数据（query + JSON body，已脱敏）
-	result  string // 响应结果（成功时的 data，已脱敏）
 	errMsg  string // 异常消息（失败时的响应 message）
 }
 
@@ -58,7 +58,7 @@ func startAPIActivity(c *gin.Context) (*apiActivity, *bodyCaptureWriter) {
 	return act, w
 }
 
-// finish 在 c.Next() 后调用：解析响应体，提取结果与异常消息。
+// finish 在 c.Next() 后调用：解析响应体，提取异常消息。
 func (a *apiActivity) finish(w *bodyCaptureWriter) {
 	// 仅解析 JSON 响应；文件下载等二进制响应只保留状态码，不做解析
 	if !isJSONContentType(w.Header().Get("Content-Type")) {
@@ -69,14 +69,12 @@ func (a *apiActivity) finish(w *bodyCaptureWriter) {
 		return
 	}
 	var resp struct {
-		Success bool            `json:"success"`
-		Message string          `json:"message"`
-		Data    json.RawMessage `json:"data"`
+		Success bool   `json:"success"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return
 	}
-	a.result = sanitizeJSON(resp.Data)
 	if !resp.Success {
 		a.errMsg = resp.Message
 	}

@@ -13,6 +13,7 @@ import (
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	xxh3pkg "fuzhan/pkg/xxh3"
+
 	"gorm.io/gorm"
 )
 
@@ -111,7 +112,7 @@ func (w *HashWorker) run(ctx context.Context) {
 
 	utils.Info("哈希计算任务开始")
 
-	// 创建任务记录（供任务管理页面展示）
+	// 创建任务记录（供系统作业页面展示）
 	var taskID uint
 	if w.taskService != nil {
 		if task, err := w.taskService.CreateTask("hash", "哈希计算", "auto"); err == nil {

@@ -570,7 +570,8 @@ const {
   selectFileForItem,
   startUpload,
   restoreUploadSessions,
-  saveUploadSessions
+  saveUploadSessions,
+  computeChecksum
 } = queue
 
 // 队列列表操作回调，下发给 UploadQueue 子组件
@@ -582,7 +583,8 @@ const uploadHandlers = {
   removeFromQueue,
   fetchDepSuggestions,
   handleDepSelect,
-  saveUploadSessions
+  saveUploadSessions,
+  computeChecksum
 }
 
 // ===== 剪贴板上传 =====
@@ -1030,6 +1032,54 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+  }
+
+  .queue-item-checksum {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px dashed @border-color-light;
+    margin-top: 4px;
+    padding-top: 6px;
+
+    .checksum-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .checksum-hint {
+      font-size: 12px;
+      color: @text-color-secondary;
+    }
+
+    .checksum-results {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .checksum-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .checksum-label {
+      flex-shrink: 0;
+      width: 56px;
+      color: @text-color-secondary;
+    }
+
+    .checksum-value {
+      flex: 1;
+      min-width: 0;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      color: @text-color;
+      word-break: break-all;
     }
   }
 

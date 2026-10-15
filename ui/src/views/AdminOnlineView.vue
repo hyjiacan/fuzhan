@@ -167,39 +167,13 @@ onUnmounted(() => {
   height: 100%;
   padding: @container-padding;
 
-  .header-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
+  .online-summary {
+    font-size: 14px;
+    color: @text-color-secondary;
 
-    .header-left {
-      h2 {
-        margin: 0;
-        font-size: @font-size-lg;
-      }
-
-      .description {
-        margin: 4px 0 0;
-        color: @text-color-placeholder;
-        font-size: @font-size-sm;
-      }
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-
-      .online-summary {
-        font-size: 14px;
-        color: @text-color-secondary;
-
-        b {
-          color: @primary-color;
-          font-size: 16px;
-        }
-      }
+    b {
+      color: @primary-color;
+      font-size: 16px;
     }
   }
 

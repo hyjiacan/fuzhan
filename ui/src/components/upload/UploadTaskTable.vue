@@ -4,7 +4,6 @@
       :data="tasks"
       size="small"
       stripe
-      max-height="400"
     >
       <el-table-column prop="fileName" label="文件名" show-overflow-tooltip />
       <el-table-column prop="_type" label="上传类型" width="105">
@@ -12,7 +11,7 @@
           <el-tag :type="elTagType(typeMap[row._type]?.type || 'default')" size="small">{{ typeMap[row._type]?.text || '-' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="progress" label="进度" width="200">
+      <el-table-column prop="progress" label="进度" width="120">
         <template #default="{ row }">
           <el-progress
             v-if="getProgress(row) !== null"
@@ -24,18 +23,18 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="elTagType(statusMap[row.status]?.type || 'default')" size="small">{{ statusMap[row.status]?.text || row.status }}</el-tag>
-        </template>
-      </el-table-column>
       <el-table-column prop="fileSize" label="文件大小" width="100">
         <template #default="{ row }">{{ row.fileSize ? formatSize(row.fileSize) : '-' }}</template>
       </el-table-column>
+      <el-table-column prop="completedAt" label="完成时间" width="155">
+        <template #default="{ row }">
+          <span>{{ TimeUtils.formatDateTime(row.completedAt) }} </span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
-          <el-button v-if="['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status)" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
-          <el-button v-if="['failed', 'cancelled'].includes(row.status)" size="small" type="primary" @click="handleRetry(row)">重试</el-button>
+        <el-button :disabled="!['failed', 'cancelled'].includes(row.status)" size="small" type="primary" @click="handleRetry(row)">重试</el-button>
+          <el-button :disabled="!['pending', 'downloading', 'uploading', 'in_progress'].includes(row.status)" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -54,6 +53,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadApi } from '../../api'
+import { TimeUtils } from '../../utils'
 
 const props = defineProps({
   type: { type: String, required: true },
@@ -202,6 +202,9 @@ function scheduleNextPoll() {
 }
 
 onMounted(async () => {
+  if (!props.visible) {
+    return
+  }
   await loadData()
 })
 

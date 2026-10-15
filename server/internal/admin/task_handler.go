@@ -11,12 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TaskHandler 任务管理处理器
+// TaskHandler 系统作业处理器
 type TaskHandler struct {
 	taskService *services.TaskService
 }
 
-// NewTaskHandler 创建任务管理处理器
+// NewTaskHandler 创建系统作业处理器
 func NewTaskHandler(taskService *services.TaskService) *TaskHandler {
 	return &TaskHandler{taskService: taskService}
 }

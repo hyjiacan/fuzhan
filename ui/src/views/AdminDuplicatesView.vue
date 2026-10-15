@@ -1,14 +1,16 @@
 <template>
   <div class="admin-duplicates">
     <div class="header-section">
-      <div class="header-row">
-        <span class="page-title">重复文件管理</span>
-        <el-button @click="loadDuplicates" :loading="dupLoading" link>
+      <div class="header-left">
+        <h2>重复文件管理</h2>
+      </div>
+      <div class="header-right">
+        <el-button @click="loadDuplicates" :loading="dupLoading">
           刷新
         </el-button>
-      </div>
-      <div class="summary-text" v-if="duplicateGroups.length > 0">
-        共 {{ dupTotal }} 组重复文件，按 xxh3 哈希分组
+        <div class="summary-text" v-if="duplicateGroups.length > 0">
+          共 {{ dupTotal }} 组重复文件，按 xxh3 哈希分组
+        </div>
       </div>
     </div>
 
@@ -232,29 +234,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding: @container-padding;
-
-  .header-section {
-    flex-shrink: 0;
-    margin-bottom: 16px;
-
-    .header-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-
-      .page-title {
-        font-size: @font-size-lg;
-        font-weight: 600;
-        color: @text-color;
-      }
-    }
-
-    .summary-text {
-      color: @text-color-secondary;
-      font-size: @font-size-sm;
-    }
-  }
 
   .content-section {
     flex: 1;

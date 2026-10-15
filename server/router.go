@@ -517,6 +517,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api *gin.RouterGroup) {
 		files.GET("/recent/carousel", recentHandler.GetRecentCarousel)
 		files.GET("/preview/*path", previewHandler.PreviewFile)    // 文件预览
 		files.GET("/preview-chunk/*path", previewHandler.GetChunk) // 读取文件分块
+		files.POST("/checksum", previewHandler.ComputeFileChecksum) // 计算已上传文件校验值（md5/sha1/sha256）
 		files.PUT("/records/:id/notes", indexHandler.PublicUpdateNotes)
 		files.GET("/records/:id/notes", indexHandler.PublicGetNotes)
 		files.POST("/dependencies", depHandler.CreateDependencyPublic)
@@ -690,7 +691,7 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/url-tasks/:id/retry", adminURLDownloadHandler.RetryURLTask)
 	admin.DELETE("/url-tasks/:id", adminURLDownloadHandler.DeleteURLTask)
 
-	// 任务管理路由
+	// 系统作业路由
 	admin.GET("/tasks", taskHandler.ListTasks)
 	admin.GET("/tasks/history", taskHandler.GetTaskHistory)
 	admin.GET("/tasks/:id", taskHandler.GetTask)

@@ -356,7 +356,7 @@ sessionId   chunkIndex   merge files
 - 支持 HTTP/FTP/FTPS 协议
 - 断点续传（服务端检测）
 - 通知推送（前端轮询）
-- 管理员任务管理
+- 管理员系统作业
 
 ### 4. 临时文件模块
 

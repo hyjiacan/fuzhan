@@ -1,8 +1,10 @@
 <template>
   <div class="user-password-section">
     <div class="header-section">
-      <h2>修改密码</h2>
-      <p class="description">修改您的登录密码</p>
+      <div class="header-left">
+        <h2>修改密码</h2>
+        <p class="description">修改您的登录密码</p>
+      </div>
     </div>
 
     <el-card class="password-card" style="max-width: 500px;">

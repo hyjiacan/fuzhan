@@ -1,8 +1,10 @@
 <template>
   <div class="admin-dashboard">
     <div class="header-section">
-      <h2>系统看板</h2>
-      <p class="description">系统资源和文件统计概览</p>
+      <div class="header-left">
+        <h2>系统看板</h2>
+        <p class="description">系统资源和文件统计概览</p>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
@@ -250,7 +252,7 @@ const getUsagePercent = (root) => {
 
 const formatTime = (time) => (time ? TimeUtils.formatDateTime(time) : '')
 
-// 跳转到记录管理页对应 tab
+// 跳转到操作记录页对应 tab
 const goToRecords = (tab) => {
   router.push({ path: '/admin/records', query: { tab } })
 }
@@ -369,22 +371,6 @@ onMounted(() => {
 .admin-dashboard {
   padding: @container-padding;
 
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
-
   .stat-grid :deep(.el-col) {
     display: flex;
   }
@@ -401,6 +387,11 @@ onMounted(() => {
 
   .stat-grid {
     margin-bottom: 16px;
+  }
+
+  .keyword-badge :deep(.el-badge__content) {
+    right: -3px;
+    top: -3px;
   }
 
   .dashboard-bottom {
@@ -511,6 +502,7 @@ onMounted(() => {
   }
 
   .storage-item {
+    margin-top: 8px;
     position: relative;
     overflow: hidden;
     border-radius: @border-radius-sm;

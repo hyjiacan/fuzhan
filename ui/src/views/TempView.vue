@@ -1,22 +1,16 @@
 <template>
   <div class="temp-files" @dragover.prevent @drop.prevent="handleGlobalDrop">
-    <!-- Breadcrumb -->
-    <div class="breadcrumb-row">
-      <div class="breadcrumb-left">
-        <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
-          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
-            <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
-          </el-breadcrumb-item>
-        </el-breadcrumb>
-        <span v-else class="breadcrumb-root">临时文件</span>
-        <span class="temp-description">
+    <div class="header-section">
+      <div class="header-left">
+        <h2>临时文件</h2>
+        <span class="temp-description description">
           <span>个人的临时文件，仅自己可见，文件到期自动删除，</span>
           <span>根据你的IP</span>
           <span class="ip-badge">{{ clientIP || '加载中...' }}</span>
           <span>执行数据隔离</span>
         </span>
       </div>
-      <div class="breadcrumb-right">
+      <div class="header-right">
         <span class="quota-badge">用量: {{ formatSize(used) }} / {{ quota > 0 ? formatSize(quota) : '无限制' }}</span>
       </div>
     </div>
@@ -26,13 +20,12 @@
         <div class="access-code-section">
           <el-input
             v-model="accessCodeInput"
-            placeholder="输入访问码快速访问文件"
-            size="small"
+            placeholder="输入访问码"
             style="width: 200px"
             @keydown.enter="handleAccessCode"
           >
             <template #append>
-              <el-button type="primary" size="small" @click="handleAccessCode" :loading="accessingCode">
+              <el-button type="primary" @click="handleAccessCode" :loading="accessingCode">
                 访问
               </el-button>
             </template>
@@ -44,7 +37,6 @@
             ref="searchInputRef"
             v-model="searchQuery"
             placeholder="搜索文件..."
-            size="small"
             class="search-input"
             clearable
           />
@@ -57,6 +49,16 @@
             上传文件
           </el-button>
         </div>
+    </div>
+    <!-- Breadcrumb -->
+    <div class="breadcrumb-row">
+      <div class="breadcrumb-left">
+        <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
+          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+            <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
+          </el-breadcrumb-item>
+        </el-breadcrumb>
+      </div>
     </div>
 
     <!-- 文件列表 -->

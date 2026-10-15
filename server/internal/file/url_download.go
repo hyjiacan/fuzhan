@@ -20,6 +20,7 @@ import (
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/pathutils"
+
 	"github.com/zeebo/xxh3"
 )
 
@@ -294,7 +295,7 @@ func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTa
 
 // downloadFromURL 后台下载文件并记录进度。parentCtx 由调度器注入，用于取消/删除时中断下载。
 func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID string, downloadURL string, fileSize int64, filename string, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType) {
-	// 创建任务记录（供任务管理页面展示）
+	// 创建任务记录（供系统作业页面展示）
 	var taskRecordID uint
 	if h.taskSvc != nil {
 		if task, err := h.taskSvc.CreateTask("url_download", "URL下载: "+filename, "user"); err == nil {

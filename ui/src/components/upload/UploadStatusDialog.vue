@@ -2,13 +2,13 @@
   <el-dialog v-model="show" :close-on-click-modal="false" title="上传状态" width="1080px">
     <el-tabs v-model="activeTab">
       <el-tab-pane name="public" label="公共上传">
-        <UploadTaskTable type="public" :visible="show" />
+        <UploadTaskTable type="public" :visible="activeTab === 'public'" />
       </el-tab-pane>
       <el-tab-pane name="temp" label="临时上传">
-        <UploadTaskTable type="temp" :visible="show" />
+        <UploadTaskTable type="temp" :visible="activeTab === 'temp'" />
       </el-tab-pane>
       <el-tab-pane name="private" label="私有上传">
-        <UploadTaskTable type="private" :visible="show" />
+        <UploadTaskTable type="private" :visible="activeTab === 'private'" />
       </el-tab-pane>
     </el-tabs>
   </el-dialog>

@@ -231,6 +231,11 @@ export const FileApi = {
   previewChunk(path, chunkIndex) {
     const encodedPath = path.split('/').filter(Boolean).map(p => encodeURIComponent(p)).join('/')
     return request.get(`/files/preview-chunk/${encodedPath}`, { params: { chunk: chunkIndex } })
+  },
+
+  // 计算已上传文件校验值（由服务器对已存储文件计算；payload 含 storageType 及对应定位字段与 algorithms）
+  computeChecksum(payload) {
+    return request.post('/files/checksum', payload, { skipSuccessToast: true })
   }
 }
 
@@ -506,7 +511,7 @@ export const AdminApi = {
     return request.delete(`/admin/url-tasks/${id}`, { skipSuccessToast: true })
   },
 
-  // 任务管理
+  // 系统作业
   getTasks() {
     return request.get('/admin/tasks')
   },

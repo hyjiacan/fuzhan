@@ -1,8 +1,10 @@
 <template>
   <div class="admin-tasks">
     <div class="header-section">
-      <h2>任务管理</h2>
-      <p class="description">查看系统任务执行历史和当前状态</p>
+      <div class="header-left">
+        <h2>系统作业</h2>
+        <p class="description">查看系统任务执行历史和当前状态</p>
+      </div>
     </div>
 
     <!-- 活跃任务 -->
@@ -303,22 +305,6 @@ onMounted(() => {
 
 .admin-tasks {
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 24px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .history-header {
     display: flex;

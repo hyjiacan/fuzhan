@@ -1,8 +1,10 @@
 <template>
   <div class="user-storage-section">
     <div class="header-section">
-      <h2>存储空间</h2>
-      <p class="description">查看您的存储使用情况</p>
+      <div class="header-left">
+        <h2>存储空间</h2>
+        <p class="description">查看您的存储使用情况</p>
+      </div>
     </div>
 
     <el-row :gutter="24">

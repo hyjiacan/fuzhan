@@ -649,7 +649,7 @@ func (fh *FileHandlers) CreateTextFile(c *gin.Context) {
 files.POST("/create-text", authMiddleware.AuthOptional(), fileHandlers.CreateTextFile)
 ```
 
-### Task 8: 注册上传管理相关路由
+### Task 8: 注册上传任务相关路由
 
 **Files:**
 - Modify: `server/main.go`
@@ -670,10 +670,10 @@ uploads.DELETE("/url-tasks/:taskId", authMiddleware.AuthOptional(), uploadSessio
 **Files:**
 - Modify: `ui/src/api/index.js`
 
-- [ ] **Step 1: 添加上传管理相关 API**
+- [ ] **Step 1: 添加上传任务相关 API**
 
 ```javascript
-// 上传管理
+// 上传任务
 export const listUploadSessions = (type, page = 1, pageSize = 50) =>
   get('/api/v1/uploads/sessions', { type, page, pageSize })
 
@@ -723,7 +723,7 @@ npm install marked
       <template #icon>
         <n-icon><svg><!-- 上传图标 --></svg></n-icon>
       </template>
-      上传管理
+      上传任务
       <n-badge :value="activeCount" :max="99" class="badge" />
     </n-button>
     <UploadManagerDialog v-model:show="showDialog" />

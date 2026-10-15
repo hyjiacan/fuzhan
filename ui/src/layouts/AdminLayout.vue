@@ -102,19 +102,14 @@ const menuGroups = [
     items: [
       { label: '文件管理', key: '/admin/files', icon: Folder },
       { label: '重复文件', key: '/admin/duplicates', icon: CopyDocument },
-      { label: '记录管理', key: '/admin/records', icon: Clock }
-    ]
-  },
-  {
-    title: '上传任务',
-    items: [
-      { label: '上传管理', key: '/admin/uploads', icon: UploadFilled },
-      { label: '任务管理', key: '/admin/tasks', icon: List }
-    ]
+      { label: '操作记录', key: '/admin/records', icon: Clock },
+      { label: '上传任务', key: '/admin/uploads', icon: UploadFilled },
+    ],
   },
   {
     title: '系统',
     items: [
+      { label: '系统作业', key: '/admin/tasks', icon: List },
       { label: '用户管理', key: '/admin/users', icon: User },
       { label: '安全事件', key: '/admin/security', icon: Warning },
       { label: 'OpenAPI', key: '/admin/openapi', icon: Key },

@@ -171,9 +171,9 @@
 | AdminDashboardView | `/admin/dashboard` | el-card, el-descriptions, el-progress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
 | AdminFilesView | `/admin/files`, `/admin/files/:path*` | el-breadcrumb, el-table-v2, el-tree-select | 管理员文件管理，支持搜索、重命名、移动、删除 |
 | AdminUsersView | `/admin/users` | el-table-v2, el-dialog, el-tag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
-| AdminTasksView | `/admin/tasks` | el-table-v2, el-button, el-progress | 任务管理，查看/执行定时任务 |
+| AdminTasksView | `/admin/tasks` | el-table-v2, el-button, el-progress | 系统作业，查看/执行定时任务 |
 | AdminUploadsView | `/admin/uploads` | el-table-v2, el-pagination | 上传管理，跟踪上传会话、清理残留 |
-| AdminRecordsView | `/admin/records` | el-table-v2, el-button | 记录管理，查看系统操作记录 |
+| AdminRecordsView | `/admin/records` | el-table-v2, el-button | 操作记录，查看系统操作记录 |
 | AdminDuplicatesView | `/admin/duplicates` | el-table-v2, el-tag | 重复文件管理，检测与清理重复文件 |
 | AdminApiKeyView / AdminOpenApiView | `/admin/openapi` | el-form, el-input, el-table-v2 | OpenAPI 与 API Key 管理 |
 | AdminOnlineView | `/admin/online` | el-table-v2, el-alert, el-button | 在线 IP 统计，展示当前在线 IP 及在线时长，自动刷新 |

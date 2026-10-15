@@ -77,6 +77,42 @@
                     </ul>
                   </div>
                 </el-tab-pane>
+              <el-tab-pane v-if="ftpEnabled" label="FTP" name="ftp">
+                  <div class="tab-scroll">
+                    <h4>入口</h4>
+                    <ul>
+                      <li>服务器地址：<code>{{ serverHost }}</code></li>
+                      <li>端口：<code>{{ ftpPort }}</code>（明文 FTP）</li>
+                    </ul>
+                    <h4>匿名访问</h4>
+                    <ul>
+                      <li>用户名：<code>anonymous</code>，或配置的匿名用户名 <code>{{ anonymousUsername }}</code></li>
+                      <li>密码：任意，留空即可</li>
+                      <li>匿名用户仅能访问公共共享目录，无法访问私有存储</li>
+                    </ul>
+                    <h4>示例</h4>
+                    <pre><code>ftp://{{ serverHost }}:{{ ftpPort }}</code></pre>
+                    <p class="cli-install">在文件管理器地址栏输入以上地址，匿名登录后即可浏览与下载文件。</p>
+                  </div>
+                </el-tab-pane>
+              <el-tab-pane v-if="webdavEnabled" label="WebDAV" name="webdav">
+                  <div class="tab-scroll">
+                    <h4>入口</h4>
+                    <ul>
+                      <li>服务器地址：<a :href="webdavUrl" target="_blank">{{ webdavUrl }}</a></li>
+                      <li>目录结构：<code>public/</code> 公共共享目录；<code>private/</code> 私有存储</li>
+                    </ul>
+                    <h4>匿名访问</h4>
+                    <ul>
+                      <li>无需用户名密码，直接连接即可作为匿名用户访问</li>
+                      <li>匿名用户仅能看到 <code>public/</code> 公共目录</li>
+                      <li>使用系统账号（HTTP Basic 认证）登录后可额外访问 <code>private/</code> 私有存储</li>
+                    </ul>
+                    <h4>示例</h4>
+                    <pre><code>curl -u 用户名:密码 -X PROPFIND {{ webdavUrl }}</code></pre>
+                    <p class="cli-install">在支持 WebDAV 的客户端（Windows 资源管理器「映射网络驱动器」、macOS Finder、RaiDrive 等）中填写以上地址即可挂载。</p>
+                  </div>
+                </el-tab-pane>
             </el-tabs>
           </div>
           <template #footer>
@@ -100,10 +136,6 @@
               <div class="info-row">
                 <span class="info-label">运行环境</span>
                 <span class="info-value">{{ aboutInfo.goVersion || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">技术栈</span>
-                <span class="info-value">Go + Gin · SQLite · Vue 3</span>
               </div>
               <div class="info-row">
                 <span class="info-label">服务状态</span>
@@ -149,6 +181,14 @@ import UploadStatusDialog from '@/components/upload/UploadStatusDialog.vue'
 const openApiEnabled = computed(() => store.state.config.openApiEnabled)
 
 const cliBase = computed(() => window.location.origin)
+
+// FTP / WebDAV 帮助信息（仅在对应对服务启用时展示 tab）
+const ftpEnabled = computed(() => store.state.config.ftpEnabled)
+const webdavEnabled = computed(() => store.state.config.webdavEnabled)
+const ftpPort = computed(() => store.state.config.ftpPort || 2121)
+const anonymousUsername = computed(() => store.state.config.anonymousUsername || 'public')
+const serverHost = computed(() => window.location.hostname || 'localhost')
+const webdavUrl = computed(() => `${window.location.origin}/api/v1/webdav`)
 
 const showUploadStatus = ref(false)
 

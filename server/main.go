@@ -401,7 +401,7 @@ func main() {
 	uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService)
 	taskService := services.NewTaskService(db)
 	// 启动对账：先把上一进程遗留的 pending/running 任务收尾为"进程重启中断"，
-	// 再启动扫描/哈希等任务，避免任务管理页残留"运行中"僵死记录。
+	// 再启动扫描/哈希等任务，避免系统作业页残留"运行中"僵死记录。
 	// 在此处调用安全：此时本进程尚未创建任何任务，DB 的 task_records 表已建。
 	if _, rerr := taskService.ReconcileInterruptedTasks(); rerr != nil {
 		utils.Warn("启动对账失败", utils.Err(rerr))

@@ -1,8 +1,10 @@
 <template>
   <div class="user-info-section">
     <div class="header-section">
-      <h2>个人信息</h2>
-      <p class="description">查看您的账号信息</p>
+      <div class="header-left">
+        <h2>个人信息</h2>
+        <p class="description">查看您的账号信息</p>
+      </div>
     </div>
 
     <el-card class="info-card">
