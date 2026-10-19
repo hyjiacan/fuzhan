@@ -19,12 +19,12 @@
       <el-row :gutter="16">
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="Client ID">
-            <el-input v-model="settings.auth.oauth2.clientId" placeholder="外部系统分配的客户端 ID" />
+            <el-input v-model="settings.auth.oauth2.clientId" placeholder="外部系统分配的客户端 ID" autocomplete="off" />
           </el-form-item>
         </el-col>
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="Client Secret">
-            <el-input v-model="settings.auth.oauth2.clientSecret" type="password" show-password placeholder="客户端密钥" />
+            <el-input v-model="settings.auth.oauth2.clientSecret" type="password" show-password placeholder="客户端密钥" autocomplete="new-password" />
           </el-form-item>
         </el-col>
       </el-row>

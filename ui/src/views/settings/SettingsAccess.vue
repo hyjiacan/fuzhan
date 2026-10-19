@@ -92,6 +92,28 @@
 
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
+        <template #header><span>上传频率限制</span></template>
+        <el-form label-width="120px">
+          <el-form-item label="频率限制">
+            <el-switch :model-value="uploadRateLimitEnabled" @update:model-value="setUploadRateLimitEnabled" />
+            <div class="field-hint">限制每个 IP 在窗口内的上传控制请求数（创建上传会话 / 完成上传 / URL 上传提交），分片数据传输不受限</div>
+          </el-form-item>
+          <template v-if="uploadRateLimitEnabled">
+            <el-form-item label="窗口(分钟)">
+              <el-input-number v-model="settings.upload.rateLimit.windowMinutes" :min="1" :max="10080" />
+              <div class="field-hint">在一个窗口内累计请求数，窗口结束后计数重置</div>
+            </el-form-item>
+            <el-form-item label="最大请求数">
+              <el-input-number v-model="settings.upload.rateLimit.maxRequests" :min="1" :max="100000" />
+              <div class="field-hint">单个 IP 在窗口内允许的最大上传控制请求数，超出后返回 429 暂时拒绝</div>
+            </el-form-item>
+          </template>
+        </el-form>
+      </el-card>
+    </el-col>
+
+    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
+      <el-card>
         <template #header><span>安全配置</span></template>
         <el-form label-width="120px">
           <el-form-item label="信任代理头">
@@ -134,6 +156,16 @@ const setLockEnabled = (val) => {
     props.settings.download.rateLimit.lockAfter = 20
   } else if (!val) {
     props.settings.download.rateLimit.lockAfter = 0
+  }
+}
+
+// 上传频率限制开关：maxRequests>0 表示启用
+const uploadRateLimitEnabled = computed(() => (props.settings.upload?.rateLimit?.maxRequests || 0) > 0)
+const setUploadRateLimitEnabled = (val) => {
+  if (val && props.settings.upload.rateLimit.maxRequests <= 0) {
+    props.settings.upload.rateLimit.maxRequests = 60
+  } else if (!val) {
+    props.settings.upload.rateLimit.maxRequests = 0
   }
 }
 

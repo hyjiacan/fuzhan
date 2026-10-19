@@ -9,6 +9,9 @@
 
 ### 新增
 
+- **自行注册开关**：新增配置 `account.allow_registration`（默认关闭），设置页「身份认证 → 账户」标签提供开关，保存即热生效；关闭时登录弹框隐藏「立即注册」入口，注册接口直接拒绝。(hyjiacan, 2026-10-19)
+- **上传频率限制**：新增配置 `upload.rate_limit.window_minutes` / `max_requests`（`max_requests=0` 表示不限制），按客户端 IP 在滑动窗口内限制上传控制面请求（创建会话 / 完成上传 / URL 上传提交），超出返回 429；分片数据传输不受限，阈值实时读取、保存即热生效。设置页「访问控制」新增「上传频率限制」卡片。(hyjiacan, 2026-10-19)
+- **磁盘分区列表接口**：新增 `GET /api/v1/web/config/partitions`（管理员），实时返回各分区挂载点、文件系统类型、总容量与剩余容量；设置页「应用信息 → 共享目录配置」每个目录条目新增「存储分区」下拉，选中后自动将挂载点填入目录路径。(hyjiacan, 2026-10-19)
 - URL 上传支持前端批量添加：默认单条输入，可展开多行文本框批量粘贴；添加时逐个 HEAD 预取文件名/大小，提示「目标已存在」「历史上传过」并在列表内去重。新增 `POST /api/v1/web/uploads/url-probe` 批量探测接口。(hyjiacan, 2026-10-09)
 - URL 上传改为后台持久化队列：任务落库后由全局调度器（`URLDownloadDispatcher`）按并行上限执行，所有用户共享并行数，支持单项或整体上传；关闭浏览器乃至进程重启后仍可继续执行（重启自动重新入队遗留任务）。(hyjiacan, 2026-10-09)
 - 新增配置 `upload.url_upload.max_concurrent`（默认 2），设置页「URL 上传配置」新增「并行上传数」控件；并行数实时读取，后台修改后无需重启即生效。(hyjiacan, 2026-10-09)
@@ -17,6 +20,8 @@
 
 ### 更改
 
+- **设置页防浏览器密码自动填充**：LDAP 绑定密码、OAuth2 Client Secret、MySQL/PostgreSQL 密码等输入框统一设置 `autocomplete="new-password"`，相邻用户名/绑定 DN 字段设置 `autocomplete="off"`，从源头阻断密码管理器自动填充误触发「配置变更」提示。(hyjiacan, 2026-10-19)
+- **登录与注册日志分离**：认证事件按类型分文件落盘，`auth.login` / `auth.oauth2.login` 写入 `login.log`，`auth.register` 写入 `register.log`，两者不再混入 `app.log`（`access_log: false` 时仍回退写入 `app.log`）。(hyjiacan, 2026-10-16)
 - **API 路径按作用域重组**：所有由界面（含管理后台）直接调用的接口统一迁移到 `/api/v1/web/` 前缀下，`/api/v1` 仅保留 `/ready`、`/metrics`、`/cli`、`/webdav` 等非界面渠道；根级 `/download/*path`、`/share/:code`、`/cli`、`/lite` 别名保持不变。前端 API 基址、后端路径解析与 URL 生成、测试与文档已同步更新。(hyjiacan, 2026-10-15)
 - `POST /api/v1/web/uploads/url` 改为入队模式：仅校验并落库，立即返回 `taskId`（`status=pending`），由后台队列调度实际传输。(hyjiacan, 2026-10-09)
 - URL 上传相关界面文案由「下载」统一改为「上传」；通用上传任务表状态「下载中」改为「上传中」。(hyjiacan, 2026-10-09)
@@ -24,6 +29,7 @@
 
 ### 修复
 
+- 修复保存配置时同 goroutine 自死锁：`SaveConfig` 持有配置写锁期间执行热更新钩子，而钩子内部经 `GetConfig` 再次申请读锁，导致保存请求永久挂起、后续所有读取配置的请求被阻塞；现配置落盘后先释放写锁再执行钩子。(hyjiacan, 2026-10-19)
 - 修复 URL 上传开始后左下角仍停留在「正在准备下载...」、状态提示不更新的问题。(hyjiacan, 2026-10-09)
 - 修复上传弹窗底部提示区在超长错误信息（如多次超时后含完整 URL 的网络错误）下撑破弹窗底部的问题：错误文本改为自动换行并限高滚动。(hyjiacan, 2026-10-09)
 - 修复「上传状态」弹框打开后未默认加载「公共上传」列表的问题（`el-tabs` 缺少 `v-model` 导致默认激活名与页签名不匹配，内容不渲染）。(hyjiacan, 2026-10-09)

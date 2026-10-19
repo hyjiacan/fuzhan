@@ -131,9 +131,16 @@ type TempFilesConfigDTO struct {
 
 // UploadConfigDTO 上传配置 DTO
 type UploadConfigDTO struct {
-	ChunkSize   int64        `json:"chunkSize"`
-	MaxFileSize int64        `json:"maxFileSize"`
-	URLUpload   URLUploadDTO `json:"urlUpload"`
+	ChunkSize   int64                `json:"chunkSize"`
+	MaxFileSize int64                `json:"maxFileSize"`
+	URLUpload   URLUploadDTO         `json:"urlUpload"`
+	RateLimit   UploadRateLimitDTO   `json:"rateLimit"`
+}
+
+// UploadRateLimitDTO 上传频率限制 DTO（按客户端 IP 统计，作用于上传控制面接口）
+type UploadRateLimitDTO struct {
+	WindowMinutes int `json:"windowMinutes"`
+	MaxRequests   int `json:"maxRequests"` // 0 = 不限制
 }
 
 // URLUploadDTO URL 上传配置 DTO
@@ -170,6 +177,7 @@ type PreviewConfigDTO struct {
 type AccountResponse struct {
 	Anonymous         AnonymousResponse `json:"anonymous"`
 	ReservedUsernames []string          `json:"reservedUsernames"`
+	AllowRegistration bool              `json:"allowRegistration"` // 是否允许用户自行注册
 }
 
 // AnonymousResponse 匿名用户 DTO
@@ -267,6 +275,7 @@ func (c *Config) ToDTO() ConfigDTO {
 				Username: c.Account.Anonymous.Username,
 			},
 			ReservedUsernames: c.Account.ReservedUsernames,
+			AllowRegistration: c.Account.AllowRegistration,
 		},
 		Server: ServerResponse{
 			Host: c.Server.Host,
@@ -321,6 +330,10 @@ func (c *Config) ToDTO() ConfigDTO {
 				InsecureSkipVerify: c.Upload.URLUpload.InsecureSkipVerify,
 				MaxConcurrent:      c.Upload.URLUpload.MaxConcurrent,
 				MaxRetries:         c.Upload.URLUpload.MaxRetries,
+			},
+			RateLimit: UploadRateLimitDTO{
+				WindowMinutes: c.Upload.RateLimit.WindowMinutes,
+				MaxRequests:   c.Upload.RateLimit.MaxRequests,
 			},
 		},
 		Download: DownloadConfigDTO{
@@ -418,6 +431,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 
 	cfg.Account.Anonymous.Username = dto.Account.Anonymous.Username
 	cfg.Account.ReservedUsernames = dto.Account.ReservedUsernames
+	cfg.Account.AllowRegistration = dto.Account.AllowRegistration
 
 	cfg.Database.Driver = dto.Database.Driver
 	cfg.Database.DSN = dto.Database.DSN
@@ -462,6 +476,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Upload.URLUpload.InsecureSkipVerify = dto.Upload.URLUpload.InsecureSkipVerify
 	cfg.Upload.URLUpload.MaxConcurrent = dto.Upload.URLUpload.MaxConcurrent
 	cfg.Upload.URLUpload.MaxRetries = dto.Upload.URLUpload.MaxRetries
+	cfg.Upload.RateLimit.WindowMinutes = dto.Upload.RateLimit.WindowMinutes
+	cfg.Upload.RateLimit.MaxRequests = dto.Upload.RateLimit.MaxRequests
 
 	// 下载限流
 	cfg.Download.RateLimit.WindowMinutes = dto.Download.RateLimit.WindowMinutes

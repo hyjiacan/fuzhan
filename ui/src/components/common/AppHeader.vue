@@ -153,7 +153,7 @@
         >
           登录
         </el-button>
-        <div v-if="privateStorageEnabled" class="auth-switch">
+        <div v-if="privateStorageEnabled && allowRegistration" class="auth-switch">
           <span class="auth-switch-text">还没有账号？</span>
           <el-button
             link
@@ -333,6 +333,11 @@ const privateStorageEnabled = computed(
   () => store.state.config.privateStorageEnabled !== false,
 );
 
+// 是否允许用户自行注册（后台开关，热生效）
+const allowRegistration = computed(
+  () => store.state.config.allowRegistration === true,
+);
+
 // Auth state - reactive to localStorage changes
 const authState = reactive({
   isLoggedIn: false,
@@ -430,7 +435,7 @@ const handleShowLoginDialog = () => {
 // 注册弹框事件处理
 const handleShowRegisterDialog = () => {
   updateAuthState();
-  if (!authState.isLoggedIn && privateStorageEnabled.value) {
+  if (!authState.isLoggedIn && privateStorageEnabled.value && allowRegistration.value) {
     showRegisterModal.value = true;
   }
 };

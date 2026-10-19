@@ -465,6 +465,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	configGroup.POST("", configHandler.SaveConfig)
 	configGroup.POST("/ldap/test", configHandler.TestLDAPConfig)
 	configGroup.POST("/oauth2/test", configHandler.TestOAuth2Config)
+	configGroup.GET("/partitions", configHandler.ListPartitions)
 
 	// 临时文件路由（基于IP，无需认证）
 	temp := web.Group("/temp")
@@ -479,24 +480,24 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 临时文件分片上传路由
 	tempUploads := web.Group("/temp/upload")
 	{
-		tempUploads.POST("/session", tempHandler.CreateTempSessionHandler)
+		tempUploads.POST("/session", middleware.UploadRateLimit(), tempHandler.CreateTempSessionHandler)
 		tempUploads.GET("/session/:uploadId", tempHandler.GetTempSessionHandler)
 		tempUploads.POST("/session/:uploadId/resume", tempHandler.ResumeTempSessionHandler)
 		tempUploads.DELETE("/session/:uploadId", tempHandler.CancelTempSessionHandler)
 		tempUploads.POST("/chunk", tempHandler.UploadTempChunkHandler)
-		tempUploads.POST("/finalize", tempHandler.FinalizeTempUploadHandler)
+		tempUploads.POST("/finalize", middleware.UploadRateLimit(), tempHandler.FinalizeTempUploadHandler)
 	}
 
 	// 上传会话路由（无需认证，支持断点续传）
 	uploads := web.Group("/uploads")
 	{
-		uploads.POST("/session", authMiddleware.AuthOptional(), uploadSessionHandler.CreateSession)
+		uploads.POST("/session", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.CreateSession)
 		uploads.GET("/session/:id", uploadSessionHandler.GetSession)
 		uploads.POST("/session/:id/resume", uploadSessionHandler.ResumeSession)
 		uploads.DELETE("/session/:id", uploadSessionHandler.CancelSession)
 		uploads.POST("/chunk", uploadSessionHandler.UploadChunk)
-		uploads.POST("/finalize", authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
-		uploads.POST("/url", authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL)          // 从URL上传（入队，后台队列调度）
+		uploads.POST("/finalize", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
+		uploads.POST("/url", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL)          // 从URL上传（入队，后台队列调度）
 		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs)        // 批量探测URL（文件名/存在性/历史）
 		uploads.GET("/url-task/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.GetURLTask) // URL任务进度查询
 		uploads.POST("/url_info", func(c *gin.Context) {

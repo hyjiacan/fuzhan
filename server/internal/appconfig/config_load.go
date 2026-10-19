@@ -36,10 +36,11 @@ func readConfig() {
 			AllowedExtensions []string                            `yaml:"allowed_extensions"`
 		} `yaml:"storage"`
 		Upload struct {
-			Enabled     *bool           `yaml:"enabled"` // 指针: nil=未设置, 按默认值 true
-			ChunkSize   string          `yaml:"chunk_size,omitempty"`
-			MaxFileSize string          `yaml:"max_file_size,omitempty"`
-			URLUpload   URLUploadConfig `yaml:"url_upload"`
+			Enabled     *bool                 `yaml:"enabled"` // 指针: nil=未设置, 按默认值 true
+			ChunkSize   string                `yaml:"chunk_size,omitempty"`
+			MaxFileSize string                `yaml:"max_file_size,omitempty"`
+			URLUpload   URLUploadConfig       `yaml:"url_upload"`
+			RateLimit   UploadRateLimitConfig `yaml:"rate_limit"`
 		} `yaml:"upload"`
 		Download  DownloadConfig    `yaml:"download"`
 		Preview   PreviewConfig     `yaml:"preview"`
@@ -160,6 +161,8 @@ func readConfig() {
 	if GlobalConfig.Upload.URLUpload.MaxRetries <= 0 {
 		GlobalConfig.Upload.URLUpload.MaxRetries = DefaultURLUploadMaxRetries
 	}
+	// 上传频率限制（max_requests=0 表示不限制）
+	GlobalConfig.Upload.RateLimit = tempConfig.Upload.RateLimit
 
 	// 下载限流配置（不配置 max_requests=0 表示不限制）
 	GlobalConfig.Download = tempConfig.Download

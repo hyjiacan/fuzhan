@@ -12,10 +12,16 @@ import (
 	appconfig "fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
 	"fuzhan/internal/middleware"
+	"fuzhan/internal/resource"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// ListPartitions 返回本机磁盘分区列表（含总容量/剩余容量），供设置页共享目录选择存储分区。
+func (h *Handler) ListPartitions(c *gin.Context) {
+	response.HandleSuccess(c, http.StatusOK, "", resource.ListPartitions())
+}
 
 // GetOptions 处理 /api/v1/web/options 接口（公开配置信息）
 func (h *Handler) GetOptions(c *gin.Context) {
@@ -23,6 +29,10 @@ func (h *Handler) GetOptions(c *gin.Context) {
 	resp := gin.H{
 		"app": gin.H{
 			"name": currentConfig.App.Name,
+		},
+		"account": gin.H{
+			// 注册开关：登录/注册入口据此决定是否展示「立即注册」
+			"allowRegistration": currentConfig.Account.AllowRegistration,
 		},
 		"privateStorage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
@@ -132,9 +142,10 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		return ok
 	}
 
-	// 加写锁保护配置并发修改
+	// 加写锁保护配置并发修改。
+	// 注意：RunOnSaveHooks 内部的钩子会通过 GetConfig 申请读锁，
+	// 绝不能持写锁跨钩子执行，否则同 goroutine RWMutex 自死锁。
 	appconfig.LockConfig()
-	defer appconfig.UnlockConfig()
 
 	// 记录现有根目录配额，避免保存时（前端不传递配额）把配额重置为 0
 	existingQuotas := map[string]int64{}
@@ -164,6 +175,9 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			}
 			updates.Add("account.reserved_usernames", reservedList)
 		}
+		// 注册开关：account 节提交即写入（bool 无"未设置"语义，关闭注册是合法目标状态）
+		appconfig.GlobalConfig.Account.AllowRegistration = req.Account.AllowRegistration
+		updates.Add("account.allow_registration", req.Account.AllowRegistration)
 	}
 
 	// —— 服务器配置 ——
@@ -327,6 +341,11 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 		appconfig.GlobalConfig.Upload.URLUpload.MaxRetries = maxRetries
 		updates.Add("upload.url_upload.max_retries", maxRetries)
+		// 上传频率限制（max_requests=0 表示不限制）
+		appconfig.GlobalConfig.Upload.RateLimit.WindowMinutes = req.Upload.RateLimit.WindowMinutes
+		appconfig.GlobalConfig.Upload.RateLimit.MaxRequests = req.Upload.RateLimit.MaxRequests
+		updates.Add("upload.rate_limit.window_minutes", req.Upload.RateLimit.WindowMinutes)
+		updates.Add("upload.rate_limit.max_requests", req.Upload.RateLimit.MaxRequests)
 	}
 
 	// —— 下载限流（max_requests=0 表示不限制）——
@@ -519,9 +538,12 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 
 	// 写入配置文件（使用启动时解析的真实路径，避免工作目录不同导致写入错误的文件）
 	if err := updates.Apply(appconfig.ConfigPath); err != nil {
+		appconfig.UnlockConfig()
 		response.HandleErrorCompat(c, http.StatusInternalServerError, "保存配置失败: "+err.Error(), nil)
 		return
 	}
+	// 配置变更已全部落定，先释放写锁再执行热更新钩子
+	appconfig.UnlockConfig()
 
 	utils.InitPreviewConfig(appconfig.GlobalConfig.Preview.AllowMimes, appconfig.GlobalConfig.Preview.AllowExts)
 	utils.InitMimeTable(appconfig.GlobalConfig.MimeTable)

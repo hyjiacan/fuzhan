@@ -122,6 +122,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	cfgG := web.Group("/config")
 	cfgG.GET("", dummy)
 	cfgG.POST("", dummy)
+	cfgG.GET("/partitions", dummy)
 
 	temp := web.Group("/temp")
 	temp.GET("/list", dummy)

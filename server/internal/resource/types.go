@@ -51,6 +51,7 @@ type DiskInfo struct {
 	Mountpoint string `json:"mountpoint"` // 挂载点
 	FSType     string `json:"fsType"`     // 文件系统类型
 	Total      uint64 `json:"total"`      // 总容量（字节）
+	Free       uint64 `json:"free"`       // 剩余容量（字节）
 }
 
 // NICInfo 单块网卡配置

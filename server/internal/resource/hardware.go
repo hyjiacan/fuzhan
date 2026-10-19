@@ -108,7 +108,7 @@ func collectDiskInfo() ([]DiskInfo, uint64) {
 	seen := make(map[string]bool)
 	var total uint64
 	for _, p := range parts {
-		if skipFSType[p.Fstype] {
+		if skipFSType[p.Fstype] || p.Mountpoint == "" {
 			continue
 		}
 		if seen[p.Device] {
@@ -118,11 +118,18 @@ func collectDiskInfo() ([]DiskInfo, uint64) {
 		item := DiskInfo{Device: p.Device, Mountpoint: p.Mountpoint, FSType: p.Fstype}
 		if u, err := disk.Usage(p.Mountpoint); err == nil {
 			item.Total = u.Total
+			item.Free = u.Free
 			total += u.Total
 		}
 		list = append(list, item)
 	}
 	return list, total
+}
+
+// ListPartitions 实时获取磁盘分区列表（含总容量与剩余容量），供设置页分区下拉使用。
+func ListPartitions() []DiskInfo {
+	list, _ := collectDiskInfo()
+	return list
 }
 
 // collectNICInfo 采集物理网卡列表（名称、MAC、MTU、链路速率）。

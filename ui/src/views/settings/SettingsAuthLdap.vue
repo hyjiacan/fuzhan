@@ -37,12 +37,12 @@
       <el-row :gutter="16">
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="绑定 DN">
-            <el-input v-model="settings.auth.ldap.bindDN" placeholder="服务账号，仅用于目录查询，可留空" />
+            <el-input v-model="settings.auth.ldap.bindDN" placeholder="服务账号，仅用于目录查询，可留空" autocomplete="off" />
           </el-form-item>
         </el-col>
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="绑定密码">
-            <el-input v-model="settings.auth.ldap.bindPassword" type="password" show-password placeholder="服务账号密码" />
+            <el-input v-model="settings.auth.ldap.bindPassword" type="password" show-password placeholder="服务账号密码" autocomplete="new-password" />
           </el-form-item>
         </el-col>
       </el-row>

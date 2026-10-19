@@ -183,10 +183,19 @@ type PublicStorageConfig struct {
 
 // UploadConfig 上传配置结构体
 type UploadConfig struct {
-	Enabled     bool            `yaml:"enabled"`                 // 是否允许上传到公共目录（默认 true）
-	ChunkSize   int64           `yaml:"chunk_size,omitempty"`    // 分片大小，默认为10MB
-	MaxFileSize int64           `yaml:"max_file_size,omitempty"` // 最大文件大小限制，默认为0（无限制）
-	URLUpload   URLUploadConfig `yaml:"url_upload"`              // URL上传配置
+	Enabled     bool                  `yaml:"enabled"`                 // 是否允许上传到公共目录（默认 true）
+	ChunkSize   int64                 `yaml:"chunk_size,omitempty"`    // 分片大小，默认为10MB
+	MaxFileSize int64                 `yaml:"max_file_size,omitempty"` // 最大文件大小限制，默认为0（无限制）
+	URLUpload   URLUploadConfig       `yaml:"url_upload"`              // URL上传配置
+	RateLimit   UploadRateLimitConfig `yaml:"rate_limit"`              // 上传频率限制配置
+}
+
+// UploadRateLimitConfig 上传频率限制配置（按客户端 IP 统计）
+// 作用于上传控制面接口（创建会话/完成上传/URL 上传提交），分片数据面请求不受限。
+// MaxRequests <= 0（或未配置）表示不限制；WindowMinutes 默认 1（分钟）。
+type UploadRateLimitConfig struct {
+	WindowMinutes int `yaml:"window_minutes,omitempty"` // 统计窗口（分钟），默认 1
+	MaxRequests   int `yaml:"max_requests,omitempty"`   // 窗口内每个 IP 最大上传操作数；0/未配置 = 不限制
 }
 
 // DownloadConfig 下载配置
@@ -518,6 +527,15 @@ func GetDownloadRateLimit() DownloadRateLimitConfig {
 	dl := GlobalConfig.Download.RateLimit
 	configMu.RUnlock()
 	return dl
+}
+
+// GetUploadRateLimit 返回上传频率限制配置（供上传限流器每个请求实时读取，
+// 支持配置热更新；MaxRequests <= 0 表示不限制）。
+func GetUploadRateLimit() UploadRateLimitConfig {
+	configMu.RLock()
+	ul := GlobalConfig.Upload.RateLimit
+	configMu.RUnlock()
+	return ul
 }
 
 // GetBackupsDir 获取备份目录

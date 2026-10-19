@@ -181,7 +181,8 @@ const settings = reactive({
   appName: '',
   account: {
     anonymous: { username: 'public' },
-    reservedUsernames: []
+    reservedUsernames: [],
+    allowRegistration: false
   },
   server: {
     host: '0.0.0.0',
@@ -217,7 +218,8 @@ const settings = reactive({
   upload: {
     chunkSize: 10485760,
     maxFileSize: 17179869184,
-    urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false, maxConcurrent: 2, maxRetries: 3 }
+    urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false, maxConcurrent: 2, maxRetries: 3 },
+    rateLimit: { windowMinutes: 1, maxRequests: 0 }
   },
   download: {
     rateLimit: { windowMinutes: 1, maxRequests: 0, lockAfter: 0, lockMinutes: 10 }
@@ -366,7 +368,8 @@ const loadSettings = async () => {
       }
       settings.account = {
         anonymous: { username: cfg.account?.anonymous?.username || 'public' },
-        reservedUsernames: cfg.account?.reservedUsernames || []
+        reservedUsernames: cfg.account?.reservedUsernames || [],
+        allowRegistration: cfg.account?.allowRegistration ?? false
       }
       settings.server.webdav = {
         enabled: cfg.server?.webdav?.enabled ?? false
@@ -403,6 +406,11 @@ const loadSettings = async () => {
         maxConcurrent: 2,
         maxRetries: 3,
         ...(settings.upload.urlUpload || {})
+      }
+      settings.upload.rateLimit = {
+        windowMinutes: 1,
+        maxRequests: 0,
+        ...(settings.upload.rateLimit || {})
       }
 
       settings.download = {
@@ -590,7 +598,8 @@ const doSaveSettings = async () => {
       app: { name: settings.appName },
       account: {
         anonymous: { username: settings.account.anonymous.username },
-        reservedUsernames: settings.account.reservedUsernames
+        reservedUsernames: settings.account.reservedUsernames,
+        allowRegistration: settings.account.allowRegistration
       },
       server: {
         host: settings.server.host,
@@ -710,6 +719,7 @@ const doSaveSettings = async () => {
             ftpPort: optionsRes.data.ftp?.port ?? 2121,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
+            allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
             anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || 'public'
           })
         }

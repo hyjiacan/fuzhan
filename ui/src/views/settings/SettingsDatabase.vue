@@ -39,11 +39,11 @@
           <div class="field-hint">MySQL 服务监听端口，默认 3306</div>
         </el-form-item>
         <el-form-item label="用户名" prop="database.mysqlUser">
-          <el-input v-model="settings.database.mysqlUser" :maxlength="64" placeholder="root" />
+          <el-input v-model="settings.database.mysqlUser" :maxlength="64" placeholder="root" autocomplete="off" />
           <div class="field-hint">连接数据库的账号，建议使用仅有该库读写权限的专用账号</div>
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="settings.database.mysqlPassword" :maxlength="128" type="password" placeholder="输入密码" show-password />
+          <el-input v-model="settings.database.mysqlPassword" :maxlength="128" type="password" placeholder="输入密码" show-password autocomplete="new-password" />
           <div class="field-hint">该账号对应的密码，仅用于连接数据库</div>
         </el-form-item>
         <el-form-item label="数据库名" prop="database.mysqlDatabase">
@@ -62,11 +62,11 @@
           <div class="field-hint">PostgreSQL 服务监听端口，默认 5432</div>
         </el-form-item>
         <el-form-item label="用户名" prop="database.postgresUser">
-          <el-input v-model="settings.database.postgresUser" :maxlength="64" placeholder="postgres" />
+          <el-input v-model="settings.database.postgresUser" :maxlength="64" placeholder="postgres" autocomplete="off" />
           <div class="field-hint">连接数据库的账号，建议使用仅有该库读写权限的专用账号</div>
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="settings.database.postgresPassword" :maxlength="128" type="password" placeholder="输入密码" show-password />
+          <el-input v-model="settings.database.postgresPassword" :maxlength="128" type="password" placeholder="输入密码" show-password autocomplete="new-password" />
           <div class="field-hint">该账号对应的密码，仅用于连接数据库</div>
         </el-form-item>
         <el-form-item label="数据库名" prop="database.postgresDatabase">

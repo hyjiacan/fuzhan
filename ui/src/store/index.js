@@ -42,6 +42,7 @@ const state = reactive({
     ftpPort: 2121,
     webdavEnabled: false,
     openApiEnabled: false,
+    allowRegistration: false,
     anonymousUsername: 'public'
   },
 

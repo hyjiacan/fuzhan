@@ -117,7 +117,16 @@ func LogOperation(c *gin.Context, operation, target string, err error) {
 	// 标记已记录审计日志，避免 middleware 重复记录
 	c.Set(auditKeyLogged, true)
 
-	utils.Info("操作审计", fields...)
+	// 登录 / 注册事件分流到独立日志文件（login.log / register.log），
+	// 便于分别审计与排查；其余操作仍写入应用日志（app.log）。
+	switch operation {
+	case "auth.login", "auth.oauth2.login":
+		utils.Login("操作审计", fields...)
+	case "auth.register":
+		utils.Register("操作审计", fields...)
+	default:
+		utils.Info("操作审计", fields...)
+	}
 }
 
 // getClientIP 从 Gin Context 获取客户端 IP

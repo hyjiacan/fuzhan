@@ -8,6 +8,7 @@ const FIELD_LABELS = {
   'account.anonymous': '匿名账户',
   'account.anonymous.username': '公开用户名',
   'account.reservedUsernames': '保留用户名',
+  'account.allowRegistration': '允许自行注册',
 
   server: '服务配置',
   'server.host': '监听地址',
@@ -75,6 +76,9 @@ const FIELD_LABELS = {
   'upload.urlUpload.allowedIPRanges': '允许 IP 网段',
   'upload.urlUpload.maxConcurrent': '并行上传数',
   'upload.urlUpload.maxRetries': '自动重试次数',
+  'upload.rateLimit': '上传频率限制',
+  'upload.rateLimit.windowMinutes': '窗口(分钟)',
+  'upload.rateLimit.maxRequests': '最大请求数',
 
   download: '下载限制',
   'download.rateLimit': '下载频率限制',

@@ -1,6 +1,26 @@
 <template>
   <div class="settings-auth">
     <el-tabs v-model="activeTab" class="auth-tabs">
+      <el-tab-pane name="account">
+        <template #label>
+          <span class="tab-label">账户</span>
+        </template>
+        <el-row :gutter="16">
+          <el-col :span="12" :sm="12" :xs="24">
+            <el-card>
+              <template #header><span>注册策略</span></template>
+              <el-form label-width="120px">
+                <el-form-item label="允许自行注册">
+                  <el-switch v-model="settings.account.allowRegistration" />
+                  <div class="field-hint">
+                    关闭后登录页不再显示「立即注册」入口，服务端同时拒绝注册请求；保存后立即生效，无需重启。
+                  </div>
+                </el-form-item>
+              </el-form>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
       <el-tab-pane name="ldap">
         <template #label>
           <span class="tab-label">LDAP</span>
@@ -38,5 +58,7 @@ const activeTab = ref('ldap')
   }
 
   .tab-label { font-size: 14px; }
+
+  .field-hint { color: @text-color-secondary; font-size: 12px; }
 }
 </style>

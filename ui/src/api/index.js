@@ -185,6 +185,11 @@ export const ConfigApi = {
 
   testOAuth2(oauth2Config) {
     return request.post('/config/oauth2/test', oauth2Config)
+  },
+
+  // 本机磁盘分区列表（含总容量/剩余容量），供共享目录选择存储分区
+  partitions() {
+    return request.get('/config/partitions')
   }
 }
 

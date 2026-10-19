@@ -48,9 +48,13 @@ type LoggerManager struct {
 	apiLogger    *zap.Logger
 	webdavLogger *zap.Logger
 	ftpLogger    *zap.Logger
-	mu           sync.RWMutex
-	config       LogConfig
-	logWriters   []io.Closer // 需要关闭的日志写入器
+	// 认证类事件日志按事件类型分离（access_log 开启时生效）：
+	// 登录事件写入 login.log，注册事件写入 register.log，便于分别审计与排查。
+	loginLogger    *zap.Logger
+	registerLogger *zap.Logger
+	mu             sync.RWMutex
+	config         LogConfig
+	logWriters     []io.Closer // 需要关闭的日志写入器
 }
 
 // globalLogManager 全局日志管理器指针。用 atomic.Pointer 保证热重载/关闭时
@@ -135,6 +139,12 @@ func (lm *LoggerManager) syncLoggers() {
 	}
 	if lm.ftpLogger != nil {
 		lm.ftpLogger.Sync()
+	}
+	if lm.loginLogger != nil {
+		lm.loginLogger.Sync()
+	}
+	if lm.registerLogger != nil {
+		lm.registerLogger.Sync()
 	}
 }
 
@@ -229,12 +239,19 @@ func (lm *LoggerManager) setup() error {
 		lm.apiLogger = lm.createChannelLogger("api.log", encoderConfig)
 		lm.webdavLogger = lm.createChannelLogger("webdav.log", encoderConfig)
 		lm.ftpLogger = lm.createChannelLogger("ftp.log", encoderConfig)
+
+		// 认证事件日志按事件类型分离：login.log / register.log。
+		// 登录与注册互不干扰，便于分别审计与排查。
+		lm.loginLogger = lm.createChannelLogger("login.log", encoderConfig)
+		lm.registerLogger = lm.createChannelLogger("register.log", encoderConfig)
 	} else {
 		lm.accessLogger = zap.NewNop()
 		// 渠道日志未启用时置 nil，调用方回退到 appLogger，避免日志丢失
 		lm.apiLogger = nil
 		lm.webdavLogger = nil
 		lm.ftpLogger = nil
+		lm.loginLogger = nil
+		lm.registerLogger = nil
 	}
 
 	lm.appLogger.Info("日志系统初始化完成",
@@ -367,6 +384,16 @@ func WebDAVAccessLogger() *zap.Logger {
 // FTPAccessLogger 获取 FTP 访问日志器（ftp.log）
 func FTPAccessLogger() *zap.Logger {
 	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.ftpLogger })
+}
+
+// LoginLogger 获取登录事件日志器（login.log）
+func LoginLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.loginLogger })
+}
+
+// RegisterLogger 获取注册事件日志器（register.log）
+func RegisterLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.registerLogger })
 }
 
 // IsWebDAVPath 判断请求路径是否属于 WebDAV 渠道。
@@ -515,6 +542,16 @@ func FTPError(msg string, fields ...zap.Field) {
 	ErrorLogger().Error(msg, fields...)
 }
 
+// Login 登录事件日志（写入 login.log）
+func Login(msg string, fields ...zap.Field) {
+	LoginLogger().Info(msg, fields...)
+}
+
+// Register 注册事件日志（写入 register.log）
+func Register(msg string, fields ...zap.Field) {
+	RegisterLogger().Info(msg, fields...)
+}
+
 // Sync 同步日志缓冲区
 func Sync() {
 	lm := globalLogManager.Load()
@@ -540,6 +577,12 @@ func Sync() {
 	}
 	if lm.ftpLogger != nil {
 		lm.ftpLogger.Sync()
+	}
+	if lm.loginLogger != nil {
+		lm.loginLogger.Sync()
+	}
+	if lm.registerLogger != nil {
+		lm.registerLogger.Sync()
 	}
 }
 

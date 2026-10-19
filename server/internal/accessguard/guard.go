@@ -7,9 +7,10 @@ import (
 	"fuzhan/internal/appconfig"
 )
 
-// 下载访问防护：基于 (scope, IP) 的滑动窗口频率限制 + 失败计数锁定。
-// 用于免认证的分享/临时下载接口，缓解在线暴力枚举与资源滥用。
-// 频率限制与锁定阈值均实时读取下载限流配置（appconfig.GetDownloadRateLimit），
+// 访问防护：基于 (scope, IP) 的滑动窗口频率限制 + 失败计数锁定。
+// 下载侧用于免认证的分享/临时下载接口，缓解在线暴力枚举与资源滥用；
+// 上传侧（AcquireUpload）用于上传控制面接口，缓解上传滥用。
+// 阈值均实时读取对应限流配置（appconfig.GetDownloadRateLimit / GetUploadRateLimit），
 // 支持配置热更新；MaxRequests<=0 表示不对请求频率做限制，LockAfter<=0 表示不锁定。
 
 // scope 常量
@@ -18,6 +19,7 @@ const (
 	SCOPE_TEMP   = "temp"   // 临时文件下载 /temp/:code/download
 	SCOPE_FTP    = "ftp"    // 匿名 FTP 下载（RETR）
 	SCOPE_WEBDAV = "webdav" // WebDAV（GET 下载限流 与 Basic Auth 失败锁定）
+	SCOPE_UPLOAD = "upload" // 上传控制面（创建会话/完成上传/URL 上传提交）
 )
 
 const (
@@ -91,7 +93,25 @@ func Acquire(scope, ip string) bool {
 	if cfg.MaxRequests <= 0 {
 		return true
 	}
-	windowDur := configWindow(cfg)
+	return acquireWithinWindow(scope, ip, cfg.MaxRequests, configWindow(cfg))
+}
+
+// AcquireUpload 上传控制面入口调用：按上传频率限制（upload.rate_limit）判断放行。
+// 与下载限流共享窗口机制，但阈值独立、无失败锁定语义。MaxRequests<=0 时直接放行。
+func AcquireUpload(ip string) bool {
+	cfg := appconfig.GetUploadRateLimit()
+	if cfg.MaxRequests <= 0 {
+		return true
+	}
+	return acquireWithinWindow(SCOPE_UPLOAD, ip, cfg.MaxRequests, uploadWindow(cfg))
+}
+
+// acquireWithinWindow 在 (scope, ip) 的滑动窗口内累计一次请求并判断是否超频。
+// 处于锁定期的请求直接拒绝（仅下载侧会产生锁定）。
+func acquireWithinWindow(scope, ip string, maxRequests int, windowDur time.Duration) bool {
+	if scope == "" || ip == "" {
+		return true
+	}
 
 	guardMu.Lock()
 	defer guardMu.Unlock()
@@ -102,7 +122,16 @@ func Acquire(scope, ip string) bool {
 		return false
 	}
 	rec.total++
-	return rec.total <= cfg.MaxRequests
+	return rec.total <= maxRequests
+}
+
+// uploadWindow 上传限流统计窗口（未配置或非法时回退默认值）
+func uploadWindow(cfg appconfig.UploadRateLimitConfig) time.Duration {
+	windowDur := time.Duration(cfg.WindowMinutes) * time.Minute
+	if windowDur <= 0 {
+		windowDur = defaultWindow
+	}
+	return windowDur
 }
 
 // IsLocked 返回该 (scope, IP) 当前是否处于锁定期（用于入口预检，不消耗配额）。

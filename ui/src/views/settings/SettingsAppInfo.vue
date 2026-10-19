@@ -17,6 +17,27 @@
         <template #header><span>共享目录配置</span></template>
         <div v-for="(dir, index) in props.settings.rootDirs" :key="index" class="dir-block">
           <el-form label-width="100px">
+            <el-form-item label="存储分区">
+              <el-select
+                v-model="partitionChoices[index]"
+                placeholder="选择分区以快速填充目录路径"
+                clearable
+                :loading="partitionsLoading"
+                style="width: 100%;"
+                @change="(val) => applyPartition(index, val)"
+              >
+                <el-option
+                  v-for="p in partitions"
+                  :key="p.device + '|' + p.mountpoint"
+                  :label="partitionLabel(p)"
+                  :value="p.mountpoint"
+                >
+                  <span>{{ p.mountpoint }}</span>
+                  <span class="option-usage">剩余 {{ formatSize(p.free) }} / 共 {{ formatSize(p.total) }}</span>
+                </el-option>
+              </el-select>
+              <div class="field-hint">选择分区后自动将挂载点填入目录路径，可再追加子目录；剩余空间为实时数据</div>
+            </el-form-item>
             <el-form-item label="目录路径">
               <el-input v-model="dir.path" :maxlength="1024" placeholder="目录路径" />
               <div class="field-hint">共享目录的绝对路径或相对路径</div>
@@ -39,9 +60,41 @@
 </template>
 
 <script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { ConfigApi } from '@/api'
+import { formatSize } from './useSettingsUtils'
+
 const props = defineProps({
   settings: { type: Object, required: true }
 })
+
+// 分区列表（实时容量）与每个目录条目当前选中的分区
+const partitions = ref([])
+const partitionsLoading = ref(false)
+const partitionChoices = reactive({})
+
+const loadPartitions = async () => {
+  partitionsLoading.value = true
+  try {
+    const resp = await ConfigApi.partitions()
+    partitions.value = resp.data || []
+  } catch (e) {
+    partitions.value = []
+  } finally {
+    partitionsLoading.value = false
+  }
+}
+
+onMounted(loadPartitions)
+
+const partitionLabel = (p) => `${p.mountpoint}（${p.fsType}）剩余 ${formatSize(p.free)} / 共 ${formatSize(p.total)}`
+
+// 选中分区后把挂载点填入目录路径（清空选择则不改动已填路径）
+const applyPartition = (index, mountpoint) => {
+  if (mountpoint && props.settings.rootDirs[index]) {
+    props.settings.rootDirs[index].path = mountpoint
+  }
+}
 
 const addDir = () => {
   props.settings.rootDirs.push({ path: '', name: '', uploadEnabled: true })
@@ -77,5 +130,12 @@ const removeDir = (index) => {
 .field-hint {
   color: @text-color-secondary;
   font-size: @font-size-xs;
+}
+
+.option-usage {
+  float: right;
+  color: @text-color-secondary;
+  font-size: @font-size-xs;
+  margin-left: 16px;
 }
 </style>
