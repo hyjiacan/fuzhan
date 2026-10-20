@@ -315,6 +315,13 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	}
 	defer file.Close()
 
+	fi, err := file.Stat()
+	if err != nil {
+		recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusFailed, "无法读取文件信息", rec.ID)
+		utils.HandleInternalServerError(c, "无法读取文件信息")
+		return
+	}
+
 	// 预览请求（preview=true）：内联返回供图片/PDF/文本预览，不写下载记录
 	if c.Query("preview") == "true" {
 		c.Header("Cache-Control", "private, max-age=3600")
@@ -322,9 +329,9 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 		if ct := mime.TypeByExtension(filepath.Ext(rec.FileName)); ct != "" {
 			c.Header("Content-Type", ct)
 		}
-		if _, err := io.Copy(c.Writer, file); err != nil {
-			utils.Error("文件预览失败", utils.Err(err))
-		}
+		// 使用 http.ServeContent 发送文件：自动支持 Range/206 断点续传，
+		// 输出 Accept-Ranges/Content-Range 头，非法区间返回 416。
+		http.ServeContent(c.Writer, c.Request, rec.FileName, fi.ModTime(), file)
 		return
 	}
 
@@ -337,10 +344,15 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	}
 	c.Header("Content-Type", contentType)
 	middleware.LogOperation(c, "private.download", rec.FileName, nil)
-	recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusSuccess, "", rec.ID)
-	if _, err := io.Copy(c.Writer, file); err != nil {
-		utils.Error("文件下载失败", utils.Err(err))
+	// 按续传语义过滤下载记录：断点续传/分段延续（Range 起始偏移 > 0 或尾部区间）、
+	// 非 GET 请求（如 HEAD 探活）不写入成功下载记录，与公开下载的
+	// IsNewDownloadRequest 判定保持一致，避免一次下载被拆成多条记录。
+	if services.IsNewDownloadRequest(c.Request) {
+		recordShareDownload(ip, rec.FileName, rec.FullPath, rec.FileSize, models.RecordStatusSuccess, "", rec.ID)
 	}
+	// 使用 http.ServeContent 发送文件：自动支持 Range/206 断点续传，
+	// 输出 Accept-Ranges/Content-Range 头，非法区间返回 416。
+	http.ServeContent(c.Writer, c.Request, rec.FileName, fi.ModTime(), file)
 }
 
 // recordShareDownload 记录一条私有分享下载（成功或失败）到操作记录表
