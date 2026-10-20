@@ -57,10 +57,16 @@ func TestToDTO_RoundTrip(t *testing.T) {
 			MaxFileSize: 17179869184,
 		},
 		Preview: PreviewConfig{
-			AllowMimes:    "text/*,image/*",
-			AllowExts:     "txt,md,log",
-			MaxInlineSize: "1M",
-			TextChunkSize: "100K",
+			Groups: PreviewGroupsConfig{
+				Image: PreviewGroupConfig{
+					Mimes: strPtr("image/*"),
+					Exts:  strPtr("png,jpg"),
+				},
+				Text: PreviewTextGroupConfig{
+					MaxInlineSize: "1M",
+					TextChunkSize: "100K",
+				},
+			},
 		},
 	}
 
@@ -136,9 +142,19 @@ func TestToDTO_RoundTrip(t *testing.T) {
 		t.Errorf("Upload = %+v", dto.Upload)
 	}
 
-	// Verify preview
-	if dto.Preview.AllowMimes != "text/*,image/*" {
-		t.Errorf("Preview.AllowMimes = %q", dto.Preview.AllowMimes)
+	// Verify preview（DTO 输出解析后的生效值）
+	if dto.Preview.Groups.Image.Mimes == nil || *dto.Preview.Groups.Image.Mimes != "image/*" {
+		t.Errorf("Preview.Groups.Image.Mimes = %v", dto.Preview.Groups.Image.Mimes)
+	}
+	if dto.Preview.Groups.Image.Exts == nil || *dto.Preview.Groups.Image.Exts != "png,jpg" {
+		t.Errorf("Preview.Groups.Image.Exts = %v", dto.Preview.Groups.Image.Exts)
+	}
+	if dto.Preview.Groups.Text.MaxInlineSize != "1M" || dto.Preview.Groups.Text.TextChunkSize != "100K" {
+		t.Errorf("Preview.Groups.Text sizes = %q/%q", dto.Preview.Groups.Text.MaxInlineSize, dto.Preview.Groups.Text.TextChunkSize)
+	}
+	// 未配置的分组回退内置默认表
+	if dto.Preview.Groups.Audio.Exts == nil || *dto.Preview.Groups.Audio.Exts == "" {
+		t.Errorf("Preview.Groups.Audio.Exts 应回退默认表，got %v", dto.Preview.Groups.Audio.Exts)
 	}
 
 	// Round-trip: DTO -> Config

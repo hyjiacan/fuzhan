@@ -23,6 +23,15 @@ func (h *Handler) ListPartitions(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", resource.ListPartitions())
 }
 
+// previewGroupOptions 输出单个预览分组的生效配置（开关 + 已解析默认值的列表）
+func previewGroupOptions(preview appconfig.PreviewConfig, name string) gin.H {
+	return gin.H{
+		"enabled": preview.IsGroupEnabled(name),
+		"mimes":   preview.GroupMimes(name),
+		"exts":    preview.GroupExts(name),
+	}
+}
+
 // GetOptions 处理 /api/v1/web/options 接口（公开配置信息）
 func (h *Handler) GetOptions(c *gin.Context) {
 	currentConfig := appconfig.GetConfig()
@@ -72,8 +81,16 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			},
 		},
 		"preview": gin.H{
-			"allowMimes": currentConfig.Preview.AllowMimes,
-			"allowExts":  currentConfig.Preview.AllowExts,
+			"enabled": currentConfig.Preview.IsEnabled(),
+			// 各分组的生效配置（开关 + 已解析默认值的 MIME/扩展名列表），前端判定与后端口径一致
+			"groups": gin.H{
+				"image":    previewGroupOptions(currentConfig.Preview, "image"),
+				"text":     previewGroupOptions(currentConfig.Preview, "text"),
+				"audio":    previewGroupOptions(currentConfig.Preview, "audio"),
+				"video":    previewGroupOptions(currentConfig.Preview, "video"),
+				"document": previewGroupOptions(currentConfig.Preview, "document"),
+				"custom":   previewGroupOptions(currentConfig.Preview, "custom"),
+			},
 		},
 		// 用户自定义 MIME 表：供前端文件列表「是否可预览」判定与后端预览识别口径一致
 		"mimeTable": currentConfig.MimeTable,
@@ -362,14 +379,68 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 
 	// —— 预览 ——
 	if present("preview") {
-		appconfig.GlobalConfig.Preview.AllowMimes = req.Preview.AllowMimes
-		appconfig.GlobalConfig.Preview.AllowExts = req.Preview.AllowExts
-		appconfig.GlobalConfig.Preview.MaxInlineSize = req.Preview.MaxInlineSize
-		appconfig.GlobalConfig.Preview.TextChunkSize = req.Preview.TextChunkSize
-		updates.Add("preview.allow_mimes", req.Preview.AllowMimes)
-		updates.Add("preview.allow_exts", req.Preview.AllowExts)
-		updates.Add("preview.max_inline_size", req.Preview.MaxInlineSize)
-		updates.Add("preview.text_chunk_size", req.Preview.TextChunkSize)
+		// 开关未提交视为开启；列表未提交沿用当前生效值，显式留空按空列表生效
+		old := appconfig.GlobalConfig.Preview
+		enabled := appconfig.ResolvePreviewSwitch(req.Preview.Enabled)
+		imgE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Image.Enabled)
+		imgM := appconfig.ResolvePreviewList(req.Preview.Groups.Image.Mimes, old.GroupMimes("image"))
+		imgX := appconfig.ResolvePreviewList(req.Preview.Groups.Image.Exts, old.GroupExts("image"))
+		txtE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Text.Enabled)
+		txtM := appconfig.ResolvePreviewList(req.Preview.Groups.Text.Mimes, old.GroupMimes("text"))
+		txtX := appconfig.ResolvePreviewList(req.Preview.Groups.Text.Exts, old.GroupExts("text"))
+		txtMax := req.Preview.Groups.Text.MaxInlineSize
+		if txtMax == "" {
+			txtMax = old.TextMaxInlineSize()
+		}
+		txtChunk := req.Preview.Groups.Text.TextChunkSize
+		if txtChunk == "" {
+			txtChunk = old.TextChunkSize()
+		}
+		audE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Audio.Enabled)
+		audM := appconfig.ResolvePreviewList(req.Preview.Groups.Audio.Mimes, old.GroupMimes("audio"))
+		audX := appconfig.ResolvePreviewList(req.Preview.Groups.Audio.Exts, old.GroupExts("audio"))
+		vidE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Video.Enabled)
+		vidM := appconfig.ResolvePreviewList(req.Preview.Groups.Video.Mimes, old.GroupMimes("video"))
+		vidX := appconfig.ResolvePreviewList(req.Preview.Groups.Video.Exts, old.GroupExts("video"))
+		docE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Document.Enabled)
+		docM := appconfig.ResolvePreviewList(req.Preview.Groups.Document.Mimes, old.GroupMimes("document"))
+		docX := appconfig.ResolvePreviewList(req.Preview.Groups.Document.Exts, old.GroupExts("document"))
+		cusE := appconfig.ResolvePreviewSwitch(req.Preview.Groups.Custom.Enabled)
+		cusM := appconfig.ResolvePreviewList(req.Preview.Groups.Custom.Mimes, old.GroupMimes("custom"))
+		cusX := appconfig.ResolvePreviewList(req.Preview.Groups.Custom.Exts, old.GroupExts("custom"))
+
+		appconfig.GlobalConfig.Preview = appconfig.PreviewConfig{
+			Enabled: &enabled,
+			Groups: appconfig.PreviewGroupsConfig{
+				Image:    appconfig.PreviewGroupConfig{Enabled: &imgE, Mimes: &imgM, Exts: &imgX},
+				Text:     appconfig.PreviewTextGroupConfig{Enabled: &txtE, Mimes: &txtM, Exts: &txtX, MaxInlineSize: txtMax, TextChunkSize: txtChunk},
+				Audio:    appconfig.PreviewGroupConfig{Enabled: &audE, Mimes: &audM, Exts: &audX},
+				Video:    appconfig.PreviewGroupConfig{Enabled: &vidE, Mimes: &vidM, Exts: &vidX},
+				Document: appconfig.PreviewGroupConfig{Enabled: &docE, Mimes: &docM, Exts: &docX},
+				Custom:   appconfig.PreviewGroupConfig{Enabled: &cusE, Mimes: &cusM, Exts: &cusX},
+			},
+		}
+		updates.Add("preview.enabled", enabled)
+		updates.Add("preview.groups.image.enabled", imgE)
+		updates.Add("preview.groups.image.mimes", imgM)
+		updates.Add("preview.groups.image.exts", imgX)
+		updates.Add("preview.groups.text.enabled", txtE)
+		updates.Add("preview.groups.text.mimes", txtM)
+		updates.Add("preview.groups.text.exts", txtX)
+		updates.Add("preview.groups.text.max_inline_size", txtMax)
+		updates.Add("preview.groups.text.text_chunk_size", txtChunk)
+		updates.Add("preview.groups.audio.enabled", audE)
+		updates.Add("preview.groups.audio.mimes", audM)
+		updates.Add("preview.groups.audio.exts", audX)
+		updates.Add("preview.groups.video.enabled", vidE)
+		updates.Add("preview.groups.video.mimes", vidM)
+		updates.Add("preview.groups.video.exts", vidX)
+		updates.Add("preview.groups.document.enabled", docE)
+		updates.Add("preview.groups.document.mimes", docM)
+		updates.Add("preview.groups.document.exts", docX)
+		updates.Add("preview.groups.custom.enabled", cusE)
+		updates.Add("preview.groups.custom.mimes", cusM)
+		updates.Add("preview.groups.custom.exts", cusX)
 	}
 
 	// —— 用户自定义 MIME 表（扩展名 -> MIME 映射）——
@@ -545,7 +616,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	// 配置变更已全部落定，先释放写锁再执行热更新钩子
 	appconfig.UnlockConfig()
 
-	utils.InitPreviewConfig(appconfig.GlobalConfig.Preview.AllowMimes, appconfig.GlobalConfig.Preview.AllowExts)
+	utils.InitPreviewConfig(appconfig.GlobalConfig.Preview.InitConfig())
 	utils.InitMimeTable(appconfig.GlobalConfig.MimeTable)
 	appconfig.RunOnSaveHooks()
 

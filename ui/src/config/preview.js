@@ -1,10 +1,116 @@
 // 预览配置（运行时从后端加载）
+// 判定口径与后端 utils/preview_utils.go 保持一致：
+// 全局开关关闭时一律不可预览；开启时，命中任一已启用内置分组（按各组配置的 MIME/扩展名列表匹配，
+// 优先序 image > audio > video > document > text）或命中已启用的自定义组（custom，两组列表均留空表示不限制）即可预览。
 import { SystemApi } from '@/api'
 
-let allowMimes = []
-let allowExts = []
-// 用户自定义 MIME 表（扩展名 -> MIME），使自定义扩展名也参与可预览判定（与后端预览识别一致）
-let userMimeTable = {}
+// 内置分组默认表，与后端 utils/preview_utils.go 的默认表保持一致（options 加载失败时兜底，
+// 设置页「恢复默认」也以此为准）
+export const DEFAULT_GROUPS = {
+  image: {
+    enabled: true,
+    mimes: 'image/*',
+    exts: 'png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,tif,tiff,heic,heif,jfif,pjpeg'
+  },
+  text: {
+    enabled: true,
+    mimes: 'text/*,application/json,application/xml,application/javascript,application/yaml,application/sql,application/x-sh',
+    exts: 'txt,html,htm,css,js,json,xml,md,markdown,yml,yaml,csv,' +
+      'go,java,py,c,cpp,h,hpp,cs,rb,php,rs,sh,bat,ps1,sql,vue,tsx,jsx,ts,scss,less,' +
+      'ini,conf,cfg,log,properties,config,toml,checksum,mjs,cjs,m,' +
+      'kt,swift,dart,lua,r,pl,ex,erl,hs,nim,zig,groovy,scala,clj,tf,' +
+      'graphql,proto,adoc,vb,asm,f90'
+  },
+  audio: {
+    enabled: true,
+    mimes: 'audio/*',
+    exts: 'mp3,wav,ogg,oga,m4a,aac,flac,opus,mid,midi,amr,weba,aif,aiff,wma,mka,mp2'
+  },
+  video: {
+    enabled: true,
+    mimes: 'video/*',
+    exts: 'mp4,webm,mov,m4v,avi,mkv,ogv,mpg,mpeg,flv,wmv,3gp,3g2,rm,rmvb,vob,m2ts,mts,f4v'
+  },
+  document: { enabled: true, mimes: 'application/pdf', exts: 'pdf' },
+  custom: { enabled: true, mimes: '', exts: '' }
+}
+// 内置分组匹配优先序，与后端保持一致
+const GROUP_ORDER = ['image', 'audio', 'video', 'document', 'text']
+
+// 预览全局开关
+let previewEnabled = true
+// 各分组解析后的匹配规则
+let groupRules = {}
+
+// 解析逗号分隔的分组配置为匹配规则
+function buildGroupRules(name, cfg) {
+  const mimeExact = new Set()
+  const mimeWildcard = []
+  const extExact = new Set()
+  const extWildcard = []
+  for (const m of (cfg.mimes || '').split(',')) {
+    const v = m.trim().toLowerCase()
+    if (!v) continue
+    if (v.endsWith('/*')) mimeWildcard.push(v.slice(0, -1))
+    else mimeExact.add(v)
+  }
+  for (const e of (cfg.exts || '').split(',')) {
+    const v = e.trim().replace(/^\./, '').toLowerCase()
+    if (!v) continue
+    if (v.endsWith('*')) extWildcard.push(v.slice(0, -1))
+    else extExact.add(v)
+  }
+  return {
+    enabled: cfg.enabled !== false,
+    mimeExact,
+    mimeWildcard,
+    extExact,
+    extWildcard,
+    // 仅 custom 组语义：MIME 与扩展名均未配置表示不限制
+    unrestricted: name === 'custom' && mimeExact.size === 0 && mimeWildcard.length === 0 && extExact.size === 0 && extWildcard.length === 0
+  }
+}
+
+function initGroupRules(groupsConfig) {
+  groupRules = {}
+  for (const [name, def] of Object.entries(DEFAULT_GROUPS)) {
+    const incoming = groupsConfig?.[name]
+    const cfg = incoming
+      ? {
+          enabled: incoming.enabled !== false,
+          mimes: incoming.mimes ?? def.mimes,
+          exts: incoming.exts ?? def.exts
+        }
+      : def
+    groupRules[name] = buildGroupRules(name, cfg)
+  }
+}
+initGroupRules(null)
+
+// 文件是否命中指定分组（分组需处于启用状态）
+function matchGroup(name, ext, mimeType) {
+  const r = groupRules[name]
+  if (!r || !r.enabled) return false
+  if (r.unrestricted) return true
+  if (mimeType) {
+    if (r.mimeExact.has(mimeType)) return true
+    for (const p of r.mimeWildcard) {
+      if (mimeType.startsWith(p)) return true
+    }
+  }
+  if (ext) {
+    if (r.extExact.has(ext)) return true
+    for (const p of r.extWildcard) {
+      if (ext.startsWith(p)) return true
+    }
+  }
+  return false
+}
+
+// 预览全局开关是否开启
+export function isPreviewEnabled() {
+  return previewEnabled
+}
 
 // 加载预览配置（可选传入已获取的 options 数据）
 export async function loadPreviewConfig(preloadedData) {
@@ -19,16 +125,10 @@ export async function loadPreviewConfig(preloadedData) {
     }
 
     if (data?.preview) {
-      // 解析逗号分隔的 MIME 类型
-      const mimes = data.preview.allowMimes
-      if (mimes) {
-        allowMimes = mimes.split(',').map(m => m.trim()).filter(m => m)
-      }
-      // 解析逗号分隔的扩展名
-      const exts = data.preview.allowExts
-      if (exts) {
-        allowExts = exts.split(',').map(e => e.trim().replace(/^\./, '')).filter(e => e)
-      }
+      // 全局开关：仅显式 false 时关闭
+      previewEnabled = data.preview.enabled !== false
+      // 各分组：后端返回的是已解析默认值的生效配置
+      initGroupRules(data.preview.groups)
     }
     // 解析用户自定义 MIME 表（key 归一化为小写、忽略点号前缀，与后端一致）
     if (data?.mimeTable) {
@@ -43,24 +143,11 @@ export async function loadPreviewConfig(preloadedData) {
   }
 }
 
-// 用 mimeType 匹配 allowMimes（含 text/* 通配），命中返回 true
-function matchAllowMimes(mimeType) {
-  if (!mimeType) return false
-  mimeType = mimeType.toLowerCase()
-  for (const m of allowMimes) {
-    if (m.endsWith('/*')) {
-      // 通配符匹配，如 text/*
-      if (mimeType.startsWith(m.slice(0, -1))) return true
-    } else if (m.toLowerCase() === mimeType) {
-      return true
-    }
-  }
-  return false
-}
+// 用户自定义 MIME 表（扩展名 -> MIME），使自定义扩展名也参与可预览判定（与后端预览识别一致）
+let userMimeTable = {}
 
 // 内置「扩展名 -> MIME」表，与后端 utils.GetMimeType 保持一致。
-// 仅配置 allow_mimes（如 image/*）而扩展名未列入 allow_exts 时，
-// 需要把扩展名还原成 MIME 才能命中，例如 png -> image/png。
+// 部分判定需要把扩展名还原成 MIME 参与分组匹配。
 const BUILTIN_EXT_MIME = {
   txt: 'text/plain', html: 'text/html', htm: 'text/html', css: 'text/css',
   js: 'application/javascript', json: 'application/json', xml: 'application/xml',
@@ -74,7 +161,13 @@ const BUILTIN_EXT_MIME = {
   log: 'text/plain',
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', ico: 'image/x-icon',
-  pdf: 'application/pdf'
+  pdf: 'application/pdf',
+  mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg',
+  m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/opus',
+  mid: 'audio/midi', weba: 'audio/webm',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/x-m4v',
+  avi: 'video/x-msvideo', mkv: 'video/x-matroska', ogv: 'video/ogg', mpg: 'video/mpeg',
+  flv: 'video/x-flv', wmv: 'video/x-ms-wmv', '3gp': 'video/3gpp'
 }
 
 // 依据扩展名解析 MIME：用户自定义表优先，其次内置表，未命中返回 ''
@@ -90,34 +183,15 @@ export function resolveMime(filename) {
   return resolveMimeByExt(ext)
 }
 
-// 判断文件是否可预览：取「MIME 匹配」与「扩展名匹配」的并集，任一命中即可预览
+// 判断文件是否可预览（与后端 utils.IsPreviewable 口径一致）
 export function isPreviewable(filename, mimeType = '') {
-  if (!filename) return false
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  if (!previewEnabled || !filename) return false
+  const ext = (filename.split('.').pop()?.toLowerCase() || '')
+  // 调用方未提供 MIME 时按扩展名还原（与后端预览接口先解析 MIME 再判定的行为一致）
+  const m = (mimeType || resolveMimeByExt(ext)).toLowerCase()
 
-  // MIME 匹配：调用方传入的 MIME 与按扩展名还原的 MIME 一并参与判定
-  const mimes = [mimeType, resolveMimeByExt(ext)].filter(Boolean)
-  if (mimes.some(m => matchAllowMimes(m))) return true
-
-  // 扩展名匹配
-  for (const e of allowExts) {
-    if (e.endsWith('*')) {
-      // 通配符匹配
-      if (ext.startsWith(e.slice(0, -1))) return true
-    } else if (e.toLowerCase() === ext) {
-      return true
-    }
+  for (const g of GROUP_ORDER) {
+    if (matchGroup(g, ext, m)) return true
   }
-
-  return false
-}
-
-// 获取 MIME 类型列表
-export function getAllowMimes() {
-  return [...allowMimes]
-}
-
-// 获取扩展名列表
-export function getAllowExts() {
-  return [...allowExts]
+  return matchGroup('custom', ext, m)
 }

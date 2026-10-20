@@ -388,16 +388,150 @@ func GetReservedUsernames() []string {
 	return reserved
 }
 
+// PreviewGroupConfig 单个预览分组配置：开关 + 可编辑的 MIME/扩展名列表。
+// Enabled 使用指针区分「未配置」（视为开启）与显式关闭；
+// Mimes/Exts 使用指针区分「未配置」（回退 utils 内置默认表）与显式留空（该组不命中任何文件，
+// custom 组除外：两组均留空表示不限制）。
+type PreviewGroupConfig struct {
+	// Enabled 分组开关（nil 视为开启）
+	Enabled *bool `yaml:"enabled,omitempty"`
+	// Mimes 该组匹配的 MIME 类型（逗号分隔，支持通配符，如 image/*）
+	Mimes *string `yaml:"mimes,omitempty"`
+	// Exts 该组匹配的文件扩展名（逗号分隔）
+	Exts *string `yaml:"exts,omitempty"`
+}
+
+// PreviewTextGroupConfig 文本分组配置：在通用分组字段之外携带文本预览大小配置
+type PreviewTextGroupConfig struct {
+	Enabled *bool   `yaml:"enabled,omitempty"`
+	Mimes   *string `yaml:"mimes,omitempty"`
+	Exts    *string `yaml:"exts,omitempty"`
+	// MaxInlineSize 文本直接返回内容的大小上限 (支持 1M, 2M 等格式)
+	MaxInlineSize string `yaml:"max_inline_size,omitempty"`
+	// TextChunkSize 文本文件分块大小 (支持 50K, 100K 等格式)
+	TextChunkSize string `yaml:"text_chunk_size,omitempty"`
+}
+
+// PreviewGroupsConfig 预览类型分组配置（图片/文本/音频/视频/文档/自定义）
+type PreviewGroupsConfig struct {
+	Image    PreviewGroupConfig     `yaml:"image,omitempty"`
+	Text     PreviewTextGroupConfig `yaml:"text,omitempty"`
+	Audio    PreviewGroupConfig     `yaml:"audio,omitempty"`
+	Video    PreviewGroupConfig     `yaml:"video,omitempty"`
+	Document PreviewGroupConfig     `yaml:"document,omitempty"`
+	Custom   PreviewGroupConfig     `yaml:"custom,omitempty"`
+}
+
 // PreviewConfig 预览配置
 type PreviewConfig struct {
-	// AllowMimes 支持预览的 MIME 类型 (逗号分隔，优先匹配)
-	AllowMimes string `yaml:"allow_mimes"`
-	// AllowExts 支持预览的文件扩展名 (逗号分隔，作为 MIME 的补充)
-	AllowExts string `yaml:"allow_exts"`
-	// MaxInlineSize 直接返回内容的大小上限 (支持 1M, 2M 等格式)
-	MaxInlineSize string `yaml:"max_inline_size"`
-	// TextChunkSize 文本文件分块大小 (支持 50K, 100K 等格式)
-	TextChunkSize string `yaml:"text_chunk_size"`
+	// Enabled 预览全局开关（nil 视为开启）
+	Enabled *bool `yaml:"enabled,omitempty"`
+	// Groups 各类型分组配置
+	Groups PreviewGroupsConfig `yaml:"groups,omitempty"`
+}
+
+// previewSwitchOn 开关缺省（nil）视为开启
+func previewSwitchOn(p *bool) bool {
+	return p == nil || *p
+}
+
+// ResolvePreviewList 列表缺省（nil）回退默认值；显式配置（含空串）按配置生效
+func ResolvePreviewList(p *string, def string) string {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// IsEnabled 预览全局开关是否开启（未配置视为开启）
+func (c PreviewConfig) IsEnabled() bool {
+	return previewSwitchOn(c.Enabled)
+}
+
+// IsGroupEnabled 指定预览分组是否开启（未配置视为开启），未知分组视为开启
+func (c PreviewConfig) IsGroupEnabled(name string) bool {
+	switch name {
+	case "image":
+		return previewSwitchOn(c.Groups.Image.Enabled)
+	case "text":
+		return previewSwitchOn(c.Groups.Text.Enabled)
+	case "audio":
+		return previewSwitchOn(c.Groups.Audio.Enabled)
+	case "video":
+		return previewSwitchOn(c.Groups.Video.Enabled)
+	case "document":
+		return previewSwitchOn(c.Groups.Document.Enabled)
+	case "custom":
+		return previewSwitchOn(c.Groups.Custom.Enabled)
+	}
+	return true
+}
+
+// GroupMimes 指定分组生效的 MIME 列表（未配置回退内置默认表）
+func (c PreviewConfig) GroupMimes(name string) string {
+	switch name {
+	case "image":
+		return ResolvePreviewList(c.Groups.Image.Mimes, utils.DefaultPreviewGroupMimes(name))
+	case "text":
+		return ResolvePreviewList(c.Groups.Text.Mimes, utils.DefaultPreviewGroupMimes(name))
+	case "audio":
+		return ResolvePreviewList(c.Groups.Audio.Mimes, utils.DefaultPreviewGroupMimes(name))
+	case "video":
+		return ResolvePreviewList(c.Groups.Video.Mimes, utils.DefaultPreviewGroupMimes(name))
+	case "document":
+		return ResolvePreviewList(c.Groups.Document.Mimes, utils.DefaultPreviewGroupMimes(name))
+	case "custom":
+		return ResolvePreviewList(c.Groups.Custom.Mimes, utils.DefaultPreviewGroupMimes(name))
+	}
+	return ""
+}
+
+// GroupExts 指定分组生效的扩展名列表（未配置回退内置默认表）
+func (c PreviewConfig) GroupExts(name string) string {
+	switch name {
+	case "image":
+		return ResolvePreviewList(c.Groups.Image.Exts, utils.DefaultPreviewGroupExts(name))
+	case "text":
+		return ResolvePreviewList(c.Groups.Text.Exts, utils.DefaultPreviewGroupExts(name))
+	case "audio":
+		return ResolvePreviewList(c.Groups.Audio.Exts, utils.DefaultPreviewGroupExts(name))
+	case "video":
+		return ResolvePreviewList(c.Groups.Video.Exts, utils.DefaultPreviewGroupExts(name))
+	case "document":
+		return ResolvePreviewList(c.Groups.Document.Exts, utils.DefaultPreviewGroupExts(name))
+	case "custom":
+		return ResolvePreviewList(c.Groups.Custom.Exts, utils.DefaultPreviewGroupExts(name))
+	}
+	return ""
+}
+
+// TextMaxInlineSize 文本组生效的最大内联大小（未配置默认 1M）
+func (c PreviewConfig) TextMaxInlineSize() string {
+	if c.Groups.Text.MaxInlineSize == "" {
+		return "1M"
+	}
+	return c.Groups.Text.MaxInlineSize
+}
+
+// TextChunkSize 文本组生效的分块大小（未配置默认 100K）
+func (c PreviewConfig) TextChunkSize() string {
+	if c.Groups.Text.TextChunkSize == "" {
+		return "100K"
+	}
+	return c.Groups.Text.TextChunkSize
+}
+
+// InitConfig 解析为 utils 预览判定所需的完整运行时配置
+func (c PreviewConfig) InitConfig() utils.PreviewInitConfig {
+	groups := make(map[string]utils.PreviewGroupState, 6)
+	for _, name := range []string{"image", "text", "audio", "video", "document", "custom"} {
+		groups[name] = utils.PreviewGroupState{
+			Enabled: c.IsGroupEnabled(name),
+			Mimes:   c.GroupMimes(name),
+			Exts:    c.GroupExts(name),
+		}
+	}
+	return utils.PreviewInitConfig{Enabled: c.IsEnabled(), Groups: groups}
 }
 
 // PrivateFileMeta 临时文件元数据

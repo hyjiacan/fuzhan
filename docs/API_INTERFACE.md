@@ -716,9 +716,15 @@
       "chunkSize": 10485760,
       "maxFileSize": 17179869184,
       "preview": {
-        "textExtensions": ["txt", "md", "log", ...],
-        "imageExtensions": ["png", "jpg", ...],
-        "otherExtensions": ["pdf"]
+        "enabled": true,
+        "groups": {
+          "image": { "enabled": true, "mimes": "image/*", "exts": "png,jpg,jpeg,gif,bmp,webp,svg,ico" },
+          "text": { "enabled": true, "mimes": "text/*,application/json,...", "exts": "txt,html,css,..." },
+          "audio": { "enabled": true, "mimes": "audio/*", "exts": "mp3,wav,..." },
+          "video": { "enabled": true, "mimes": "video/*", "exts": "mp4,webm,..." },
+          "document": { "enabled": true, "mimes": "application/pdf", "exts": "pdf" },
+          "custom": { "enabled": true, "mimes": "", "exts": "" }
+        }
       }
     }
   }

@@ -88,10 +88,14 @@ const FIELD_LABELS = {
   'download.rateLimit.lockMinutes': '锁定(分钟)',
 
   preview: '预览配置',
-  'preview.allowMimes': 'MIME 类型',
-  'preview.allowExts': '文件扩展名',
-  'preview.maxInlineSize': '最大内联大小',
-  'preview.textChunkSize': '文本分块大小',
+  'preview.enabled': '全局预览开关',
+  'preview.groups': '预览类型分组',
+  'preview.groups.image': '图片分组',
+  'preview.groups.text': '文本分组',
+  'preview.groups.audio': '音频分组',
+  'preview.groups.video': '视频分组',
+  'preview.groups.document': '文档分组',
+  'preview.groups.custom': '自定义分组',
 
   mimeTable: 'MIME 映射',
 
@@ -206,8 +210,8 @@ const SECTION_PANELS = {
 const SIZE_FIELDS = new Set([
   'upload.chunkSize',
   'upload.maxFileSize',
-  'preview.maxInlineSize',
-  'preview.textChunkSize',
+  'preview.groups.text.maxInlineSize',
+  'preview.groups.text.textChunkSize',
   'privateQuotaGlobal',
   'privateQuotaUser',
   'tempFilesQuotaGlobal',
@@ -228,6 +232,15 @@ const VALUE_LABELS = {
   'openApi.ipAccessMode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' }
 }
 
+// 未单独登记的叶子字段通用中文名（如预览分组内的 enabled/mimes/exts）
+const LEAF_LABELS = {
+  enabled: '启用',
+  mimes: 'MIME 类型',
+  exts: '文件扩展名',
+  maxInlineSize: '最大内联大小',
+  textChunkSize: '文本分块大小'
+}
+
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 // 去掉数组下标，得到可用于查表的路径（rootDirs[0].path -> rootDirs.path）
@@ -244,7 +257,8 @@ const labelFor = (path) => {
     lookup = lookup ? `${lookup}.${key}` : key
     let label = FIELD_LABELS[lookup]
     if (!label) {
-      label = lookup.startsWith('mimeTable.') ? `.${key}` : key
+      if (lookup.startsWith('mimeTable.')) label = `.${key}`
+      else label = LEAF_LABELS[key] || key
     }
     if (idx !== null) label = `${label} #${idx + 1}`
     parts.push(label)

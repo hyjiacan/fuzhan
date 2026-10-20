@@ -176,13 +176,8 @@ func readConfig() {
 		DeleteOnDownload:  tempConfig.Storage.Temp.DeleteOnDownload,
 	}
 
-	// 解析预览配置
-	GlobalConfig.Preview = PreviewConfig{
-		AllowMimes:    tempConfig.Preview.AllowMimes,
-		AllowExts:     tempConfig.Preview.AllowExts,
-		MaxInlineSize: tempConfig.Preview.MaxInlineSize,
-		TextChunkSize: tempConfig.Preview.TextChunkSize,
-	}
+	// 解析预览配置（各分组未配置时由访问器回退内置默认表）
+	GlobalConfig.Preview = tempConfig.Preview
 	// 解析用户自定义 MIME 表
 	GlobalConfig.MimeTable = tempConfig.MimeTable
 

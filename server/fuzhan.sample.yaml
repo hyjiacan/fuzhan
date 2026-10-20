@@ -191,19 +191,50 @@ download:
 # ----------------------------------------
 # 文件预览配置
 # ----------------------------------------
-# 支持预览的文件类型：优先匹配 MIME 类型，MIME 无法覆盖的使用扩展名
-# MIME 和扩展名都支持通配符，如 text/* 表示所有文本类型，.bak 表示所有 .bak 文件
+# 每个分组（图片/文本/音频/视频/文档/自定义）均可独立开关，并各自维护可预览的
+# MIME 类型与文件扩展名列表（逗号分隔，均支持通配符，如 image/*、bak）。
+# 判定规则：全局开关开启后，文件命中任一「已启用分组」的 mimes/exts 列表即可预览；
+# 分组同时命中多类时按优先序 image > audio > video > document > text > custom 归类。
+# mimes/exts 未配置时回退内置默认表；显式留空时该组不命中任何文件（custom 组除外，
+# custom 两组均留空表示不限制，所有文件均可预览）。可在「系统设置 -> 预览」页面维护。
 preview:
-  # 支持预览的 MIME 类型 (逗号分隔，优先匹配)
-  # 示例: text/*,image/*,application/pdf,application/json
-  allow_mimes: text/*,image/*,application/pdf,application/json,application/xml,application/javascript
-  # 支持预览的文件扩展名 (逗号分隔，作为 MIME 的补充)
-  # 示例: txt,md,log,json,xml,csv,html,css,js,ts,vue,yml,yaml
-  allow_exts: txt,md,log,json,xml,csv,html,css,js,ts,vue,yml,yaml,properties,conf,config,sh,bat,ps1,py,java,go,rs,c,cpp,h,hpp,sql,ini,toml
-  # 文本文件最大内联显示大小 (超过此大小需下载查看)
-  max_inline_size: 1M           # 支持 1M, 2M 等格式
-  # 文本文件分块读取大小
-  text_chunk_size: 100K         # 支持 50K, 100K 等格式
+  # 预览全局开关：关闭后所有类型的预览入口均不可用（未配置视为开启）
+  enabled: true
+  groups:
+    # 图片分组（未配置 mimes/exts 时视为以下默认值）
+    image:
+      enabled: true
+      mimes: image/*
+      exts: png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,tif,tiff,heic,heif,jfif,pjpeg
+    # 音频分组
+    audio:
+      enabled: true
+      mimes: audio/*
+      exts: mp3,wav,ogg,oga,m4a,aac,flac,opus,mid,midi,amr,weba,aif,aiff,wma,mka,mp2
+    # 视频分组
+    video:
+      enabled: true
+      mimes: video/*
+      exts: mp4,webm,mov,m4v,avi,mkv,ogv,mpg,mpeg,flv,wmv,3gp,3g2,rm,rmvb,vob,m2ts,mts,f4v
+    # 文档分组
+    document:
+      enabled: true
+      mimes: application/pdf
+      exts: pdf
+    # 文本分组：额外包含文本预览的大小配置
+    text:
+      enabled: true
+      mimes: text/*,application/json,application/xml,application/javascript,application/yaml,application/sql,application/x-sh
+      exts: txt,html,htm,css,js,json,xml,md,markdown,yml,yaml,csv,go,java,py,c,cpp,h,hpp,cs,rb,php,rs,sh,bat,ps1,sql,vue,tsx,jsx,ts,scss,less,ini,conf,cfg,log,properties,config,toml,checksum,mjs,cjs,m,kt,swift,dart,lua,r,pl,ex,erl,hs,nim,zig,groovy,scala,clj,tf,graphql,proto,adoc,vb,asm,f90
+      # 文本文件最大内联显示大小 (超过此大小需下载查看，支持 1M, 2M 等格式)
+      max_inline_size: 1M
+      # 文本文件分块读取大小 (支持 50K, 100K 等格式)
+      text_chunk_size: 100K
+    # 自定义分组：兜底白名单，mimes/exts 均留空表示不限制（所有文件均可预览）
+    custom:
+      enabled: true
+      mimes: ""
+      exts: ""
 
 # ----------------------------------------
 # 用户自定义 MIME 映射表

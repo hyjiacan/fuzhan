@@ -233,10 +233,15 @@ const settings = reactive({
   tempFilesQuotaGlobal: 0,
   tempFilesQuotaPerIP: 0,
   preview: {
-    allowMimes: '',
-    allowExts: '',
-    maxInlineSize: 1048576,
-    textChunkSize: 102400
+    enabled: true,
+    groups: {
+      image: { enabled: true, mimes: '', exts: '' },
+      text: { enabled: true, mimes: '', exts: '', maxInlineSize: 1048576, textChunkSize: 102400 },
+      audio: { enabled: true, mimes: '', exts: '' },
+      video: { enabled: true, mimes: '', exts: '' },
+      document: { enabled: true, mimes: '', exts: '' },
+      custom: { enabled: true, mimes: '', exts: '' }
+    }
   },
   mimeTable: {},
   openApi: {
@@ -423,10 +428,28 @@ const loadSettings = async () => {
       }
 
       settings.preview = {
-        allowMimes: cfg.preview?.allowMimes || '',
-        allowExts: cfg.preview?.allowExts || '',
-        maxInlineSize: NumberUtils.parseFileSize(cfg.preview?.maxInlineSize || '1M'),
-        textChunkSize: NumberUtils.parseFileSize(cfg.preview?.textChunkSize || '100K')
+        // 开关缺省语义与后端一致：未配置视为开启；分组列表由后端返回已解析默认值的生效配置
+        enabled: cfg.preview?.enabled ?? true,
+        groups: (() => {
+          const g = cfg.preview?.groups || {}
+          const pick = (name) => ({
+            enabled: g[name]?.enabled ?? true,
+            mimes: g[name]?.mimes || '',
+            exts: g[name]?.exts || ''
+          })
+          return {
+            image: pick('image'),
+            text: {
+              ...pick('text'),
+              maxInlineSize: NumberUtils.parseFileSize(g.text?.maxInlineSize || '1M'),
+              textChunkSize: NumberUtils.parseFileSize(g.text?.textChunkSize || '100K')
+            },
+            audio: pick('audio'),
+            video: pick('video'),
+            document: pick('document'),
+            custom: pick('custom')
+          }
+        })()
       }
 
       settings.mimeTable = { ...(cfg.mimeTable || {}) }
@@ -635,10 +658,19 @@ const doSaveSettings = async () => {
         rateLimit: settings.download.rateLimit
       },
       preview: {
-        allowMimes: settings.preview.allowMimes,
-        allowExts: settings.preview.allowExts,
-        maxInlineSize: formatToUnit(settings.preview.maxInlineSize),
-        textChunkSize: formatToUnit(settings.preview.textChunkSize)
+        enabled: settings.preview.enabled,
+        groups: {
+          image: { ...settings.preview.groups.image },
+          text: {
+            ...settings.preview.groups.text,
+            maxInlineSize: formatToUnit(settings.preview.groups.text.maxInlineSize),
+            textChunkSize: formatToUnit(settings.preview.groups.text.textChunkSize)
+          },
+          audio: { ...settings.preview.groups.audio },
+          video: { ...settings.preview.groups.video },
+          document: { ...settings.preview.groups.document },
+          custom: { ...settings.preview.groups.custom }
+        }
       },
       mimeTable: settings.mimeTable,
       openApi: {

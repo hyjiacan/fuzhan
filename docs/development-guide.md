@@ -355,11 +355,38 @@ upload:
     allowed_ip_ranges: []   # CIDR 网段，留空时不限制公网，但会拒绝内网/回环/链路本地等保留地址（安全默认，防 SSRF）
 
 # 预览配置
+# 每个分组可独立开关并维护各自的 MIME/扩展名列表（逗号分隔，支持通配符）；
+# mimes/exts 未配置时回退内置默认表，显式留空时该组不命中任何文件（custom 除外）。
+# 同时命中多个分组时按优先序 image > audio > video > document > text > custom 归类。
 preview:
-  allow_mimes: "text/*,image/*,application/pdf,..."
-  allow_exts: "txt,md,log,json,xml,csv,..."
-  max_inline_size: "1M"
-  text_chunk_size: "100K"
+  enabled: true             # 预览全局开关，关闭后所有预览入口不可用（未配置视为开启）
+  groups:
+    image:
+      enabled: true         # 图片分组（未配置视为开启）
+      mimes: "image/*"
+      exts: "png,jpg,jpeg,gif,bmp,webp,svg,ico"
+    text:
+      enabled: true         # 文本分组，大小配置归属本组
+      mimes: "text/*,application/json,application/xml,application/javascript"
+      exts: "txt,md,log,json,..."
+      max_inline_size: "1M"   # 文本最大内联显示大小，超过需下载查看
+      text_chunk_size: "100K" # 文本分块读取大小
+    audio:
+      enabled: true         # 音频分组
+      mimes: "audio/*"
+      exts: "mp3,wav,flac,..."
+    video:
+      enabled: true         # 视频分组
+      mimes: "video/*"
+      exts: "mp4,webm,mkv,..."
+    document:
+      enabled: true         # 文档分组（PDF）
+      mimes: "application/pdf"
+      exts: "pdf"
+    custom:
+      enabled: true         # 自定义分组：mimes/exts 均留空表示不限制（所有文件均可预览）
+      mimes: ""
+      exts: ""
 
 # FTP 服务
 ftp:

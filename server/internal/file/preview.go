@@ -22,7 +22,7 @@ import (
 // ReloadPreviewConfig 重新加载预览配置（配置更新后调用）
 func ReloadPreviewConfig() {
 	cfg := appconfig.GetConfig()
-	utils.InitPreviewConfig(cfg.Preview.AllowMimes, cfg.Preview.AllowExts)
+	utils.InitPreviewConfig(cfg.Preview.InitConfig())
 	utils.InitMimeTable(cfg.MimeTable)
 }
 
@@ -34,7 +34,7 @@ type PreviewHandler struct {
 // NewPreviewHandler 创建预览处理器实例
 func NewPreviewHandler(baseHandler *BaseHandler) *PreviewHandler {
 	cfg := appconfig.GetConfig()
-	utils.InitPreviewConfig(cfg.Preview.AllowMimes, cfg.Preview.AllowExts)
+	utils.InitPreviewConfig(cfg.Preview.InitConfig())
 	utils.InitMimeTable(cfg.MimeTable)
 	return &PreviewHandler{
 		BaseHandler: baseHandler,
@@ -96,18 +96,20 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 	}
 
 	if isPreviewable {
-		isImageExt := utils.IsImageExtension(ext)
-		isTextExt := utils.IsTextMime(mimeType) || (utils.IsTextExtension(ext) && !isImageExt)
+		// 按内置分组分发预览方式：文本组走内容/分块返回，其余组（图片/音频/视频/文档）走内联 URL；
+		// 未归入已启用内置分组的（仅自定义组命中）按 MIME 前缀兜底判断是否为文本
+		group := utils.ClassifyPreviewGroup(ext, mimeType)
+		isTextExt := group == "text" || (group == "" && strings.HasPrefix(strings.ToLower(mimeType), "text/"))
 
 		if isTextExt {
 			cfg := appconfig.GetConfig()
-			maxInlineSize, _ := appconfig.ParseQuotaString(cfg.Preview.MaxInlineSize)
+			maxInlineSize, _ := appconfig.ParseQuotaString(cfg.Preview.TextMaxInlineSize())
 			// 安全上限：防止超大文本文件导致 OOM
 			const maxInlineSizeSafetyLimit int64 = 50 * 1024 * 1024 // 50MB
 			if maxInlineSize <= 0 || maxInlineSize > maxInlineSizeSafetyLimit {
 				maxInlineSize = maxInlineSizeSafetyLimit
 			}
-			textChunkSize, _ := appconfig.ParseQuotaString(cfg.Preview.TextChunkSize)
+			textChunkSize, _ := appconfig.ParseQuotaString(cfg.Preview.TextChunkSize())
 			if textChunkSize <= 0 {
 				textChunkSize = 100 * 1024
 			}
@@ -125,8 +127,9 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 			result["chunkSize"] = textChunkSize
 			result["totalChunks"] = (info.Size() + textChunkSize - 1) / textChunkSize
 		} else {
-			// 图片/PDF 内联预览走下载接口但标记 preview=true：既排除内置浏览器预览器的
-			// 预取/缩略图请求，也不会累加下载计数或写入下载历史（见 download_service.go）
+			// 图片/PDF/音频/视频内联预览走下载接口但标记 preview=true：既排除内置浏览器预览器的
+			// 预取/缩略图请求，也不会累加下载计数或写入下载历史（见 download_service.go）；
+			// 音视频播放依赖下载接口的 Range/206 支持（http.ServeFile 原生提供）
 			result["fileUrl"] = "/download/" + filePath + "?preview=true"
 		}
 	}
@@ -175,7 +178,7 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 	}
 
 	cfg := appconfig.GetConfig()
-	textChunkSize, _ := appconfig.ParseQuotaString(cfg.Preview.TextChunkSize)
+	textChunkSize, _ := appconfig.ParseQuotaString(cfg.Preview.TextChunkSize())
 	if textChunkSize <= 0 {
 		textChunkSize = 100 * 1024
 	}

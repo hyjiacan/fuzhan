@@ -49,6 +49,23 @@
       />
     </div>
 
+    <!-- 音频文件预览 -->
+    <div v-else-if="fileType === 'audio'" style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; flex: 1; min-height: 0; padding: 24px;">
+      <el-icon :size="56" style="color: var(--el-color-primary);"><Headset /></el-icon>
+      <div style="font-size: 14px; color: var(--el-text-color-regular); word-break: break-all; text-align: center;">{{ fileName }}</div>
+      <audio controls :src="mediaUrl" style="width: 100%; max-width: 560px;" preload="metadata" />
+    </div>
+
+    <!-- 视频文件预览 -->
+    <div v-else-if="fileType === 'video'" style="display: flex; justify-content: center; align-items: center; flex: 1; min-height: 0; overflow: hidden;">
+      <video
+        controls
+        :src="mediaUrl"
+        preload="metadata"
+        :style="{ maxWidth: '100%', maxHeight: maximized ? 'calc(100vh - 200px)' : '500px', objectFit: 'contain', background: '#000' }"
+      />
+    </div>
+
     <!-- PDF文件预览 -->
     <div v-else-if="fileType === 'pdf'" style="flex: 1; min-height: 0;">
       <iframe
@@ -78,7 +95,7 @@
 
 <script setup>
 import { ref, computed, watch, h } from 'vue'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, Headset } from '@element-plus/icons-vue'
 import { FileApi } from '@/api'
 import { PathUtils } from '@/utils'
 import { isPreviewable, resolveMime } from '@/config/preview'
@@ -98,6 +115,8 @@ const loading = ref(false)
 const textContent = ref('')
 const imageUrl = ref('')
 const pdfUrl = ref('')
+// 音频/视频内联播放地址（与图片/PDF 同走 fileUrl，依赖下载接口 Range/206 流式播放）
+const mediaUrl = ref('')
 const fileType = ref('unsupported')
 const errorMessage = ref('')
 
@@ -173,6 +192,8 @@ const detectFileType = (mimeType) => {
   if (!mimeType) return 'unsupported'
   if (mimeType.startsWith('text/')) return 'text'
   if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  if (mimeType.startsWith('video/')) return 'video'
   if (mimeType === 'application/json' || mimeType === 'application/javascript' || mimeType === 'application/xml') return 'text'
   if (mimeType === 'application/pdf') return 'pdf'
   return 'unsupported'
@@ -203,6 +224,7 @@ const loadPreviewContent = async () => {
   chunked.value = false
   imageUrl.value = ''
   pdfUrl.value = ''
+  mediaUrl.value = ''
 
   try {
     if (isDownloadBased.value) {
@@ -242,9 +264,10 @@ const loadPreviewContent = async () => {
         // 自动加载第一段
         await loadChunk(0)
       } else if (data.fileUrl) {
-        // 图片/PDF
+        // 图片/PDF/音频/视频：统一使用内联预览地址
         imageUrl.value = data.fileUrl
         pdfUrl.value = data.fileUrl
+        mediaUrl.value = data.fileUrl
       }
     } else {
       errorMessage.value = '该文件类型不支持预览'
@@ -285,6 +308,8 @@ const loadDownloadBasedPreview = async () => {
     imageUrl.value = url
   } else if (type === 'pdf') {
     pdfUrl.value = url
+  } else if (type === 'audio' || type === 'video') {
+    mediaUrl.value = url
   } else {
     const res = await fetch(url)
     if (!res.ok) {

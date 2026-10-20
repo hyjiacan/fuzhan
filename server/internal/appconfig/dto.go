@@ -131,10 +131,10 @@ type TempFilesConfigDTO struct {
 
 // UploadConfigDTO 上传配置 DTO
 type UploadConfigDTO struct {
-	ChunkSize   int64                `json:"chunkSize"`
-	MaxFileSize int64                `json:"maxFileSize"`
-	URLUpload   URLUploadDTO         `json:"urlUpload"`
-	RateLimit   UploadRateLimitDTO   `json:"rateLimit"`
+	ChunkSize   int64              `json:"chunkSize"`
+	MaxFileSize int64              `json:"maxFileSize"`
+	URLUpload   URLUploadDTO       `json:"urlUpload"`
+	RateLimit   UploadRateLimitDTO `json:"rateLimit"`
 }
 
 // UploadRateLimitDTO 上传频率限制 DTO（按客户端 IP 统计，作用于上传控制面接口）
@@ -165,12 +165,48 @@ type DownloadRateLimitDTO struct {
 	LockMinutes   int `json:"lockMinutes"`
 }
 
+// PreviewGroupDTO 单个预览分组 DTO。
+// 指针以区分「未提交」与「显式留空」：未提交沿用当前生效值，显式留空按空列表生效。
+type PreviewGroupDTO struct {
+	Enabled *bool   `json:"enabled"`
+	Mimes   *string `json:"mimes"`
+	Exts    *string `json:"exts"`
+}
+
+// PreviewTextGroupDTO 文本分组 DTO（额外携带文本预览大小配置）
+type PreviewTextGroupDTO struct {
+	Enabled       *bool   `json:"enabled"`
+	Mimes         *string `json:"mimes"`
+	Exts          *string `json:"exts"`
+	MaxInlineSize string  `json:"maxInlineSize"`
+	TextChunkSize string  `json:"textChunkSize"`
+}
+
+// PreviewGroupsDTO 预览类型分组配置 DTO
+type PreviewGroupsDTO struct {
+	Image    PreviewGroupDTO     `json:"image"`
+	Text     PreviewTextGroupDTO `json:"text"`
+	Audio    PreviewGroupDTO     `json:"audio"`
+	Video    PreviewGroupDTO     `json:"video"`
+	Document PreviewGroupDTO     `json:"document"`
+	Custom   PreviewGroupDTO     `json:"custom"`
+}
+
 // PreviewConfigDTO 预览配置 DTO
 type PreviewConfigDTO struct {
-	AllowMimes    string `json:"allowMimes"`
-	AllowExts     string `json:"allowExts"`
-	MaxInlineSize string `json:"maxInlineSize"`
-	TextChunkSize string `json:"textChunkSize"`
+	Enabled *bool            `json:"enabled"`
+	Groups  PreviewGroupsDTO `json:"groups"`
+}
+
+// boolPtr 返回布尔值的指针，用于 DTO 中区分零值与未设置
+func boolPtr(v bool) *bool { return &v }
+
+// strPtr 返回字符串值的指针
+func strPtr(v string) *string { return &v }
+
+// ResolvePreviewSwitch 解析开关指针：未设置（nil）视为开启
+func ResolvePreviewSwitch(p *bool) bool {
+	return p == nil || *p
 }
 
 // AccountResponse 账户配置 DTO
@@ -345,10 +381,41 @@ func (c *Config) ToDTO() ConfigDTO {
 			},
 		},
 		Preview: PreviewConfigDTO{
-			AllowMimes:    c.Preview.AllowMimes,
-			AllowExts:     c.Preview.AllowExts,
-			MaxInlineSize: c.Preview.MaxInlineSize,
-			TextChunkSize: c.Preview.TextChunkSize,
+			Enabled: boolPtr(c.Preview.IsEnabled()),
+			Groups: PreviewGroupsDTO{
+				Image: PreviewGroupDTO{
+					Enabled: boolPtr(c.Preview.IsGroupEnabled("image")),
+					Mimes:   strPtr(c.Preview.GroupMimes("image")),
+					Exts:    strPtr(c.Preview.GroupExts("image")),
+				},
+				Text: PreviewTextGroupDTO{
+					Enabled:       boolPtr(c.Preview.IsGroupEnabled("text")),
+					Mimes:         strPtr(c.Preview.GroupMimes("text")),
+					Exts:          strPtr(c.Preview.GroupExts("text")),
+					MaxInlineSize: c.Preview.TextMaxInlineSize(),
+					TextChunkSize: c.Preview.TextChunkSize(),
+				},
+				Audio: PreviewGroupDTO{
+					Enabled: boolPtr(c.Preview.IsGroupEnabled("audio")),
+					Mimes:   strPtr(c.Preview.GroupMimes("audio")),
+					Exts:    strPtr(c.Preview.GroupExts("audio")),
+				},
+				Video: PreviewGroupDTO{
+					Enabled: boolPtr(c.Preview.IsGroupEnabled("video")),
+					Mimes:   strPtr(c.Preview.GroupMimes("video")),
+					Exts:    strPtr(c.Preview.GroupExts("video")),
+				},
+				Document: PreviewGroupDTO{
+					Enabled: boolPtr(c.Preview.IsGroupEnabled("document")),
+					Mimes:   strPtr(c.Preview.GroupMimes("document")),
+					Exts:    strPtr(c.Preview.GroupExts("document")),
+				},
+				Custom: PreviewGroupDTO{
+					Enabled: boolPtr(c.Preview.IsGroupEnabled("custom")),
+					Mimes:   strPtr(c.Preview.GroupMimes("custom")),
+					Exts:    strPtr(c.Preview.GroupExts("custom")),
+				},
+			},
 		},
 		MimeTable: c.MimeTable,
 		OpenApi: &OpenApiConfigDTO{
@@ -485,11 +552,17 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Download.RateLimit.LockAfter = dto.Download.RateLimit.LockAfter
 	cfg.Download.RateLimit.LockMinutes = dto.Download.RateLimit.LockMinutes
 
-	// 预览
-	cfg.Preview.AllowMimes = dto.Preview.AllowMimes
-	cfg.Preview.AllowExts = dto.Preview.AllowExts
-	cfg.Preview.MaxInlineSize = dto.Preview.MaxInlineSize
-	cfg.Preview.TextChunkSize = dto.Preview.TextChunkSize
+	// 预览（指针字段直接透传，nil 表示沿用缺省语义）
+	cfg.Preview.Enabled = dto.Preview.Enabled
+	cfg.Preview.Groups.Image = PreviewGroupConfig{Enabled: dto.Preview.Groups.Image.Enabled, Mimes: dto.Preview.Groups.Image.Mimes, Exts: dto.Preview.Groups.Image.Exts}
+	cfg.Preview.Groups.Text = PreviewTextGroupConfig{
+		Enabled: dto.Preview.Groups.Text.Enabled, Mimes: dto.Preview.Groups.Text.Mimes, Exts: dto.Preview.Groups.Text.Exts,
+		MaxInlineSize: dto.Preview.Groups.Text.MaxInlineSize, TextChunkSize: dto.Preview.Groups.Text.TextChunkSize,
+	}
+	cfg.Preview.Groups.Audio = PreviewGroupConfig{Enabled: dto.Preview.Groups.Audio.Enabled, Mimes: dto.Preview.Groups.Audio.Mimes, Exts: dto.Preview.Groups.Audio.Exts}
+	cfg.Preview.Groups.Video = PreviewGroupConfig{Enabled: dto.Preview.Groups.Video.Enabled, Mimes: dto.Preview.Groups.Video.Mimes, Exts: dto.Preview.Groups.Video.Exts}
+	cfg.Preview.Groups.Document = PreviewGroupConfig{Enabled: dto.Preview.Groups.Document.Enabled, Mimes: dto.Preview.Groups.Document.Mimes, Exts: dto.Preview.Groups.Document.Exts}
+	cfg.Preview.Groups.Custom = PreviewGroupConfig{Enabled: dto.Preview.Groups.Custom.Enabled, Mimes: dto.Preview.Groups.Custom.Mimes, Exts: dto.Preview.Groups.Custom.Exts}
 
 	cfg.MimeTable = dto.MimeTable
 

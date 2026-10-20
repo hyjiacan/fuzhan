@@ -2,32 +2,119 @@ package utils
 
 import "testing"
 
-func TestIsPreviewable_EmptyConfigMeansAllPreviewable(t *testing.T) {
-	InitPreviewConfig("", "")
+func TestIsPreviewable_CustomEmptyMeansUnrestricted(t *testing.T) {
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
+		PreviewGroupImage:    {Enabled: true, Mimes: "image/*", Exts: "png"},
+		PreviewGroupText:     {Enabled: true, Mimes: "text/*", Exts: ""},
+		PreviewGroupAudio:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupVideo:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupDocument: {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupCustom:   {Enabled: true, Mimes: "", Exts: ""},
+	}})
 	if !IsPreviewable("/a/b.bin", "application/octet-stream") {
-		t.Fatalf("空预览配置应允许所有文件预览")
+		t.Fatalf("custom 组两组留空应视为不限制（所有文件均可预览）")
 	}
 	if !IsPreviewable("/a/noext", "") {
-		t.Fatalf("空预览配置应允许无扩展名文件预览")
+		t.Fatalf("custom 组两组留空应允许无扩展名文件预览")
 	}
 }
 
-func TestIsPreviewable_ConfiguredEnforced(t *testing.T) {
-	InitPreviewConfig("text/*,image/png", "md,log")
-	// MIME 匹配
+func TestIsPreviewable_GroupListsEnforced(t *testing.T) {
+	// 关闭音视频分组、自定义组关闭：未命中任何启用分组列表的文件不可预览
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
+		PreviewGroupImage:    {Enabled: true, Mimes: "image/*", Exts: "png,jpg"},
+		PreviewGroupText:     {Enabled: true, Mimes: "text/*", Exts: "md,log"},
+		PreviewGroupAudio:    {Enabled: false, Mimes: "audio/*", Exts: "mp3"},
+		PreviewGroupVideo:    {Enabled: false, Mimes: "video/*", Exts: "mp4"},
+		PreviewGroupDocument: {Enabled: true, Mimes: "application/pdf", Exts: "pdf"},
+		PreviewGroupCustom:   {Enabled: false, Mimes: "application/json", Exts: "json"},
+	}})
 	if !IsPreviewable("/a/f.txt", "text/plain") {
-		t.Fatalf("text/plain 应可预览")
+		t.Fatalf("text/* 应命中文本组")
 	}
 	if !IsPreviewable("/a/img.png", "image/png") {
-		t.Fatalf("image/png 应可预览")
+		t.Fatalf("image/png 应命中图片组")
 	}
-	// 扩展名匹配（补充）
 	if !IsPreviewable("/a/notes.md", "application/octet-stream") {
-		t.Fatalf(".md 应可预览")
+		t.Fatalf(".md 应命中文本组扩展名列表")
 	}
-	// reachthrough: config 非空时其它类型仍受限
 	if IsPreviewable("/a/video.mp4", "video/mp4") {
-		t.Fatalf("已配置预览类型时 video/mp4 不应可预览")
+		t.Fatalf("视频分组关闭时 video/mp4 不应可预览")
+	}
+	if IsPreviewable("/a/f.json", "application/json") {
+		t.Fatalf("自定义组关闭时其列表不应参与判定")
+	}
+
+	// 开启音视频分组后按各自列表直接可预览
+	g := defaultPreviewInitConfig().Groups
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: g})
+	if !IsPreviewable("/a/video.mp4", "video/mp4") {
+		t.Fatalf("视频分组开启时 video/mp4 应可预览")
+	}
+	if !IsPreviewable("/a/song.mp3", "audio/mpeg") {
+		t.Fatalf("音频分组开启时 audio/mpeg 应可预览")
+	}
+}
+
+func TestIsPreviewable_ExplicitEmptyGroupMatchesNothing(t *testing.T) {
+	// 内置分组显式留空：该组不命中任何文件（与 custom 的「留空=不限制」不同）
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
+		PreviewGroupImage:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupText:     {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupAudio:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupVideo:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupDocument: {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupCustom:   {Enabled: false, Mimes: "image/*", Exts: "png"},
+	}})
+	if IsPreviewable("/a/img.png", "image/png") {
+		t.Fatalf("内置分组列表留空时不应命中任何文件")
+	}
+}
+
+func TestIsPreviewable_GlobalSwitch(t *testing.T) {
+	InitPreviewConfig(PreviewInitConfig{Enabled: false, Groups: defaultPreviewInitConfig().Groups})
+	if IsPreviewable("/a/f.txt", "text/plain") {
+		t.Fatalf("全局预览开关关闭时任何文件都不应可预览")
+	}
+	if IsPreviewable("/a/b.bin", "application/octet-stream") {
+		t.Fatalf("全局预览开关关闭时任何文件都不应可预览")
+	}
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: defaultPreviewInitConfig().Groups})
+	if !IsPreviewable("/a/f.txt", "text/plain") {
+		t.Fatalf("全局预览开关开启后应恢复可预览")
+	}
+}
+
+func TestClassifyPreviewGroup(t *testing.T) {
+	InitPreviewConfig(defaultPreviewInitConfig())
+	cases := []struct {
+		ext, mime, want string
+	}{
+		{"png", "image/png", "image"},
+		{"svg", "", "image"},
+		{"mp3", "audio/mpeg", "audio"},
+		{"flac", "", "audio"},
+		{"mp4", "video/mp4", "video"},
+		{"mkv", "", "video"},
+		{"pdf", "application/pdf", "document"},
+		{"txt", "text/plain", "text"},
+		{"go", "", "text"},
+		{"ts", "", "text"}, // TypeScript 默认归文本而非视频
+		{"xyz", "application/octet-stream", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := ClassifyPreviewGroup(c.ext, c.mime); got != c.want {
+			t.Errorf("ClassifyPreviewGroup(%q, %q) = %q, want %q", c.ext, c.mime, got, c.want)
+		}
+	}
+
+	// 分组关闭后不再参与归类
+	g := defaultPreviewInitConfig().Groups
+	g[PreviewGroupAudio] = PreviewGroupState{Enabled: false, Mimes: DefaultPreviewGroupMimes(PreviewGroupAudio), Exts: DefaultPreviewGroupExts(PreviewGroupAudio)}
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: g})
+	if got := ClassifyPreviewGroup("mp3", "audio/mpeg"); got != "" {
+		t.Errorf("音频分组关闭时 ClassifyPreviewGroup 应返回空，got %q", got)
 	}
 }
 
