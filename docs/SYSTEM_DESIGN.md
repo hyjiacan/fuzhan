@@ -122,7 +122,7 @@
 - 启动 FTP 服务器
 - 定期清理过期临时文件的任务调度
 
-#### 2. 配置管理 (server/internal/config/, server/internal/appconfig/)
+#### 2. 配置管理 (server/internal/appconfig/，HTTP 接口在 server/internal/appconfig/api/)
 
 - `config.go` - YAML 配置解析，环境变量支持
 - 数据库连接配置

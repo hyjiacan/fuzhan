@@ -1,5 +1,7 @@
-// Package config 处理系统配置
-package config
+// Package api 系统配置管理 HTTP 接口（配置读取/保存/LDAP、OAuth2 连通性测试）。
+// 隶属 appconfig 领域：配置结构与读写核心在 appconfig 包，本包仅做接口层，
+// 因依赖 auth/resource（二者反向依赖 appconfig）不能并入 appconfig 包本身。
+package api
 
 import (
 	"encoding/json"

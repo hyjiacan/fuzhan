@@ -33,7 +33,10 @@ fuzhan/                              # 项目根目录
 │   │   │   ├── database.go              # 数据库连接
 │   │   │   ├── dto.go                   # DTO 定义
 │   │   │   ├── validator.go             # 配置验证
-│   │   │   └── writer.go                # 配置写入
+│   │   │   ├── writer.go                # 配置写入
+│   │   │   └── api/                     # 配置管理 HTTP 接口（同领域子包）
+│   │   │       ├── handler.go           # 配置读取/保存/连通性测试处理器
+│   │   │       └── binding_example.go   # 数据绑定示例
 │   │   │
 │   │   ├── auth/                        # 认证模块
 │   │   │   ├── handler.go               # 用户注册/登录/Token 刷新
@@ -45,12 +48,6 @@ fuzhan/                              # 项目根目录
 │   │   ├── cli/                         # CLI 模块
 │   │   │   ├── cli.go                   # CLI 命令逻辑
 │   │   │   └── handler.go               # CLI HTTP 处理器
-│   │   │
-│   │   ├── config/                      # 配置管理
-│   │   │   ├── config.go                # Config 结构体
-│   │   │   ├── store.go                 # 配置存储
-│   │   │   ├── handler.go               # 配置处理器
-│   │   │   └── binding_example.go       # 数据绑定示例
 │   │   │
 │   │   ├── constants/                   # 常量定义
 │   │   │   └── context_keys.go          # Gin Context Key 常量
@@ -285,7 +282,7 @@ fuzhan/                              # 项目根目录
 | `admin/` | 用户 CRUD、会话管理、TLS 证书 |
 | `temp/` | 临时文件管理（IP 配额、分片上传） |
 | `cli/` | CLI 命令 HTTP 接口 |
-| `config/` | 系统配置获取与更新 |
+| `appconfig/api/` | 系统配置获取与更新（appconfig 领域子包） |
 | `health/` | 健康检查端点 |
 | `monitor/` | 系统监控（存储/访问/关键词/热门下载/排名） |
 | `notification/` | URL 下载通知（获取/标记已读/合并匿名） |
@@ -351,7 +348,7 @@ server/cmd/fuzhan/main.go
     │
     ├── flag.Parse()                    # 解析命令行参数
     ├── appconfig.DoInitWithConfig()    # 加载配置（支持热重载）
-    ├── config.InitDB()                 # 初始化数据库连接
+    ├── appconfig.InitDB()              # 初始化数据库连接
     ├── db.AutoMigrate()                # 自动迁移模型
     ├── 初始化所有服务：
     │   ├── auth service
@@ -400,7 +397,8 @@ ui/src/main.js
 | 文件 | 说明 |
 |------|------|
 | `server/cmd/fuzhan/main.go` | 入口点，含 worker 生命周期（context 取消 + 热重启循环） |
-| `server/internal/config/` | YAML 配置加载，支持文件监听热重载 |
+| `server/internal/appconfig/` | YAML 配置加载、DTO、校验与写入（核心在 config.go/loader.go 等） |
+| `server/internal/appconfig/api/` | 配置管理 HTTP 接口（读取/保存/连通性测试） |
 | `server/internal/appconfig/config.go` | 完整配置结构体（多个子配置块） |
 | `server/internal/utils/logger.go` | Zap + lumberjack 日志，支持轮转压缩 |
 | `server/internal/middleware/auth.go` | JWT 中间件（Required/Optional/Admin），含用户禁用检查 |
