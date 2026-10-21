@@ -718,12 +718,12 @@
       "preview": {
         "enabled": true,
         "groups": {
-          "image": { "enabled": true, "mimes": "image/*", "exts": "png,jpg,jpeg,gif,bmp,webp,svg,ico" },
+          "image": { "enabled": true, "mimes": "image/png,image/jpeg,...", "exts": "png,jpg,jpeg,gif,bmp,webp,svg,ico" },
           "text": { "enabled": true, "mimes": "text/*,application/json,...", "exts": "txt,html,css,..." },
-          "audio": { "enabled": true, "mimes": "audio/*", "exts": "mp3,wav,..." },
-          "video": { "enabled": true, "mimes": "video/*", "exts": "mp4,webm,..." },
+          "audio": { "enabled": true, "mimes": "audio/mpeg,audio/wav,...", "exts": "mp3,wav,..." },
+          "video": { "enabled": true, "mimes": "video/mp4,video/webm,video/ogg", "exts": "mp4,webm,..." },
           "document": { "enabled": true, "mimes": "application/pdf", "exts": "pdf" },
-          "custom": { "enabled": true, "mimes": "", "exts": "" }
+          "custom": { "enabled": false, "mimes": "", "exts": "" }
         }
       }
     }

@@ -100,7 +100,7 @@ const normalizePreviewGroups = (cfgGroups) => {
   for (const [name, def] of Object.entries(DEFAULT_GROUPS)) {
     const src = cfgGroups?.[name] || {}
     groups[name] = {
-      enabled: src.enabled ?? true,
+      enabled: src.enabled ?? def.enabled,
       mimes: src.mimes ?? def.mimes,
       exts: src.exts ?? def.exts
     }

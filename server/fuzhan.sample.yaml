@@ -206,27 +206,28 @@ ddos:
 # MIME 类型与文件扩展名列表（逗号分隔，均支持通配符，如 image/*、bak）。
 # 判定规则：全局开关开启后，文件命中任一「已启用分组」的 mimes/exts 列表即可预览；
 # 分组同时命中多类时按优先序 image > audio > video > document > text > custom 归类。
-# mimes/exts 未配置时回退内置默认表；显式留空时该组不命中任何文件（custom 组除外，
-# custom 两组均留空表示不限制，所有文件均可预览）。可在「系统设置 -> 预览」页面维护。
+# mimes/exts 未配置时回退内置默认表（仅含浏览器原生可渲染的类型）；显式留空时该组不命中
+# 任何文件（custom 组除外，custom 启用后两组均留空表示不限制，所有文件均可预览）。
+# custom 组默认关闭，需显式启用。可在「系统设置 -> 预览」页面维护。
 preview:
   # 预览全局开关：关闭后所有类型的预览入口均不可用（未配置视为开启）
   enabled: true
   groups:
-    # 图片分组（未配置 mimes/exts 时视为以下默认值）
+    # 图片分组（未配置 mimes/exts 时视为以下默认值，仅含浏览器原生支持的类型）
     image:
       enabled: true
-      mimes: image/*
-      exts: png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,tif,tiff,heic,heif,jfif,pjpeg
+      mimes: image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng,image/bmp,image/vnd.microsoft.icon,image/x-icon,image/svg+xml
+      exts: png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,jfif,pjpeg
     # 音频分组
     audio:
       enabled: true
-      mimes: audio/*
-      exts: mp3,wav,ogg,oga,m4a,aac,flac,opus,mid,midi,amr,weba,aif,aiff,wma,mka,mp2
+      mimes: audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/aac,audio/flac,audio/opus,audio/webm
+      exts: mp3,wav,ogg,oga,m4a,aac,flac,opus,weba
     # 视频分组
     video:
       enabled: true
-      mimes: video/*
-      exts: mp4,webm,mov,m4v,avi,mkv,ogv,mpg,mpeg,flv,wmv,3gp,3g2,rm,rmvb,vob,m2ts,mts,f4v
+      mimes: video/mp4,video/webm,video/ogg
+      exts: mp4,webm,m4v,ogv
     # 文档分组
     document:
       enabled: true
@@ -241,9 +242,9 @@ preview:
       max_inline_size: 1M
       # 文本文件分块读取大小 (支持 50K, 100K 等格式)
       text_chunk_size: 100K
-    # 自定义分组：兜底白名单，mimes/exts 均留空表示不限制（所有文件均可预览）
+    # 自定义分组：兜底白名单，默认关闭；启用后 mimes/exts 均留空表示不限制（所有文件均可预览）
     custom:
-      enabled: true
+      enabled: false
       mimes: ""
       exts: ""
 

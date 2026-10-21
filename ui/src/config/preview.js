@@ -5,12 +5,14 @@
 import { SystemApi } from '@/api'
 
 // 内置分组默认表，与后端 utils/preview_utils.go 的默认表保持一致（options 加载失败时兜底，
-// 设置页「恢复默认」也以此为准）
+// 设置页「恢复默认」也以此为准）。
+// 默认表只收录浏览器原生可渲染的类型（img/audio/video/iframe 能直接显示或播放），
+// 非原生类型（如 tif/heic/wma/mkv 等）需要预览时由用户在设置中自行配置分组列表。
 export const DEFAULT_GROUPS = {
   image: {
     enabled: true,
-    mimes: 'image/*',
-    exts: 'png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,tif,tiff,heic,heif,jfif,pjpeg'
+    mimes: 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng,image/bmp,image/vnd.microsoft.icon,image/x-icon,image/svg+xml',
+    exts: 'png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,jfif,pjpeg'
   },
   text: {
     enabled: true,
@@ -23,16 +25,18 @@ export const DEFAULT_GROUPS = {
   },
   audio: {
     enabled: true,
-    mimes: 'audio/*',
-    exts: 'mp3,wav,ogg,oga,m4a,aac,flac,opus,mid,midi,amr,weba,aif,aiff,wma,mka,mp2'
+    mimes: 'audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/aac,audio/flac,audio/opus,audio/webm',
+    exts: 'mp3,wav,ogg,oga,m4a,aac,flac,opus,weba'
   },
   video: {
     enabled: true,
-    mimes: 'video/*',
-    exts: 'mp4,webm,mov,m4v,avi,mkv,ogv,mpg,mpeg,flv,wmv,3gp,3g2,rm,rmvb,vob,m2ts,mts,f4v'
+    mimes: 'video/mp4,video/webm,video/ogg',
+    exts: 'mp4,webm,m4v,ogv'
   },
   document: { enabled: true, mimes: 'application/pdf', exts: 'pdf' },
-  custom: { enabled: true, mimes: '', exts: '' }
+  // custom 组默认关闭：其「两组留空 = 不限制」的兜底语义仅在显式启用后生效，
+  // 避免默认状态下所有文件都被判定为可预览
+  custom: { enabled: false, mimes: '', exts: '' }
 }
 // 内置分组匹配优先序，与后端保持一致
 const GROUP_ORDER = ['image', 'audio', 'video', 'document', 'text']

@@ -87,8 +87,8 @@ const BUILTIN_LIST_HINT = '内置分组留空表示该组不命中任何文件�
 const previewGroups = [
   {
     key: 'image', label: '图片',
-    desc: '浏览器内嵌显示的图片文件，默认按 MIME image/* 与常见图片扩展名识别',
-    mimesPlaceholder: 'image/*', mimesHint: BUILTIN_LIST_HINT,
+    desc: '浏览器内嵌显示的图片文件，默认表仅含浏览器原生支持的图片类型',
+    mimesPlaceholder: 'image/png,image/jpeg', mimesHint: BUILTIN_LIST_HINT,
     extsPlaceholder: 'png,jpg,jpeg,gif,webp', extsHint: BUILTIN_LIST_HINT
   },
   {
@@ -99,15 +99,15 @@ const previewGroups = [
   },
   {
     key: 'audio', label: '音频',
-    desc: '浏览器原生音频播放器在线播放（实际可播性取决于浏览器编码支持）',
-    mimesPlaceholder: 'audio/*', mimesHint: BUILTIN_LIST_HINT,
+    desc: '浏览器原生音频播放器在线播放，默认表仅含浏览器原生支持的音频编码',
+    mimesPlaceholder: 'audio/mpeg,audio/wav', mimesHint: BUILTIN_LIST_HINT,
     extsPlaceholder: 'mp3,wav,flac,m4a', extsHint: BUILTIN_LIST_HINT
   },
   {
     key: 'video', label: '视频',
-    desc: '浏览器原生视频播放器在线播放（实际可播性取决于浏览器编码支持）',
-    mimesPlaceholder: 'video/*', mimesHint: BUILTIN_LIST_HINT,
-    extsPlaceholder: 'mp4,webm,mkv,mov', extsHint: BUILTIN_LIST_HINT
+    desc: '浏览器原生视频播放器在线播放，默认表仅含浏览器原生支持的视频编码',
+    mimesPlaceholder: 'video/mp4,video/webm', mimesHint: BUILTIN_LIST_HINT,
+    extsPlaceholder: 'mp4,webm,m4v,ogv', extsHint: BUILTIN_LIST_HINT
   },
   {
     key: 'document', label: '文档',
@@ -117,11 +117,11 @@ const previewGroups = [
   },
   {
     key: 'custom', label: '自定义',
-    desc: '兜底白名单：未命中任何内置分组的文件按本组列表放行',
+    desc: '兜底白名单：未命中任何内置分组的文件按本组列表放行（默认关闭，需显式启用）',
     mimesPlaceholder: 'application/vnd.openxmlformats-officedocument.*',
-    mimesHint: '逗号分隔，支持通配符；与扩展名列表均留空表示不限制（所有文件均可预览）',
+    mimesHint: '逗号分隔，支持通配符；启用后与扩展名列表均留空表示不限制（所有文件均可预览）',
     extsPlaceholder: 'bak,epub',
-    extsHint: '逗号分隔；与 MIME 列表均留空表示不限制（所有文件均可预览）'
+    extsHint: '逗号分隔；启用后与 MIME 列表均留空表示不限制（所有文件均可预览）'
   }
 ]
 

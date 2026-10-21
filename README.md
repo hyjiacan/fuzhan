@@ -167,13 +167,13 @@ ftp:
 
 preview:
   enabled: true                # 预览全局开关
-  groups:                      # 各分组独立开关 + 可编辑的 MIME/扩展名列表（未配置回退内置默认表）
-    image: { enabled: true, mimes: "image/*", exts: "png,jpg,..." }
+  groups:                      # 各分组独立开关 + 可编辑的 MIME/扩展名列表（未配置回退内置默认表，默认表仅含浏览器原生可渲染类型）
+    image: { enabled: true, mimes: "image/png,image/jpeg,...", exts: "png,jpg,..." }
     text: { enabled: true, mimes: "text/*,...", exts: "txt,md,...", max_inline_size: "1M", text_chunk_size: "100K" }
-    audio: { enabled: true, mimes: "audio/*", exts: "mp3,wav,..." }
-    video: { enabled: true, mimes: "video/*", exts: "mp4,webm,..." }
+    audio: { enabled: true, mimes: "audio/mpeg,audio/wav,...", exts: "mp3,wav,..." }
+    video: { enabled: true, mimes: "video/mp4,video/webm,...", exts: "mp4,webm,..." }
     document: { enabled: true, mimes: "application/pdf", exts: "pdf" }
-    custom: { enabled: true, mimes: "", exts: "" }   # 两组均留空表示不限制
+    custom: { enabled: false, mimes: "", exts: "" }   # 默认关闭；启用后两组均留空表示不限制
 
 openapi:
   enabled: false

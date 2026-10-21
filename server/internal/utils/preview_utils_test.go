@@ -85,6 +85,23 @@ func TestIsPreviewable_GlobalSwitch(t *testing.T) {
 	}
 }
 
+func TestIsPreviewable_DefaultCustomDisabled(t *testing.T) {
+	// 默认配置下 custom 组关闭：未命中任何内置分组默认列表的文件不可预览
+	InitPreviewConfig(defaultPreviewInitConfig())
+	if IsPreviewable("/a/b.bin", "application/octet-stream") {
+		t.Fatalf("默认配置下 custom 组应关闭，二进制文件不应可预览")
+	}
+	if IsPreviewable("/a/f.mkv", "video/x-matroska") {
+		t.Fatalf("非浏览器原生类型不应出现在默认表中")
+	}
+	if IsPreviewable("/a/f.heic", "image/heic") {
+		t.Fatalf("非浏览器原生类型不应出现在默认表中")
+	}
+	if !IsPreviewable("/a/f.webm", "video/webm") {
+		t.Fatalf("浏览器原生视频类型应可预览")
+	}
+}
+
 func TestClassifyPreviewGroup(t *testing.T) {
 	InitPreviewConfig(defaultPreviewInitConfig())
 	cases := []struct {
@@ -95,7 +112,7 @@ func TestClassifyPreviewGroup(t *testing.T) {
 		{"mp3", "audio/mpeg", "audio"},
 		{"flac", "", "audio"},
 		{"mp4", "video/mp4", "video"},
-		{"mkv", "", "video"},
+		{"webm", "", "video"},
 		{"pdf", "application/pdf", "document"},
 		{"txt", "text/plain", "text"},
 		{"go", "", "text"},

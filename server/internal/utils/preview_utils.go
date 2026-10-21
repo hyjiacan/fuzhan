@@ -18,29 +18,30 @@ const (
 
 // 内置预览分组的默认 MIME / 扩展名列表（逗号分隔，支持通配符），
 // 供配置「未设置」时作为缺省值；与前端 config/preview.js 的默认表保持一致。
-// custom 组没有默认列表：留空表示不限制（所有文件均可预览）。
+// 默认表只收录浏览器原生可渲染的类型（img/audio/video/iframe 能直接显示或播放），
+// 非原生类型（如 tif/heic/wma/mkv 等）不放入默认表，需要预览时由用户自行配置分组列表。
+// custom 组没有默认列表：留空表示不限制（所有文件均可预览），且默认处于关闭状态。
 var (
 	previewGroupDefaultsMimes = map[string]string{
-		PreviewGroupImage: "image/*",
+		PreviewGroupImage: "image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng," +
+			"image/bmp,image/vnd.microsoft.icon,image/x-icon,image/svg+xml",
 		PreviewGroupText: "text/*,application/json,application/xml,application/javascript," +
 			"application/yaml,application/sql,application/x-sh",
-		PreviewGroupAudio:    "audio/*",
-		PreviewGroupVideo:    "video/*",
+		PreviewGroupAudio: "audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/aac," +
+			"audio/flac,audio/opus,audio/webm",
+		PreviewGroupVideo:    "video/mp4,video/webm,video/ogg",
 		PreviewGroupDocument: "application/pdf",
 		PreviewGroupCustom:   "",
 	}
 	previewGroupDefaultsExts = map[string]string{
-		PreviewGroupImage: "png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,tif,tiff," +
-			"heic,heif,jfif,pjpeg",
+		PreviewGroupImage: "png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,jfif,pjpeg",
 		PreviewGroupText: "txt,html,htm,css,js,json,xml,md,markdown,yml,yaml,csv," +
 			"go,java,py,c,cpp,h,hpp,cs,rb,php,rs,sh,bat,ps1,sql,vue,tsx,jsx,ts,scss,less," +
 			"ini,conf,cfg,log,properties,config,toml,checksum,mjs,cjs,m," +
 			"kt,swift,dart,lua,r,pl,ex,erl,hs,nim,zig,groovy,scala,clj,tf," +
 			"graphql,proto,adoc,vb,asm,f90",
-		PreviewGroupAudio: "mp3,wav,ogg,oga,m4a,aac,flac,opus,mid,midi,amr,weba," +
-			"aif,aiff,wma,mka,mp2",
-		PreviewGroupVideo: "mp4,webm,mov,m4v,avi,mkv,ogv,mpg,mpeg,flv,wmv,3gp,3g2," +
-			"rm,rmvb,vob,m2ts,mts,f4v",
+		PreviewGroupAudio:    "mp3,wav,ogg,oga,m4a,aac,flac,opus,weba",
+		PreviewGroupVideo:    "mp4,webm,m4v,ogv",
 		PreviewGroupDocument: "pdf",
 		PreviewGroupCustom:   "",
 	}
@@ -78,7 +79,7 @@ type previewGroupRules struct {
 	unrestricted bool // 仅 custom 组语义：MIME 与扩展名均未配置表示不限制
 }
 
-// 预览配置缓存（包加载时即为「全组开启 + 默认列表」，与配置缺省语义一致）
+// 预览配置缓存（包加载时即为「内置分组开启 + 默认列表 + custom 关闭」，与配置缺省语义一致）
 var (
 	previewMu      sync.RWMutex
 	previewEnabled = true
@@ -86,12 +87,13 @@ var (
 	previewRules   = buildPreviewRules(defaultPreviewInitConfig())
 )
 
-// defaultPreviewInitConfig 全部内置分组开启并使用默认列表（配置缺省时的行为）
+// defaultPreviewInitConfig 内置分组开启并使用默认列表、custom 组关闭（配置缺省时的行为）。
+// custom 组默认关闭：避免「两组留空 = 不限制」的兜底语义在未显式启用时让所有文件都可预览。
 func defaultPreviewInitConfig() PreviewInitConfig {
 	groups := make(map[string]PreviewGroupState, 6)
 	for _, g := range append(append([]string{}, previewGroupOrder...), PreviewGroupCustom) {
 		groups[g] = PreviewGroupState{
-			Enabled: true,
+			Enabled: g != PreviewGroupCustom,
 			Mimes:   previewGroupDefaultsMimes[g],
 			Exts:    previewGroupDefaultsExts[g],
 		}
