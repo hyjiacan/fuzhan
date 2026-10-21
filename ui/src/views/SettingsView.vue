@@ -89,8 +89,41 @@ import SettingsResource from './settings/SettingsResource.vue'
 import SettingsChangesDrawer from './settings/SettingsChangesDrawer.vue'
 import { diffSettings } from './settings/useSettingsDiff'
 import { formatToUnit } from './settings/useSettingsUtils'
+import { DEFAULT_GROUPS } from '@/config/preview'
 
 const message = ElMessage
+
+// normalizePreviewGroups 将后端预览分组配置归一化为设置页结构：
+// 缺失字段回退内置默认表（与后端 utils/preview_utils.go 默认表一致），文本组大小解析为字节数值。
+const normalizePreviewGroups = (cfgGroups) => {
+  const groups = {}
+  for (const [name, def] of Object.entries(DEFAULT_GROUPS)) {
+    const src = cfgGroups?.[name] || {}
+    groups[name] = {
+      enabled: src.enabled ?? true,
+      mimes: src.mimes ?? def.mimes,
+      exts: src.exts ?? def.exts
+    }
+  }
+  groups.text.maxInlineSize = NumberUtils.parseFileSize(cfgGroups?.text?.maxInlineSize || '1M')
+  groups.text.textChunkSize = NumberUtils.parseFileSize(cfgGroups?.text?.textChunkSize || '100K')
+  return groups
+}
+
+// buildPreviewPayload 组装预览提交 payload：分组开关与列表原样提交，
+// 文本组大小转为单位字符串（后端按 1M/100K 格式解析）。
+const buildPreviewPayload = () => {
+  const groups = {}
+  for (const [name, g] of Object.entries(settings.preview.groups)) {
+    const item = { enabled: g.enabled, mimes: g.mimes, exts: g.exts }
+    if (name === 'text') {
+      item.maxInlineSize = formatToUnit(g.maxInlineSize)
+      item.textChunkSize = formatToUnit(g.textChunkSize)
+    }
+    groups[name] = item
+  }
+  return { enabled: settings.preview.enabled, groups }
+}
 
 const saving = ref(false)
 const activePanel = shallowRef('appInfo')
@@ -234,14 +267,7 @@ const settings = reactive({
   tempFilesQuotaPerIP: 0,
   preview: {
     enabled: true,
-    groups: {
-      image: { enabled: true, mimes: '', exts: '' },
-      text: { enabled: true, mimes: '', exts: '', maxInlineSize: 1048576, textChunkSize: 102400 },
-      audio: { enabled: true, mimes: '', exts: '' },
-      video: { enabled: true, mimes: '', exts: '' },
-      document: { enabled: true, mimes: '', exts: '' },
-      custom: { enabled: true, mimes: '', exts: '' }
-    }
+    groups: normalizePreviewGroups(null)
   },
   mimeTable: {},
   openApi: {
@@ -428,28 +454,8 @@ const loadSettings = async () => {
       }
 
       settings.preview = {
-        // 开关缺省语义与后端一致：未配置视为开启；分组列表由后端返回已解析默认值的生效配置
         enabled: cfg.preview?.enabled ?? true,
-        groups: (() => {
-          const g = cfg.preview?.groups || {}
-          const pick = (name) => ({
-            enabled: g[name]?.enabled ?? true,
-            mimes: g[name]?.mimes || '',
-            exts: g[name]?.exts || ''
-          })
-          return {
-            image: pick('image'),
-            text: {
-              ...pick('text'),
-              maxInlineSize: NumberUtils.parseFileSize(g.text?.maxInlineSize || '1M'),
-              textChunkSize: NumberUtils.parseFileSize(g.text?.textChunkSize || '100K')
-            },
-            audio: pick('audio'),
-            video: pick('video'),
-            document: pick('document'),
-            custom: pick('custom')
-          }
-        })()
+        groups: normalizePreviewGroups(cfg.preview?.groups)
       }
 
       settings.mimeTable = { ...(cfg.mimeTable || {}) }
@@ -657,21 +663,7 @@ const doSaveSettings = async () => {
       download: {
         rateLimit: settings.download.rateLimit
       },
-      preview: {
-        enabled: settings.preview.enabled,
-        groups: {
-          image: { ...settings.preview.groups.image },
-          text: {
-            ...settings.preview.groups.text,
-            maxInlineSize: formatToUnit(settings.preview.groups.text.maxInlineSize),
-            textChunkSize: formatToUnit(settings.preview.groups.text.textChunkSize)
-          },
-          audio: { ...settings.preview.groups.audio },
-          video: { ...settings.preview.groups.video },
-          document: { ...settings.preview.groups.document },
-          custom: { ...settings.preview.groups.custom }
-        }
-      },
+      preview: buildPreviewPayload(),
       mimeTable: settings.mimeTable,
       openApi: {
         enabled: settings.openApi.enabled,

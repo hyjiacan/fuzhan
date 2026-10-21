@@ -1040,8 +1040,8 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
     flex-direction: column;
     gap: 6px;
     border-top: 1px dashed @border-color-light;
-    margin-top: 4px;
-    padding-top: 6px;
+    background-color: @border-color-light;
+    padding: 0 3px;
 
     .checksum-controls {
       display: flex;

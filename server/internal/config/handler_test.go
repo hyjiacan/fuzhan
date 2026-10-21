@@ -134,6 +134,62 @@ func TestSaveConfig_SecurityAbsent_KeepsValues(t *testing.T) {
 	}
 }
 
+// TestSaveConfig_PreviewGroups 验证预览分组配置经 SaveConfig 写入 GlobalConfig 并持久化：
+// 提交的分组按值生效，未提交的分组沿用当前生效值（指针字段语义）。
+func TestSaveConfig_PreviewGroups(t *testing.T) {
+	prevPath := appconfig.ConfigPath
+	prevCfg := appconfig.GlobalConfig
+	appconfig.ConfigPath = minimalTestConfigPath(t)
+	defer func() {
+		appconfig.ConfigPath = prevPath
+		appconfig.GlobalConfig = prevCfg
+	}()
+	appconfig.GlobalConfig = appconfig.Config{}
+
+	body := `{"preview":{"enabled":false,"groups":{` +
+		`"image":{"enabled":false,"mimes":"image/png","exts":"png"},` +
+		`"text":{"enabled":true,"mimes":"text/plain","exts":"txt","maxInlineSize":"2M","textChunkSize":"200K"}}}}`
+	postConfig(t, "/api/v1/web/config", body, &Handler{})
+
+	pv := appconfig.GlobalConfig.Preview
+	if pv.IsEnabled() {
+		t.Error("SaveConfig 后 Preview.IsEnabled() = true, want false")
+	}
+	if pv.IsGroupEnabled("image") {
+		t.Error("image 分组开关 = true, want false")
+	}
+	if got := pv.GroupMimes("image"); got != "image/png" {
+		t.Errorf("image 分组 Mimes = %q, want image/png", got)
+	}
+	if got := pv.GroupExts("image"); got != "png" {
+		t.Errorf("image 分组 Exts = %q, want png", got)
+	}
+	if got := pv.TextMaxInlineSize(); got != "2M" {
+		t.Errorf("text 分组 MaxInlineSize = %q, want 2M", got)
+	}
+	if got := pv.TextChunkSize(); got != "200K" {
+		t.Errorf("text 分组 TextChunkSize = %q, want 200K", got)
+	}
+	// 未提交的 audio 分组：开关视为开启，列表回退内置默认表
+	if !pv.IsGroupEnabled("audio") {
+		t.Error("未提交的 audio 分组开关 = false, want 默认开启")
+	}
+	if pv.GroupMimes("audio") == "" {
+		t.Error("未提交的 audio 分组 Mimes 为空, want 回退内置默认表")
+	}
+
+	out, err := os.ReadFile(appconfig.ConfigPath)
+	if err != nil {
+		t.Fatalf("读取持久化配置失败: %v", err)
+	}
+	yamlText := string(out)
+	for _, want := range []string{"mimes: image/png", "max_inline_size: 2M", "text_chunk_size: 200K"} {
+		if !strings.Contains(yamlText, want) {
+			t.Errorf("持久化 YAML 缺少 %q 节点: %s", want, yamlText)
+		}
+	}
+}
+
 // equalStrings 按顺序比较两个字符串切片。
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

@@ -188,7 +188,7 @@ const webdavEnabled = computed(() => store.state.config.webdavEnabled)
 const ftpPort = computed(() => store.state.config.ftpPort || 2121)
 const anonymousUsername = computed(() => store.state.config.anonymousUsername || 'public')
 const serverHost = computed(() => window.location.hostname || 'localhost')
-const webdavUrl = computed(() => `${window.location.origin}/api/v1/webdav`)
+const webdavUrl = computed(() => `${window.location.origin}/webdav`)
 
 const showUploadStatus = ref(false)
 

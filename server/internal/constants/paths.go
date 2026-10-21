@@ -6,7 +6,8 @@ package constants
 const (
 	// WebDAVPathPrefix WebDAV 统一端点的挂载前缀。
 	WebDAVPathPrefix = "/api/v1/webdav"
-
+	// WebDAVAliasPathPrefix 是 WebDAV 顶层别名路由前缀
+	WebDAVAliasPathPrefix = "/webdav"
 	// APIPathPrefix HTTP API 前缀。
 	APIPathPrefix = "/api/"
 )

@@ -4,7 +4,7 @@
       <span>上传队列 ({{ items.length }} 个)</span>
       <span style="color: var(--el-text-color-placeholder);">等待 {{ pendingCount }} 个</span>
     </div>
-    <div class="queue-list" style="max-height: 160px; overflow-y: auto;">
+    <div class="queue-list" style="max-height: 240px; overflow-y: auto;">
       <template v-for="(item, index) in items" :key="item.id">
         <div
           :ref="el => { if (el) queueItemRefs[item.id] = el }"
@@ -148,7 +148,7 @@
           </div>
         </div>
         <!-- 校验值区域：上传完成后可计算 MD5/SHA1/SHA256（文件需仍在内存中），与 URL 上传能力一致 -->
-        <div v-if="canComputeChecksum(item)" class="queue-item-checksum" :style="{ padding: '0 12px 8px' }">
+        <div v-if="canComputeChecksum(item)" class="queue-item-checksum">
           <div class="checksum-controls">
             <span class="checksum-hint">校验值:</span>
             <el-checkbox-group v-model="item.checksumAlgorithms" size="small" :disabled="item.checksumLoading">

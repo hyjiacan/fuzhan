@@ -20,7 +20,6 @@
 
 ### 更改
 
-- **私有分享下载支持断点续传并按续传语义过滤记录**：`GET /share/:code`（含 `preview=true` 预览）改用 `http.ServeContent` 输出，响应恒带 `Accept-Ranges: bytes`，带合法 `Range` 返回 `206` 与 `Content-Range`，区间不可满足返回 `416`；成功下载记录与公开下载判定一致——续传分段（Range 起始 > 0）、尾部区间、HEAD 探活请求不再写入下载记录，避免一次下载被拆成多条记录。(hyjiacan, 2026-10-20)
 - **设置页防浏览器密码自动填充**：LDAP 绑定密码、OAuth2 Client Secret、MySQL/PostgreSQL 密码等输入框统一设置 `autocomplete="new-password"`，相邻用户名/绑定 DN 字段设置 `autocomplete="off"`，从源头阻断密码管理器自动填充误触发「配置变更」提示。(hyjiacan, 2026-10-19)
 - **登录与注册日志分离**：认证事件按类型分文件落盘，`auth.login` / `auth.oauth2.login` 写入 `login.log`，`auth.register` 写入 `register.log`，两者不再混入 `app.log`（`access_log: false` 时仍回退写入 `app.log`）。(hyjiacan, 2026-10-16)
 - **API 路径按作用域重组**：所有由界面（含管理后台）直接调用的接口统一迁移到 `/api/v1/web/` 前缀下，`/api/v1` 仅保留 `/ready`、`/metrics`、`/cli`、`/webdav` 等非界面渠道；根级 `/download/*path`、`/share/:code`、`/cli`、`/lite` 别名保持不变。前端 API 基址、后端路径解析与 URL 生成、测试与文档已同步更新。(hyjiacan, 2026-10-15)

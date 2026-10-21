@@ -497,9 +497,9 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		uploads.DELETE("/session/:id", uploadSessionHandler.CancelSession)
 		uploads.POST("/chunk", uploadSessionHandler.UploadChunk)
 		uploads.POST("/finalize", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
-		uploads.POST("/url", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL)          // 从URL上传（入队，后台队列调度）
-		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs)        // 批量探测URL（文件名/存在性/历史）
-		uploads.GET("/url-task/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.GetURLTask) // URL任务进度查询
+		uploads.POST("/url", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL) // 从URL上传（入队，后台队列调度）
+		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs)                             // 批量探测URL（文件名/存在性/历史）
+		uploads.GET("/url-task/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.GetURLTask)                      // URL任务进度查询
 		uploads.POST("/url_info", func(c *gin.Context) {
 			file.GetFileInfoFromURL(c.Writer, c.Request)
 		})
@@ -524,8 +524,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	{
 		files.GET("/recent", recentHandler.GetRecent)
 		files.GET("/recent/carousel", recentHandler.GetRecentCarousel)
-		files.GET("/preview/*path", previewHandler.PreviewFile)    // 文件预览
-		files.GET("/preview-chunk/*path", previewHandler.GetChunk) // 读取文件分块
+		files.GET("/preview/*path", previewHandler.PreviewFile)     // 文件预览
+		files.GET("/preview-chunk/*path", previewHandler.GetChunk)  // 读取文件分块
 		files.POST("/checksum", previewHandler.ComputeFileChecksum) // 计算已上传文件校验值（md5/sha1/sha256）
 		files.PUT("/records/:id/notes", indexHandler.PublicUpdateNotes)
 		files.GET("/records/:id/notes", indexHandler.PublicGetNotes)
@@ -747,7 +747,7 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	}
 }
 
-// registerTopLevelRoutes 注册顶层快捷入口（/cli、/download）与 Open API 路由组（/api/open/v1）
+// registerTopLevelRoutes 注册顶层快捷入口（/cli、/download、/webdav）与 Open API 路由组（/api/open/v1）
 func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// CLI 路由别名（无需认证，/cli 作为 /api/v1/cli 的快捷入口）
 	cliAlias := r.Group("/cli")
@@ -764,6 +764,41 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	{
 		downloadAlias.GET("/*path", rt.downloadHandlers.DownloadFile)
 		downloadAlias.HEAD("/*path", rt.downloadHandlers.DownloadFile)
+	}
+
+	// WebDAV 路由别名（/webdav 作为 /api/v1/webdav 的快捷入口）
+	// 仅在配置启用 WebDAV 时注册，保持与原路由一致的行为
+	if rt.cfg.Server.WebDAV.Enabled {
+		authenticate := webdav.UserAuthenticator(func(username, password string) (string, bool, error) {
+			user, err := rt.authService.LoginByPassword(username, password)
+			if err != nil {
+				return "", false, err
+			}
+			return user.UUID, user.Disabled, nil
+		})
+
+		privatePath := ""
+		if rt.cfg.Storage.Private.Enabled {
+			privatePath = rt.cfg.Storage.Private.Path
+		}
+		wdService := webdavsvc.NewWebDAVBackend(rt.db, rt.indexService, privatePath)
+		publicFS := webdav.NewPublicFileSystem(appconfig.RootNames)
+		publicFS.SetBackend(wdService)
+
+		var unifiedFS *webdav.UnifiedFileSystem
+		if rt.cfg.Storage.Private.Enabled {
+			privateFS := webdav.NewPrivateFileSystem(rt.cfg.Storage.Private.Path)
+			privateFS.SetBackend(wdService)
+			unifiedFS = webdav.NewUnifiedFileSystem(publicFS, privateFS)
+		} else {
+			unifiedFS = webdav.NewUnifiedFileSystem(publicFS, nil)
+		}
+
+		recordingFS := webdav.NewRecordingFileSystem(unifiedFS, &webdavRecordingRepo{store: rt.recordRepo})
+		// 注意：别名路径前缀必须显式指定为 /webdav，否则 WebDAV 协议内部资源定位会出错
+		davHandler := webdav.NewHandler(constants.WebDAVAliasPathPrefix, recordingFS)
+		webdav.SetupUnifiedRouter(r.Group(constants.WebDAVAliasPathPrefix), davHandler, authenticate, rt.cfg.Upload.MaxFileSize)
+		utils.Info("WebDAV 别名端点已启用", utils.String("path", constants.WebDAVAliasPathPrefix))
 	}
 
 	// 轻量版入口（无需认证）：服务器渲染的纯 HTML 列表，兼容老旧浏览器，
