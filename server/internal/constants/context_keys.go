@@ -18,4 +18,7 @@ const (
 
 	// ContextKeyUserUUID 用户UUID上下文键
 	ContextKeyUserUUID ContextKey = "userUUID"
+
+	// ContextKeySecurityGuard 安全事件防护渠道标记键（如 WebDAV 中间件 abort 前标记 guard=webdav）
+	ContextKeySecurityGuard ContextKey = "securityGuard"
 )

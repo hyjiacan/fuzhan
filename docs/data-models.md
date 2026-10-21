@@ -277,7 +277,7 @@
 | Result | string(16) | not null; default: failure | 结果 `success` / `failure` |
 | Reason | string(512) | - | 事件详情 / 错误描述 |
 | RequestID | string(64) | index | 用于关联同一波攻击的请求 ID |
-| Guard | string(64) | - | 命中的防护机制（auth / accessguard / webdav / ftp） |
+| Guard | string(64) | - | 命中的防护机制（auth / accessguard / webdav / ftp / ddos） |
 | Read | bool | not null; default: false; index | 管理员是否已读（评估未读提醒） |
 | CreatedAt | time.Time | index | 事件产生时间（UTC） |
 
@@ -299,6 +299,7 @@
 | `access.forbidden` | 越权 / 禁止访问（403） |
 | `rate.limited` | 触发频率限制（429） |
 | `code.bruteforce` | 无效分享 / 临时码 / 口令枚举达阈值被锁定 |
+| `ddos.suspected` | 疑似 DDoS / 高频请求（固定窗口计数超阈值，仅检测告警、不阻断；guard 恒为 `ddos`） |
 
 ### 索引
 

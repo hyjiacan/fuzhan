@@ -98,6 +98,9 @@
       <el-select v-model="filters.eventType" placeholder="事件类型" clearable size="small" style="width: 180px">
         <el-option v-for="(m, k) in eventTypeMeta" :key="k" :label="m" :value="k" />
       </el-select>
+      <el-select v-model="filters.guard" placeholder="防护渠道" clearable size="small" style="width: 130px">
+        <el-option v-for="(m, k) in guardMeta" :key="k" :label="m" :value="k" />
+      </el-select>
       <el-input v-model="filters.clientIP" placeholder="来源 IP" clearable size="small" style="width: 150px" />
       <el-input v-model="filters.identity" placeholder="身份" clearable size="small" style="width: 130px" />
       <el-input v-model="filters.q" placeholder="目标/路径/请求ID 关键字" clearable size="small" style="width: 200px" @keyup.enter="onSearch" />
@@ -202,9 +205,10 @@ const eventTypeMeta = {
   'auth.unauthorized': '认证失败(401)',
   'access.forbidden': '越权访问(403)',
   'rate.limited': '触发限流(429)',
-  'code.bruteforce': '口令/分享码暴破'
+  'code.bruteforce': '口令/分享码暴破',
+  'ddos.suspected': '疑似DDoS/高频'
 }
-const guardMeta = { auth: '认证/授权', accessguard: '访问防护', webdav: 'WebDAV', ftp: 'FTP' }
+const guardMeta = { auth: '认证/授权', accessguard: '访问防护', webdav: 'WebDAV', ftp: 'FTP', ddos: '高频检测' }
 
 const eventTypeLabel = (t) => eventTypeMeta[t] || t || '-'
 const guardLabel = (g) => guardMeta[g] || g || '-'
@@ -240,12 +244,13 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const dateRange = ref(null)
-const filters = ref({ severity: '', eventType: '', clientIP: '', identity: '', q: '', unread: false })
+const filters = ref({ severity: '', eventType: '', guard: '', clientIP: '', identity: '', q: '', unread: false })
 
 const buildParams = () => {
   const p = { page: page.value, pageSize: pageSize.value }
   if (filters.value.severity) p.severity = filters.value.severity
   if (filters.value.eventType) p.eventType = filters.value.eventType
+  if (filters.value.guard) p.guard = filters.value.guard
   if (filters.value.clientIP) p.clientIP = filters.value.clientIP
   if (filters.value.identity) p.identity = filters.value.identity
   if (filters.value.q) p.q = filters.value.q
@@ -325,7 +330,7 @@ const onSearch = () => {
 }
 
 const onReset = () => {
-  filters.value = { severity: '', eventType: '', clientIP: '', identity: '', q: '', unread: false }
+  filters.value = { severity: '', eventType: '', guard: '', clientIP: '', identity: '', q: '', unread: false }
   dateRange.value = null
   page.value = 1
   loadEvents()

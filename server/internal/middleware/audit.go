@@ -153,6 +153,11 @@ func getDuration(c *gin.Context) int64 {
 // 仅对状态码命中风险集合（401/403/429）的请求登记，普通响应不产生安全事件以避免噪音。
 func recordRejectedSecurityEvent(c *gin.Context) {
 	status := c.Writer.Status()
+	// 降噪：前端 token 过期导致的自动轮询 GET 401 不是攻击行为，不入库
+	// （写操作 401、登录/注册、WebDAV 401、403/429 全部保留）
+	if status == http.StatusUnauthorized && isNonActivityRequest(c.Request.Method, c.Request.URL.Path) {
+		return
+	}
 	var eventType, severity string
 	switch status {
 	case http.StatusUnauthorized:
@@ -168,11 +173,19 @@ func recordRejectedSecurityEvent(c *gin.Context) {
 		return
 	}
 
+	// 防护渠道：优先取被拒中间件打的上下文标记（如 WebDAV），缺省 auth
+	guard := models.GuardAuth
+	if v, exists := c.Get(string(constants.ContextKeySecurityGuard)); exists {
+		if s, ok := v.(string); ok && s != "" {
+			guard = s
+		}
+	}
+
 	ev := &models.SecurityEvent{
 		EventType: eventType,
 		Severity:  severity,
 		Target:    c.Request.Method + " " + c.Request.URL.Path,
-		Guard:     models.GuardAuth,
+		Guard:     guard,
 		Reason:    fmt.Sprintf("请求被拒绝（HTTP %d）", status),
 	}
 	security.RecordFromGin(c, ev)

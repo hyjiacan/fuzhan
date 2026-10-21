@@ -48,6 +48,7 @@ func webdavRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" {
 			if !accessguard.Acquire(accessguard.SCOPE_WEBDAV, c.ClientIP()) {
+				markWebDAVGuard(c)
 				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "下载过于频繁，请稍后再试"})
 				return
 			}
@@ -62,6 +63,7 @@ func depthMiddleware() gin.HandlerFunc {
 		if c.Request.Method == "PROPFIND" {
 			depth := c.Request.Header.Get("Depth")
 			if depth == "infinity" || (depth != "" && depth != "0" && depth != "1") {
+				markWebDAVGuard(c)
 				c.Header("DAV", "1")
 				c.Header("Depth", "1")
 				c.AbortWithStatus(http.StatusForbidden) // 403 Forbidden

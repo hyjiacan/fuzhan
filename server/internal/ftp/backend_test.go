@@ -1,17 +1,109 @@
 package ftp
 
 import (
+	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
+	"fuzhan/internal/repositories"
+	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
+	ftpserver "github.com/fclairamb/ftpserverlib"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
+
+// secSink 内存安全事件存储，捕获 AuthUser 提交的安全事件
+type secSink struct {
+	repositories.SecurityEventStore
+	mu     sync.Mutex
+	events []*models.SecurityEvent
+}
+
+func (s *secSink) CreateBatch(evs []*models.SecurityEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, evs...)
+	return nil
+}
+
+// fakeClientConn 最小化 ftpserver.ClientContext 桩：AuthUser 仅用到 RemoteAddr
+type fakeClientConn struct {
+	ftpserver.ClientContext
+	addr net.Addr
+}
+
+func (f *fakeClientConn) RemoteAddr() net.Addr { return f.addr }
+
+func TestStripPort(t *testing.T) {
+	cases := map[string]string{
+		"1.2.3.4:5678":  "1.2.3.4",
+		"1.2.3.4":       "1.2.3.4",
+		"[::1]:21":      "::1",
+		"203.0.113.9:0": "203.0.113.9",
+	}
+	for in, want := range cases {
+		if got := stripPort(in); got != want {
+			t.Errorf("stripPort(%q) = %q，期望 %q", in, got, want)
+		}
+	}
+}
+
+func TestAuthUserSecurityEvents(t *testing.T) {
+	oldFail, oldLimit := loginFailDelay, loginRateLimitDelay
+	loginFailDelay, loginRateLimitDelay = time.Duration(0), time.Duration(0)
+	defer func() { loginFailDelay, loginRateLimitDelay = oldFail, oldLimit }()
+
+	sink := &secSink{}
+	security.InitWriter(sink, 1, 256)
+
+	d := &ftpDriver{
+		failCounts: make(map[string]*loginFailEntry),
+		authUser:   func(username, password string) (string, error) { return "", errors.New("密码错误") },
+	}
+	cc := &fakeClientConn{addr: &net.TCPAddr{IP: net.ParseIP("203.0.113.5"), Port: 54321}}
+
+	for i := 0; i < 6; i++ {
+		if _, err := d.AuthUser(cc, "bob", "bad"); err == nil {
+			t.Fatalf("第 %d 次错误密码认证应失败", i+1)
+		}
+	}
+	security.StopWriter()
+
+	var failed, locked int
+	for _, ev := range sink.events {
+		if ev.Guard != models.GuardFTP || ev.ClientIP != "203.0.113.5" {
+			t.Fatalf("事件 guard/ClientIP 异常（IP 应已去端口）：%+v", ev)
+		}
+		switch ev.EventType {
+		case models.EventAuthFailedLogin:
+			failed++
+			if ev.Severity != models.SeverityMedium || ev.Operation != "auth.login" || ev.Identity != "bob" {
+				t.Fatalf("failed_login 维度异常：%+v", ev)
+			}
+		case models.EventAuthLocked:
+			locked++
+			if ev.Severity != models.SeverityHigh || ev.Operation != "auth.login" {
+				t.Fatalf("locked 维度异常：%+v", ev)
+			}
+		default:
+			t.Fatalf("出现预期外事件类型：%+v", ev)
+		}
+	}
+	if failed != 5 {
+		t.Errorf("6 次错误登录应记录 5 条 failed_login（第 6 次被频率拦截），got %d", failed)
+	}
+	if locked != 1 {
+		t.Errorf("跨越阈值仅应记录 1 条 locked，got %d", locked)
+	}
+}
 
 func ftpTestDB(t *testing.T) *gorm.DB {
 	t.Helper()

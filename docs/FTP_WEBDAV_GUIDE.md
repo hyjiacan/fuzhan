@@ -210,6 +210,33 @@ curl -k --ftp-ssl -u username:password ftp://localhost:21/
 
 ---
 
+## 安全事件覆盖
+
+WebDAV / FTP 渠道的认证失败与越权拒绝行为会自动写入 `security_events` 表（guard 字段区分渠道），可在 Web 管理界面「管理 → 安全事件」页按「防护渠道」筛选查看。
+
+### WebDAV（guard=`webdav`）
+
+被中间件拒绝的请求经审计中间件入库，覆盖以下拒绝点：
+
+- **401 认证失败**（Basic 凭据无效 / 匿名用户访问需认证路径）→ `auth.unauthorized`（medium）
+- **429 限流**（WebDAV 请求频率限制、锁定预检拒绝）→ `rate.limited`（low）；认证失败达锁定阈值时由访问防护额外记录 `code.bruteforce`（high，操作 `auth.login`）
+- **403 禁止访问**（Depth 头不合法等协议层拒绝）→ `access.forbidden`（medium）
+
+### FTP（guard=`ftp`）
+
+- **登录失败**：每次密码错误记 1 条 `auth.failed_login`（medium，操作 `auth.login`，身份为用户名）；同一 IP 失败次数跨越锁定阈值时额外记 1 条 `auth.locked`（high，仅跨阈值时记录一次，不重复刷屏）
+- **路径穿越 / 越权访问**：反斜杠穿越、上级目录穿越、未知命名空间、跨命名空间重命名 → `access.forbidden`（high，操作 `file.open` / `file.stat` 等）
+- **公开文件越权管理**：匿名或非归属用户尝试覆盖 / 删除 / 重命名公开文件 → `access.forbidden`（medium，操作 `file.overwrite` / `file.remove` 等）
+- **匿名下载限流**：超出下载频率限制 → `rate.limited`（low，操作 `file.download`）
+
+> 注：FTP 事件中的源 IP 已去除端口号归一化，便于与 Web 渠道事件按 IP 聚合分析。
+
+### DDoS 高频检测（guard=`ddos`）
+
+启用 `ddos.enabled` 后，全量 HTTP 请求按 IP 固定窗口计数，超阈值写入一条 `ddos.suspected`（high）。**仅检测告警、不阻断请求**，冷却期内同一 IP 不重复告警；配置详见《系统配置与选项模块》ddos 节。
+
+---
+
 ## 注意事项
 
 1. **public/ 目录权限**：可创建新文件和目录，不可修改或删除已有文件

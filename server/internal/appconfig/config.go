@@ -233,6 +233,16 @@ const DefaultURLUploadMaxConcurrent = 2
 // DefaultURLUploadMaxRetries URL 上传默认自动重试次数
 const DefaultURLUploadMaxRetries = 3
 
+// DDosConfig 高频/DDoS 检测配置（仅检测告警，不阻断请求）。
+// 独立顶层节（不放 security 下），避免配置 UI 增量保存整节覆盖丢字段。
+// Enabled=false 时检测器不启动；WindowSeconds/MaxRequests/CooldownMinutes <=0 时使用默认值。
+type DDosConfig struct {
+	Enabled         bool `yaml:"enabled,omitempty"`          // 是否启用高频检测（默认 false）
+	WindowSeconds   int  `yaml:"window_seconds,omitempty"`   // 统计窗口（秒），默认 10
+	MaxRequests     int  `yaml:"max_requests,omitempty"`     // 窗口内单 IP 请求数阈值，默认 200
+	CooldownMinutes int  `yaml:"cooldown_minutes,omitempty"` // 告警冷却（分钟），默认 10
+}
+
 // Config 主配置结构体
 type Config struct {
 	// WorkDir 工作目录。映射到顶层 yaml 键 work_dir。
@@ -245,6 +255,7 @@ type Config struct {
 	Storage  StorageConfig  `yaml:"storage"`
 	Upload   UploadConfig   `yaml:"upload"`
 	Download DownloadConfig `yaml:"download"`
+	DDos     DDosConfig     `yaml:"ddos"`
 	Preview  PreviewConfig  `yaml:"preview"`
 	// MimeTable 用户自定义「扩展名 -> MIME 类型」映射表。
 	// 预览时用于识别 go 内置 mime.TypeByExtension 无法识别或内置表未覆盖的扩展名，
@@ -661,6 +672,14 @@ func GetDownloadRateLimit() DownloadRateLimitConfig {
 	dl := GlobalConfig.Download.RateLimit
 	configMu.RUnlock()
 	return dl
+}
+
+// GetDDoSConfig 返回高频/DDoS 检测配置（供检测器实时读取，支持配置热更新）。
+func GetDDoSConfig() DDosConfig {
+	configMu.RLock()
+	dd := GlobalConfig.DDos
+	configMu.RUnlock()
+	return dd
 }
 
 // GetUploadRateLimit 返回上传频率限制配置（供上传限流器每个请求实时读取，

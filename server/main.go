@@ -314,17 +314,25 @@ func main() {
 	security.InitWriter(secRepo, security.WriterWorkers, security.WriterBuffer)
 	// 注入共享/临时码/口令暴破锁定回调：命中的防护锁定写入安全事件（高危）
 	accessguard.SetFailHook(func(scope, ip string) {
+		// WebDAV 锁定源于 Basic Auth 失败，操作归一为 auth.login；其余 scope 为下载类
+		operation := "download." + scope
+		if scope == accessguard.SCOPE_WEBDAV {
+			operation = "auth.login"
+		}
 		security.Record(&models.SecurityEvent{
 			EventType: models.EventCodeBruteForce,
 			Severity:  models.SeverityHigh,
 			ClientIP:  ip,
 			Identity:  "anonymous",
-			Operation: "download." + scope,
+			Operation: operation,
 			Target:    scope,
-			Guard:     models.GuardAccessguard,
-			Reason:    "无效码/认证失败达阈值，已对该 IP 锁定",
+			Guard:     security.GuardForScope(scope),
+			Reason:    security.FailLockReason(scope),
 		})
 	})
+	// 初始化 DDoS 高频检测器（仅告警不阻断；未启用仅日志提示），配置保存后热启停
+	security.InitDDoSDetector()
+	appconfig.AddOnSaveHook(security.SyncDDoSDetector)
 	// 初始化下载计数批量记录器：下载热路径只入队（非阻塞），后台周期攒批批量落库，
 	// 消除每次下载同步 UPDATE 索引表造成的写放大与请求线程阻塞
 	services.InitDownloadCountRecorder(db)

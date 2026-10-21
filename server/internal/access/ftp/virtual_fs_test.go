@@ -4,10 +4,53 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
+	"fuzhan/internal/repositories"
+	"fuzhan/internal/security"
 )
+
+// secEventSink 内存安全事件存储，捕获被测代码经 security.Record 提交的事件
+type secEventSink struct {
+	repositories.SecurityEventStore
+	mu     sync.Mutex
+	events []*models.SecurityEvent
+}
+
+func (s *secEventSink) CreateBatch(evs []*models.SecurityEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, evs...)
+	return nil
+}
+
+// startSecCapture 初始化全局安全事件写入器，返回「停止并取回事件」函数
+func startSecCapture(t *testing.T) func() []*models.SecurityEvent {
+	t.Helper()
+	sink := &secEventSink{}
+	security.InitWriter(sink, 1, 256)
+	return func() []*models.SecurityEvent {
+		security.StopWriter()
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		out := make([]*models.SecurityEvent, len(sink.events))
+		copy(out, sink.events)
+		return out
+	}
+}
+
+func findEvent(events []*models.SecurityEvent, eventType string) *models.SecurityEvent {
+	for _, e := range events {
+		if e.EventType == eventType {
+			return e
+		}
+	}
+	return nil
+}
 
 // stubBackend 测试用 FtpBackend 桩：权限/索引/配额行为由测试用例控制。
 type stubBackend struct {
@@ -224,5 +267,114 @@ func TestSizeLimitedFileTracksSeek(t *testing.T) {
 	// WriteAt 指定偏移超过上限
 	if _, err := f.WriteAt([]byte("z"), 10); err == nil {
 		t.Fatal("WriteAt 偏移超过上限应失败")
+	}
+}
+
+func TestPathTraversalRecordsSecurityEvents(t *testing.T) {
+	rootDir := t.TempDir()
+	capture := startSecCapture(t)
+	fs := newTestFs(t, rootDir, "", "1.2.3.4", &stubBackend{uploadEnabled: true})
+
+	// 反斜杠穿越 / 上级目录穿越 / 未知命名空间，各应记一条高危 access.forbidden
+	if _, err := fs.Open(`public/files/..\..\secret.txt`); err == nil {
+		t.Fatal("反斜杠穿越应被拒绝")
+	}
+	if _, err := fs.Open("private/../../secret.txt"); err == nil {
+		t.Fatal("上级目录穿越应被拒绝")
+	}
+	if _, err := fs.Stat("unknown/x.txt"); err == nil {
+		t.Fatal("未知命名空间应被拒绝")
+	}
+	events := capture()
+	if len(events) != 3 {
+		t.Fatalf("3 个穿越/越权拒绝点应各入库 1 条，got %d 条：%+v", len(events), events)
+	}
+	for _, ev := range events {
+		if ev.EventType != models.EventAccessForbidden || ev.Severity != models.SeverityHigh ||
+			ev.Guard != models.GuardFTP || ev.ClientIP != "1.2.3.4" || ev.Identity != "anonymous" {
+			t.Fatalf("事件维度异常：%+v", ev)
+		}
+	}
+	if !strings.Contains(events[0].Reason, "反斜杠") {
+		t.Errorf("第 1 条应注明反斜杠穿越，got %q", events[0].Reason)
+	}
+	if !strings.Contains(events[1].Reason, "上级目录") {
+		t.Errorf("第 2 条应注明上级目录穿越，got %q", events[1].Reason)
+	}
+	if !strings.Contains(events[2].Reason, "未知命名空间") {
+		t.Errorf("第 3 条应注明未知命名空间，got %q", events[2].Reason)
+	}
+	if events[0].Operation != "file.open" || events[2].Operation != "file.stat" {
+		t.Errorf("Operation 应携带调用方操作名，got %q / %q", events[0].Operation, events[2].Operation)
+	}
+}
+
+func TestAnonymousManagePublicRecordsEvent(t *testing.T) {
+	rootDir := t.TempDir()
+	writeRootFile(t, rootDir, "a.txt", "hello")
+	capture := startSecCapture(t)
+	fs := newTestFs(t, rootDir, "", "9.9.9.9", &stubBackend{uploadEnabled: true})
+
+	if err := fs.Remove("public/files/a.txt"); err != os.ErrPermission {
+		t.Fatalf("匿名删除公开文件应被拒绝, got %v", err)
+	}
+	events := capture()
+	ev := findEvent(events, models.EventAccessForbidden)
+	if ev == nil {
+		t.Fatalf("越权管理应入库 access.forbidden，got %+v", events)
+	}
+	if ev.Severity != models.SeverityMedium || ev.Guard != models.GuardFTP || ev.Operation != "file.remove" {
+		t.Fatalf("事件维度异常：%+v", ev)
+	}
+	if !strings.Contains(ev.Reason, "管理公开文件") {
+		t.Errorf("Reason 应说明越权管理公开文件，got %q", ev.Reason)
+	}
+}
+
+func TestRenameCrossNamespaceRecordsEvent(t *testing.T) {
+	rootDir := t.TempDir()
+	writeRootFile(t, rootDir, "a.txt", "hello")
+	capture := startSecCapture(t)
+	fs := newTestFs(t, rootDir, "uuid-1", "1.2.3.4", &stubBackend{uploadEnabled: true})
+
+	if err := fs.Rename("public/files/a.txt", "private/b.txt"); err != os.ErrPermission {
+		t.Fatalf("跨命名空间重命名应被拒绝, got %v", err)
+	}
+	events := capture()
+	ev := findEvent(events, models.EventAccessForbidden)
+	if ev == nil {
+		t.Fatalf("跨命名空间重命名应入库，got %+v", events)
+	}
+	if ev.Severity != models.SeverityHigh || !strings.Contains(ev.Reason, "跨命名空间") {
+		t.Fatalf("应为高危跨命名空间事件：%+v", ev)
+	}
+	if ev.Identity != "uuid-1" {
+		t.Errorf("认证用户事件 Identity 应记录 UUID，got %q", ev.Identity)
+	}
+}
+
+func TestAnonymousDownloadLimitedRecordsEvent(t *testing.T) {
+	rootDir := t.TempDir()
+	writeRootFile(t, rootDir, "a.txt", "hello")
+	capture := startSecCapture(t)
+	fs := NewMultiRootFs(map[string]string{"files": rootDir}, "", "", "8.8.8.8", nil, &stubBackend{})
+	appconfig.GlobalConfig.Download.RateLimit = appconfig.DownloadRateLimitConfig{WindowMinutes: 1, MaxRequests: 1}
+	defer func() { appconfig.GlobalConfig = appconfig.Config{} }()
+
+	if f, err := fs.Open("public/files/a.txt"); err == nil {
+		f.Close()
+	} else {
+		t.Fatalf("首次匿名下载应放行, got %v", err)
+	}
+	if _, err := fs.Open("public/files/a.txt"); err != os.ErrPermission {
+		t.Fatalf("超阈值匿名下载应被拒绝, got %v", err)
+	}
+	events := capture()
+	ev := findEvent(events, models.EventRateLimited)
+	if ev == nil {
+		t.Fatalf("匿名下载限流应入库 rate.limited，got %+v", events)
+	}
+	if ev.Severity != models.SeverityLow || ev.Guard != models.GuardFTP || ev.Operation != "file.download" {
+		t.Fatalf("事件维度异常：%+v", ev)
 	}
 }

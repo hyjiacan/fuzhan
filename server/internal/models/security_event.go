@@ -21,6 +21,7 @@ const (
 	EventAccessForbidden  = "access.forbidden"  // 越权/禁止访问（403）
 	EventRateLimited      = "rate.limited"      // 触发频率限制（429）
 	EventCodeBruteForce   = "code.bruteforce"   // 无效分享/临时码/口令枚举达阈值被锁定
+	EventDDoSSuspected    = "ddos.suspected"    // 疑似 DDoS/高频请求（仅检测告警，不阻断）
 )
 
 // 命中的防护机制（guard 取值）
@@ -29,6 +30,7 @@ const (
 	GuardAccessguard = "accessguard" // 访问防护（下载共享/临时码限流锁定）
 	GuardWebDAV      = "webdav"      // WebDAV
 	GuardFTP         = "ftp"         // FTP
+	GuardDDoS        = "ddos"        // 高频/DDoS 检测
 )
 
 // SecurityEvent 安全事件记录

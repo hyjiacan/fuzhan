@@ -8,6 +8,7 @@ import (
 
 	"fuzhan/internal/constants"
 	"fuzhan/internal/online"
+	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,7 +31,8 @@ func isNonActivityRequest(method, path string) bool {
 		strings.HasSuffix(path, "/monitor/recent"),
 		strings.HasSuffix(path, "/resource/snapshot"),
 		strings.HasSuffix(path, "/resource/history"),
-		strings.HasSuffix(path, "/resource/stream"):
+		strings.HasSuffix(path, "/resource/stream"),
+		strings.HasSuffix(path, "/security/events/unread-summary"):
 		return true
 	}
 	return false
@@ -41,6 +43,8 @@ func MonitoringMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := utils.Now()
 		clientIP := utils.GetClientIP(c)
+		// 高频/DDoS 观测：计全量请求（仅告警不阻断，未启用时零开销）
+		security.DDoSObserve(clientIP)
 		path := c.Request.URL.Path
 		// WebDAV 挂载于 /api/v1/webdav，需先于 API 前缀排除，归入独立渠道
 		isAPI := utils.IsAPIPath(path) && !utils.IsWebDAVPath(path)

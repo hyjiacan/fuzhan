@@ -3,6 +3,7 @@ package ftp
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,10 +12,36 @@ import (
 
 	ftpfs "fuzhan/internal/access/ftp"
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
+	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
 
 	ftpserver "github.com/fclairamb/ftpserverlib"
 )
+
+// stripPort 去掉 "host:port" 形式的端口后缀，返回纯 IP。
+// FTP 客户端地址带临时端口，直接入库/比对会导致同一 IP 被拆散
+// （安全事件按 IP 聚合失效、公开文件上传者 IP 比对永远不匹配）。
+func stripPort(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+// recordFTPSecurity 记录一条 FTP 渠道安全事件（guard=ftp，无 HTTP 维度字段）
+func recordFTPSecurity(clientIP, eventType, severity, operation, identity, target, reason string) {
+	security.Record(&models.SecurityEvent{
+		EventType: eventType,
+		Severity:  severity,
+		ClientIP:  clientIP,
+		Identity:  identity,
+		Operation: operation,
+		Target:    target,
+		Guard:     models.GuardFTP,
+		Reason:    reason,
+	})
+}
 
 // AuthUserFunc 用户认证函数（由 main.go 注入）
 type AuthUserFunc func(username, password string) (string, error)
@@ -79,10 +106,15 @@ type loginFailEntry struct {
 }
 
 const (
-	maxConnections      = 50              // 最大并发连接数
-	maxLoginFailures    = 5               // 连续失败次数阈值
-	loginFailWindow     = 5 * time.Minute // 失败计数窗口
+	maxConnections   = 50              // 最大并发连接数
+	maxLoginFailures = 5               // 连续失败次数阈值
+	loginFailWindow  = 5 * time.Minute // 失败计数窗口
+)
+
+// 登录失败/频率超限的响应延迟（变量便于测试用例置零，避免拖慢测试）
+var (
 	loginRateLimitDelay = 2 * time.Second // 超过阈值后的延迟
+	loginFailDelay      = 1 * time.Second // 单次认证失败后的延迟
 )
 
 // passiveRange 解析被动模式数据端口范围（默认 2122-2221）。
@@ -164,7 +196,7 @@ func (d *ftpDriver) startFailCleanup() {
 }
 
 func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftpserver.ClientDriver, error) {
-	clientIP := cc.RemoteAddr().String()
+	clientIP := stripPort(cc.RemoteAddr().String())
 
 	// Check rate limiting for failed logins
 	d.failMu.Lock()
@@ -216,6 +248,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		}
 		entry.count++
 		entry.lastFail = time.Now()
+		crossed := entry.count == maxLoginFailures
 		d.failMu.Unlock()
 
 		utils.FTPWarn("FTP登录失败",
@@ -223,8 +256,16 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 			utils.String("ip", clientIP),
 			utils.Int("failCount", entry.count))
 
+		// 每次认证失败记一条中危事件；仅在跨越阈值那一次记锁定事件（与 Web 侧 login_limit 去重语义一致）
+		recordFTPSecurity(clientIP, models.EventAuthFailedLogin, models.SeverityMedium,
+			"auth.login", user, user, "FTP 登录认证失败")
+		if crossed {
+			recordFTPSecurity(clientIP, models.EventAuthLocked, models.SeverityHigh,
+				"auth.login", user, user, fmt.Sprintf("FTP 登录失败达阈值（%d 次），已暂时拒绝该 IP 的登录", maxLoginFailures))
+		}
+
 		// Add delay on failure to slow brute force
-		time.Sleep(1 * time.Second)
+		time.Sleep(loginFailDelay)
 		return nil, fmt.Errorf("认证失败")
 	}
 

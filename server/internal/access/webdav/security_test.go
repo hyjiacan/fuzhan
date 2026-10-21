@@ -11,6 +11,8 @@ import (
 
 	"fuzhan/internal/accessguard"
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/constants"
+	"fuzhan/internal/models"
 
 	"github.com/gin-gonic/gin"
 )
@@ -152,27 +154,31 @@ func TestOptionalBasicAuthFailLock(t *testing.T) {
 	badAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("wrong:creds"))
 	mw := OptionalBasicAuthMiddleware(authFunc)
 
-	do := func() int {
+	do := func() (int, *gin.Context) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest("GET", "/api/v1/webdav/", nil)
 		c.Request.RemoteAddr = "198.51.100.7:5555"
 		c.Request.Header.Set("Authorization", badAuth)
 		mw(c)
-		return w.Code
+		return w.Code, c
 	}
 
-	if code := do(); code != http.StatusUnauthorized {
+	if code, c := do(); code != http.StatusUnauthorized {
 		t.Fatalf("第 1 次失败应为 401，got %d", code)
+	} else if v, ok := c.Get(string(constants.ContextKeySecurityGuard)); !ok || v != models.GuardWebDAV {
+		t.Fatalf("401 拒绝前应打 guard=webdav 上下文标记，got %v ok=%v", v, ok)
 	}
-	if code := do(); code != http.StatusUnauthorized {
+	if code, _ := do(); code != http.StatusUnauthorized {
 		t.Fatalf("第 2 次失败应为 401，got %d", code)
 	}
 	// 达到阈值后该 IP 被锁定
 	if !accessguard.IsLocked(accessguard.SCOPE_WEBDAV, "198.51.100.7") {
 		t.Fatal("达到 lock_after 阈值后应锁定该 IP")
 	}
-	if code := do(); code != http.StatusTooManyRequests {
+	if code, c := do(); code != http.StatusTooManyRequests {
 		t.Fatalf("锁定期间应返回 429，got %d", code)
+	} else if v, ok := c.Get(string(constants.ContextKeySecurityGuard)); !ok || v != models.GuardWebDAV {
+		t.Fatalf("429 锁定预检拒绝也应打 guard=webdav 标记，got %v ok=%v", v, ok)
 	}
 }

@@ -556,6 +556,8 @@ func (rt *runCtx) run() {
 			}
 			// 停止有界记录器，排空并写完全部排队操作记录
 			services.StopRecordWriter()
+			// 停止 DDoS 高频检测器（先于写入器，避免排空期间仍有新告警入队）
+			security.StopDDoSDetector()
 			// 停止安全事件写入器，排空并写完全部排队安全事件
 			security.StopWriter()
 			// 停止下载计数批量记录器，排空未落库的计数

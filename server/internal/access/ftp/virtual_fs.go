@@ -14,6 +14,8 @@ import (
 
 	"fuzhan/internal/accessguard"
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/models"
+	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
 )
 
@@ -58,6 +60,28 @@ func NewMultiRootFs(rootNames map[string]string, privateDir, userUUID, clientIP 
 		recordFn:          recordFn,
 		backend:           backend,
 	}
+}
+
+// recordSecurity 记录一条 FTP 访问拒绝类安全事件（guard=ftp）。
+// identity 取认证用户 UUID，匿名用户记为 "anonymous"。
+func (fs *MultiRootFs) recordSecurity(eventType, severity, operation, target, reason string) {
+	identity := fs.userUUID
+	if identity == "" {
+		identity = "anonymous"
+	}
+	if r := []rune(target); len(r) > 512 {
+		target = string(r[:512])
+	}
+	security.Record(&models.SecurityEvent{
+		EventType: eventType,
+		Severity:  severity,
+		ClientIP:  fs.clientIP,
+		Identity:  identity,
+		Operation: operation,
+		Target:    target,
+		Guard:     models.GuardFTP,
+		Reason:    reason,
+	})
 }
 
 // ---- virtual path helpers ----
@@ -164,14 +188,17 @@ func (fs *MultiRootFs) resolvePrivatePath(rest string) (string, error) {
 }
 
 // resolvePath converts a virtual path to a real filesystem path.
-func (fs *MultiRootFs) resolvePath(virtualPath string) (string, error) {
+// op 为调用方操作名（create/mkdir/open/...），命中拒绝分支时以 "file."+op 记入安全事件。
+func (fs *MultiRootFs) resolvePath(virtualPath string, op string) (string, error) {
 	cleaned := cleanFtpPath(virtualPath)
 	// 拒绝反斜杠分隔符：FTP 虚拟路径统一使用 "/" 作为分隔符，反斜杠在 Windows 上会被
 	// filepath.Join 当作路径分隔符处理，可借此进行目录遍历逃逸（如 "private/..\..\evil"）。
 	if strings.Contains(cleaned, `\`) {
+		fs.recordSecurity(models.EventAccessForbidden, models.SeverityHigh, "file."+op, virtualPath, "路径穿越拒绝（反斜杠分隔符）")
 		return "", os.ErrPermission
 	}
 	if strings.HasPrefix(cleaned, "..") || path.IsAbs(cleaned) {
+		fs.recordSecurity(models.EventAccessForbidden, models.SeverityHigh, "file."+op, virtualPath, "路径穿越拒绝（上级目录或绝对路径）")
 		return "", os.ErrPermission
 	}
 	if cleaned == "" || cleaned == "." {
@@ -188,6 +215,7 @@ func (fs *MultiRootFs) resolvePath(virtualPath string) (string, error) {
 	case "private":
 		return fs.resolvePrivatePath(rest)
 	default:
+		fs.recordSecurity(models.EventAccessForbidden, models.SeverityHigh, "file."+op, virtualPath, "未知命名空间拒绝（非 public/private 顶层路径）")
 		return "", os.ErrPermission
 	}
 }
@@ -280,7 +308,7 @@ func (fs *MultiRootFs) checkDiskSpace(realPath string, private bool) error {
 // ---- afero.Fs implementation ----
 
 func (fs *MultiRootFs) Create(name string) (afero.File, error) {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "create")
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +334,7 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 }
 
 func (fs *MultiRootFs) Mkdir(name string, perm os.FileMode) error {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "mkdir")
 	if err != nil {
 		return err
 	}
@@ -318,7 +346,7 @@ func (fs *MultiRootFs) Mkdir(name string, perm os.FileMode) error {
 }
 
 func (fs *MultiRootFs) MkdirAll(name string, perm os.FileMode) error {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "mkdir")
 	if err != nil {
 		return err
 	}
@@ -339,7 +367,7 @@ func (fs *MultiRootFs) recordMkdir(name string) {
 }
 
 func (fs *MultiRootFs) Open(name string) (afero.File, error) {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "open")
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +387,7 @@ func (fs *MultiRootFs) Open(name string) (afero.File, error) {
 }
 
 func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "openfile")
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +407,7 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 			if existsOnDisk(realPath) {
 				rootName, relPath := fs.recordPath(name)
 				if !fs.canManagePublic(rootName, relPath) {
+					fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.overwrite", name, "匿名或非归属用户尝试管理公开文件")
 					return nil, os.ErrPermission
 				}
 			}
@@ -419,6 +448,7 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 // max_requests=0/未配置时无限）；认证用户下载走登录态，不参与匿名限流。
 func (fs *MultiRootFs) recordDownload(name string, size int64) error {
 	if fs.userUUID == "" && !accessguard.Acquire(accessguard.SCOPE_FTP, fs.clientIP) {
+		fs.recordSecurity(models.EventRateLimited, models.SeverityLow, "file.download", name, "匿名下载触发频率限制")
 		return os.ErrPermission
 	}
 	if fs.recordFn == nil {
@@ -469,10 +499,11 @@ func (fs *MultiRootFs) Remove(name string) error {
 	if fs.isPublicPath(name) {
 		rootName, relPath := fs.recordPath(name)
 		if !fs.canManagePublic(rootName, relPath) {
+			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.remove", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
 	}
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "remove")
 	if err != nil {
 		return err
 	}
@@ -487,10 +518,11 @@ func (fs *MultiRootFs) RemoveAll(name string) error {
 	if fs.isPublicPath(name) {
 		rootName, relPath := fs.recordPath(name)
 		if !fs.canManagePublic(rootName, relPath) {
+			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.removeall", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
 	}
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "removeall")
 	if err != nil {
 		return err
 	}
@@ -523,13 +555,14 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 	newNS := fs.getNamespace(newName)
 	// 禁止跨命名空间（public↔private 互移会窃取/泄露文件）
 	if oldNS == "" || oldNS != newNS {
+		fs.recordSecurity(models.EventAccessForbidden, models.SeverityHigh, "file.rename", oldName+" -> "+newName, "跨命名空间重命名拒绝")
 		return os.ErrPermission
 	}
-	oldPath, err := fs.resolvePath(oldName)
+	oldPath, err := fs.resolvePath(oldName, "rename")
 	if err != nil {
 		return err
 	}
-	newPath, err := fs.resolvePath(newName)
+	newPath, err := fs.resolvePath(newName, "rename")
 	if err != nil {
 		return err
 	}
@@ -547,6 +580,7 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 			return os.ErrPermission
 		}
 		if !fs.canManagePublic(oldRoot, oldRel) {
+			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.rename", oldName, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
 	}
@@ -616,7 +650,7 @@ func (fs *MultiRootFs) Stat(name string) (os.FileInfo, error) {
 		}
 	}
 
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "stat")
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +662,7 @@ func (fs *MultiRootFs) Name() string {
 }
 
 func (fs *MultiRootFs) Chmod(name string, mode os.FileMode) error {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "chmod")
 	if err != nil {
 		return err
 	}
@@ -636,7 +670,7 @@ func (fs *MultiRootFs) Chmod(name string, mode os.FileMode) error {
 }
 
 func (fs *MultiRootFs) Chtimes(name string, atime, mtime time.Time) error {
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "chtimes")
 	if err != nil {
 		return err
 	}
@@ -695,7 +729,7 @@ func (fs *MultiRootFs) readDir(name string) ([]os.FileInfo, error) {
 	}
 
 	// Fall through to actual filesystem for deeper paths
-	realPath, err := fs.resolvePath(name)
+	realPath, err := fs.resolvePath(name, "list")
 	if err != nil {
 		return nil, err
 	}

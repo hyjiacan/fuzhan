@@ -9,9 +9,17 @@ import (
 	"time"
 
 	"fuzhan/internal/accessguard"
+	"fuzhan/internal/constants"
+	"fuzhan/internal/models"
 	xxh3pkg "fuzhan/pkg/xxh3"
 	"github.com/gin-gonic/gin"
 )
+
+// markWebDAVGuard 在 WebDAV 中间件拒绝请求前打上下文标记，
+// 供全局审计中间件入库安全事件时正确归一 guard=webdav（而非缺省 auth）。
+func markWebDAVGuard(c *gin.Context) {
+	c.Set(string(constants.ContextKeySecurityGuard), models.GuardWebDAV)
+}
 
 // UserAuthenticator verifies a username/password and returns the user's UUID
 // and whether the user is disabled. Return err for invalid credentials.
@@ -117,6 +125,7 @@ func BasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userUUID, err := authenticateRequest(c.Request, authenticate)
 		if err != nil {
+			markWebDAVGuard(c)
 			c.Header("WWW-Authenticate", `Basic realm="WebDAV Private Storage"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
@@ -140,6 +149,7 @@ func OptionalBasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc
 
 		// 失败锁定预检：该 IP 触发过 Basic Auth 失败锁定（M3）则直接拒绝
 		if accessguard.IsLocked(accessguard.SCOPE_WEBDAV, clientIP) {
+			markWebDAVGuard(c)
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "访问过于频繁，请稍后再试"})
 			return
 		}
@@ -157,6 +167,7 @@ func OptionalBasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc
 		if err != nil {
 			// Invalid credentials → 401，并累计失败（达到阈值即锁定该 IP）
 			accessguard.Fail(accessguard.SCOPE_WEBDAV, clientIP)
+			markWebDAVGuard(c)
 			c.Header("WWW-Authenticate", `Basic realm="WebDAV"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
