@@ -73,7 +73,7 @@
 <script setup>
 import { computed } from 'vue'
 import { NumberUtils } from '@/utils'
-import { DEFAULT_GROUPS } from '@/config/preview'
+import { getPreviewDefaults } from '@/config/preview'
 import { formatToUnit, formatSize } from './useSettingsUtils'
 
 const props = defineProps({
@@ -125,13 +125,15 @@ const previewGroups = [
   }
 ]
 
-// 将单个分组的开关与 MIME/扩展名列表恢复为内置默认值（文本组同时恢复大小配置）
+// 将单个分组的开关与 MIME/扩展名列表恢复为内置默认值（默认表来自后端 options，
+// 未加载成功时不做操作；文本组同时恢复大小配置）
 const resetGroup = (key) => {
-  const def = DEFAULT_GROUPS[key]
+  const def = getPreviewDefaults()?.[key]
+  if (!def) return
   const group = props.settings.preview.groups[key]
-  group.enabled = def.enabled
-  group.mimes = def.mimes
-  group.exts = def.exts
+  group.enabled = def.enabled !== false
+  group.mimes = def.mimes ?? ''
+  group.exts = def.exts ?? ''
   if (key === 'text') {
     group.maxInlineSize = 1048576 // 1M
     group.textChunkSize = 102400 // 100K

@@ -4,46 +4,21 @@
 // 优先序 image > audio > video > document > text）或命中已启用的自定义组（custom，两组列表均留空表示不限制）即可预览。
 import { SystemApi } from '@/api'
 
-// 内置分组默认表，与后端 utils/preview_utils.go 的默认表保持一致（options 加载失败时兜底，
-// 设置页「恢复默认」也以此为准）。
-// 默认表只收录浏览器原生可渲染的类型（img/audio/video/iframe 能直接显示或播放），
-// 非原生类型（如 tif/heic/wma/mkv 等）需要预览时由用户在设置中自行配置分组列表。
-export const DEFAULT_GROUPS = {
-  image: {
-    enabled: true,
-    mimes: 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng,image/bmp,image/vnd.microsoft.icon,image/x-icon,image/svg+xml',
-    exts: 'png,jpg,jpeg,gif,bmp,webp,svg,ico,avif,apng,jfif,pjpeg'
-  },
-  text: {
-    enabled: true,
-    mimes: 'text/*,application/json,application/xml,application/javascript,application/yaml,application/sql,application/x-sh',
-    exts: 'txt,html,htm,css,js,json,xml,md,markdown,yml,yaml,csv,' +
-      'go,java,py,c,cpp,h,hpp,cs,rb,php,rs,sh,bat,ps1,sql,vue,tsx,jsx,ts,scss,less,' +
-      'ini,conf,cfg,log,properties,config,toml,checksum,mjs,cjs,m,' +
-      'kt,swift,dart,lua,r,pl,ex,erl,hs,nim,zig,groovy,scala,clj,tf,' +
-      'graphql,proto,adoc,vb,asm,f90'
-  },
-  audio: {
-    enabled: true,
-    mimes: 'audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/aac,audio/flac,audio/opus,audio/webm',
-    exts: 'mp3,wav,ogg,oga,m4a,aac,flac,opus,weba'
-  },
-  video: {
-    enabled: true,
-    mimes: 'video/mp4,video/webm,video/ogg',
-    exts: 'mp4,webm,m4v,ogv'
-  },
-  document: { enabled: true, mimes: 'application/pdf', exts: 'pdf' },
-  // custom 组默认关闭：其「两组留空 = 不限制」的兜底语义仅在显式启用后生效，
-  // 避免默认状态下所有文件都被判定为可预览
-  custom: { enabled: false, mimes: '', exts: '' }
+// 预览类型默认值以后端为唯一来源：options 接口的 preview.groups 为已解析默认表的生效配置，
+// preview.defaults 为内置默认表（供设置页「恢复默认」使用）。前端不内置默认表，
+// options 加载成功前所有文件均判定为不可预览。
+let previewDefaults = null
+
+// 内置默认表（来自后端 options），未加载时返回 null
+export function getPreviewDefaults() {
+  return previewDefaults
 }
 // 内置分组匹配优先序，与后端保持一致
 const GROUP_ORDER = ['image', 'audio', 'video', 'document', 'text']
 
-// 预览全局开关
-let previewEnabled = true
-// 各分组解析后的匹配规则
+// 预览全局开关（options 加载成功前视为关闭，一切文件不可预览）
+let previewEnabled = false
+// 各分组解析后的匹配规则（仅来自后端 options，未加载时为空）
 let groupRules = {}
 
 // 解析逗号分隔的分组配置为匹配规则
@@ -75,21 +50,13 @@ function buildGroupRules(name, cfg) {
   }
 }
 
+// 以后端返回的分组生效配置（已解析默认值）构建匹配规则；后端为唯一来源
 function initGroupRules(groupsConfig) {
   groupRules = {}
-  for (const [name, def] of Object.entries(DEFAULT_GROUPS)) {
-    const incoming = groupsConfig?.[name]
-    const cfg = incoming
-      ? {
-          enabled: incoming.enabled !== false,
-          mimes: incoming.mimes ?? def.mimes,
-          exts: incoming.exts ?? def.exts
-        }
-      : def
+  for (const [name, cfg] of Object.entries(groupsConfig || {})) {
     groupRules[name] = buildGroupRules(name, cfg)
   }
 }
-initGroupRules(null)
 
 // 文件是否命中指定分组（分组需处于启用状态）
 function matchGroup(name, ext, mimeType) {
@@ -131,8 +98,10 @@ export async function loadPreviewConfig(preloadedData) {
     if (data?.preview) {
       // 全局开关：仅显式 false 时关闭
       previewEnabled = data.preview.enabled !== false
-      // 各分组：后端返回的是已解析默认值的生效配置
+      // 各分组：后端返回的是已解析默认值的生效配置（唯一来源）
       initGroupRules(data.preview.groups)
+      // 内置默认表：供设置页「恢复默认」使用
+      previewDefaults = data.preview.defaults || null
     }
     // 解析用户自定义 MIME 表（key 归一化为小写、忽略点号前缀，与后端一致）
     if (data?.mimeTable) {

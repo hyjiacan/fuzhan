@@ -17,10 +17,11 @@ const (
 )
 
 // 内置预览分组的默认 MIME / 扩展名列表（逗号分隔，支持通配符），
-// 供配置「未设置」时作为缺省值；与前端 config/preview.js 的默认表保持一致。
+// 供配置「未设置」时作为缺省值；后端是默认值的唯一来源，
+// 前端通过 options 接口的 preview.defaults 获取，不内置默认表。
 // 默认表只收录浏览器原生可渲染的类型（img/audio/video/iframe 能直接显示或播放），
 // 非原生类型（如 tif/heic/wma/mkv 等）不放入默认表，需要预览时由用户自行配置分组列表。
-// custom 组没有默认列表：留空表示不限制（所有文件均可预览），且默认处于关闭状态。
+// custom 组没有默认列表：启用后两组均留空表示不限制（所有文件均可预览），且默认处于关闭状态。
 var (
 	previewGroupDefaultsMimes = map[string]string{
 		PreviewGroupImage: "image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng," +

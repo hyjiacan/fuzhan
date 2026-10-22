@@ -83,18 +83,26 @@ func (h *Handler) GetOptions(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", resp)
 }
 
-// buildPreviewOptions 构造公开 options 的预览节点：全局开关 + 各分组生效配置（已解析默认值），
-// 与前端 config/preview.js 的消费结构保持一致。
+// buildPreviewOptions 构造公开 options 的预览节点：全局开关 + 各分组生效配置（已解析默认值）
+// + 内置默认表 defaults（供前端设置页「恢复默认」使用），与前端 config/preview.js 的消费结构保持一致。
+// 后端是预览类型默认值的唯一来源，前端不内置默认表。
 func buildPreviewOptions(p appconfig.PreviewConfig) gin.H {
 	groups := gin.H{}
+	defaults := gin.H{}
 	for _, name := range []string{"image", "text", "audio", "video", "document", "custom"} {
 		groups[name] = gin.H{
 			"enabled": p.IsGroupEnabled(name),
 			"mimes":   p.GroupMimes(name),
 			"exts":    p.GroupExts(name),
 		}
+		// custom 组默认关闭，其余内置分组默认开启
+		defaults[name] = gin.H{
+			"enabled": name != "custom",
+			"mimes":   utils.DefaultPreviewGroupMimes(name),
+			"exts":    utils.DefaultPreviewGroupExts(name),
+		}
 	}
-	return gin.H{"enabled": p.IsEnabled(), "groups": groups}
+	return gin.H{"enabled": p.IsEnabled(), "groups": groups, "defaults": defaults}
 }
 
 // applyPreviewGroup 将提交的预览分组 DTO 合入全局配置：指针字段未提交（nil）沿用当前生效值，

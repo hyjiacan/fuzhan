@@ -89,20 +89,23 @@ import SettingsResource from './settings/SettingsResource.vue'
 import SettingsChangesDrawer from './settings/SettingsChangesDrawer.vue'
 import { diffSettings } from './settings/useSettingsDiff'
 import { formatToUnit } from './settings/useSettingsUtils'
-import { DEFAULT_GROUPS } from '@/config/preview'
 
 const message = ElMessage
 
+// 预览分组键列表（UI 结构，与后端分组定义一一对应）；
+// 生效值与默认值均以后端为唯一来源，前端不内置默认表
+const PREVIEW_GROUP_KEYS = ['image', 'text', 'audio', 'video', 'document', 'custom']
+
 // normalizePreviewGroups 将后端预览分组配置归一化为设置页结构：
-// 缺失字段回退内置默认表（与后端 utils/preview_utils.go 默认表一致），文本组大小解析为字节数值。
+// 后端 config 接口输出的是已解析默认值的生效配置，前端直接展示；文本组大小解析为字节数值。
 const normalizePreviewGroups = (cfgGroups) => {
   const groups = {}
-  for (const [name, def] of Object.entries(DEFAULT_GROUPS)) {
+  for (const name of PREVIEW_GROUP_KEYS) {
     const src = cfgGroups?.[name] || {}
     groups[name] = {
-      enabled: src.enabled ?? def.enabled,
-      mimes: src.mimes ?? def.mimes,
-      exts: src.exts ?? def.exts
+      enabled: src.enabled === true,
+      mimes: src.mimes ?? '',
+      exts: src.exts ?? ''
     }
   }
   groups.text.maxInlineSize = NumberUtils.parseFileSize(cfgGroups?.text?.maxInlineSize || '1M')

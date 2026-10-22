@@ -724,6 +724,14 @@
           "video": { "enabled": true, "mimes": "video/mp4,video/webm,video/ogg", "exts": "mp4,webm,..." },
           "document": { "enabled": true, "mimes": "application/pdf", "exts": "pdf" },
           "custom": { "enabled": false, "mimes": "", "exts": "" }
+        },
+        "defaults": {
+          "image": { "enabled": true, "mimes": "image/png,...", "exts": "png,jpg,..." },
+          "text": { "enabled": true, "mimes": "text/*,...", "exts": "txt,md,..." },
+          "audio": { "enabled": true, "mimes": "audio/mpeg,...", "exts": "mp3,wav,..." },
+          "video": { "enabled": true, "mimes": "video/mp4,...", "exts": "mp4,webm,..." },
+          "document": { "enabled": true, "mimes": "application/pdf", "exts": "pdf" },
+          "custom": { "enabled": false, "mimes": "", "exts": "" }
         }
       }
     }
