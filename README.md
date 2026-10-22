@@ -173,7 +173,7 @@ preview:
     audio: { enabled: true, mimes: "audio/mpeg,audio/wav,...", exts: "mp3,wav,..." }
     video: { enabled: true, mimes: "video/mp4,video/webm,...", exts: "mp4,webm,..." }
     document: { enabled: true, mimes: "application/pdf", exts: "pdf" }
-    custom: { enabled: false, mimes: "", exts: "" }   # 默认关闭；启用后两组均留空表示不限制
+    custom: { enabled: false, mimes: "", exts: "" }   # 兜底白名单，默认关闭；仅已配置条目参与匹配
 
 openapi:
   enabled: false

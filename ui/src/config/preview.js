@@ -1,7 +1,8 @@
 // 预览配置（运行时从后端加载）
 // 判定口径与后端 utils/preview_utils.go 保持一致：
 // 全局开关关闭时一律不可预览；开启时，命中任一已启用内置分组（按各组配置的 MIME/扩展名列表匹配，
-// 优先序 image > audio > video > document > text）或命中已启用的自定义组（custom，两组列表均留空表示不限制）即可预览。
+// 优先序 image > audio > video > document > text）或命中已启用的自定义组（custom，默认列表为空，
+// 仅已配置的列表参与匹配）即可预览。
 import { SystemApi } from '@/api'
 
 // 预览类型默认值以后端为唯一来源：options 接口的 preview.groups 为已解析默认表的生效配置，
@@ -44,9 +45,7 @@ function buildGroupRules(name, cfg) {
     mimeExact,
     mimeWildcard,
     extExact,
-    extWildcard,
-    // 仅 custom 组语义：MIME 与扩展名均未配置表示不限制
-    unrestricted: name === 'custom' && mimeExact.size === 0 && mimeWildcard.length === 0 && extExact.size === 0 && extWildcard.length === 0
+    extWildcard
   }
 }
 
@@ -58,11 +57,10 @@ function initGroupRules(groupsConfig) {
   }
 }
 
-// 文件是否命中指定分组（分组需处于启用状态）
+// 文件是否命中指定分组（分组需处于启用状态；列表为空则不命中任何文件）
 function matchGroup(name, ext, mimeType) {
   const r = groupRules[name]
   if (!r || !r.enabled) return false
-  if (r.unrestricted) return true
   if (mimeType) {
     if (r.mimeExact.has(mimeType)) return true
     for (const p of r.mimeWildcard) {

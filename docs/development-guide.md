@@ -357,7 +357,7 @@ upload:
 # 预览配置
 # 每个分组可独立开关并维护各自的 MIME/扩展名列表（逗号分隔，支持通配符）；
 # mimes/exts 未配置时回退内置默认表（仅含浏览器原生可渲染的类型），
-# 显式留空时该组不命中任何文件（custom 除外：启用后两组均留空表示不限制）。
+# 显式留空时该组不命中任何文件（custom 组同语义，仅已配置条目参与匹配）。
 # custom 组默认关闭，需显式启用。
 # 同时命中多个分组时按优先序 image > audio > video > document > text > custom 归类。
 preview:
@@ -386,7 +386,7 @@ preview:
       mimes: "application/pdf"
       exts: "pdf"
     custom:
-      enabled: false        # 自定义分组：默认关闭；启用后 mimes/exts 均留空表示不限制（所有文件均可预览）
+      enabled: false        # 自定义分组：兜底白名单，默认关闭；仅已配置条目参与匹配，留空不命中任何文件
       mimes: ""
       exts: ""
 

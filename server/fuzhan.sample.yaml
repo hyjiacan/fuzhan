@@ -207,7 +207,7 @@ ddos:
 # 判定规则：全局开关开启后，文件命中任一「已启用分组」的 mimes/exts 列表即可预览；
 # 分组同时命中多类时按优先序 image > audio > video > document > text > custom 归类。
 # mimes/exts 未配置时回退内置默认表（仅含浏览器原生可渲染的类型）；显式留空时该组不命中
-# 任何文件（custom 组除外，custom 启用后两组均留空表示不限制，所有文件均可预览）。
+# 任何文件（custom 组同语义，仅已配置的条目参与匹配）。
 # custom 组默认关闭，需显式启用。可在「系统设置 -> 预览」页面维护。
 preview:
   # 预览全局开关：关闭后所有类型的预览入口均不可用（未配置视为开启）
@@ -242,7 +242,7 @@ preview:
       max_inline_size: 1M
       # 文本文件分块读取大小 (支持 50K, 100K 等格式)
       text_chunk_size: 100K
-    # 自定义分组：兜底白名单，默认关闭；启用后 mimes/exts 均留空表示不限制（所有文件均可预览）
+    # 自定义分组：兜底白名单，默认关闭；仅已配置的 mimes/exts 条目参与匹配，留空不命中任何文件
     custom:
       enabled: false
       mimes: ""

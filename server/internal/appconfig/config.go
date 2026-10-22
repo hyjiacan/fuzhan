@@ -401,8 +401,7 @@ func GetReservedUsernames() []string {
 
 // PreviewGroupConfig 单个预览分组配置：开关 + 可编辑的 MIME/扩展名列表。
 // Enabled 使用指针区分「未配置」与显式开关：内置分组未配置视为开启，custom 组未配置视为关闭；
-// Mimes/Exts 使用指针区分「未配置」（回退 utils 内置默认表）与显式留空（该组不命中任何文件，
-// custom 组除外：启用后两组均留空表示不限制）。
+// Mimes/Exts 使用指针区分「未配置」（回退 utils 内置默认表）与显式留空（该组不命中任何文件）。
 type PreviewGroupConfig struct {
 	// Enabled 分组开关（内置分组 nil 视为开启，custom 组 nil 视为关闭）
 	Enabled *bool `yaml:"enabled,omitempty"`
@@ -460,8 +459,7 @@ func (c PreviewConfig) IsEnabled() bool {
 }
 
 // IsGroupEnabled 指定预览分组是否开启。
-// 内置分组未配置（nil）视为开启；custom 组未配置视为关闭——其「两组留空 = 不限制」
-// 的兜底语义仅在用户显式启用后生效，避免默认状态下所有文件都被判定为可预览。
+// 内置分组未配置（nil）视为开启；custom 组为兜底白名单，未配置视为关闭、按需启用。
 // 未知分组视为开启。
 func (c PreviewConfig) IsGroupEnabled(name string) bool {
 	switch name {

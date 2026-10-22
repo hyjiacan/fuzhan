@@ -21,7 +21,7 @@ const (
 // 前端通过 options 接口的 preview.defaults 获取，不内置默认表。
 // 默认表只收录浏览器原生可渲染的类型（img/audio/video/iframe 能直接显示或播放），
 // 非原生类型（如 tif/heic/wma/mkv 等）不放入默认表，需要预览时由用户自行配置分组列表。
-// custom 组没有默认列表：启用后两组均留空表示不限制（所有文件均可预览），且默认处于关闭状态。
+// custom 组没有默认列表：仅已配置的列表参与匹配，两组均空表示不命中任何文件，且默认处于关闭状态。
 var (
 	previewGroupDefaultsMimes = map[string]string{
 		PreviewGroupImage: "image/png,image/jpeg,image/gif,image/webp,image/avif,image/apng," +
@@ -60,7 +60,7 @@ var previewGroupOrder = []string{PreviewGroupImage, PreviewGroupAudio, PreviewGr
 // PreviewGroupState 单个预览分组的生效配置（各字段均已解析为具体值）
 type PreviewGroupState struct {
 	Enabled bool
-	Mimes   string // 逗号分隔，支持通配符；空串表示不命中任何文件（custom 组除外）
+	Mimes   string // 逗号分隔，支持通配符；空串表示不命中任何文件
 	Exts    string // 同上
 }
 
@@ -77,7 +77,6 @@ type previewGroupRules struct {
 	mimeWildcard []string
 	extExact     map[string]bool
 	extWildcard  []string
-	unrestricted bool // 仅 custom 组语义：MIME 与扩展名均未配置表示不限制
 }
 
 // 预览配置缓存（包加载时即为「内置分组开启 + 默认列表 + custom 关闭」，与配置缺省语义一致）
@@ -89,7 +88,7 @@ var (
 )
 
 // defaultPreviewInitConfig 内置分组开启并使用默认列表、custom 组关闭（配置缺省时的行为）。
-// custom 组默认关闭：避免「两组留空 = 不限制」的兜底语义在未显式启用时让所有文件都可预览。
+// custom 组为兜底白名单，默认列表为空（不命中任何文件）且默认关闭，按需启用并配置。
 func defaultPreviewInitConfig() PreviewInitConfig {
 	groups := make(map[string]PreviewGroupState, 6)
 	for _, g := range append(append([]string{}, previewGroupOrder...), PreviewGroupCustom) {
@@ -129,10 +128,6 @@ func buildPreviewRules(cfg PreviewInitConfig) map[string]*previewGroupRules {
 				r.extExact[e] = true
 			}
 		}
-		if name == PreviewGroupCustom {
-			r.unrestricted = len(r.mimeExact) == 0 && len(r.mimeWildcard) == 0 &&
-				len(r.extExact) == 0 && len(r.extWildcard) == 0
-		}
 		rules[name] = r
 	}
 	return rules
@@ -159,9 +154,6 @@ func previewGroupMatchedLocked(name, ext, mimeType string) bool {
 	r := previewRules[name]
 	if r == nil || !r.enabled {
 		return false
-	}
-	if r.unrestricted {
-		return true
 	}
 	if mimeType != "" {
 		if r.mimeExact[mimeType] {
@@ -228,7 +220,7 @@ func ReloadPreviewConfig() {
 // IsPreviewable 检查文件是否可预览：
 // 全局开关关闭时一律不可预览；开启时，文件命中任一已启用的内置分组
 // （image/audio/video/document/text，按各自配置的 MIME/扩展名列表匹配）
-// 或命中已启用的自定义组（custom：MIME 与扩展名列表均留空表示不限制）即可预览。
+// 或命中已启用的自定义组（custom，默认列表为空，仅已配置的列表参与匹配）即可预览。
 func IsPreviewable(filePath string, mimeType string) bool {
 	previewMu.RLock()
 	defer previewMu.RUnlock()

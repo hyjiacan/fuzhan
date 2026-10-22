@@ -82,8 +82,8 @@ const props = defineProps({
 
 // 内置预览类型分组：与后端 utils/preview_utils.go 的分组定义一一对应。
 // 各组列表为「完全可编辑」语义：命中该组已启用的 MIME 或扩展名列表即归入该组；
-// 内置组留空表示该组不命中任何文件，自定义组两组均留空表示不限制。
-const BUILTIN_LIST_HINT = '内置分组留空表示该组不命中任何文件；分组开关关闭后本组列表不再参与判定'
+// 任一分组（含自定义组）列表留空即不命中任何文件，仅已配置的条目参与匹配。
+const BUILTIN_LIST_HINT = '留空表示该组不命中任何文件，仅已配置条目参与匹配；分组开关关闭后本组列表不再参与判定'
 const previewGroups = [
   {
     key: 'image', label: '图片',
@@ -119,9 +119,9 @@ const previewGroups = [
     key: 'custom', label: '自定义',
     desc: '兜底白名单：未命中任何内置分组的文件按本组列表放行（默认关闭，需显式启用）',
     mimesPlaceholder: 'application/vnd.openxmlformats-officedocument.*',
-    mimesHint: '逗号分隔，支持通配符；启用后与扩展名列表均留空表示不限制（所有文件均可预览）',
+    mimesHint: '逗号分隔，支持通配符；仅已配置条目参与匹配，留空不命中任何文件',
     extsPlaceholder: 'bak,epub',
-    extsHint: '逗号分隔；启用后与 MIME 列表均留空表示不限制（所有文件均可预览）'
+    extsHint: '逗号分隔；仅已配置条目参与匹配，留空不命中任何文件'
   }
 ]
 

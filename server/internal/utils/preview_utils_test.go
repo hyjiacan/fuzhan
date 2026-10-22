@@ -2,7 +2,8 @@ package utils
 
 import "testing"
 
-func TestIsPreviewable_CustomEmptyMeansUnrestricted(t *testing.T) {
+func TestIsPreviewable_CustomEmptyMatchesNothing(t *testing.T) {
+	// custom 组与内置分组同语义：仅已配置条目参与匹配，两组留空不命中任何文件
 	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
 		PreviewGroupImage:    {Enabled: true, Mimes: "image/*", Exts: "png"},
 		PreviewGroupText:     {Enabled: true, Mimes: "text/*", Exts: ""},
@@ -11,11 +12,27 @@ func TestIsPreviewable_CustomEmptyMeansUnrestricted(t *testing.T) {
 		PreviewGroupDocument: {Enabled: true, Mimes: "", Exts: ""},
 		PreviewGroupCustom:   {Enabled: true, Mimes: "", Exts: ""},
 	}})
-	if !IsPreviewable("/a/b.bin", "application/octet-stream") {
-		t.Fatalf("custom 组两组留空应视为不限制（所有文件均可预览）")
+	if IsPreviewable("/a/b.bin", "application/octet-stream") {
+		t.Fatalf("custom 组两组留空不应命中任何文件")
 	}
-	if !IsPreviewable("/a/noext", "") {
-		t.Fatalf("custom 组两组留空应允许无扩展名文件预览")
+	if IsPreviewable("/a/noext", "") {
+		t.Fatalf("custom 组两组留空不应允许无扩展名文件预览")
+	}
+
+	// 配置后仅已配置条目生效
+	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
+		PreviewGroupImage:    {Enabled: true, Mimes: "image/*", Exts: "png"},
+		PreviewGroupText:     {Enabled: true, Mimes: "text/*", Exts: ""},
+		PreviewGroupAudio:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupVideo:    {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupDocument: {Enabled: true, Mimes: "", Exts: ""},
+		PreviewGroupCustom:   {Enabled: true, Mimes: "", Exts: "bin"},
+	}})
+	if !IsPreviewable("/a/b.bin", "application/octet-stream") {
+		t.Fatalf("custom 组配置的扩展名列表应生效")
+	}
+	if IsPreviewable("/a/c.exe", "application/octet-stream") {
+		t.Fatalf("未命中 custom 已配置列表的文件不应可预览")
 	}
 }
 
@@ -57,7 +74,7 @@ func TestIsPreviewable_GroupListsEnforced(t *testing.T) {
 }
 
 func TestIsPreviewable_ExplicitEmptyGroupMatchesNothing(t *testing.T) {
-	// 内置分组显式留空：该组不命中任何文件（与 custom 的「留空=不限制」不同）
+	// 分组显式留空：该组不命中任何文件（custom 组同语义）
 	InitPreviewConfig(PreviewInitConfig{Enabled: true, Groups: map[string]PreviewGroupState{
 		PreviewGroupImage:    {Enabled: true, Mimes: "", Exts: ""},
 		PreviewGroupText:     {Enabled: true, Mimes: "", Exts: ""},
