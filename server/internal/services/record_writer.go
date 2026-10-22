@@ -2,6 +2,7 @@ package services
 
 import (
 	"sync"
+	"time"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
@@ -14,6 +15,9 @@ const (
 	RecordWriterBuffer = 256
 	// recordWriterBatchSize 单个 worker 攒批批量提交的条数，降低逐条 insert 的写放大
 	recordWriterBatchSize = 200
+	// recordWriterFlushInterval 攒批的最长等待时间：低流量下不满一批也要按时落库，
+	// 否则记录会一直滞留内存中，管理界面看不到（只能等攒满一批或进程退出时才写入）。
+	recordWriterFlushInterval = time.Second * 3
 )
 
 // RecordWriter 有界异步操作记录写入器。
@@ -57,11 +61,18 @@ func (w *RecordWriter) worker() {
 		w.writeBatch(batch)
 		batch = batch[:0]
 	}
+	ticker := time.NewTicker(recordWriterFlushInterval)
+	defer ticker.Stop()
 	for {
 		select {
 		case rec := <-w.ch:
 			batch = append(batch, rec)
 			if len(batch) >= w.batchSize {
+				flush()
+			}
+		case <-ticker.C:
+			// 低流量下的定时落库，保证记录及时可见
+			if len(batch) > 0 {
 				flush()
 			}
 		case <-w.done:
