@@ -578,7 +578,7 @@ Monitoring → SecurityHeaders → CORS → RequestID → Recovery
 
 ### 安全头
 
-- X-Frame-Options: DENY
+- X-Frame-Options: DENY（文件预览请求 `preview=true` 放宽为 SAMEORIGIN，供预览弹窗 iframe 嵌入）
 - X-Content-Type-Options: nosniff
 - Content-Security-Policy
 

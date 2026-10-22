@@ -270,7 +270,13 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 防止XSS攻击
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
+		// 文件预览（preview=true，如 PDF/HTML）需要嵌入预览弹窗的 iframe，
+		// 放宽为 SAMEORIGIN 仅允许同源页面嵌入；其余请求保持 DENY 防点击劫持
+		frameOptions := "DENY"
+		if c.Query("preview") == "true" {
+			frameOptions = "SAMEORIGIN"
+		}
+		c.Header("X-Frame-Options", frameOptions)
 		c.Header("X-XSS-Protection", "1; mode=block")
 
 		// 内容安全策略
