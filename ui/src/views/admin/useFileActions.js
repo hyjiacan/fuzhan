@@ -121,7 +121,6 @@ export const useFileActions = ({
 
   // ============ 预览/下载 ============
   const previewDialogVisible = ref(false)
-  const previewMaximized = ref(false)
   const previewFileData = ref({})
 
   // 管理下载走 /admin/download（带鉴权）；新窗口打不开无法带请求头，故在 URL 上附 token
@@ -224,7 +223,7 @@ export const useFileActions = ({
     scanning, scanProgress, loadScanProgress, startPollProgress, stopPollProgress, handleScan,
     moveModalVisible, targetRootName, targetSubPath, moving, moveDialogWidth,
     updateMoveDialogWidth, openMoveModal, handleMove,
-    previewDialogVisible, previewMaximized, previewFileData, adminDownloadHref, previewFile, downloadFile,
+    previewDialogVisible, previewFileData, adminDownloadHref, previewFile, downloadFile,
     deleting, handleDelete, handleBatchDelete
   }
 }

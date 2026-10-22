@@ -107,20 +107,8 @@
       </template>
     </el-dialog>
 
-    <!-- 预览对话框 -->
-    <el-dialog v-model="previewDialogVisible" title="文件预览" width="700px"
-      :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']"
-      :style="previewMaximized ? { width: '100vw', maxWidth: '100vw' } : {}">
-      <file-preview :file="previewFileData" :maximized="previewMaximized"
-        @close="previewDialogVisible = false" />
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
-          <el-button type="primary" @click="downloadFile(previewFileData)">下载</el-button>
-          <el-button @click="previewDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 预览对话框（dialog 集成在 FilePreview 组件内） -->
+    <file-preview v-model="previewDialogVisible" :file="previewFileData" :download="downloadFile" />
   </div>
 </template>
 
@@ -223,7 +211,7 @@ const { searchQuery, searchInputRef, isSearching, searchCompleted, searchResultC
 const {
   scanning, scanProgress, handleScan,
   moveModalVisible, targetRootName, targetSubPath, moving, moveDialogWidth, handleMove,
-  previewDialogVisible, previewMaximized, previewFileData, downloadFile,
+  previewDialogVisible, previewFileData, downloadFile,
   handleBatchDelete
 } = actions
 

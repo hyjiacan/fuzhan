@@ -102,19 +102,10 @@
       @upload-success="onUploadSuccess" ref="uploadManagerRef"
       :delete-on-download="deleteOnDownload" @update:delete-on-download="deleteOnDownload = $event" />
 
-    <!-- 预览弹窗 -->
-    <el-dialog v-model="previewDialogVisible" title="文件预览" :class="previewMaximized ? 'preview-maximized' : ''"
-      :style="previewMaximized ? { width: '100vw', maxWidth: '100vw' } : { width: '900px', maxHeight: '80vh' }">
-      <file-preview :file="previewFileData" :maximized="previewMaximized" :download-api="() => TempApi.download(previewFileData.code)"
-        @close="previewDialogVisible = false" />
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
-          <el-button type="primary" @click="downloadFile(previewFileData.code)">下载</el-button>
-          <el-button @click="previewDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 预览弹窗（dialog 集成在 FilePreview 组件内） -->
+    <file-preview v-model="previewDialogVisible" :file="previewFileData"
+      :download-api="() => TempApi.download(previewFileData.code)"
+      :download="(file) => downloadFile(file.code)" />
 
     <!-- 访问码查询结果弹窗 -->
     <el-dialog v-model="showAccessCodeDialog" title="文件信息" width="400px">
@@ -181,7 +172,6 @@ const showUploadDialog = ref(false)
 const deleteOnDownload = ref(false)
 const showAccessCodeDialog = ref(false)
 const previewDialogVisible = ref(false)
-const previewMaximized = ref(false)
 const previewFileData = ref({})
 const uploadManagerRef = ref(null)
 const searchQuery = ref('')

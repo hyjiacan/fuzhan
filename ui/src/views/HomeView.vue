@@ -104,23 +104,8 @@
     <upload-manager ref="uploadManagerRef" v-model="uploadDialogVisible" :upload-api="uploadApi" title="上传文件"
       @upload-success="onUploadSuccess" @upload-error="onUploadError" />
 
-    <!-- 文件预览弹窗 -->
-    <el-dialog
-      v-model="previewDialogVisible"
-      title="文件预览"
-      width="80%"
-      top="5vh"
-      :class="['preview-dialog', previewMaximized ? 'preview-maximized' : '']">
-      <file-preview :file="previewFileData" :maximized="previewMaximized"
-        @close="previewDialogVisible = false" />
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button @click="previewMaximized = !previewMaximized">{{ previewMaximized ? '还原' : '最大化' }}</el-button>
-          <el-button type="primary" @click="downloadFile(previewFileData)">下载</el-button>
-          <el-button @click="previewDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 文件预览弹窗（dialog 集成在 FilePreview 组件内） -->
+    <file-preview v-model="previewDialogVisible" :file="previewFileData" :download="downloadFile" />
 
     <!-- 全局拖放上传提醒 -->
     <transition name="drop-overlay-fade">
@@ -279,7 +264,6 @@ const saveNotes = async () => {
 
 // 预览与下载
 const previewDialogVisible = ref(false)
-const previewMaximized = ref(false)
 const previewFileData = ref({})
 
 const previewFile = (file) => {
