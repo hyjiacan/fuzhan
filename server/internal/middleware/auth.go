@@ -15,6 +15,7 @@ import (
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -272,11 +273,12 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		c.Header("X-Content-Type-Options", "nosniff")
 		// 文件预览（preview=true，如 PDF/HTML）需要嵌入预览弹窗的 iframe，
 		// 放宽为 SAMEORIGIN 仅允许同源页面嵌入；其余请求保持 DENY 防点击劫持
-		frameOptions := "DENY"
-		if c.Query("preview") == "true" {
-			frameOptions = "SAMEORIGIN"
-		}
-		c.Header("X-Frame-Options", frameOptions)
+		// frameOptions := "DENY"
+		// if c.Query("preview") == "true" {
+		// 	frameOptions = "SAMEORIGIN"
+		// }
+		// c.Header("X-Frame-Options", frameOptions)
+		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("X-XSS-Protection", "1; mode=block")
 
 		// 内容安全策略

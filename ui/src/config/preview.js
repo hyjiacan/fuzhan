@@ -22,6 +22,18 @@ let previewEnabled = false
 // 各分组解析后的匹配规则（仅来自后端 options，未加载时为空）
 let groupRules = {}
 
+// ===== 预编译结论表（性能核心）=====
+// 把"分组规则遍历"编译成"扩展名/MIME -> 是否可预览"的哈希查表，判定降到 O(1)。
+// - extMap / mimeMap：精确匹配，value 为命中的分组名（布尔需求下也可视作 true）
+// - extPrefix / mimePrefix：通配符规则无法进哈希表，退化为短前缀数组遍历（通常 0~2 项）
+// 编译期按 GROUP_ORDER（后接 custom）顺序合并，先到先得，天然固化分组优先序。
+let extMap = new Map()
+let mimeMap = new Map()
+let extPrefix = []
+let mimePrefix = []
+// 配置版本号：每次配置成功加载后自增，供调用方做缓存失效 / 响应式依赖
+let configVersion = 0
+
 // 解析逗号分隔的分组配置为匹配规则
 function buildGroupRules(name, cfg) {
   const mimeExact = new Set()
@@ -40,12 +52,18 @@ function buildGroupRules(name, cfg) {
     if (v.endsWith('*')) extWildcard.push(v.slice(0, -1))
     else extExact.add(v)
   }
+  const isEmpty =
+    mimeExact.size === 0 &&
+    mimeWildcard.length === 0 &&
+    extExact.size === 0 &&
+    extWildcard.length === 0
   return {
     enabled: cfg.enabled !== false,
     mimeExact,
     mimeWildcard,
     extExact,
-    extWildcard
+    extWildcard,
+    isEmpty
   }
 }
 
@@ -57,7 +75,31 @@ function initGroupRules(groupsConfig) {
   }
 }
 
-// 文件是否命中指定分组（分组需处于启用状态；列表为空则不命中任何文件）
+// 把分组规则预编译成结论表。仅在 loadPreviewConfig 成功后调用一次。
+function rebuildMatchTables() {
+  extMap = new Map()
+  mimeMap = new Map()
+  extPrefix = []
+  mimePrefix = []
+
+  // 按优先序合并：先到先得，保留第一个分组的归属，固化优先级语义
+  const order = [...GROUP_ORDER, 'custom']
+  for (const g of order) {
+    const r = groupRules[g]
+    if (!r || !r.enabled || r.isEmpty) continue
+    for (const e of r.extExact) {
+      if (!extMap.has(e)) extMap.set(e, g)
+    }
+    for (const m of r.mimeExact) {
+      if (!mimeMap.has(m)) mimeMap.set(m, g)
+    }
+    for (const p of r.extWildcard) extPrefix.push({ prefix: p, group: g })
+    for (const p of r.mimeWildcard) mimePrefix.push({ prefix: p, group: g })
+  }
+}
+
+// 文件是否命中指定分组（保留该函数供需要"分组归属"的场景使用；
+// isPreviewable 已改走结论表，不再依赖此函数）
 function matchGroup(name, ext, mimeType) {
   const r = groupRules[name]
   if (!r || !r.enabled) return false
@@ -81,6 +123,11 @@ export function isPreviewEnabled() {
   return previewEnabled
 }
 
+// 配置版本号：调用方可将其放入响应式依赖，配置变更后触发重算
+export function getPreviewConfigVersion() {
+  return configVersion
+}
+
 // 加载预览配置（可选传入已获取的 options 数据）
 export async function loadPreviewConfig(preloadedData) {
   try {
@@ -98,6 +145,8 @@ export async function loadPreviewConfig(preloadedData) {
       previewEnabled = data.preview.enabled !== false
       // 各分组：后端返回的是已解析默认值的生效配置（唯一来源）
       initGroupRules(data.preview.groups)
+      // 预编译结论表（性能核心）
+      rebuildMatchTables()
       // 内置默认表：供设置页「恢复默认」使用
       previewDefaults = data.preview.defaults || null
     }
@@ -109,6 +158,8 @@ export async function loadPreviewConfig(preloadedData) {
         if (e && mime) userMimeTable[e] = String(mime).trim()
       }
     }
+    // 配置已变更，版本号自增，供调用方失效缓存 / 触发重算
+    configVersion++
   } catch (e) {
     console.error('加载预览配置失败', e)
   }
@@ -147,22 +198,45 @@ function resolveMimeByExt(ext) {
   return userMimeTable[ext] || BUILTIN_EXT_MIME[ext] || ''
 }
 
+// 从文件名解析扩展名（统一口径：无点或隐藏文件视为无扩展名，与后端一致）
+function getExt(filename) {
+  if (!filename) return ''
+  const i = filename.lastIndexOf('.')
+  return i > 0 ? filename.slice(i + 1).toLowerCase() : ''
+}
+
 // 依据文件名解析 MIME（供无后端 MIME 信息时识别预览类型使用）
 export function resolveMime(filename) {
   if (!filename) return ''
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
-  return resolveMimeByExt(ext)
+  return resolveMimeByExt(getExt(filename))
 }
 
 // 判断文件是否可预览（与后端 utils.IsPreviewable 口径一致）
+// 性能：走预编译结论表，精确命中 O(1)；扩展名精确命中时跳过 MIME 还原；
+// 仅通配符规则退化为短前缀数组遍历。
 export function isPreviewable(filename, mimeType = '') {
   if (!previewEnabled || !filename) return false
-  const ext = (filename.split('.').pop()?.toLowerCase() || '')
-  // 调用方未提供 MIME 时按扩展名还原（与后端预览接口先解析 MIME 再判定的行为一致）
+  const ext = getExt(filename)
+
+  // 快路径 1：扩展名精确命中（无需还原 MIME）
+  if (ext && extMap.has(ext)) return true
+
+  // 需要 MIME 参与匹配时再还原，避免无谓查表
   const m = (mimeType || resolveMimeByExt(ext)).toLowerCase()
 
-  for (const g of GROUP_ORDER) {
-    if (matchGroup(g, ext, m)) return true
+  // 快路径 2：MIME 精确命中
+  if (m && mimeMap.has(m)) return true
+
+  // 兜底：通配符前缀匹配（通常 0~2 项）
+  if (ext) {
+    for (const p of extPrefix) {
+      if (ext.startsWith(p.prefix)) return true
+    }
   }
-  return matchGroup('custom', ext, m)
+  if (m) {
+    for (const p of mimePrefix) {
+      if (m.startsWith(p.prefix)) return true
+    }
+  }
+  return false
 }
