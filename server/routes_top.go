@@ -47,7 +47,10 @@ func (rt *runCtx) buildWebDAVHandler(prefix string) (http.Handler, webdav.UserAu
 	// 操作录制（审计）：优先走全局有界记录器，与 FTP 行为一致
 	recordingFS := webdav.NewRecordingFileSystem(unifiedFS, &webdavRecordingRepo{store: rt.recordRepo})
 	davHandler := webdav.NewHandler(prefix, recordingFS)
-	return davHandler, authenticate
+	// 检索支持：SEARCH（DASL / RFC 5323）与 REPORT（ownCloud 非标准）由
+	// SearchableHandler 接管，直接检索文件索引表；其余方法透传标准 Handler。
+	searchable := &webdav.SearchableHandler{Standard: davHandler, DB: rt.db, Prefix: prefix}
+	return searchable, authenticate
 }
 
 // registerTopLevelRoutes 注册顶层快捷入口（/cli、/download、/webdav）与 Open API 路由组（/api/open/v1）

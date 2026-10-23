@@ -13,6 +13,9 @@ var webdavMethods = []string{
 	"GET", "HEAD", "PUT", "DELETE", "OPTIONS",
 	"PROPFIND", "PROPPATCH", "MKCOL", "MOVE", "COPY",
 	"LOCK", "UNLOCK",
+	// 检索扩展：SEARCH（DASL / RFC 5323）与 REPORT（ownCloud 非标准），
+	// 交由 SearchableHandler 接管，其余方法仍走标准 Handler。
+	"SEARCH", "REPORT",
 }
 
 // registerWebDAVRoutes registers the davHandler for all WebDAV methods
@@ -88,7 +91,8 @@ func bodyLimitMiddleware(maxSize int64) gin.HandlerFunc {
 // isReadOnlyMethod checks if a WebDAV method is read-only.
 func isReadOnlyMethod(method string) bool {
 	switch method {
-	case "GET", "HEAD", "PROPFIND", "OPTIONS":
+	case "GET", "HEAD", "PROPFIND", "OPTIONS",
+		"SEARCH", "REPORT": // 检索扩展本质是只读查询，公开只读路由需放行
 		return true
 	}
 	return false
