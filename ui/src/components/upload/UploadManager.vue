@@ -3,7 +3,7 @@
     :model-value="modelValue"
     :title="title"
     :class="['upload-dialog', maximized ? 'upload-dialog--maximized' : '']"
-    width="800px"
+    width="1080px"
     top="10vh"
     :close-on-click-modal="false"
     :close-on-press-escape="false"

@@ -8,8 +8,14 @@
         <el-row :gutter="16">
           <el-col :span="12" :sm="12" :xs="24">
             <el-card>
-              <template #header><span>注册策略</span></template>
+              <template #header><span>访问策略</span></template>
               <el-form label-width="120px">
+                <el-form-item label="强制登录">
+                  <el-switch v-model="settings.account.requireLogin" />
+                  <div class="field-hint">
+                    开启后 Web 界面（含精简版 lite）与 CLI 接口均需登录后才能访问与下载；私有分享的匿名直接下载、临时文件分享除外。保存后立即生效，无需重启。
+                  </div>
+                </el-form-item>
                 <el-form-item label="允许自行注册">
                   <el-switch v-model="settings.account.allowRegistration" />
                   <div class="field-hint">

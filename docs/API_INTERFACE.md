@@ -16,6 +16,7 @@
   - API Key（外部集成）
   - LDAP（企业目录）
   - OAuth2 / OIDC（外部统一认证，授权码模式）
+  - **强制登录（LoginGate）**：开启 `account.require_login` 后，`/api/v1/web`、`/api/v1/cli`、`/download`、`/lite` 等接口需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数）；未开启时保持匿名。临时文件 `/temp/`、私有分享 `/share/:code` 直接下载、登录/注册、初始化 `/setup/`、健康检查、`/options`、搜索联想等为匿名例外
 - **响应格式**：
   ```json
   {
@@ -146,7 +147,7 @@
 ### 1. 获取目录列表
 
 - **URL**：`GET /api/v1/web/files/list`
-- **认证**：无需认证
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌）
 - **参数**：
   - `path`（可选）：目录路径，格式 `rootName/subdir`
 - **响应**：
@@ -179,7 +180,7 @@
 ### 2. 获取最近上传
 
 - **URL**：`GET /api/v1/web/files/recent`
-- **认证**：无需认证
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌）
 - **参数**：
   - `limit`（可选）：返回数量，默认 50
 - **响应**：
@@ -200,13 +201,13 @@
 ### 3. 文件预览
 
 - **URL**：`GET /api/v1/web/files/preview/*path`
-- **认证**：无需认证
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌）
 - **说明**：直接返回文件内容，支持文本、图片、PDF
 
 ### 4. 文本分片预览
 
 - **URL**：`GET /api/v1/web/files/preview-chunk`
-- **认证**：无需认证
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌）
 - **参数**：
   - `path`：文件路径
   - `chunk`：分片编号（从 0 开始）
@@ -217,7 +218,7 @@
 ### 1. 下载文件
 
 - **URL**：`GET /download/*path`（等价 API 路径：`GET /api/v1/web/download/*path`）
-- **认证**：无需认证
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌，可通过 `?token=` 查询参数携带）
 - **参数**：
   - `preview`（可选）：预览模式
 - **说明**：直接返回文件内容
@@ -226,7 +227,7 @@
 ### 2. 分享下载（私有存储）
 
 - **URL**：`GET /share/:code`
-- **认证**：无需认证
+- **认证**：无需认证（匿名例外，即使在强制登录模式下仍可直接访问，便于外部分享）
 - **参数**：
   - `preview`（可选）：设为 `true` 时以内联方式返回（不设置 `Content-Disposition`，按扩展名推断 `Content-Type`），供图片/PDF/文本在线预览；不写入下载记录
 - **说明**：通过分享码下载私有文件
@@ -699,8 +700,8 @@
 ### 1. 获取系统选项
 
 - **URL**：`GET /api/v1/web/options`
-- **认证**：无需认证
-- **说明**：供前端加载时获取运行时配置
+- **认证**：无需认证（匿名例外，强制登录模式下也可匿名访问）
+- **说明**：供前端加载时获取运行时配置（含 `account.requireLogin`，前端据此决定是否跳转登录页）
 - **响应**：
   ```json
   {
@@ -708,6 +709,10 @@
     "data": {
       "app": {
         "name": "浮栈"
+      },
+      "account": {
+        "allowRegistration": false,
+        "requireLogin": false
       },
       "temp": {
         "enabled": true
@@ -805,19 +810,24 @@
 - **URL**：`GET /api/v1/metrics`
 - **认证**：无需认证
 
-## CLI 接口（需认证）
+## CLI 接口（受强制登录开关控制）
+
+CLI 接口的认证行为与配置文件 `account.require_login` 关联：未开启时匿名可访问；开启后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。CLI 安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外（保持公开，便于新机器拉取脚本）。
 
 ### 1. CLI 帮助
 
-- **URL**：`GET /api/v1/cli`
+- **URL**：`GET /api/v1/cli`（别名 `GET /cli`）
+- **认证**：见上方说明
 
 ### 2. CLI 搜索
 
-- **URL**：`GET /api/v1/cli/search/*query`
+- **URL**：`GET /api/v1/cli/search/*query`（别名 `GET /cli/search/*query`）
+- **认证**：见上方说明
 
 ### 3. CLI 列出目录
 
-- **URL**：`GET /api/v1/cli/list/*path`
+- **URL**：`GET /api/v1/cli/list/*path`（别名 `GET /cli/list/*path`）
+- **认证**：见上方说明
 
 ## 错误处理
 

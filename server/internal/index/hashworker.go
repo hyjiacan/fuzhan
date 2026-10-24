@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 	xxh3pkg "fuzhan/pkg/xxh3"
 
@@ -30,6 +31,7 @@ type hashRecord struct {
 type HashWorker struct {
 	db          *gorm.DB
 	rootNames   map[string]string
+	storages    map[string]storage.Storage // rootName → Storage（远端后端注入）
 	running     bool
 	mu          sync.Mutex
 	progress    HashProgress
@@ -40,6 +42,33 @@ type HashWorker struct {
 	// MaxResidualBatches 补算的最大轮数；两者为 0 时跳过补算（兼容旧行为）。
 	ResidualDelay      time.Duration
 	MaxResidualBatches int
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+func (w *HashWorker) SetStorages(storages map[string]storage.Storage) {
+	w.storages = storages
+}
+
+// storageFor 返回指定根目录的存储后端。远端后端（非 local）时 remote=true，
+// 哈希将通过 Storage 流式计算；本地后端（含未注入）保持 rootNames 物理路径语义。
+// 与 Scanner.storageFor 语义一致。
+func (w *HashWorker) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := w.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
+}
+
+// hashRemote 对远端存储对象计算 xxh3 哈希（流式读取，不落盘）。
+// 对象存储无文件句柄与原子 stat，无法做写前后 size 一致性校验，直接流式计算。
+func (w *HashWorker) hashRemote(ctx context.Context, st storage.Storage, path string) (string, error) {
+	rc, err := st.Open(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	return xxh3pkg.HashReader(rc)
 }
 
 // HashProgress 哈希计算进度
@@ -342,10 +371,23 @@ func (w *HashWorker) processHashBatch(ctx context.Context, tableName string, rec
 				}
 				res := hashResult{id: rec.ID}
 				rootPath, ok := w.rootNames[rec.RootName]
-				if !ok {
+				st, remote := w.storageFor(rec.RootName)
+				if !ok && !remote {
 					res.failed = true
 					res.errMsg = "root_not_found: " + rec.RootName
 					res.errCategory = "rootNotFound"
+				} else if remote {
+					// 远端后端：对象可能改变写入中状态，无法可靠做"写前后 size 一致性"
+					// 校验（对象存储无文件句柄与原子 stat），直接流式计算哈希。
+					fullPath := "/" + strings.TrimPrefix(rec.FilePath, "/")
+					h, err := w.hashRemote(ctx, st, fullPath)
+					if err != nil {
+						res.failed = true
+						res.errMsg = categorizeError(fullPath, err)
+						res.errCategory = classifyHashError(err)
+					} else {
+						res.hash = h
+					}
 				} else {
 					fullPath := filepath.Join(rootPath, rec.FilePath)
 					// 写保护：算前记录 size，算后再次校验。若前后不一致，说明文件

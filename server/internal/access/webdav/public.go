@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/webdav"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 )
 
@@ -26,6 +27,7 @@ type PublicFileSystem struct {
 	rootNames  map[string]string
 	validators map[string]*utils.PathValidator
 	backend    Backend // 服务层能力（上传开关/扩展名/磁盘/索引）；nil 时仅跳过校验（测试用）
+	storages   map[string]storage.Storage
 }
 
 // NewPublicFileSystem creates a PublicFileSystem from a root names map.
@@ -44,6 +46,23 @@ func NewPublicFileSystem(rootNames map[string]string) *PublicFileSystem {
 // SetBackend 注入服务层后端能力（上传开关/扩展名/磁盘/索引）。
 func (fs *PublicFileSystem) SetBackend(backend Backend) {
 	fs.backend = backend
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+// 本地后端可不注入（保持 rootNames 物理路径语义零变化）；远端后端（s3/minio/oss/webdav）
+// 须注入，使 WebDAV 的列表/读取/写入通过 Storage 接口访问远端对象存储。
+func (fs *PublicFileSystem) SetStorages(storages map[string]storage.Storage) {
+	fs.storages = storages
+}
+
+// storageFor 返回 rootName 对应的远端存储后端；本地/未注入返回 nil, false。
+// 与 index/ftp 的 storageFor 保持同一回退范式：Kind()=="local" 时回退物理路径。
+func (fs *PublicFileSystem) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := fs.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
 }
 
 // canCreatePublic 校验公开写入口：全局上传开关 + 按目录上传开关 + 扩展名白名单 + 磁盘空间。
@@ -76,6 +95,13 @@ func (fs *PublicFileSystem) Mkdir(ctx context.Context, name string, perm os.File
 	if !ok {
 		return os.ErrNotExist
 	}
+	// 远端后端：经 Storage 接口创建虚拟目录（对象存储无真实目录，多为无操作）。
+	if st, remote := fs.storageFor(rootName); remote {
+		if err := fs.canCreatePublic(rootName, filepath.Dir(rootPath), ""); err != nil {
+			return err
+		}
+		return st.MkdirAll(ctx, subPath)
+	}
 	fullPath := filepath.Join(rootPath, subPath)
 	if err := fs.validators[rootName].Validate(fullPath); err != nil {
 		return os.ErrPermission
@@ -97,13 +123,18 @@ func (fs *PublicFileSystem) Rename(_ context.Context, _, _ string) error {
 func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
 	// Root listing (always read-only)
 	if name == "" || name == "/" {
-		return &publicRootDir{names: fs.rootNames}, nil
+		return &publicRootDir{names: fs.rootNames, storages: fs.storages}, nil
 	}
 
 	rootName, subPath := splitPath(name)
 	rootPath, ok := fs.rootNames[rootName]
 	if !ok {
 		return nil, os.ErrNotExist
+	}
+
+	// 远端后端：经 Storage 接口读写（对象存储无 O_EXCL 原子创建，用 Stat 防覆盖）。
+	if st, remote := fs.storageFor(rootName); remote {
+		return fs.openRemote(ctx, st, rootName, rootPath, subPath, flag, perm)
 	}
 
 	fullPath := filepath.Join(rootPath, subPath)
@@ -146,7 +177,64 @@ func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int,
 	return os.OpenFile(fullPath, os.O_RDONLY, 0)
 }
 
-func (fs *PublicFileSystem) Stat(_ context.Context, name string) (os.FileInfo, error) {
+// openRemote 远端后端打开文件/目录。
+//   - 目录：先 Stat 判定 IsDir，返回 storageDirFile（Readdir 用 st.List）；
+//   - 新建：Stat 防覆盖 + st.OpenWriter 包装 storageSyncedFile；
+//   - 读取：st.Open 包装 storageReadFile（Seek 按后端能力降级）。
+// rootPath 为物理配置根路径，仅用于磁盘分区检测（CheckDiskSpace 依赖本地分区）。
+func (fs *PublicFileSystem) openRemote(ctx context.Context, st storage.Storage, rootName, rootPath, subPath string, flag int, perm os.FileMode) (webdav.File, error) {
+	isCreate := flag&os.O_CREATE != 0
+	isWrite := flag&(os.O_WRONLY|os.O_RDWR|os.O_TRUNC|os.O_APPEND) != 0
+
+	info, statErr := st.Stat(ctx, subPath)
+	exists := statErr == nil
+
+	if isCreate {
+		if err := fs.canCreatePublic(rootName, filepath.Dir(rootPath), subPath); err != nil {
+			return nil, err
+		}
+		if exists {
+			// 公开目录只允许新建：已存在映射为权限错误（替代本地 O_EXCL 原子性）。
+			return nil, os.ErrPermission
+		}
+		wc, err := st.OpenWriter(ctx, subPath)
+		if err != nil {
+			return nil, err
+		}
+		return &storageSyncedFile{
+			wc:       wc,
+			st:       st,
+			ctx:      ctx,
+			backend:  fs.backend,
+			rootName: rootName,
+			relPath:  subPath,
+			clientIP: getClientIP(ctx),
+		}, nil
+	}
+
+	if isWrite {
+		return nil, os.ErrPermission
+	}
+
+	// Whether it's a directory (PROPFIND/GET on a collection).
+	if exists && info.IsDir {
+		return &storageDirFile{st: st, ctx: ctx, name: subPath}, nil
+	}
+
+	// Read-only file stream.
+	rc, err := st.Open(ctx, subPath)
+	if err != nil {
+		return nil, err
+	}
+	seeker, _ := rc.(io.Seeker)
+	return &storageReadFile{
+		rc:     rc,
+		seeker: seeker,
+		info:   &storageFileInfo{info: info},
+	}, nil
+}
+
+func (fs *PublicFileSystem) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 	// Root listing
 	if name == "" || name == "/" {
 		return &publicRootDirInfo{
@@ -159,6 +247,15 @@ func (fs *PublicFileSystem) Stat(_ context.Context, name string) (os.FileInfo, e
 	rootPath, ok := fs.rootNames[rootName]
 	if !ok {
 		return nil, os.ErrNotExist
+	}
+
+	// 远端后端：经 Storage 接口取元信息（StatInfo 字段 → os.FileInfo）。
+	if st, remote := fs.storageFor(rootName); remote {
+		info, err := st.Stat(ctx, subPath)
+		if err != nil {
+			return nil, err
+		}
+		return &storageFileInfo{info: info}, nil
 	}
 
 	fullPath := filepath.Join(rootPath, subPath)
@@ -196,8 +293,9 @@ func rootReachable(p string) bool {
 // publicRootDir implements http.File for the top-level directory listing
 // of all configured root directories.
 type publicRootDir struct {
-	names map[string]string
-	pos   int
+	names    map[string]string
+	storages map[string]storage.Storage
+	pos      int
 }
 
 func (d *publicRootDir) Close() error { return nil }
@@ -221,11 +319,21 @@ func (d *publicRootDir) Stat() (os.FileInfo, error) {
 	return &publicRootDirInfo{name: "/", names: d.names}, nil
 }
 
+// reachable 判定共享根是否可达：远端后端（对象存储/远端 WebDAV）恒可达；
+// 本地后端需磁盘真实存在（避免幽灵目录）。
+func (d *publicRootDir) reachable(name, rootPath string) bool {
+	_, remote := remoteStorageFromMap(d.storages, name)
+	if remote {
+		return true
+	}
+	return rootReachable(rootPath)
+}
+
 func (d *publicRootDir) Readdir(count int) ([]os.FileInfo, error) {
 	names := make([]string, 0, len(d.names))
 	for name, rootPath := range d.names {
-		// 仅列出磁盘上真实可达的根目录，避免幽灵目录（配置了但在磁盘上不存在/不可访问）。
-		if rootReachable(rootPath) {
+		// 仅列出可达的根目录，避免幽灵目录（配置了但在磁盘上不存在/不可访问）。
+		if d.reachable(name, rootPath) {
 			names = append(names, name)
 		}
 	}
@@ -250,6 +358,15 @@ func (d *publicRootDir) Readdir(count int) ([]os.FileInfo, error) {
 		infos = append(infos, &publicRootDirInfo{name: name, names: d.names})
 	}
 	return infos, nil
+}
+
+// remoteStorageFromMap 从映射中取远端存储；本地/未注入返回 nil, false。
+func remoteStorageFromMap(storages map[string]storage.Storage, rootName string) (storage.Storage, bool) {
+	st, ok := storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
 }
 
 // publicRootDirInfo implements os.FileInfo for a root directory entry.

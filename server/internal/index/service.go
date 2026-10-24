@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"gorm.io/gorm"
 )
 
@@ -14,6 +15,7 @@ import (
 type Service struct {
 	db         *gorm.DB
 	rootNames  map[string]string
+	storages   map[string]storage.Storage
 	scanner    *Scanner
 	syncer     *Syncer
 	checker    *ConsistencyChecker
@@ -53,6 +55,25 @@ func (s *Service) SetTaskService(ts TaskRecorder) {
 	s.taskService = ts
 	s.scanner.taskService = ts
 	s.hashWorker.taskService = ts
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+// 本地后端可不注入（保持 rootNames 物理路径语义）；远端后端须注入，
+// 使扫描/哈希/一致性校验/增量同步通过 Storage 接口（List/Stat/Open）访问。
+func (s *Service) SetStorages(storages map[string]storage.Storage) {
+	s.storages = storages
+	if s.scanner != nil {
+		s.scanner.SetStorages(storages)
+	}
+	if s.syncer != nil {
+		s.syncer.SetStorages(storages)
+	}
+	if s.checker != nil {
+		s.checker.SetStorages(storages)
+	}
+	if s.hashWorker != nil {
+		s.hashWorker.SetStorages(storages)
+	}
 }
 
 // SetFileIndexNotifier 注入文件名检索索引变更通知器（可选）。

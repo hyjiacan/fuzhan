@@ -67,6 +67,9 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		privatePath = appconfig.GlobalConfig.Storage.Private.Path
 	}
 	ftpHandler.SetBackend(ftp.NewFtpBackend(rt.db, rt.indexService, privatePath))
+	// 注入公开多根目录的存储后端映射：远端后端（s3/minio/oss/webdav）经 Storage
+	// 接口访问对象存储，本地后端不注入（保持物理路径语义）
+	ftpHandler.SetStorages(rt.publicStorages)
 
 	// 创建 Gin 路由
 	r := gin.New()

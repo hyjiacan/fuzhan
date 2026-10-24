@@ -4,13 +4,26 @@ import (
 	"context"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"sort"
 	"strings"
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 )
+
+// storageFor 返回指定根目录的存储后端。远端后端（非 local）时 remote=true，
+// 扫描/遍历将通过 Storage 接口（List/Stat/Open）访问；本地后端（含未注入）保持
+// rootNames 物理路径 + os 包语义，行为与改造前完全一致。
+func (s *Scanner) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := s.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
+}
 
 // runScan 执行实际扫描流程
 func (s *Scanner) runScan(ctx context.Context, trigger string) {
@@ -179,18 +192,24 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		utils.String("root_name", rootName),
 		utils.String("root_path", rootPath))
 
-	result := &models.ScanRootResult{RootName: rootName}
-
-	// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过删除标记,
-	// 否则 filepath.Walk 得到 0 条目会把有效索引批量误删
-	if ok, reason := validateScanRoot(rootPath); !ok {
-		utils.Warn("根目录不可遍历, 跳过扫描与删除标记以避免误删索引",
-			utils.String("root_name", rootName),
-			utils.String("root_path", rootPath),
-			utils.String("reason", reason))
-		result.Error = "根目录不可遍历: " + reason
-		return result, nil
+	// 远端后端：根目录为虚拟前缀（无真实磁盘路径），跳过本地 Lstat 护栏，
+	// 遍历通过 Storage 接口进行；本地后端保持原有 os.Lstat 护栏。
+	st, remote := s.storageFor(rootName)
+	if !remote {
+		// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过删除标记,
+		// 否则 filepath.Walk 得到 0 条目会把有效索引批量误删
+		if ok, reason := validateScanRoot(rootPath); !ok {
+			utils.Warn("根目录不可遍历, 跳过扫描与删除标记以避免误删索引",
+				utils.String("root_name", rootName),
+				utils.String("root_path", rootPath),
+				utils.String("reason", reason))
+			result := &models.ScanRootResult{RootName: rootName}
+			result.Error = "根目录不可遍历: " + reason
+			return result, nil
+		}
 	}
+
+	result := &models.ScanRootResult{RootName: rootName}
 
 	// 加载已有活跃记录, 建立 path→ID 映射
 	existing := make(map[string]uint) // filePath → recordID
@@ -294,7 +313,15 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 	}()
 
 	// walkErr 仅反映磁盘读取层面的可跳过错误（与旧实现"跳过无法访问的文件"保持一致，不视为致命）
-	_ = walkConcurrent(scanCtx, rootPath, defaultWalkWorkers(), entryCh)
+	var walkErr error
+	if remote {
+		// 远端后端：无真实磁盘，用 Storage.List 递归遍历（替代 walkConcurrent）。
+		// ObjectInfo 字段与 FileRecordBase 所需对齐（Name/Size/IsDir/ModTime）。
+		walkErr = walkStorage(scanCtx, st, "/", entryCh)
+	} else {
+		walkErr = walkConcurrent(scanCtx, rootPath, defaultWalkWorkers(), entryCh)
+	}
+	_ = walkErr // 可跳过错误不视为致命（与旧实现一致）
 	<-consumerDone
 
 	result.Scanned = scanned
@@ -355,4 +382,67 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 		utils.Int("deleted", deleted))
 
 	return result, nil
+}
+
+// objectInfoEntry 将存储列举的 ObjectInfo 转换为 walkEntry（供远端遍历消费）。
+// ObjectInfo 的 Name/Size/IsDir/ModTime 与索引所需字段对齐；Name()/IsDir()/ModTime()
+// 通过 fsInfo 适配层提供，与 walkEntry.info（os.FileInfo）在消费端 API 一致。
+func objectInfoEntry(relPath string, o storage.ObjectInfo) walkEntry {
+	return walkEntry{
+		relPath: relPath,
+		info:    objectFileInfo{o},
+	}
+}
+
+// objectFileInfo 适配 ObjectInfo 为 os.FileInfo 的最小实现子集，
+// 使远端遍历产出的条目可被消费端 e.info.Name()/Size()/IsDir()/ModTime() 直接使用。
+type objectFileInfo struct{ o storage.ObjectInfo }
+
+func (fi objectFileInfo) Name() string       { return fi.o.Name }
+func (fi objectFileInfo) Size() int64        { return fi.o.Size }
+func (fi objectFileInfo) Mode() os.FileMode  { return 0644 }
+func (fi objectFileInfo) ModTime() time.Time { return fi.o.ModTime }
+func (fi objectFileInfo) IsDir() bool        { return fi.o.IsDir }
+func (fi objectFileInfo) Sys() interface{}   { return nil }
+
+// walkStorage 以 Storage.List 递归遍历远端根目录（dirPath 为逻辑路径，以 "/" 分隔），
+// 将每个目录项（目录与文件）投递到 out，全部遍历完成后由最外层统一关闭 out 恰好一次。
+// relPath 语义与 walkConcurrent 一致：以 "/" 开头、斜杠分隔；根目录本身不被投递。
+// 递归子目录复用同一 out；out 的关闭与 walkConcurrent 内部 close 语义对齐（调用方依赖 range 退出）。
+func walkStorage(ctx context.Context, st storage.Storage, dirPath string, out chan<- walkEntry) error {
+	if dirPath == "" || dirPath == "/" {
+		dirPath = "/"
+	}
+	// 最外层调用点负责唯一一次 close；递归子调用（walkStorageInto）不会关闭 out。
+	defer close(out)
+	return walkStorageInto(ctx, st, dirPath, out)
+}
+
+// walkStorageInto 递归遍历核心：仅负责投递，不负责关闭 out，由 walkStorage 统一收敛关闭。
+func walkStorageInto(ctx context.Context, st storage.Storage, dirPath string, out chan<- walkEntry) error {
+	list, err := st.List(ctx, dirPath)
+	if err != nil {
+		if storage.IsNotExist(err) {
+			return nil // 根为空/不存在：无条目
+		}
+		return err
+	}
+	for _, o := range list.Objects {
+		relChild := "/" + strings.TrimPrefix(dirPath+"/"+o.Name, "/")
+		relChild = pathpkg.Clean(relChild)
+		if relChild == "/" {
+			continue
+		}
+		select {
+		case out <- objectInfoEntry(relChild, o):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if o.IsDir {
+			if derr := walkStorageInto(ctx, st, relChild, out); derr != nil {
+				return derr
+			}
+		}
+	}
+	return nil
 }

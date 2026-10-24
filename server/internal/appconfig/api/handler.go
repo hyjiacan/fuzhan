@@ -35,6 +35,8 @@ func (h *Handler) GetOptions(c *gin.Context) {
 		"account": gin.H{
 			// 注册开关：登录/注册入口据此决定是否展示「立即注册」
 			"allowRegistration": currentConfig.Account.AllowRegistration,
+			// 强制登录开关：前端据此决定首次加载前移登录页、路由守卫与下载链接是否附带 token
+			"requireLogin": currentConfig.Account.RequireLogin,
 		},
 		"privateStorage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
@@ -216,6 +218,9 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// 注册开关：account 节提交即写入（bool 无"未设置"语义，关闭注册是合法目标状态）
 		appconfig.GlobalConfig.Account.AllowRegistration = req.Account.AllowRegistration
 		updates.Add("account.allow_registration", req.Account.AllowRegistration)
+		// 强制登录开关：开启后 Web 界面仅登录用户可交互
+		appconfig.GlobalConfig.Account.RequireLogin = req.Account.RequireLogin
+		updates.Add("account.require_login", req.Account.RequireLogin)
 	}
 
 	// —— 服务器配置 ——

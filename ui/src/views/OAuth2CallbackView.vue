@@ -19,6 +19,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
+import { executeLoginDownload } from '@/utils/download'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,7 +76,10 @@ onMounted(async () => {
 
   ElMessage.success('登录成功')
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/files'
-  setTimeout(() => {
+  setTimeout(async () => {
+    // 下载类 redirect（后端 302 携带）：换一次性票据后整页跳转执行下载，
+    // hash 路由会吞掉非 hash 路径，不能用 router.replace
+    if (await executeLoginDownload(redirect)) return
     router.replace(redirect.startsWith('/') ? redirect : '/files')
   }, 600)
 })

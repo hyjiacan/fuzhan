@@ -1,10 +1,9 @@
 package file
 
 import (
+	"context"
 	"net/http"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"fuzhan/internal/appconfig"
@@ -93,11 +92,11 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
 		rootNames := fh.getRootNameList()
 		var result []FileRecordInfo
 		for _, rn := range rootNames {
-			// 根目录无索引记录，直接读取文件系统 stat 获取修改时间
+			// 根目录无索引记录，直接读取存储 stat 获取修改时间
 			modifiedTime := ""
-			if rootPath, ok := appconfig.RootNames[rn]; ok {
-				if info, err := os.Stat(rootPath); err == nil {
-					modifiedTime = info.ModTime().Format("2006-01-02T15:04:05")
+			if st, ok := fh.BaseHandler.storageFor(rn); ok {
+				if info, err := st.Stat(c.Request.Context(), ""); err == nil {
+					modifiedTime = info.ModTime.Format("2006-01-02T15:04:05")
 				}
 			}
 			result = append(result, FileRecordInfo{
@@ -161,30 +160,18 @@ func (fh *FileHandlers) ListDirectories(c *gin.Context) {
 	utils.HandleSuccess(c, http.StatusOK, "", files)
 }
 
-// directoryExistsOnDisk 检查目录在文件系统上是否存在（带路径越界防护）
+// directoryExistsOnDisk 检查目录在存储上是否存在（带路径越界防护）
 func (fh *FileHandlers) directoryExistsOnDisk(rootName, prefix string) bool {
-	rootPath, ok := appconfig.RootNames[rootName]
+	st, ok := fh.BaseHandler.storageFor(rootName)
 	if !ok {
 		return false
 	}
 	cleanPrefix := strings.Trim(prefix, "/")
-	dirPath := rootPath
-	if cleanPrefix != "" {
-		dirPath = filepath.Join(rootPath, filepath.FromSlash(cleanPrefix))
-	}
-	absDir, err := filepath.Abs(dirPath)
-	if err != nil {
+	if strings.Contains(cleanPrefix, "..") {
 		return false
 	}
-	absRoot, err := filepath.Abs(rootPath)
-	if err != nil {
-		return false
-	}
-	if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(filepath.Separator)) {
-		return false
-	}
-	info, err := os.Stat(absDir)
-	return err == nil && info.IsDir()
+	info, err := st.Stat(context.Background(), cleanPrefix)
+	return err == nil && info.IsDir
 }
 
 // getRootNameList 获取配置的根目录名称列表
@@ -361,13 +348,13 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 		return
 	}
 
-	// 在删除前判断是否为目录（删除后 os.Stat 会失败）
+	// 在删除前判断是否为目录（删除后 Stat 会失败）
 	isDir := false
 	if rootName, relPath := splitPath(req.Path); rootName != "" {
-		if rootPath, exists := appconfig.RootNames[rootName]; exists {
-			realPath := filepath.Join(rootPath, relPath)
-			if info, err := os.Stat(realPath); err == nil {
-				isDir = info.IsDir()
+		if st, ok := fh.BaseHandler.storageFor(rootName); ok {
+			rel := strings.TrimPrefix(relPath, "/")
+			if info, err := st.Stat(c.Request.Context(), rel); err == nil {
+				isDir = info.IsDir
 			}
 		}
 	}

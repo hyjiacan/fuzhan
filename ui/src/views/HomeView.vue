@@ -130,6 +130,7 @@ import FilePreview from '@/components/file/FilePreview.vue'
 import DependencyTreeDialog from '@/components/file/DependencyTreeDialog.vue'
 import { TableConst, PathUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
+import { downloadWithTicket } from '@/utils/download'
 import store from '@/store'
 import { FileRecordApi } from '@/api'
 import { isAppInitialized, initializationComplete } from '@/main'
@@ -271,11 +272,11 @@ const previewFile = (file) => {
   previewDialogVisible.value = true
 }
 
-const downloadFile = (file) => {
+const downloadFile = async (file) => {
   if (file?.path) {
     const fullPath = file.path
-    window.open(`/download/${PathUtils.encodeFilePath(fullPath)}`, '_blank')
-    refreshAfterDownload()
+    const ok = await downloadWithTicket(`/download/${PathUtils.encodeFilePath(fullPath)}`)
+    if (ok) refreshAfterDownload()
   }
 }
 

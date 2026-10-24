@@ -1,7 +1,9 @@
 package file
 
 import (
+	"context"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 	"mime"
@@ -13,11 +15,17 @@ import (
 	"strings"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/downloadticket"
+	"fuzhan/internal/constants"
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// previewStorageContext 预览内部使用的上下文（对象存储流式读取需要 context）
+var previewStorageContext = context.Background()
 
 // ReloadPreviewConfig 重新加载预览配置（配置更新后调用）
 func ReloadPreviewConfig() {
@@ -54,46 +62,44 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 		return
 	}
 
-	validator := utils.NewPathValidatorWithRoots(rootName, appconfig.RootNames)
-	if validator == nil {
+	// 存储后端（本地为物理根路径，远端为虚拟前缀；未注册回退本地根路径语义）
+	st, ok := previewStorageFor(h.BaseHandler, rootName)
+	if !ok {
 		response.HandleBadRequest(c, "无效的根目录", nil)
 		return
 	}
 
-	fullPath := validator.Join(parts[1])
-
-	if err := validator.Validate(fullPath); err != nil {
-		utils.HandleForbidden(c, "路径越权访问")
+	// 本地后端：逻辑路径即物理路径（validator 基于物理绝对路径校验）；
+	// 远端后端：relPath 为不含根前缀的逻辑路径，ObjectName 直接作为校验对象。
+	subPath := parts[1]
+	relPath := strings.TrimPrefix(strings.ReplaceAll(subPath, "\\", "/"), "/")
+	info, err := previewStat(h.BaseHandler, st, rootName, subPath)
+	if err != nil || info.IsDir {
+		response.HandleBadRequest(c, "文件不存在: "+filePath, nil)
 		return
 	}
 
-	info, err := os.Stat(fullPath)
-	if err != nil || info.IsDir() {
-		response.HandleBadRequest(c, "文件不存在: "+fullPath, nil)
-		return
-	}
-
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fullPath), "."))
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(info.Name), "."))
 
 	// 预览 MIME 识别优先级：用户自定义表(设置页「MIME 类型」可配) > Go 内置表 > 内置兜底表，
 	// 使配置的「扩展名 -> MIME」能生效于预览识别与元信息展示
 	mimeType := utils.GetPreviewMimeType(ext)
 	if mimeType == "" {
-		mimeType = mime.TypeByExtension(fullPath)
+		mimeType = mime.TypeByExtension(info.Name)
 		if mimeType == "" || mimeType == "application/octet-stream" {
 			mimeType = utils.GetMimeType(ext)
 		}
 	}
 
-	isPreviewable := utils.IsPreviewable(fullPath, mimeType)
+	isPreviewable := utils.IsPreviewable(info.Name, mimeType)
 
 	result := gin.H{
-		"name":        filepath.Base(fullPath),
-		"path":        filePath,
-		"size":        info.Size(),
-		"mimeType":    mimeType,
-		"previewable": isPreviewable,
-	}
+			"name":        filepath.Base(info.Name),
+			"path":        filePath,
+			"size":        info.Size,
+			"mimeType":    mimeType,
+			"previewable": isPreviewable,
+		}
 
 	if isPreviewable {
 		// 按内置分组分发预览方式：文本组走内容/分块返回，其余组（图片/音频/视频/文档）走内联 URL；
@@ -113,24 +119,33 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 			if textChunkSize <= 0 {
 				textChunkSize = 100 * 1024
 			}
-			if info.Size() <= maxInlineSize {
-				content, err := os.ReadFile(fullPath)
+			if info.Size <= maxInlineSize {
+				content, err := st.ReadFile(previewStorageContext, relPath)
 				if err != nil {
-					utils.Error("读取文件失败", utils.String("path", fullPath), utils.Err(err))
+					utils.Error("读取文件失败", utils.String("path", filePath), utils.Err(err))
 					response.HandleBadRequest(c, "读取文件失败", nil)
 					return
 				}
 				result["content"] = string(content)
 				result["encoding"] = "utf-8"
 			}
-			result["chunked"] = info.Size() > maxInlineSize
+			result["chunked"] = info.Size > maxInlineSize
 			result["chunkSize"] = textChunkSize
-			result["totalChunks"] = (info.Size() + textChunkSize - 1) / textChunkSize
+			result["totalChunks"] = (info.Size + textChunkSize - 1) / textChunkSize
 		} else {
 			// 图片/PDF/音频/视频内联预览走下载接口但标记 preview=true：既排除内置浏览器预览器的
 			// 预取/缩略图请求，也不会累加下载计数或写入下载历史（见 download_service.go）；
 			// 音视频播放依赖下载接口的 Range/206 支持（http.ServeFile 原生提供）
-			result["fileUrl"] = "/download/" + filePath + "?preview=true"
+			fileUrl := "/download/" + filePath + "?preview=true"
+			// 开启「强制登录」时，内联预览由浏览器 <img>/<video> 等原生标签直接发起（无法携带请求头），
+			// 复用本次请求已鉴权的用户上下文签发一次性预览票据（URL 上 t= 参数），供 /download 闸门验签放行。
+			// 登录 token 不进入 URL；票据短时效、绑定单个预览路径、一次性消费。
+			if appconfig.GlobalConfig.Account.RequireLogin {
+				if ticket, err := signFileTicket(c, "/download/"+filePath, downloadticket.ModePreview); err == nil {
+					fileUrl += "&" + downloadticket.TicketParamName + "=" + url.QueryEscape(ticket)
+				}
+			}
+			result["fileUrl"] = fileUrl
 		}
 	}
 
@@ -158,22 +173,16 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 		return
 	}
 
-	validator := utils.NewPathValidatorWithRoots(rootName, appconfig.RootNames)
-	if validator == nil {
+	st, ok := previewStorageFor(h.BaseHandler, rootName)
+	if !ok {
 		response.HandleBadRequest(c, "无效的根目录", nil)
 		return
 	}
 
-	fullPath := validator.Join(parts[1])
-
-	if err := validator.Validate(fullPath); err != nil {
-		utils.HandleForbidden(c, "路径越权访问")
-		return
-	}
-
-	info, err := os.Stat(fullPath)
-	if err != nil || info.IsDir() {
-		response.HandleBadRequest(c, "文件不存在: "+fullPath, nil)
+	relPath := strings.TrimPrefix(strings.ReplaceAll(parts[1], "\\", "/"), "/")
+	info, err := previewStat(h.BaseHandler, st, rootName, parts[1])
+	if err != nil || info.IsDir {
+		response.HandleBadRequest(c, "文件不存在: "+filePath, nil)
 		return
 	}
 
@@ -183,16 +192,16 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 		textChunkSize = 100 * 1024
 	}
 
-	totalChunks := int((info.Size() + textChunkSize - 1) / textChunkSize)
+	totalChunks := int((info.Size + textChunkSize - 1) / textChunkSize)
 	if chunkIndex >= totalChunks {
 		response.HandleBadRequest(c, "分块索引超出范围", nil)
 		return
 	}
 
-	// 打开文件
-	f, err := os.Open(fullPath)
+	// 打开文件（对象存储经 Storage.Open 流式返回，Seek 能力因后端而异）
+	f, err := st.Open(previewStorageContext, relPath)
 	if err != nil {
-		utils.Error("打开文件失败", utils.String("path", fullPath), utils.Err(err))
+		utils.Error("打开文件失败", utils.String("path", filePath), utils.Err(err))
 		response.HandleBadRequest(c, "读取文件失败", nil)
 		return
 	}
@@ -201,22 +210,32 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 	// 计算偏移量和读取大小
 	offset := int64(chunkIndex) * textChunkSize
 	readLen := int(textChunkSize)
-	if offset+textChunkSize > info.Size() {
-		readLen = int(info.Size() - offset)
+	if offset+textChunkSize > info.Size {
+		readLen = int(info.Size - offset)
 	}
 
-	// 跳转到指定位置
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		utils.Error("Seek文件失败", utils.String("path", fullPath), utils.Err(err))
-		response.HandleBadRequest(c, "读取文件失败", nil)
-		return
+	// 定位到指定偏移：优先 Seek（本地/可回放流），否则顺序丢弃 offset 字节（对象存储流式）。
+	// 文本分块预览的文件上限 50MB，顺序丢弃代价可接受。
+	seeker, seekable := f.(io.Seeker)
+	if seekable {
+		if _, serr := seeker.Seek(offset, io.SeekStart); serr != nil {
+			utils.Error("Seek文件失败", utils.String("path", filePath), utils.Err(serr))
+			response.HandleBadRequest(c, "读取文件失败", nil)
+			return
+		}
+	} else if offset > 0 {
+		if _, serr := io.CopyN(io.Discard, f, offset); serr != nil && serr != io.EOF {
+			utils.Error("定位文件偏移失败", utils.String("path", filePath), utils.Err(serr))
+			response.HandleBadRequest(c, "读取文件失败", nil)
+			return
+		}
 	}
 
 	// 读取分块内容
 	buf := make([]byte, readLen)
 	n, err := f.Read(buf)
 	if err != nil && err != io.EOF {
-		utils.Error("读取文件失败", utils.String("path", fullPath), utils.Err(err))
+		utils.Error("读取文件失败", utils.String("path", filePath), utils.Err(err))
 		response.HandleBadRequest(c, "读取文件失败", nil)
 		return
 	}
@@ -376,6 +395,21 @@ func resolveStoredFilePath(c *gin.Context, req *FileChecksumRequest) (string, bo
 	}
 }
 
+// signFileTicket 从当前请求上下文提取已鉴权的用户信息，为指定下载路径签发一枚
+// 一次性预览/下载票据（URL 上的 t= 参数）。仅用于 requireLogin 开启、需要浏览器
+// 原生标签直连（无法携带请求头）的场景。取不到用户上下文时返回错误，由调用方
+// 回退到不含票据的 URL。
+func signFileTicket(c *gin.Context, path string, mode downloadticket.Mode) (string, error) {
+	username, _ := c.Get(string(constants.ContextKeyUsername))
+	role, _ := c.Get(string(constants.ContextKeyRole))
+	uuid, _ := c.Get(string(constants.ContextKeyUserUUID))
+	return downloadticket.Sign(path, mode, downloadticket.Signer{
+		Username: fmt.Sprintf("%v", username),
+		Role:     fmt.Sprintf("%v", role),
+		UUID:     fmt.Sprintf("%v", uuid),
+	})
+}
+
 // isPathUnderRoot 判断物理路径是否位于指定根目录内（防越界）。
 func isPathUnderRoot(root, p string) bool {
 	absRoot, err := filepath.Abs(root)
@@ -390,4 +424,27 @@ func isPathUnderRoot(root, p string) bool {
 		return true
 	}
 	return strings.HasPrefix(absPath, absRoot+string(os.PathSeparator))
+}
+
+// previewStorageFor 获取指定公开根目录对应的存储后端；未注册回退本地根路径语义。
+func previewStorageFor(h *BaseHandler, rootName string) (storage.Storage, bool) {
+	if h != nil {
+		if st, ok := h.storageFor(rootName); ok {
+			return st, true
+		}
+	}
+	rootPath, exists := appconfig.RootNames[rootName]
+	if !exists {
+		return nil, false
+	}
+	return storage.NewLocalStorage(rootPath), true
+}
+
+// previewStat 基于存储后端获取文件元信息。
+// 本地后端逻辑路径即物理路径（LocalStorage.resolve 内含越界校验）；
+// 远端后端 relPath 为不含根前缀的逻辑路径。
+// st 已提供 resolve 安全保障，因此这里不做二次校验，沿用各处对 RootNames 的信任边界。
+func previewStat(_ *BaseHandler, st storage.Storage, _ string, subPath string) (storage.StatInfo, error) {
+	relPath := strings.TrimPrefix(strings.ReplaceAll(subPath, "\\", "/"), "/")
+	return st.Stat(previewStorageContext, relPath)
 }

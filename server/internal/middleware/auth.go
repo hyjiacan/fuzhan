@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
+	"fuzhan/internal/downloadticket"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
@@ -91,17 +93,23 @@ func NewAuthMiddleware(db *gorm.DB) *AuthMiddleware {
 // AuthRequired 是一个JWT认证中间件，检查用户是否被禁用（实时查库）
 func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 优先从 Authorization 头部读取；缺失时尝试 query token（供下载/新窗口等无法携带请求头的场景）
+		// 登录凭证只接受 Authorization 请求头（token 不允许出现在 URL 中）
 		tokenString := c.GetHeader("Authorization")
-		if tokenString == "" {
-			tokenString = c.Query("token")
+		if tokenString != "" {
+			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		}
 		if tokenString == "" {
+			// 无 Authorization：若已被 LoginGate 通过下载票据（URL 上的 t=）鉴权，
+			// 则用户上下文（username/role/uuid）已由 LoginGate 注入，等价放行。
+			// 用于 /api/v1/web/admin/download 等带票据的浏览器原生请求。
+			if hasTicketContext(c) {
+				c.Next()
+				return
+			}
 			utils.HandleUnauthorized(c, "缺少认证信息")
 			c.Abort()
 			return
 		}
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 		// 验证token
 		claims, err := jwt.ParseJWT(tokenString)
@@ -224,6 +232,175 @@ func (am *AuthMiddleware) AuthOptional() gin.HandlerFunc {
 		c.Set("tokenClaims", claims)
 		c.Next()
 	}
+}
+
+// LoginGate 是一个动态登录闸门中间件：仅当「强制登录」开关生效时拦截匿名请求，
+// 开关关闭时直接放行，保持原有匿名访问行为。
+// whiteList 可选，命中（返回 true）的请求直接放行，用于保留登录接口、临时文件分享等匿名例外。
+// 认证方式两套：登录 token 只走 Authorization 请求头；携带一次性下载票据（URL 上的 t= 参数）
+// 的请求（浏览器原生标签/新窗口/外部下载工具发起的下载与内联预览）经票据验签后等价放行，
+// 并把票据内嵌的用户上下文注入，供下游 AuthRequired / RequireAdmin 识别。
+// 未认证请求按类型分流：CLI（curl/wget）与 XHR/API 返回 401 JSON，
+// 浏览器导航型返回 302 重定向到登录页（携带 redirect 便于登录后回跳）。
+func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 未开启强制登录：放行所有请求（保持匿名访问兼容）
+		if !appconfig.GlobalConfig.Account.RequireLogin {
+			c.Next()
+			return
+		}
+		// 命中白名单：匿名放行（登录接口、临时分享、初始化引导等）
+		for _, w := range whiteList {
+			if w(c) {
+				c.Next()
+				return
+			}
+		}
+
+		// 一次性下载票据短路：URL 携带 t= 时无需登录 token。
+		// 覆盖浏览器原生标签 <a>/<img>/<video>、window.open、迅雷等外部工具
+		// （它们只能使用 URL、无法携带 custom header）。票据校验失败按未认证分流。
+		if ticket := c.Query(downloadticket.TicketParamName); ticket != "" {
+			payload, err := downloadticket.Validate(ticket)
+			// 校验失败（含签名错误/过期/已消费复用）时 payload 为 nil，必须先判 err 再解引用
+			if err != nil {
+				utils.Warn("下载票据校验失败", utils.String("path", c.Request.URL.Path), utils.Err(err))
+			} else {
+				// 验签通过后校验票据绑定的路径与本次请求路径一致，防止票据在 TTL 内被
+				// 换到其他文件复用（路径归一化后比较，兼容 /download 与 /api/v1/web/... 两种前缀）
+				// 票据内 P 可能是编码态（前端换票传入）或解码态（服务端 preview 内联签发），
+				// 统一再解一次 URL 编码后与请求 PATH（gin 已解码）比较，保证中文/特殊字符文件名一致。
+				ticketPath, _ := url.QueryUnescape(payload.P)
+				if normalizeTicketPath(ticketPath) == normalizeTicketPath(c.Request.URL.Path) {
+					c.Set(string(constants.ContextKeyUsername), payload.U)
+					c.Set(string(constants.ContextKeyRole), payload.R)
+					c.Set(string(constants.ContextKeyUserUUID), payload.D)
+					c.Request.Header.Set("X-User-Identifier", payload.D)
+					c.Next()
+					return
+				}
+				utils.Warn("下载票据路径不匹配", utils.String("ticket_path", payload.P), utils.String("request_path", c.Request.URL.Path))
+			}
+		}
+
+		// 登录凭证只接受 Authorization 请求头（token 不允许出现在 URL 中）
+		tokenString := c.GetHeader("Authorization")
+		if tokenString != "" {
+			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		}
+		if tokenString == "" {
+			am.handleUnauthenticated(c)
+			c.Abort()
+			return
+		}
+
+		// 验证 token
+		claims, err := jwt.ParseJWT(tokenString)
+		if err != nil {
+			am.handleUnauthenticated(c)
+			c.Abort()
+			return
+		}
+
+		// 检查用户是否被禁用（优先查缓存，未命中则查库，正反结果都写短 TTL 缓存）
+		if disabled, cached := userDisabledCache.isDisabled(claims.UUID); disabled {
+			utils.HandleForbidden(c, "账号已被禁用")
+			c.Abort()
+			return
+		} else if !cached && am.db != nil {
+			var user models.User
+			err := am.db.Select("disabled").Where("uuid = ?", claims.UUID).First(&user).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				// 数据库错误（非记录不存在），认证服务暂时不可用
+				utils.Error("检查用户状态失败", utils.Err(err), utils.String("uuid", claims.UUID))
+				utils.HandleInternalServerError(c, "认证服务暂时不可用")
+				c.Abort()
+				return
+			}
+			// 记录不存在视为正常，统一写入缓存，避免正常用户重复回源
+			userDisabledCache.set(claims.UUID, user.Disabled)
+			if user.Disabled {
+				utils.HandleForbidden(c, "账号已被禁用")
+				c.Abort()
+				return
+			}
+		}
+
+		// 将用户信息存储到上下文中
+		c.Set(string(constants.ContextKeyUsername), claims.Username)
+		c.Set(string(constants.ContextKeyRole), claims.Role)
+		c.Set(string(constants.ContextKeyUserUUID), claims.UUID)
+		c.Request.Header.Set("X-User-Identifier", claims.UUID)
+		c.Set("originalToken", tokenString)
+		c.Set("tokenClaims", claims)
+
+		c.Next()
+	}
+}
+
+// hasTicketContext 判断请求是否已由 LoginGate 通过下载票据（URL 上 t=）鉴权并注入用户上下文。
+// 票据验签通过后 LoginGate 会注入 ContextKeyUserUUID 等上下文，AuthRequired 据此放行。
+func hasTicketContext(c *gin.Context) bool {
+	_, ok := c.Get(string(constants.ContextKeyUserUUID))
+	return ok
+}
+
+// normalizeTicketPath 归一化票据签发路径与本次请求路径，用于校验两者一致。
+// 下载票据可能以 /download/<路径> 或 /api/v1/web/admin/download/<路径> 形式签发，
+// 而实际请求 PATH 可能是 /download/<路径>（别名）或 /api/v1/web/download/<路径>
+// （web 组内路由）；本函数把两者统一为去掉固定前缀后的相对路径再比较。
+func normalizeTicketPath(p string) string {
+	p = strings.TrimPrefix(p, "/api/v1/web/admin/download/")
+	p = strings.TrimPrefix(p, "/api/v1/web/download/")
+	p = strings.TrimPrefix(p, "/download/")
+	return strings.Trim(p, "/")
+}
+
+// handleUnauthenticated 未认证请求分流：
+//   - CLI（curl/wget）：返回 401 JSON（命令行避免被 302 重定向误导）
+//   - 浏览器主导航型（Sec-Fetch-Mode: navigate 或 Accept 期望 HTML）：
+//     302 重定向到登录页并携带 redirect=原请求地址，登录成功后自动回跳执行
+//   - 其余（前端 XHR/fetch/API）：返回 401 JSON，由前端统一跳转登录页
+func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
+	if isCLINavigation(c) {
+		utils.HandleUnauthorized(c, "缺少认证信息或登录已失效，请先登录")
+		return
+	}
+	if isBrowserNavigation(c) {
+		redirect := url.QueryEscape(c.Request.URL.RequestURI())
+		c.Redirect(http.StatusFound, frontendBase(c)+"/#/login?redirect="+redirect)
+		return
+	}
+	utils.HandleUnauthorized(c, "缺少认证信息或登录已失效")
+}
+
+// isCLINavigation 判断请求是否来自命令行工具（curl/wget）
+func isCLINavigation(c *gin.Context) bool {
+	low := strings.ToLower(c.GetHeader("User-Agent"))
+	return strings.HasPrefix(low, "curl") || strings.HasPrefix(low, "wget")
+}
+
+// isBrowserNavigation 判断请求是否由浏览器发起页面导航。
+// 现代浏览器主导航请求会带 Sec-Fetch-Mode: navigate；旧浏览器无该头时，
+// 以 Accept 期望 HTML 作为兜底判断。前端 XHR/fetch 通常 Accept 为 application/json。
+func isBrowserNavigation(c *gin.Context) bool {
+	if sf := c.GetHeader("Sec-Fetch-Mode"); sf != "" {
+		return sf == "navigate"
+	}
+	accept := c.GetHeader("Accept")
+	return strings.Contains(accept, "text/html") || strings.Contains(accept, "application/xhtml+xml")
+}
+
+// frontendBase 返回当前请求对应的前端访问基址（scheme://host）
+func frontendBase(c *gin.Context) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+	return scheme + "://" + c.Request.Host
 }
 
 // CORSMiddleware 处理跨域请求

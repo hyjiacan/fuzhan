@@ -219,6 +219,7 @@ import { ref, computed, watch, h } from "vue";
 import { Loading, Headset } from "@element-plus/icons-vue";
 import { FileApi } from "@/api";
 import { PathUtils } from "@/utils";
+import { downloadWithTicket } from "@/utils/download";
 import { isPreviewable, resolveMime } from "@/config/preview";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -534,10 +535,7 @@ const downloadFile = () => {
     return;
   }
   if (props.file.path) {
-    window.open(
-      `/download/${PathUtils.encodeFilePath(props.file.path)}`,
-      "_blank",
-    );
+    downloadWithTicket(`/download/${PathUtils.encodeFilePath(props.file.path)}`);
     return;
   }
   if (typeof props.downloadApi === "function") {

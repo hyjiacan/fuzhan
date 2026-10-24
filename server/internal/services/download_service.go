@@ -1,10 +1,10 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -12,8 +12,12 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 )
+
+// storageContext 内部使用的上下文（对象存储流式读取需要 context）
+var storageContext = context.Background()
 
 // recordDownload 记录下载操作。优先走全局有界记录器（有界 async），
 // 未初始化时回退为同步写入，避免漏记。
@@ -54,14 +58,29 @@ func isHashPath(path string) bool {
 type DownloadService struct {
 	recordRepo    RecordRepository
 	searchService *SearchService
+	// publicStorages 公开多根目录的存储后端映射（rootName → Storage）
+	publicStorages map[string]storage.Storage
 }
 
 // NewDownloadServiceWithRepo 创建带记录功能的下载服务
-func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchService) *DownloadService {
+func NewDownloadServiceWithRepo(repo RecordRepository, searchService *SearchService, publicStorages map[string]storage.Storage) *DownloadService {
 	return &DownloadService{
-		recordRepo:    repo,
-		searchService: searchService,
+		recordRepo:     repo,
+		searchService:  searchService,
+		publicStorages: publicStorages,
 	}
+}
+
+// storageFor 获取指定公开根目录对应的存储后端；未注册时回退本地语义（按物理根路径）
+func (ds *DownloadService) storageFor(rootName string) (storage.Storage, string, bool) {
+	if st, ok := ds.publicStorages[rootName]; ok {
+		return st, "", true
+	}
+	rootPath, exists := appconfig.RootNames[rootName]
+	if !exists {
+		return nil, "", false
+	}
+	return storage.NewLocalStorage(rootPath), rootPath, true
 }
 
 // attachFileID 为操作记录关联公共文件索引 ID，移动/重命名后仍可通过身份反查当前路径
@@ -168,31 +187,22 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 获取根目录路径
-	rootPath, exists := appconfig.RootNames[rootName]
-	if !exists {
+	// 获取根目录对应的存储后端
+	st, _, ok := ds.storageFor(rootName)
+	if !ok {
 		utils.Warn("根目录不存在", utils.String("rootName", rootName))
 		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "根目录不存在")
 		utils.EncodeResponse(w, nil, "根目录不存在", http.StatusBadRequest)
 		return
 	}
 
-	// 获取绝对路径
-	absRootPath, _ := filepath.Abs(rootPath)
-	absTargetPath, _ := filepath.Abs(fullPath)
-	if !strings.HasPrefix(absTargetPath, absRootPath) {
-		utils.Warn("检测到路径越权尝试", utils.String("path", absTargetPath))
-		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "路径越权")
-		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
-		return
-	}
+	// 逻辑路径（存储内部相对路径，不含根目录前缀）
+	relPath := strings.TrimPrefix(strings.TrimPrefix(fullPath, "/"+rootName), "/")
 
-	targetPath := absTargetPath
-
-	info, err := os.Stat(targetPath)
-	if err != nil || info.IsDir() {
-		utils.Warn("指定文件不存在", utils.String("path", targetPath))
-		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, "/"+rootName+fullPath, ip, "文件不存在")
+	info, err := st.Stat(storageContext, relPath)
+	if err != nil || info.IsDir {
+		utils.Warn("指定文件不存在", utils.String("path", fullPath))
+		ds.recordDownloadFailure(filepath.Base(fullPath), fullPath, rootName, fullPath, ip, "文件不存在")
 		utils.EncodeResponse(w, nil, "指定的文件不存在", http.StatusBadRequest)
 		return
 	}
@@ -213,7 +223,7 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 			FileName:   filepath.Base(fullPath),
 			FilePath:   path.Dir(strings.TrimPrefix(fullPath, "/"+rootName)),
 			FullPath:   fullPath,
-			FileSize:   info.Size(),
+			FileSize:   info.Size,
 			RootName:   rootName,
 			ClientIP:   ip,
 			CreatedAt:  utils.Now(),
@@ -236,12 +246,18 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		SubmitDownloadCountIncrement(fullPath)
 	}
 
+	// 文件名（用于 Content-Disposition 与 MIME 推断）
+	fileName := info.Name
+	if fileName == "" {
+		fileName = filepath.Base(fullPath)
+	}
+
 	if !isPreview {
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
-		safeFilename := url.QueryEscape(filepath.Base(targetPath))
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, filepath.Base(targetPath), safeFilename))
-		// 用户配置的下载 MIME 优先；未配置则交由 http.ServeFile 按扩展名自动推断 Content-Type
-		if mt := utils.GetDownloadContentType(filepath.Ext(targetPath)); mt != "" {
+		safeFilename := url.QueryEscape(fileName)
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, fileName, safeFilename))
+		// 用户配置的下载 MIME 优先；未配置则交由存储 Layer 按扩展名自动推断 Content-Type
+		if mt := utils.GetDownloadContentType(filepath.Ext(fileName)); mt != "" {
 			w.Header().Set("Content-Type", mt)
 		}
 		// 下载文件的缓存策略：可缓存 30 天
@@ -250,7 +266,11 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 		// 预览请求的缓存策略：可缓存 1 小时
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 	}
-	http.ServeFile(w, r, targetPath)
+
+	// 由存储后端流式输出文件（本地经 http.ServeContent，对象存储流式 + Range 支持）
+	if err := st.ServeContent(storageContext, w, r, fileName, relPath); err != nil {
+		utils.Warn("下载文件失败", utils.String("path", fullPath), utils.Err(err))
+	}
 }
 
 // DownloadFile 下载文件
@@ -294,9 +314,9 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	rootName := parts[0]
 	subPath := parts[1]
 
-	// 获取根目录路径
-	rootPath, exists := appconfig.RootNames[rootName]
-	if !exists {
+	// 获取根目录对应的存储后端
+	st, _, ok := ds.storageFor(rootName)
+	if !ok {
 		utils.Warn("指定的根目录名不存在", utils.String("root_name", rootName))
 		if record {
 			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "目录不存在")
@@ -305,7 +325,7 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// 先验证路径安全性，再拼接完整路径
+	// 先验证路径安全性，再生成存储内部逻辑路径
 	// 清理子路径中的潜在路径遍历字符
 	cleanSubPath := filepath.Clean(subPath)
 	if cleanSubPath == ".." || strings.HasPrefix(cleanSubPath, ".."+string(filepath.Separator)) {
@@ -316,25 +336,15 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
 		return
 	}
-
-	// 获取绝对路径并验证
-	absRootPath, _ := filepath.Abs(rootPath)
-	absTargetPath, _ := filepath.Abs(filepath.Join(rootPath, cleanSubPath))
-	if !strings.HasPrefix(absTargetPath, absRootPath) {
-		utils.Warn("检测到路径越权尝试", utils.String("path", absTargetPath))
-		if record {
-			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "路径越权")
-		}
-		utils.EncodeResponse(w, nil, "路径越权", http.StatusBadRequest)
-		return
+	// 经 filepath.Clean 后的 Windows 分隔符统一为正斜杠，作为存储逻辑相对路径
+	relPath := strings.ReplaceAll(cleanSubPath, "\\", "/")
+	if strings.HasPrefix(relPath, "/") {
+		relPath = strings.TrimPrefix(relPath, "/")
 	}
 
-	// 路径验证通过后再拼接
-	targetPath := absTargetPath
-
-	info, err := os.Stat(targetPath)
-	if err != nil || info.IsDir() {
-		utils.Warn("指定路径不存在", utils.String("path", targetPath))
+	info, err := st.Stat(storageContext, relPath)
+	if err != nil || info.IsDir {
+		utils.Warn("指定路径不存在", utils.String("path", subPath))
 		if record {
 			ds.recordDownloadFailure(filepath.Base(subPath), subPath, rootName, "/"+rootName+"/"+strings.TrimPrefix(subPath, "/"), ip, "文件不存在")
 		}
@@ -355,10 +365,10 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	if record && ds.recordRepo != nil && r.Method == http.MethodGet {
 		rec := &models.OperationRecord{
 			Action:     "download",
-			FileName:   filepath.Base(targetPath),
+			FileName:   info.Name,
 			FilePath:   subPath,
 			FullPath:   fullPath,
-			FileSize:   info.Size(),
+			FileSize:   info.Size,
 			RootName:   rootName,
 			ClientIP:   ip,
 			CreatedAt:  utils.Now(),
@@ -380,12 +390,17 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	if counted {
 		SubmitDownloadCountIncrement(fullPath)
 	}
+	// 用于 Content-Disposition 与 MIME 推断的文件名
+	fileName := info.Name
+	if fileName == "" {
+		fileName = filepath.Base(subPath)
+	}
 	if !isPreview {
 		// 仅在下载请求时设置 Content-Disposition（RFC 5987 文件名编码）
-		safeFilename := url.QueryEscape(filepath.Base(targetPath))
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, filepath.Base(targetPath), safeFilename))
-		// 用户配置的下载 MIME 优先；未配置则交由 http.ServeFile 按扩展名自动推断 Content-Type
-		if mt := utils.GetDownloadContentType(filepath.Ext(targetPath)); mt != "" {
+		safeFilename := url.QueryEscape(fileName)
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, fileName, safeFilename))
+		// 用户配置的下载 MIME 优先；未配置则交由存储 Layer 按扩展名自动推断 Content-Type
+		if mt := utils.GetDownloadContentType(filepath.Ext(fileName)); mt != "" {
 			w.Header().Set("Content-Type", mt)
 		}
 		// 下载文件的缓存策略：可缓存 30 天
@@ -394,7 +409,11 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 		// 预览请求的缓存策略：可缓存 1 小时
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 	}
-	http.ServeFile(w, r, targetPath)
+
+	// 由存储后端流式输出文件（本地经 http.ServeContent，对象存储流式 + Range 支持）
+	if err := st.ServeContent(storageContext, w, r, fileName, relPath); err != nil {
+		utils.Warn("下载文件失败", utils.String("path", fullPath), utils.Err(err))
+	}
 }
 
 // Close 关闭下载服务

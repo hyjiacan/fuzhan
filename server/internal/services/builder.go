@@ -3,6 +3,7 @@ package services
 import (
 	"fuzhan/internal/index"
 	"fuzhan/internal/repositories"
+	"fuzhan/internal/storage"
 	"gorm.io/gorm"
 )
 
@@ -16,6 +17,10 @@ type ServiceDependencies struct {
 	SearchService   *SearchService
 	AuthService     *AuthService
 	DownloadService *DownloadService
+
+	// PublicStorages 公开多根目录的存储后端映射（rootName → Storage）。
+	// 本地后端为各磁盘根目录，远端后端为各虚拟前缀。
+	PublicStorages map[string]storage.Storage
 }
 
 // ServiceBuilder 服务构建器
@@ -54,7 +59,7 @@ func (sb *ServiceBuilder) WithFileService() *ServiceBuilder {
 	if sb.deps.IndexService == nil {
 		panic("ServiceBuilder: IndexService must be set before FileService")
 	}
-	sb.deps.FileService = NewFileService()
+	sb.deps.FileService = NewFileService(sb.deps.PublicStorages)
 	return sb
 }
 
@@ -72,7 +77,7 @@ func (sb *ServiceBuilder) WithDownloadService() *ServiceBuilder {
 	if sb.deps.SearchService == nil {
 		panic("ServiceBuilder: SearchService must be set before DownloadService")
 	}
-	sb.deps.DownloadService = NewDownloadServiceWithRepo(sb.deps.RecordRepo, sb.deps.SearchService)
+	sb.deps.DownloadService = NewDownloadServiceWithRepo(sb.deps.RecordRepo, sb.deps.SearchService, sb.deps.PublicStorages)
 	return sb
 }
 
@@ -100,8 +105,8 @@ func (sb *ServiceBuilder) Build() *ServiceDependencies {
 }
 
 // BuildAll 按正确顺序构建所有核心服务
-func BuildAllServices(db *gorm.DB, rootNames map[string]string, tempPath, privatePath string) *ServiceDependencies {
-	deps := &ServiceDependencies{DB: db}
+func BuildAllServices(db *gorm.DB, rootNames map[string]string, tempPath, privatePath string, publicStorages map[string]storage.Storage) *ServiceDependencies {
+	deps := &ServiceDependencies{DB: db, PublicStorages: publicStorages}
 
 	// 1. 先创建仓库
 	deps.RecordRepo = repositories.NewRecordRepository(db)
@@ -110,11 +115,11 @@ func BuildAllServices(db *gorm.DB, rootNames map[string]string, tempPath, privat
 	deps.IndexService = index.NewService(db, rootNames, tempPath, privatePath)
 
 	// 3. 基于索引服务创建文件服务
-	deps.FileService = NewFileService()
+	deps.FileService = NewFileService(publicStorages)
 
 	// 4. 基于 DB 创建搜索服务（直接查询索引表）
 	deps.SearchService = NewSearchService(db)
-	deps.DownloadService = NewDownloadServiceWithRepo(deps.RecordRepo, deps.SearchService)
+	deps.DownloadService = NewDownloadServiceWithRepo(deps.RecordRepo, deps.SearchService, publicStorages)
 	deps.AuthService = NewAuthService(db)
 
 	return deps

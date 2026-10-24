@@ -14,32 +14,30 @@ import 'element-plus/es/components/message-box/style/css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 
 const app = createApp(App)
-app.use(router)
-
-// 预加载公开配置和检查初始化状态
-app.mount('#app')
 
 // 导出初始化状态供其他组件使用，避免重复请求
 export let isAppInitialized = false
 export let initializationComplete = false
 
+// 通知轮询定时器（模块级声明，供 startNotificationPolling / cleanupNotificationPolling 使用）
+let notificationPollInitTimer = null
+let notificationPollTimer = null
+
 // 初始化 AnonymousID（首次访问页面时生成）
 initAnonymousId()
 
-// 通知轮询定时器（必须在 startNotificationPolling 调用前声明，避免 TDZ 错误）
-let notificationPollTimer = null
-let notificationPollInitTimer = null
-
-// 加载公开配置到 store，并检查初始化状态
-loadConfigAndCheckSetup()
 // 启动时验证 token 服务器端有效性
 validateTokenOnServer()
+
+// 先加载公开配置与初始化状态（在 mount 之前完成，确保首屏路由守卫能读到 requireLogin 等配置），
+// 因此「强制登录」模式下可正确将未登录用户重定向到登录页
+loadConfigAndCheckSetup()
 // 启动通知轮询
 startNotificationPolling()
 
 async function loadConfigAndCheckSetup() {
   try {
-    // 并行请求配置和初始化状态
+    // 挂载前并行请求配置与初始化状态
     const [optionsRes, statusRes] = await Promise.all([
       SystemApi.getOptions(),
       SetupApi.getStatus()
@@ -59,6 +57,7 @@ async function loadConfigAndCheckSetup() {
         webdavEnabled: d.webdav?.enabled ?? false,
         openApiEnabled: d.openApi?.enabled ?? false,
         allowRegistration: d.account?.allowRegistration ?? false,
+        requireLogin: d.account?.requireLogin ?? false,
         anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || 'public'
       })
       // 更新页面标题
@@ -69,16 +68,26 @@ async function loadConfigAndCheckSetup() {
       loadPreviewConfig(optionsRes.data)
     }
 
-    // 检查初始化状态
-    if (statusRes.data && !statusRes.data.initialized) {
+    // 检查初始化状态：只有后端明确返回「未初始化」（initialized === false）才跳转初始化页，
+    // 其他情况（已初始化 / 字段缺失 / 请求异常）一律视为已初始化，避免误跳转
+    if (statusRes.data && statusRes.data.initialized === false) {
       setSetupRedirect(true)
     } else {
       isAppInitialized = true
     }
   } catch (e) {
-    console.error('加载配置失败', e)
+    // 配置/状态请求失败时不阻塞应用挂载：保留默认配置。
+    // 初始化状态无法确认时视为已初始化（避免误跳转初始化页）
+    console.error('加载配置或初始化状态失败:', e)
+    isAppInitialized = true
   } finally {
+    // 初始化检查完成标记（HomeView 等据此避免重复请求 setup/status）
     initializationComplete = true
+    // 配置加载完成后才安装并挂载应用：`app.use(router)` 会触发首次路由导航，
+    // 此时 store 中已写入真实的 requireLogin 等配置，登录门禁守卫才能正确将
+    // 未登录用户（含访问站点根路径 /）重定向到登录页。
+    app.use(router)
+    app.mount('#app')
   }
 }
 

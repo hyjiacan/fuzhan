@@ -63,6 +63,11 @@ func (s *Storage) Paths(session *models.UploadSession) (targetPath string, uploa
 	return
 }
 
+// ChunkObjectPaths 临时上传恒为本地后端，不参与远端分片降级。
+func (*Storage) ChunkObjectPaths(_ *models.UploadSession, _ int) (dirPath string, objectPath string, ok bool) {
+	return "", "", false
+}
+
 // generateTempCode 生成128bit访问码（32位十六进制，防在线枚举）
 func generateTempCode() (string, error) {
 	b := make([]byte, 16)

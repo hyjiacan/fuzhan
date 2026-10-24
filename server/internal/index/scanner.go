@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +16,7 @@ import (
 type Scanner struct {
 	db           *gorm.DB
 	rootNames    map[string]string
+	storages     map[string]storage.Storage // rootName → Storage（远端后端注入）
 	tempFilePath string
 	privatePath  string
 	progresses   map[ScanScope]*ScanProgress // 每个 scope 独立进度
@@ -33,6 +35,11 @@ func NewScanner(db *gorm.DB, rootNames map[string]string, tempFilePath, privateP
 		progresses:   make(map[ScanScope]*ScanProgress),
 		batchSize:    500,
 	}
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+func (s *Scanner) SetStorages(storages map[string]storage.Storage) {
+	s.storages = storages
 }
 
 // getOrCreateProgress 获取或创建指定 scope 的进度对象

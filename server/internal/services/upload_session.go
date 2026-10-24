@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -8,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"fuzhan/internal/appconfig"
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 	xxh3pkg "fuzhan/pkg/xxh3"
 
@@ -83,9 +86,13 @@ type UploadSessionService struct {
 	chunkSize   int64
 	storage     UploadStorage
 	finalizer   UploadFinalizer
-	// targetType 本服务负责清理的上传类型（每次仅处理归属自己的会话，
+	// targetType 本服务负责清理的上传类型（每次仅清理归属自己的会话，
 	// 避免统一会话表被多存储服务交叉清理时用错落盘策略）。
 	targetType models.TargetType
+	// storages 公开多根目录的 Storage 实例映射（rootName → Storage）。
+	// 仅在远端存储后端接入分片上传降级时使用：UploadChunk 逐片写临时对象、
+	// Finalize 按序合并。本地后端不注入（各 root 回退为 os 文件语义）。
+	storages map[string]storage.Storage
 	// sessionLocks 分片条纹锁：同一会话的分片/收尾/取消需互斥，不同会话并行。
 	// 用固定 64 条条纹按 uploadId 取模，内存有界、无需清理，个别条纹碰撞仅轻微串行。
 	sessionLocks [64]sync.Mutex
@@ -130,14 +137,38 @@ func NewUploadSessionServiceWithPolicies(db *gorm.DB, chunkSize int64, indexSvc 
 	}
 }
 
+// WithPublicStorages 注入公开多根目录的 Storage 映射（rootName → Storage）。
+// 仅在远端存储后端下调用，使分片上传流程可按会话所属根目录选择 Storage 实例，
+// 以"每片独立临时对象 + 最终合并"降级实现分片上传。本地后端无需调用。
+func (s *UploadSessionService) WithPublicStorages(storages map[string]storage.Storage) *UploadSessionService {
+	s.storages = storages
+	return s
+}
+
+// storageFor 返回会话所属根目录的 Storage 实例。
+// 优先使用注入的公开 Storage 映射；未注册时回退本地实现（单根/非远端场景），
+// 行为与旧版 os 文件操作完全一致。
+func (s *UploadSessionService) storageFor(session *models.UploadSession) (storage.Storage, bool) {
+	if st, ok := s.storages[session.TargetRoot]; ok {
+		return st, true
+	}
+	if rootPath, ok := appconfig.RootNames[session.TargetRoot]; ok {
+		return storage.NewLocalStorage(rootPath), true
+	}
+	return nil, false
+}
+
 // CreateSession 创建上传会话
 func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.UploadSession, error) {
 	// 检查磁盘空间
 	if req.FileSize <= 0 {
 		return nil, fmt.Errorf("文件大小必须大于 0")
 	}
-	if err := s.checkDiskSpace(req.FileSize, req.RootName); err != nil {
-		return nil, err
+	// 远端存储后端不检查本地磁盘空间（空间属于对象存储侧，本地检查无意义）
+	if !appconfig.StorageBackendIsRemote() {
+		if err := s.checkDiskSpace(req.FileSize, req.RootName); err != nil {
+			return nil, err
+		}
 	}
 
 	// 溢出安全: req.FileSize>0 已校验, 用 (FileSize-1)/chunkSize+1 求向上取整, 避免 FileSize+chunkSize-1 整数溢出
@@ -198,9 +229,6 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 	if err != nil {
 		return fmt.Errorf("构建目标路径失败: %w", err)
 	}
-	if err := EnsureUploadDir(uploadingPath); err != nil {
-		return err
-	}
 
 	// 计算预期分片大小
 	offset := int64(req.ChunkIndex) * s.chunkSize
@@ -210,6 +238,20 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 	}
 	if expectedChunkSize <= 0 {
 		return fmt.Errorf("无效的分片大小: %d", expectedChunkSize)
+	}
+
+	// 远端后端：每片写入独立临时对象（对象存储无随机写，Close 时一次性提交）。
+	if IsRemoteSession(session) {
+		st, ok := s.storageFor(session)
+		if !ok {
+			return fmt.Errorf("远端存储实例未就绪")
+		}
+		return s.uploadChunkRemote(st, session, req, expectedChunkSize)
+	}
+
+	// 本地后端：单 uploading 文件随机写
+	if err := EnsureUploadDir(uploadingPath); err != nil {
+		return err
 	}
 
 	// 限制读取大小；多读 1 字节以检测超大分片
@@ -235,31 +277,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 
 	// 流式写入：以 64KB 缓冲边写边算 xxh3，避免整片读入堆内存，
 	// 并发大文件上传时显著降低峰值内存与 GC 压力。
-	cw := &countingWriter{}
-	var written int64
-	var streamErr error
-	if req.Checksum != "" {
-		tee := io.TeeReader(limited, io.MultiWriter(f, cw))
-		hashHex, herr := xxh3pkg.HashReader(tee)
-		streamErr = herr
-		written = cw.n
-		if streamErr == nil && written > 0 {
-			expectedHash, parseErr := strconv.ParseUint(req.Checksum, 16, 64)
-			if parseErr != nil {
-				streamErr = fmt.Errorf("无效的xxh3校验值: %s", req.Checksum)
-			} else {
-				actualHash, _ := strconv.ParseUint(hashHex, 16, 64)
-				if expectedHash != actualHash {
-					streamErr = fmt.Errorf("xxh3校验失败: 期望值=%016X, 实际值=%016X", expectedHash, actualHash)
-				}
-			}
-		}
-	} else {
-		buf := make([]byte, 64*1024)
-		var n int64
-		n, streamErr = io.CopyBuffer(io.MultiWriter(f, cw), limited, buf)
-		written = n
-	}
+	written, streamErr := streamChunkData(f, limited, req.Checksum)
 	req.ChunkData.Close()
 
 	if streamErr != nil {
@@ -274,7 +292,81 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 		return fmt.Errorf("分片大小 %d 超过限制 %d", written, expectedChunkSize)
 	}
 
-	// 记录分片（使用 DB 事务确保状态更新和分片记录原子写入）
+	return s.recordUploadedChunk(session, req, written)
+}
+
+// uploadChunkRemote 远端存储后端的分片写入。
+// 每片写入一个独立的临时对象（.chunks/{ChunkDir}/{index}.part），Close 时一次性提交；
+// 乱序上传互不影响（对象存储无文件句柄/随机写）。失败或超大片时删除该分片对象回滚。
+func (s *UploadSessionService) uploadChunkRemote(st storage.Storage, session *models.UploadSession, req *UploadChunkReq, expectedChunkSize int64) error {
+	chunkDir, chunkObject, ok := s.storage.ChunkObjectPaths(session, req.ChunkIndex)
+	if !ok {
+		return fmt.Errorf("构建远端分片路径失败")
+	}
+
+	// 确保分片目录存在（S3/OSS 无目录为 no-op，WebDAV 需先建 collection）
+	if err := st.MkdirAll(context.Background(), chunkDir); err != nil {
+		utils.Error("创建远端分片目录失败", utils.String("dir", chunkDir), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(err))
+		return fmt.Errorf("创建远端分片目录失败")
+	}
+
+	w, err := st.OpenWriter(context.Background(), chunkObject)
+	if err != nil {
+		utils.Error("打开远端分片对象失败", utils.String("object", chunkObject), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(err))
+		return fmt.Errorf("打开远端分片对象失败")
+	}
+
+	limited := io.LimitReader(req.ChunkData, expectedChunkSize+1)
+	written, streamErr := streamChunkData(w, limited, req.Checksum)
+	req.ChunkData.Close()
+	if streamErr == nil {
+		streamErr = w.Close()
+	}
+
+	if streamErr != nil {
+		_ = st.Remove(context.Background(), chunkObject)
+		utils.Error("写入远端分片失败", utils.String("object", chunkObject), utils.Int("chunkIndex", req.ChunkIndex), utils.Err(streamErr))
+		return fmt.Errorf("写入分片失败: %w", streamErr)
+	}
+
+	// 检测超大分片（多读 1 字节）；超量则删除本分片对象回滚
+	if written > expectedChunkSize {
+		_ = st.Remove(context.Background(), chunkObject)
+		return fmt.Errorf("分片大小 %d 超过限制 %d", written, expectedChunkSize)
+	}
+
+	return s.recordUploadedChunk(session, req, written)
+}
+
+// streamChunkData 以流式方式将受限读取源写入 dst，边写边统计实际字节数；
+// checksum 非空时校验 xxh3。返回实际写入字节数（可能含超大片多读的 1 字节）。
+func streamChunkData(dst io.Writer, limited io.Reader, checksum string) (written int64, err error) {
+	cw := &countingWriter{}
+	if checksum != "" {
+		tee := io.TeeReader(limited, io.MultiWriter(dst, cw))
+		hashHex, herr := xxh3pkg.HashReader(tee)
+		err = herr
+		written = cw.n
+		if err == nil && written > 0 {
+			expectedHash, parseErr := strconv.ParseUint(checksum, 16, 64)
+			if parseErr != nil {
+				err = fmt.Errorf("无效的xxh3校验值: %s", checksum)
+			} else {
+				actualHash, _ := strconv.ParseUint(hashHex, 16, 64)
+				if expectedHash != actualHash {
+					err = fmt.Errorf("xxh3校验失败: 期望值=%016X, 实际值=%016X", expectedHash, actualHash)
+				}
+			}
+		}
+	} else {
+		buf := make([]byte, 64*1024)
+		written, err = io.CopyBuffer(io.MultiWriter(dst, cw), limited, buf)
+	}
+	return written, err
+}
+
+// recordUploadedChunk 记录已上传分片：更新会话状态与过期时间、写入分片记录（原子）。
+func (s *UploadSessionService) recordUploadedChunk(session *models.UploadSession, req *UploadChunkReq, written int64) error {
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		// 更新会话状态
 		if session.Status == models.UploadStatusPending {
@@ -297,11 +389,7 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 		}
 		return nil
 	})
-	if txErr != nil {
-		return txErr
-	}
-
-	return nil
+	return txErr
 }
 
 // GetStatus 获取上传状态
@@ -365,6 +453,13 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 	if err != nil {
 		return nil, fmt.Errorf("构建目标路径失败: %w", err)
 	}
+
+	// 远端后端：分片为独立临时对象，按序流式合并为最终对象后再清理分片目录。
+	// 本地后端保留"单 uploading 文件随机写 + 重命名"语义。
+	if IsRemoteSession(session) {
+		return s.finalizeRemote(session, targetPath, allowOverwrite, uploadedChunks)
+	}
+
 	if err := EnsureUploadDir(uploadingPath); err != nil {
 		return nil, err
 	}
@@ -393,6 +488,71 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 			return nil, fmt.Errorf("完成上传失败")
 		}
 		_ = os.Remove(uploadingPath)
+	}
+
+	return s.finalizer.Complete(session, targetPath)
+}
+
+// finalizeRemote 远端存储后端的完成上传。
+// 分片已各自落为 .chunks/{ChunkDir}/{index}.part 临时对象，按序流式合并为
+// 最终对象（目标已存在时按策略判定覆盖），合并完成后删除整个分片目录。
+func (s *UploadSessionService) finalizeRemote(session *models.UploadSession, targetPath string, allowOverwrite bool, uploadedChunks []int) (*FinalizeResult, error) {
+	st, ok := s.storageFor(session)
+	if !ok {
+		return nil, fmt.Errorf("远端存储实例未就绪")
+	}
+	ctx := context.Background()
+
+	if _, err := st.Stat(ctx, targetPath); err == nil {
+		// 目标已存在：按策略判定是否允许覆盖
+		if !s.finalizer.AllowsOverwrite(session, allowOverwrite) {
+			return nil, ErrFileExists
+		}
+		// 覆盖：删除目标对象，随后合并写入
+		if err := st.Remove(ctx, targetPath); err != nil && !storage.IsNotExist(err) {
+			utils.Error("覆盖文件时删除失败", utils.String("path", targetPath), utils.Err(err))
+			return nil, fmt.Errorf("无法覆盖已有文件: %w", err)
+		}
+		utils.Info("覆盖文件", utils.String("path", targetPath))
+	}
+
+	chunkDir, _, _ := s.storage.ChunkObjectPaths(session, 0)
+	w, err := st.OpenWriter(ctx, targetPath)
+	if err != nil {
+		return nil, fmt.Errorf("打开远端目标对象失败: %w", err)
+	}
+
+	// 按序合并所有分片（uploadedChunks 已校验覆盖 [0, TotalChunks-1] 且有序）
+	for _, idx := range uploadedChunks {
+		_, chunkObject, _ := s.storage.ChunkObjectPaths(session, idx)
+		rc, oerr := st.Open(ctx, chunkObject)
+		if oerr != nil {
+			w.Close()
+			_ = st.Remove(ctx, targetPath)
+			utils.Error("打开远端分片对象失败", utils.String("object", chunkObject), utils.Err(oerr))
+			return nil, fmt.Errorf("合并分片失败: %w", oerr)
+		}
+		if _, cerr := io.Copy(w, rc); cerr != nil {
+			rc.Close()
+			w.Close()
+			_ = st.Remove(ctx, targetPath)
+			utils.Error("合并远端分片失败", utils.String("object", chunkObject), utils.Err(cerr))
+			return nil, fmt.Errorf("合并分片失败: %w", cerr)
+		}
+		rc.Close()
+	}
+
+	if err := w.Close(); err != nil {
+		_ = st.Remove(ctx, targetPath)
+		utils.Error("提交远端目标对象失败", utils.String("path", targetPath), utils.Err(err))
+		return nil, fmt.Errorf("完成上传失败")
+	}
+
+	// 清理分片目录
+	if chunkDir != "" {
+		if rmErr := st.RemoveAll(ctx, chunkDir); rmErr != nil {
+			utils.Warn("清理远端分片目录失败", utils.String("dir", chunkDir), utils.Err(rmErr))
+		}
 	}
 
 	return s.finalizer.Complete(session, targetPath)
@@ -445,7 +605,17 @@ func (s *UploadSessionService) Cancel(uploadID uint) error {
 
 	_, uploadingPath, err := s.storage.Paths(session)
 	if err == nil {
-		if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
+		// 远端后端：清理整个分片目录（每片独立临时对象）；
+		// 本地后端：删除单 uploading 临时文件。
+		if IsRemoteSession(session) {
+			if chunkDir, _, ok := s.storage.ChunkObjectPaths(session, 0); ok {
+				if st, sok := s.storageFor(session); sok {
+					if rmErr := st.RemoveAll(context.Background(), chunkDir); rmErr != nil {
+						utils.Warn("取消上传清理远端分片失败", utils.String("dir", chunkDir), utils.Err(rmErr))
+					}
+				}
+			}
+		} else if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			utils.Warn("取消上传删除文件失败", utils.String("path", uploadingPath), utils.Err(rmErr))
 		}
 	}

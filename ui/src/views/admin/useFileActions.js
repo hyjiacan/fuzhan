@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AdminApi, IndexApi } from '@/api'
 import { PathUtils } from '@/utils'
+import { downloadWithTicket } from '@/utils/download'
 import { formatErrorMessage } from '@/utils/error'
 import { isDir } from './fileTableColumns'
 
@@ -123,11 +124,10 @@ export const useFileActions = ({
   const previewDialogVisible = ref(false)
   const previewFileData = ref({})
 
-  // 管理下载走 /admin/download（带鉴权）；新窗口打不开无法带请求头，故在 URL 上附 token
-  const adminDownloadHref = (fullPath, pathEncoded) => {
-    const p = pathEncoded || PathUtils.encodeFilePath(fullPath)
-    const t = localStorage.getItem('token')
-    return `/api/v1/web/admin/download/${p}${t ? `?token=${encodeURIComponent(t)}` : ''}`
+  // 管理下载走 /admin/download（带鉴权）；换一次性票据后在 URL 带 t=（登录凭证不进 URL）
+  const adminDownloadHref = (fullPath) => {
+    const p = PathUtils.encodeFilePath(fullPath)
+    return `/api/v1/web/admin/download/${p}`
   }
 
   const previewFile = (file) => {
@@ -135,10 +135,10 @@ export const useFileActions = ({
     previewDialogVisible.value = true
   }
 
-  const downloadFile = (file) => {
+  const downloadFile = async (file) => {
     if (file?.path) {
       const fullPath = file.path
-      window.open(adminDownloadHref(fullPath), '_blank')
+      await downloadWithTicket(adminDownloadHref(fullPath))
     }
   }
 

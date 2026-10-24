@@ -43,6 +43,7 @@ const state = reactive({
     webdavEnabled: false,
     openApiEnabled: false,
     allowRegistration: false,
+    requireLogin: false,
     anonymousUsername: 'public'
   },
 

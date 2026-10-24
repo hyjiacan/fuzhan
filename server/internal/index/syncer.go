@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 	"gorm.io/gorm"
 )
@@ -28,6 +30,7 @@ type FileIndexNotifier interface {
 type Syncer struct {
 	db        *gorm.DB
 	rootNames map[string]string
+	storages  map[string]storage.Storage // rootName → Storage（远端后端注入）
 	retryBase time.Duration // 重试基期间隔
 	maxRetry  int           // 最大重试次数
 
@@ -49,6 +52,47 @@ func (s *Syncer) SetFileIndexNotifier(n FileIndexNotifier) {
 	s.notifier = n
 }
 
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+func (s *Syncer) SetStorages(storages map[string]storage.Storage) {
+	s.storages = storages
+}
+
+// storageFor 返回指定根目录的存储后端。远端后端（非 local）时 remote=true，
+// 属性获取将通过 Storage.Stat 进行；本地后端（含未注入）保持 rootNames 物理路径语义。
+// 与 Scanner.storageFor 语义一致。
+func (s *Syncer) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := s.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
+}
+
+// statEntry 获取 rootName 下 filePath 的文件元信息。
+// 本地后端用 os.Stat(物理路径)；远端后端用 Storage.Stat(逻辑路径)，
+// 再将 StatInfo 包装为 objectFileInfo 以 os.FileInfo 语义返回。
+func (s *Syncer) statEntry(rootName, filePath string) (os.FileInfo, error) {
+	rootPath, ok := s.rootNames[rootName]
+	if !ok {
+		return nil, fmt.Errorf("根目录不存在: %s", rootName)
+	}
+	if st, remote := s.storageFor(rootName); remote {
+		rel := "/" + strings.TrimPrefix(filePath, "/")
+		si, err := st.Stat(context.Background(), rel)
+		if err != nil {
+			return nil, err
+		}
+		return objectFileInfo{storage.ObjectInfo{
+			Name:    si.Name,
+			Size:    si.Size,
+			IsDir:   si.IsDir,
+			ModTime: si.ModTime,
+		}}, nil
+	}
+	fullPath := filepath.Join(rootPath, strings.TrimPrefix(filePath, "/"))
+	return os.Stat(fullPath)
+}
+
 // SyncFile 上传/创建文件时同步索引
 // 如果记录已存在（如覆盖上传），则更新字段；
 // 如果记录不存在，则新建。
@@ -62,13 +106,7 @@ func (s *Syncer) SyncFile(rootName, filePath string) error {
 
 // syncFileOnce 执行单次同步（不含重试）
 func (s *Syncer) syncFileOnce(rootName, filePath string) error {
-	rootPath, ok := s.rootNames[rootName]
-	if !ok {
-		return fmt.Errorf("根目录不存在: %s", rootName)
-	}
-
-	fullPath := filepath.Join(rootPath, strings.TrimPrefix(filePath, "/"))
-	info, err := os.Stat(fullPath)
+	info, err := s.statEntry(rootName, filePath)
 	if err != nil {
 		return fmt.Errorf("获取文件信息失败: %w", err)
 	}
@@ -396,12 +434,7 @@ func (s *Syncer) MarkHashPending(rootName, filePath string) {
 
 // createRecordAtPath 在目标路径新建一条 active 索引记录（moveFileOnce 的无旧记录兜底分支）
 func (s *Syncer) createRecordAtPath(tx *gorm.DB, rootName, dbPath string, now time.Time, topID *int64) error {
-	rootPath, ok := s.rootNames[rootName]
-	if !ok {
-		return fmt.Errorf("根目录不存在: %s", rootName)
-	}
-	fullPath := filepath.Join(rootPath, strings.TrimPrefix(dbPath, "/"))
-	info, err := os.Stat(fullPath)
+	info, err := s.statEntry(rootName, dbPath)
 	if err != nil {
 		return fmt.Errorf("获取文件信息失败: %w", err)
 	}

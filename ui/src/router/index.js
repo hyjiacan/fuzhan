@@ -8,6 +8,7 @@ const SetupView = () => import('../views/SetupView.vue')
 const TempView = () => import('../views/TempView.vue')
 const RecentView = () => import('../views/RecentView.vue')
 const HotView = () => import('../views/HotView.vue')
+const LoginView = () => import('../views/LoginView.vue')
 
 // Layouts
 const PersonalLayout = () => import(/* webpackChunkName: "layouts-personal" */ '../layouts/PersonalLayout.vue')
@@ -58,6 +59,12 @@ const router = createRouter({
       path: '/setup',
       name: 'setup',
       component: SetupView
+    },
+    {
+      // 「强制登录」模式下未登录用户的登录/注册/外部认证页面
+      path: '/login',
+      name: 'login',
+      component: LoginView
     },
     {
       path: '/temp',
@@ -227,6 +234,21 @@ router.beforeEach(async (to, from) => {
   // 未初始化时重定向到 setup
   if (shouldRedirectToSetup && to.name !== 'setup') {
     return { name: 'setup' }
+  }
+
+  // 「强制登录」模式：整个界面仅登录用户可交互。
+  // 例外：初始化引导（setup）、临时文件分享（temp，匿名例外）、外部认证回调（oauth2/callback）。
+  // 未登录访问其余页面一律重定向到登录页。
+  const requireLogin = store?.state?.config?.requireLogin === true
+  if (requireLogin && !AuthApi.isLoggedIn()) {
+    const isAnonymousExempt =
+      to.name === 'login' ||
+      to.name === 'setup' ||
+      to.name === 'temp' ||
+      to.name === 'oauth2-callback'
+    if (!isAnonymousExempt) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
   }
 
   const privateStorageEnabled = store?.state?.config?.privateStorageEnabled !== false

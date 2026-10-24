@@ -1,6 +1,7 @@
 import { h } from 'vue'
 import { ElButton, ElCheckbox } from 'element-plus'
 import { TimeUtils, NumberUtils } from '@/utils'
+import { downloadWithTicket } from '@/utils/download'
 import { keyNav } from '@/utils/a11y'
 import { isPreviewable } from '@/config/preview'
 
@@ -64,7 +65,7 @@ export const buildFileColumns = ({
         const iconClass = `icon-filetype ${getFileIconClass(row)}`
         // 导航到子目录：row.path 已是完整路径 (rootName/subPath)
         const dirPath = row.path
-        const fileHref = adminDownloadHref(row.path)
+        const downloadHref = adminDownloadHref(row.path)
         const previewable = canPreview(row)
 
         // 直接浏览模式（与 HomeView 一致）
@@ -84,13 +85,16 @@ export const buildFileColumns = ({
               }
             }, highlightKeyword(row.name))
             : h('a', {
-              href: fileHref,
+              href: previewable ? undefined : downloadHref,
               class: 'file-link',
               onClick: (e) => {
                 if (previewable) {
                   e.preventDefault()
                   previewFile(row)
+                  return
                 }
+                e.preventDefault()
+                downloadWithTicket(downloadHref)
               }
             }, highlightKeyword(row.name))
         ]
@@ -135,13 +139,16 @@ export const buildFileColumns = ({
                   }
                 }, highlightKeyword(fileName))
                 : h('a', {
-                  href: fileHref,
+                  href: previewable ? undefined : downloadHref,
                   class: 'file-link',
                   onClick: (e) => {
                     if (previewable) {
                       e.preventDefault()
                       previewFile(row)
+                      return
                     }
+                    e.preventDefault()
+                    downloadWithTicket(downloadHref)
                   }
                 }, highlightKeyword(fileName))
             ])

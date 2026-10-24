@@ -93,11 +93,13 @@ request.interceptors.response.use(
     if (error.response) {
       // 服务器返回了错误响应
       if (error.response.status === 401) {
-        // Token 过期或无效，清除认证信息
+        // Token 过期或无效，清除认证信息并派发登录态变更，
+        // 由路由守卫在「强制登录」模式下统一重定向到登录页
         localStorage.removeItem('token')
         localStorage.removeItem('uuid')
         localStorage.removeItem('username')
         localStorage.removeItem('userRole')
+        window.dispatchEvent(new CustomEvent('auth:changed'))
       } else if (error.response.status === 403) {
         // 无权限，跳转到文件页面
         window.location.hash = '#/files'
@@ -201,12 +203,6 @@ export const ResourceApi = {
 
   history(scope, range) {
     return request.get('/admin/resource/history', { params: { scope, range } })
-  },
-
-  // SSE 实时推送地址：EventSource 无法自定义请求头，令牌通过查询参数传递
-  streamUrl() {
-    const token = localStorage.getItem('token') || ''
-    return `${API_BASE}/admin/resource/stream?token=${encodeURIComponent(token)}`
   }
 }
 
@@ -456,6 +452,10 @@ export const FileRecordApi = {
 export const AdminApi = {
   getUsers(page = 1, pageSize = 20, query = '') {
     return request.get('/admin/users', { params: { page, pageSize, query } })
+  },
+
+  createUser(username, password, role = 'user') {
+    return request.post('/admin/users', { username, password, role }, { skipSuccessToast: true })
   },
 
   resetPassword(uuid, newPassword) {

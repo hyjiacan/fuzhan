@@ -80,6 +80,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { FileApi, MonitorApi } from '@/api'
 import { TableConst, NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { downloadWithTicket } from '@/utils/download'
 import { keyNav } from '@/utils/a11y'
 
 const router = useRouter()
@@ -216,7 +217,11 @@ const fileNameCol = {
             }, fileName)
           : h('a', {
               href: `/download/${PathUtils.encodeFilePath(fullPath)}`,
-              class: 'file-link'
+              class: 'file-link',
+              onClick: (e) => {
+                e.preventDefault()
+                downloadWithTicket(`/download/${PathUtils.encodeFilePath(fullPath)}`)
+              }
             }, fileName)
       ])
     ])

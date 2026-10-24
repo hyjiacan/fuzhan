@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 	"gorm.io/gorm"
 )
@@ -19,6 +20,7 @@ import (
 type ConsistencyChecker struct {
 	db        *gorm.DB
 	rootNames map[string]string
+	storages  map[string]storage.Storage // rootName → Storage（远端后端注入）
 }
 
 // NewConsistencyChecker 创建一致性校验器
@@ -27,6 +29,22 @@ func NewConsistencyChecker(db *gorm.DB, rootNames map[string]string) *Consistenc
 		db:        db,
 		rootNames: rootNames,
 	}
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+func (c *ConsistencyChecker) SetStorages(storages map[string]storage.Storage) {
+	c.storages = storages
+}
+
+// storageFor 返回指定根目录的存储后端。远端后端（非 local）时 remote=true，
+// 校验将通过 Storage 接口遍历；本地后端（含未注入）保持 rootNames 物理路径语义。
+// 与 Scanner.storageFor 语义一致。
+func (c *ConsistencyChecker) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := c.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
 }
 
 // RunCheck 执行一次一致性校验
@@ -74,14 +92,18 @@ func (c *ConsistencyChecker) RunCheck(ctx context.Context) (*ConsistencyReport, 
 
 // checkRootDir 检查单个根目录的一致性
 func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPath string, report *ConsistencyReport) error {
-	// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过, 否则会把
-	// 有效索引经 fixMissingInFS 批量标记为 deleted（数据丢失）
-	if ok, reason := validateScanRoot(rootPath); !ok {
-		utils.Warn("一致性校验跳过根目录: 根不可遍历",
-			utils.String("root_name", rootName),
-			utils.String("root_path", rootPath),
-			utils.String("reason", reason))
-		return nil
+	st, remote := c.storageFor(rootName)
+	if !remote {
+		// 护栏：根不可遍历（junction/符号链接/挂载不可用）时跳过, 否则会把
+		// 有效索引经 fixMissingInFS 批量标记为 deleted（数据丢失）。
+		// 远端后端根为虚拟前缀（无真实磁盘路径），跳过 Lstat 护栏。
+		if ok, reason := validateScanRoot(rootPath); !ok {
+			utils.Warn("一致性校验跳过根目录: 根不可遍历",
+				utils.String("root_name", rootName),
+				utils.String("root_path", rootPath),
+				utils.String("reason", reason))
+			return nil
+		}
 	}
 
 	// 1. 加载所有活跃记录
@@ -105,26 +127,13 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 	// 2. 遍历文件系统
 	fsSeen := make(map[string]bool)
 
-	walkErr := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			utils.Warn("校验跳过无法访问的文件", utils.String("path", path), utils.Err(err))
-			return nil
-		}
-
+	// handleEntry 处理一个遍历到的目录/文件项：对比 DB 记录、收集差异或修复。
+	// 本地（filepath.Walk）与远端（walkStorage）两条遍历路径共用此处理逻辑。
+	handleEntry := func(relPath string, info os.FileInfo) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-
-		relPath, relErr := filepath.Rel(rootPath, path)
-		if relErr != nil || relPath == "." {
-			return nil
-		}
-		relPath = filepath.ToSlash(relPath)
-		// 标准化 file_path：确保有前导 /，FullPath 格式：/rootName/path
-		if !strings.HasPrefix(relPath, "/") {
-			relPath = "/" + relPath
 		}
 
 		fsSeen[relPath] = true
@@ -199,7 +208,44 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 		}
 
 		return nil
-	})
+	}
+
+	var walkErr error
+	if remote {
+		// 远端后端：无真实磁盘，用 Storage.List 递归遍历（替代 filepath.Walk）。
+		entryCh := make(chan walkEntry, 256)
+		walkDone := make(chan error, 1)
+		go func() {
+			walkDone <- walkStorage(ctx, st, "/", entryCh)
+		}()
+		for e := range entryCh {
+			herr := handleEntry(e.relPath, e.info)
+			if herr != nil {
+				walkErr = herr
+				// 取消后 walkStorage 会关闭 entryCh, 消费端退出
+			}
+		}
+		if werr := <-walkDone; walkErr == nil {
+			walkErr = werr
+		}
+	} else {
+		walkErr = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				utils.Warn("校验跳过无法访问的文件", utils.String("path", path), utils.Err(err))
+				return nil
+			}
+			relPath, relErr := filepath.Rel(rootPath, path)
+			if relErr != nil || relPath == "." {
+				return nil
+			}
+			relPath = filepath.ToSlash(relPath)
+			// 标准化 file_path：确保有前导 /，FullPath 格式：/rootName/path
+			if !strings.HasPrefix(relPath, "/") {
+				relPath = "/" + relPath
+			}
+			return handleEntry(relPath, info)
+		})
+	}
 
 	// 3. 批量新增文件系统存在但索引缺失的记录
 	if len(pendingCreate) > 0 {

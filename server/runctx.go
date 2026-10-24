@@ -25,6 +25,7 @@ import (
 	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/setup"
+	"fuzhan/internal/storage"
 	temph "fuzhan/internal/temp"
 
 	"github.com/gin-gonic/gin"
@@ -88,6 +89,11 @@ type runCtx struct {
 	idxSearch         *search.SearchIndex
 	resourceCollector *resource.Collector
 	ldapService       *auth.LDAPService
+
+	// 公开多根目录的存储后端映射（rootName → Storage）。
+	// 本地后端可不注入（rootNames 物理路径语义零变化）；远端后端（s3/minio/oss/webdav）
+	// 注入后供 WebDAV/FTP 虚拟文件系统访问远端对象存储。
+	publicStorages map[string]storage.Storage
 }
 
 // isCLIRequest 判断请求是否来自命令行工具（curl/wget）

@@ -1,25 +1,45 @@
 package services
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io"
 	"strings"
 	"sync"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 )
+
+// storageContext 内部使用的上下文
+var fsStorageContext = context.Background()
 
 // FileService 文件服务（提供文件/目录的 CRUD 操作）
 type FileService struct {
 	uploadRecords []appconfig.UploadRecord
 	recordsMutex  sync.Mutex
+	// publicStorages 公开多根目录的存储后端映射（rootName → Storage）
+	publicStorages map[string]storage.Storage
 }
 
 // NewFileService 创建文件服务实例
-func NewFileService() *FileService {
-	return &FileService{}
+func NewFileService(publicStorages map[string]storage.Storage) *FileService {
+	return &FileService{publicStorages: publicStorages}
+}
+
+// storageFor 获取指定公开根目录对应的存储后端；未注册时回退物理根目录语义
+func (fs *FileService) storageFor(rootName string) (storage.Storage, bool) {
+	if fs.publicStorages != nil {
+		if st, ok := fs.publicStorages[rootName]; ok {
+			return st, true
+		}
+	}
+	rootPath, exists := appconfig.RootNames[rootName]
+	if !exists {
+		return nil, false
+	}
+	return storage.NewLocalStorage(rootPath), true
 }
 
 // AddUploadRecord 添加上传记录
@@ -60,24 +80,31 @@ func (fs *FileService) GetRecentUploads(count int) []appconfig.UploadRecord {
 
 // RenameFile 重命名文件
 func (fs *FileService) RenameFile(oldPath, newName string) error {
-	// 解析旧路径获取真实文件系统路径
-	realPath, err := fs.resolvePath(oldPath)
+	// 解析旧路径获取根目录与存储内部逻辑子路径
+	rootName, relPath, err := fs.resolvePath(oldPath)
 	if err != nil {
 		return err
 	}
+	st, ok := fs.storageFor(rootName)
+	if !ok {
+		return fmt.Errorf("根目录不存在: %s", rootName)
+	}
 
-	// 检查文件是否存在
-	info, err := os.Stat(realPath)
+	// 检查文件是否存在（根级路径不能为空，若旧路径指向根目录则报错）
+	if relPath == "" {
+		return fmt.Errorf("文件不存在")
+	}
+	info, err := st.Stat(fsStorageContext, relPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if storage.IsNotExist(err) {
 			return fmt.Errorf("文件不存在")
 		}
-		utils.Error("无法访问文件", utils.String("path", realPath), utils.Err(err))
+		utils.Error("无法访问文件", utils.String("path", oldPath), utils.Err(err))
 		return fmt.Errorf("无法访问文件")
 	}
 
 	// 不能是目录
-	if info.IsDir() {
+	if info.IsDir {
 		return fmt.Errorf("不支持重命名目录")
 	}
 
@@ -86,22 +113,24 @@ func (fs *FileService) RenameFile(oldPath, newName string) error {
 		return err
 	}
 
-	// 获取父目录
-	parentDir := filepath.Dir(realPath)
-	newPath := filepath.Join(parentDir, newName)
+	// 构造新逻辑路径（同父目录，仅替换文件名）
+	newRel := newName
+	if idx := strings.LastIndex(relPath, "/"); idx >= 0 {
+		newRel = relPath[:idx+1] + newName
+	}
 
 	// 检查目标文件是否已存在
-	if _, err := os.Stat(newPath); err == nil {
+	if _, err := st.Stat(fsStorageContext, newRel); err == nil {
 		return fmt.Errorf("目标文件名已存在")
 	}
 
-	// 执行重命名
-	if err := os.Rename(realPath, newPath); err != nil {
-		utils.Error("重命名失败", utils.String("oldPath", realPath), utils.String("newPath", newPath), utils.Err(err))
+	// 执行重命名（对象存储后端内部为复制+删除）
+	if err := st.Rename(fsStorageContext, relPath, newRel); err != nil {
+		utils.Error("重命名失败", utils.String("old", relPath), utils.String("new", newRel), utils.Err(err))
 		return fmt.Errorf("重命名失败")
 	}
 
-	utils.Info("文件重命名成功", utils.String("oldPath", realPath), utils.String("newPath", newPath))
+	utils.Info("文件重命名成功", utils.String("old", oldPath), utils.String("new", newRel))
 	return nil
 }
 
@@ -125,153 +154,192 @@ func (fs *FileService) MoveFile(oldPath, newPath string) error {
 		return fmt.Errorf("目标路径无效，不能包含 ..")
 	}
 
-	// 验证目标路径必须以根目录名开头
+	// 目标目录不允许上传时，禁止移动/复制文件进入该目录。取目标根目录名进行检查。
 	newPathParts := strings.SplitN(newPath, "/", 2)
-	if len(newPathParts) < 1 || newPathParts[0] == "" {
-		return fmt.Errorf("目标路径必须以根目录名开头")
-	}
-	rootName := newPathParts[0]
-	if _, exists := appconfig.RootNames[rootName]; !exists {
-		return fmt.Errorf("目标路径必须以根目录名开头，如 documents/、photos/ 等")
-	}
-
-	// 目标目录不允许上传时，禁止移动/复制文件进入该目录
-	if !appconfig.PublicDirUploadAllowed(rootName) {
-		return fmt.Errorf("目标目录不允许上传文件，无法移动/复制到该目录")
+	destRootName := newPathParts[0]
+	if destRootName != "" {
+		if !appconfig.PublicDirUploadAllowed(destRootName) {
+			return fmt.Errorf("目标目录不允许上传文件，无法移动/复制到该目录")
+		}
 	}
 
-	// 解析旧路径
-	realOldPath, err := fs.resolvePath(oldPath)
+	// 解析旧路径与新路径（均校验根目录存在）
+	oldRoot, oldRel, err := fs.resolvePath(oldPath)
+	if err != nil {
+		return err
+	}
+	newRoot, newRel, err := fs.resolvePath(newPath)
 	if err != nil {
 		return err
 	}
 
-	// 解析新路径
-	realNewPath, err := fs.resolvePath(newPath)
-	if err != nil {
-		return err
+	// 源与目标根目录一致，取源后端（目标与源同根）；否则分别取各自后端
+	srcSt, ok := fs.storageFor(oldRoot)
+	if !ok {
+		return fmt.Errorf("根目录不存在: %s", oldRoot)
+	}
+	dstSt, ok := fs.storageFor(newRoot)
+	if !ok {
+		return fmt.Errorf("根目录不存在: %s", newRoot)
 	}
 
 	// 检查源文件是否存在
-	info, err := os.Stat(realOldPath)
+	if oldRel == "" {
+		return fmt.Errorf("源文件不存在")
+	}
+	info, err := srcSt.Stat(fsStorageContext, oldRel)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if storage.IsNotExist(err) {
 			return fmt.Errorf("源文件不存在")
 		}
-		utils.Error("无法访问源文件", utils.String("path", realOldPath), utils.Err(err))
+		utils.Error("无法访问源文件", utils.String("path", oldPath), utils.Err(err))
 		return fmt.Errorf("无法访问源文件")
 	}
 
 	// 不能是目录
-	if info.IsDir() {
+	if info.IsDir {
 		return fmt.Errorf("不支持移动目录")
 	}
 
-	// 不能移动到自身
-	if realOldPath == realNewPath {
+	// 不能移动到自身（同根且路径相同）
+	if oldRoot == newRoot && oldRel == newRel {
 		return fmt.Errorf("源文件和目标文件相同")
 	}
 
-	// 创建父目录（如果有子目录）
-	parentDir := filepath.Dir(realNewPath)
-	if parentDir != "." {
-		if err := os.MkdirAll(parentDir, 0755); err != nil {
-			utils.Error("无法创建目标目录", utils.String("path", parentDir), utils.Err(err))
-			return fmt.Errorf("无法创建目标目录")
+	// 创建目标父目录（仅同根时可通过 Rename 语义直接完成；跨根需分别处理，
+	// 目标父目录由最终后端在 Rename 前的复制流程中调用 MkdirAll 确保）
+	parentDir := ""
+	if idx := strings.LastIndex(newRel, "/"); idx >= 0 {
+		parentDir = newRel[:idx]
+	}
+	if parentDir != "" {
+		if dstSt != srcSt {
+			if err := dstSt.MkdirAll(fsStorageContext, parentDir); err != nil {
+				utils.Error("无法创建目标目录", utils.String("path", parentDir), utils.Err(err))
+				return fmt.Errorf("无法创建目标目录")
+			}
 		}
 	}
 
 	// 检查目标文件是否已存在
-	if _, err := os.Stat(realNewPath); err == nil {
+	if _, err := dstSt.Stat(fsStorageContext, newRel); err == nil {
 		return fmt.Errorf("目标文件已存在")
 	}
 
-	// 执行移动
-	if err := os.Rename(realOldPath, realNewPath); err != nil {
-		utils.Error("移动文件失败", utils.String("oldPath", realOldPath), utils.String("newPath", realNewPath), utils.Err(err))
-		return fmt.Errorf("移动文件失败")
+	// 同根：直接重命名/移动；跨根：复制到目标后端后再删除源
+	if oldRoot == newRoot {
+		if err := dstSt.Rename(fsStorageContext, oldRel, newRel); err != nil {
+			utils.Error("移动文件失败", utils.String("old", oldPath), utils.String("new", newPath), utils.Err(err))
+			return fmt.Errorf("移动文件失败")
+		}
+	} else {
+		if _, err := dstSt.Stat(fsStorageContext, parentDir); storage.IsNotExist(err) && parentDir != "" {
+			if err := dstSt.MkdirAll(fsStorageContext, parentDir); err != nil {
+				utils.Error("无法创建目标目录", utils.String("path", parentDir), utils.Err(err))
+				return fmt.Errorf("无法创建目标目录")
+			}
+		}
+		if err := fs.copyCrossRoot(srcSt, dstSt, oldRel, newRel); err != nil {
+			utils.Error("移动文件失败（跨根复制）", utils.String("old", oldPath), utils.String("new", newPath), utils.Err(err))
+			return fmt.Errorf("移动文件失败")
+		}
 	}
 
-	utils.Info("文件移动成功", utils.String("oldPath", realOldPath), utils.String("newPath", realNewPath))
+	utils.Info("文件移动成功", utils.String("old", oldPath), utils.String("new", newPath))
 	return nil
 }
 
-// DeleteFile 删除文件
-func (fs *FileService) DeleteFile(filePath string) error {
-	// 解析路径
-	realPath, err := fs.resolvePath(filePath)
+// copyCrossRoot 跨存储后端复制文件（用于跨根目录移动）。
+func (fs *FileService) copyCrossRoot(srcSt, dstSt storage.Storage, srcRel, dstRel string) error {
+	src, err := srcSt.Open(fsStorageContext, srcRel)
 	if err != nil {
 		return err
 	}
+	defer src.Close()
 
-	// 检查文件是否存在
-	info, err := os.Stat(realPath)
+	dst, err := dstSt.OpenWriter(fsStorageContext, dstRel)
 	if err != nil {
-		if os.IsNotExist(err) {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return dst.Close()
+}
+
+// DeleteFile 删除文件或目录
+func (fs *FileService) DeleteFile(filePath string) error {
+	// 解析路径
+	rootName, relPath, err := fs.resolvePath(filePath)
+	if err != nil {
+		return err
+	}
+	st, ok := fs.storageFor(rootName)
+	if !ok {
+		return fmt.Errorf("根目录不存在: %s", rootName)
+	}
+
+	// 根级路径不可删除整个根目录
+	if relPath == "" {
+		return fmt.Errorf("文件不存在")
+	}
+
+	// 检查目标是否存在
+	info, err := st.Stat(fsStorageContext, relPath)
+	if err != nil {
+		if storage.IsNotExist(err) {
 			return fmt.Errorf("文件不存在")
 		}
-		utils.Error("无法访问文件", utils.String("path", realPath), utils.Err(err))
+		utils.Error("无法访问文件", utils.String("path", filePath), utils.Err(err))
 		return fmt.Errorf("无法访问文件")
 	}
 
 	// 目录使用 RemoveAll 递归删除，文件使用 Remove
-	if info.IsDir() {
-		if err := os.RemoveAll(realPath); err != nil {
-			utils.Error("删除目录失败", utils.String("path", realPath), utils.Err(err))
+	if info.IsDir {
+		if err := st.RemoveAll(fsStorageContext, relPath); err != nil {
+			utils.Error("删除目录失败", utils.String("path", filePath), utils.Err(err))
 			return fmt.Errorf("删除目录失败")
 		}
-		utils.Info("目录删除成功", utils.String("path", realPath))
+		utils.Info("目录删除成功", utils.String("path", filePath))
 	} else {
-		if err := os.Remove(realPath); err != nil {
-			utils.Error("删除文件失败", utils.String("path", realPath), utils.Err(err))
+		if err := st.Remove(fsStorageContext, relPath); err != nil {
+			utils.Error("删除文件失败", utils.String("path", filePath), utils.Err(err))
 			return fmt.Errorf("删除文件失败")
 		}
-		utils.Info("文件删除成功", utils.String("path", realPath))
+		utils.Info("文件删除成功", utils.String("path", filePath))
 	}
 	return nil
 }
 
-// resolvePath 将相对路径解析为真实文件系统路径
-func (fs *FileService) resolvePath(relativePath string) (string, error) {
+// resolvePath 将相对路径解析为存储内部逻辑子路径（rootName 之外的相对路径）。
+// 返回的 relativ 是不含根目录前缀的逻辑路径（如 "子目录/xx.pdf"），供 Storage 后端使用；
+// 当路径仅为根目录名时返回空字符串表示根级。
+func (fs *FileService) resolvePath(relativePath string) (rootName, relativ string, err error) {
 	relativePath = strings.ReplaceAll(relativePath, "\\", "/")
 	relativePath = strings.Trim(relativePath, "/")
 
 	if relativePath == "" {
-		return "", fmt.Errorf("路径不能为空")
+		return "", "", fmt.Errorf("路径不能为空")
 	}
 
 	// 防止路径遍历：禁止使用 ..
 	if strings.Contains(relativePath, "..") {
-		return "", fmt.Errorf("路径不能包含 ..")
+		return "", "", fmt.Errorf("路径不能包含 ..")
 	}
 
 	parts := strings.SplitN(relativePath, "/", 2)
-	rootName := parts[0]
+	rootName = parts[0]
 
-	rootDir, exists := appconfig.RootNames[rootName]
-	if !exists {
-		return "", fmt.Errorf("根目录不存在: %s", rootName)
+	if _, exists := appconfig.RootNames[rootName]; !exists {
+		return "", "", fmt.Errorf("根目录不存在: %s", rootName)
 	}
 
 	if len(parts) == 1 {
-		return rootDir, nil
+		return rootName, "", nil
 	}
-
-	resolvedPath := filepath.Join(rootDir, parts[1])
-	// 额外校验：确保解析后的路径仍以根目录开头
-	absResolved, err := filepath.Abs(resolvedPath)
-	if err != nil {
-		return "", fmt.Errorf("路径解析失败")
-	}
-	absRoot, err := filepath.Abs(rootDir)
-	if err != nil {
-		return "", fmt.Errorf("根目录解析失败")
-	}
-	if !strings.HasPrefix(absResolved, absRoot) {
-		return "", fmt.Errorf("路径越界")
-	}
-
-	return resolvedPath, nil
+	return rootName, parts[1], nil
 }
 
 // validateFileName 验证文件名合法性

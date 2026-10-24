@@ -7,7 +7,7 @@
           <span style="font-weight: 600;">{{ rootNode.fileName }}</span>
         </div>
         <el-button v-if="rootNode.downloadURL" size="small" link type="primary"
-          @click="window.open(rootNode.downloadURL, '_blank')">
+          @click.stop="handleDownload(rootNode.downloadURL)">
           下载
         </el-button>
       </div>
@@ -30,7 +30,7 @@
           <div v-else style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0;">
             <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ data.label }}</span>
             <el-button v-if="data._raw?.downloadURL" size="small" link type="primary"
-              @click.stop="window.open(data._raw.downloadURL, '_blank')">下载</el-button>
+              @click.stop="handleDownload(data._raw.downloadURL)">下载</el-button>
             <el-button v-if="data._raw?.dependencyId" size="small" link type="danger"
               @click.stop="deleteDependency(data._raw.dependencyId)">移除</el-button>
           </div>
@@ -78,6 +78,7 @@ import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { DependencyApi, IndexApi } from '@/api'
+import { downloadWithTicket } from '@/utils/download'
 
 const STORAGE_KEY = 'fuzhan_download_all_dont_remind'
 
@@ -179,12 +180,17 @@ function convertNode(node, parentKey) {
   return result
 }
 
-// 收集下载链接
+// 单个下载：先换一次性票据再新标签打开（登录凭证不走 URL）
+const handleDownload = (downloadURL) => {
+  downloadWithTicket(downloadURL)
+}
+
+// 收集下载路径
 function collectURLs() {
   const urls = []
   // 当前文件
   if (rootNode.value?.downloadURL) urls.push(rootNode.value.downloadURL)
-  // 收集所有依赖项的下载链接
+  // 收集所有依赖项的下载路径
   const walkTree = (nodes) => {
     for (const node of nodes) {
       if (node._raw?.downloadURL) urls.push(node._raw.downloadURL)
@@ -195,15 +201,23 @@ function collectURLs() {
   return [...new Set(urls)]
 }
 
-// 下载全部
-function doDownloadAll() {
+// 下载全部：逐项换票后新标签打开（避免多个并发换票，间隔 300ms 防弹窗拦截）
+async function doDownloadAll() {
   const urls = collectURLs()
   if (urls.length === 0) { message.warning('没有可下载的文件'); return }
-  window.open(urls[0], '_blank')
-  for (let i = 1; i < urls.length; i++) {
-    setTimeout(() => window.open(urls[i], '_blank'), i * 300)
+  let opened = 0
+  for (let i = 0; i < urls.length; i++) {
+    const ok = await downloadWithTicket(urls[i], {
+      openOptions: { target: '_blank', features: 'noopener,noreferrer' }
+    })
+    if (ok) opened++
+    if (i < urls.length - 1) await new Promise((r) => setTimeout(r, 300))
   }
-  message.success(`正在打开 ${urls.length} 个下载链接`)
+  if (opened === 0) {
+    message.error('下载失败，请检查登录状态后重试')
+    return
+  }
+  message.success(`正在打开 ${opened} 个下载链接`)
 }
 
 // 确认下载弹框

@@ -61,6 +61,10 @@ type AccountConfig struct {
 	Anonymous         AnonymousConfig `yaml:"anonymous"`          // 匿名用户配置
 	ReservedUsernames []string        `yaml:"reserved_usernames"` // 保留用户名列表，注册时不可使用
 	AllowRegistration bool            `yaml:"allow_registration"` // 是否允许匿名注册新账户，默认 false
+	// RequireLogin 是否强制登录：开启后整个 Web 界面（含管理后台）仅登录用户可交互，
+	// 上传/下载/预览均需登录；临时文件分享（/temp/**）、私有分享（/share/:code）、
+	// 初始化引导与登录接口保持匿名例外。默认 false（允许匿名访问）。
+	RequireLogin bool `yaml:"require_login"`
 }
 
 // FTPConfig FTP 服务器配置
@@ -168,12 +172,62 @@ type TempFilesConfigWithStringQuota struct {
 	DeleteOnDownload  bool                 `yaml:"delete_on_download"`
 }
 
+// 存储后端类型常量
+const (
+	StorageBackendLocal  = "local"  // 本地磁盘（默认）
+	StorageBackendS3     = "s3"     // S3 兼容协议（AWS S3）
+	StorageBackendMinIO  = "minio"  // S3 兼容协议（MinIO）
+	StorageBackendOSS    = "oss"    // 阿里云 OSS
+	StorageBackendWebDAV = "webdav" // WebDAV
+)
+
 // StorageConfig 存储配置结构体（storage 父节点）
 type StorageConfig struct {
-	Public            PublicStorageConfig  `yaml:"public"`
-	Temp              TempConfig           `yaml:"temp"`
-	Private           PrivateStorageConfig `yaml:"private"`
-	AllowedExtensions []string             `yaml:"allowed_extensions"`
+	// Backend 存储后端类型：local / s3 / minio / oss / webdav，默认 local
+	Backend           string                    `yaml:"backend"`
+	Public            PublicStorageConfig       `yaml:"public"`
+	Temp              TempConfig                `yaml:"temp"`
+	Private           PrivateStorageConfig      `yaml:"private"`
+	AllowedExtensions []string                  `yaml:"allowed_extensions"`
+	S3                S3StorageConfig           `yaml:"s3,omitempty"`    // S3/MinIO 后端连接配置
+	OSS               OSSStorageConfig          `yaml:"oss,omitempty"`   // 阿里云 OSS 后端连接配置
+	WebDAV            WebDAVStorageConfig       `yaml:"webdav,omitempty"` // WebDAV 后端连接配置
+}
+
+// S3StorageConfig S3/MinIO 后端连接配置（storage.backend=s3/minio 时使用）
+type S3StorageConfig struct {
+	Endpoint  string `yaml:"endpoint"`          // S3 端点，如 https://s3.amazonaws.com 或 http://127.0.0.1:9000
+	AccessKey string `yaml:"access_key"`        // AccessKey
+	SecretKey string `yaml:"secret_key"`        // SecretKey
+	Bucket    string `yaml:"bucket"`            // Bucket 名称
+	Region    string `yaml:"region,omitempty"`  // 区域（MinIO 可留空）
+	UseSSL    bool   `yaml:"use_ssl,omitempty"` // 是否启用 HTTPS
+}
+
+// OSSStorageConfig 阿里云 OSS 后端连接配置（storage.backend=oss 时使用）
+type OSSStorageConfig struct {
+	Endpoint  string `yaml:"endpoint"`   // OSS 端点，如 oss-cn-hangzhou.aliyuncs.com
+	AccessKey string `yaml:"access_key"` // AccessKey
+	SecretKey string `yaml:"secret_key"` // SecretKey
+	Bucket    string `yaml:"bucket"`     // Bucket 名称
+}
+
+// WebDAVStorageConfig WebDAV 后端连接配置（storage.backend=webdav 时使用）
+type WebDAVStorageConfig struct {
+	URL      string `yaml:"url"`                 // WebDAV 服务地址，如 https://example.com/dav
+	Username string `yaml:"username,omitempty"`  // 用户名
+	Password string `yaml:"password,omitempty"`  // 密码
+}
+
+// StorageBackendIsRemote 判断存储后端是否为远端存储（非本地磁盘）。
+// 远端后端的根目录 Path 是虚拟前缀而非本地路径，目录存在性/建目录等磁盘操作需要降级跳过。
+func StorageBackendIsRemote() bool {
+	switch GlobalConfig.Storage.Backend {
+	case StorageBackendS3, StorageBackendMinIO, StorageBackendOSS, StorageBackendWebDAV:
+		return true
+	default:
+		return false
+	}
 }
 
 // PublicStorageConfig 公开存储配置

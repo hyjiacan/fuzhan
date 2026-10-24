@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -53,8 +54,16 @@ func (s *UploadSessionService) CleanupExpired() (int, error) {
 
 	cleanedCount := 0
 	for _, session := range sessions {
-		_, uploadingPath, err := s.storage.Paths(&session)
-		if err == nil {
+		// 远端后端：清理整个分片目录；本地后端：删除单 uploading 临时文件。
+		if IsRemoteSession(&session) {
+			if chunkDir, _, ok := s.storage.ChunkObjectPaths(&session, 0); ok {
+				if st, sok := s.storageFor(&session); sok {
+					if rmErr := st.RemoveAll(context.Background(), chunkDir); rmErr != nil {
+						utils.Error("清理会话远端分片失败", utils.Int("session_id", int(session.ID)), utils.Err(rmErr))
+					}
+				}
+			}
+		} else if _, uploadingPath, perr := s.storage.Paths(&session); perr == nil {
 			if rmErr := os.Remove(uploadingPath); rmErr != nil && !os.IsNotExist(rmErr) {
 				utils.Error("清理会话文件失败", utils.Int("session_id", int(session.ID)), utils.Err(rmErr))
 			}

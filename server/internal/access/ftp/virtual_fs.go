@@ -1,6 +1,7 @@
 package ftp
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
 	"fuzhan/internal/security"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 )
 
@@ -41,6 +43,8 @@ type MultiRootFs struct {
 	maxFileSize       int64             // from appconfig.Upload.MaxFileSize (0 = unlimited)
 	recordFn          OperationRecordFunc
 	backend           FtpBackend // 服务层注入：权限/索引/配额（nil 时权限校验保守拒绝管理操作）
+	storages          map[string]storage.Storage // 公开多根目录的存储后端映射（rootName → Storage）
+	ctx               context.Context            // 远端存储操作使用的上下文（存储实现内部使用）
 }
 
 // NewMultiRootFs creates a MultiRootFs. For anonymous users, privateDir and
@@ -59,7 +63,26 @@ func NewMultiRootFs(rootNames map[string]string, privateDir, userUUID, clientIP 
 		maxFileSize:       cfg.Upload.MaxFileSize,
 		recordFn:          recordFn,
 		backend:           backend,
+		storages:          nil,
+		ctx:               context.Background(),
 	}
+}
+
+// SetStorages 注入公开多根目录的存储后端映射（rootName → Storage）。
+// 本地后端可不注入（保持 rootNames 物理路径语义零变化）；远端后端（s3/minio/oss/webdav）
+// 注入后使 FTP 的列表/读取/写入通过 Storage 接口访问远端对象存储。
+func (fs *MultiRootFs) SetStorages(storages map[string]storage.Storage) {
+	fs.storages = storages
+}
+
+// storageFor 返回 rootName 对应的远端存储后端；本地/未注入返回 nil, false。
+// 与 index/webdav 的 storageFor 保持同一回退范式：Kind()=="local" 时回退物理路径。
+func (fs *MultiRootFs) storageFor(rootName string) (storage.Storage, bool) {
+	st, ok := fs.storages[rootName]
+	if !ok || st == nil || st.Kind() == "local" {
+		return nil, false
+	}
+	return st, true
 }
 
 // recordSecurity 记录一条 FTP 访问拒绝类安全事件（guard=ftp）。
@@ -172,6 +195,14 @@ func (fs *MultiRootFs) resolvePublicPath(rest string) (string, error) {
 		return filepath.Join(rootPath, subParts[1]), nil
 	}
 	return rootPath, nil
+}
+
+// publicRootPath 返回 public 下 rootName 对应的物理配置根路径（rootNames 的 value）。
+// 远端模式下它是虚拟前缀，仅用于磁盘分区检测（CheckDiskSpace 依赖本地分区上的
+// 某个可写路径），不代表真实存储位置。
+func (fs *MultiRootFs) publicRootPath(rootName string) (string, bool) {
+	rootPath, ok := fs.rootNames[rootName]
+	return rootPath, ok
 }
 
 // resolvePrivatePath resolves a "private/..." virtual path to a real filesystem path.
@@ -288,13 +319,15 @@ func existsOnDisk(realPath string) bool {
 }
 
 // checkDiskSpace 创建/写入前的磁盘空间与配额检查（backend 为 nil 时跳过）。
-func (fs *MultiRootFs) checkDiskSpace(realPath string, private bool) error {
+// location 为物理磁盘路径（远端模式下传物理配置根路径，用于分区检测）；
+// private 为 true 时额外校验私有配额。
+func (fs *MultiRootFs) checkDiskSpace(location string, private bool) error {
 	if fs.backend == nil {
 		return nil
 	}
 	// required=1 仅验证分区可写；FTP 流式传输无法预知最终大小，
 	// 真实大小上限由 sizeLimitedFile（偏移感知）兜底。
-	if err := fs.backend.CheckDiskSpace(filepath.Dir(realPath), 1); err != nil {
+	if err := fs.backend.CheckDiskSpace(filepath.Dir(location), 1); err != nil {
 		return err
 	}
 	if private && fs.userUUID != "" {
@@ -314,6 +347,14 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 	}
 	isPublic := fs.isPublicPath(name)
 	isPrivate := fs.isPrivatePath(name)
+
+	// 远端后端：本地临时缓存 + Close 一次性写入远端（对象存储无原地随机写/续传）。
+	if isPublic {
+		if st, remote := fs.storageFor(ftpRootName(name)); remote {
+			return fs.openRemoteWrite(st, name, isPublic, isPrivate)
+		}
+	}
+
 	if isPublic {
 		if !fs.canCreatePublic(ftpRootName(name)) {
 			return nil, os.ErrPermission
@@ -338,6 +379,21 @@ func (fs *MultiRootFs) Mkdir(name string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
+	if fs.isPublicPath(name) {
+		rootName, subPath := fs.recordPath(name)
+		if st, remote := fs.storageFor(rootName); remote {
+			// 远端后端：公开写入口校验（上传开关+按目录）+ Storage 接口建虚拟目录
+			// （对象存储 s3/oss 无 op，远端 WebDAV 真实建目录）。
+			if !fs.canCreatePublic(rootName) {
+				return os.ErrPermission
+			}
+			if err := st.MkdirAll(fs.ctx, subPath); err != nil {
+				return err
+			}
+			fs.recordMkdir(name)
+			return nil
+		}
+	}
 	if err := afero.NewOsFs().Mkdir(realPath, perm); err != nil {
 		return err
 	}
@@ -349,6 +405,19 @@ func (fs *MultiRootFs) MkdirAll(name string, perm os.FileMode) error {
 	realPath, err := fs.resolvePath(name, "mkdir")
 	if err != nil {
 		return err
+	}
+	if fs.isPublicPath(name) {
+		rootName, subPath := fs.recordPath(name)
+		if st, remote := fs.storageFor(rootName); remote {
+			if !fs.canCreatePublic(rootName) {
+				return os.ErrPermission
+			}
+			if err := st.MkdirAll(fs.ctx, subPath); err != nil {
+				return err
+			}
+			fs.recordMkdir(name)
+			return nil
+		}
 	}
 	if err := afero.NewOsFs().MkdirAll(realPath, perm); err != nil {
 		return err
@@ -371,6 +440,12 @@ func (fs *MultiRootFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
+	isPublic := fs.isPublicPath(name)
+	if isPublic {
+		if st, remote := fs.storageFor(ftpRootName(name)); remote {
+			return fs.openRemoteOpen(st, name)
+		}
+	}
 	f, err := afero.NewOsFs().Open(realPath)
 	if err != nil {
 		return nil, err
@@ -386,6 +461,174 @@ func (fs *MultiRootFs) Open(name string) (afero.File, error) {
 	return f, nil
 }
 
+// openRemoteOpen 远端后端打开路径（Open 语义）：先 Stat 判存在与类型。
+//   - 目录：返回 storageDirFile（Readdir 走 st.List，供 LIST/NLST/MLSD 使用）；
+//   - 文件：返回 storageReadFile（RetrR 走 st.Open，Seek 按后端能力降级）。
+func (fs *MultiRootFs) openRemoteOpen(st storage.Storage, name string) (afero.File, error) {
+	_, subPath := fs.recordPath(name)
+	info, err := st.Stat(fs.ctx, subPath)
+	if err != nil {
+		if storage.IsNotExist(err) {
+			return nil, err
+		}
+		return nil, err
+	}
+	if info.IsDir {
+		// 目录：直接列表（FTP LIST/NLST 经 driver.Open + Readdir）
+		return &storageDirFile{st: st, ctx: fs.ctx, name: subPath}, nil
+	}
+	// 文件：先记录下载（含匿名免认证面限流），再打开流
+	if derr := fs.recordDownload(name, info.Size); derr != nil {
+		return nil, derr
+	}
+	rc, err := st.Open(fs.ctx, subPath)
+	if err != nil {
+		return nil, err
+	}
+	seeker, _ := rc.(io.Seeker)
+	return &storageReadFile{
+		rc:     rc,
+		seeker: seeker,
+		info:   &storageFileInfo{info: info},
+	}, nil
+}
+
+// openRemoteWrite 远端后端写入入口（Create/STOR/APPE/REST 统一落点）。
+//
+// 策略（用户决策：后端不支持续传的存储先在本地缓存，完成后再写入后端）：
+// 对象存储（s3/oss/webdav）没有原地随机写/续传（OpenWriter 缓冲到 Close 才整对象提交），
+// 因此 FTP 的 STOR/APPE（追加）以及 REST（断点续传，需 Seek 到偏移）无法直接流式写远端。
+// 本方法在本地临时目录缓存完整文件（支持全量 Seek/WriteAt/Write、追加语义，避免大文件
+// 占满内存），FTP 传输全部落到缓存文件；Close 时经 st.OpenWriter 一次性写入远端后端，
+// 再由后端在 Close 时以整对象提交；随后执行操作记录与索引同步。
+func (fs *MultiRootFs) openRemoteWrite(st storage.Storage, name string, isPublic, isPrivate bool) (afero.File, error) {
+	rootName, subPath := fs.recordPath(name)
+	rootPath, ok := fs.publicRootPath(rootName)
+	if !ok {
+		return nil, os.ErrPermission
+	}
+
+	// 公开写入口：全局上传开关 + 按目录开关 + 扩展名白名单 + 磁盘空间。
+	if isPublic && !fs.canCreatePublic(rootName) {
+		return nil, os.ErrPermission
+	}
+	if err := fs.validateExtension(filepath.Base(name)); err != nil {
+		return nil, err
+	}
+	// 远端模式下 rootPath 是虚拟前缀：CheckDiskSpace 需要本地物理分区的可写路径用于检测，
+	// 这里传配置物理根路径的父目录（与 webdav openRemote 一致的降级）。
+	if fs.backend != nil {
+		if err := fs.backend.CheckDiskSpace(filepath.Dir(rootPath), 1); err != nil {
+			return nil, err
+		}
+		if isPrivate && fs.userUUID != "" {
+			if err := fs.backend.CheckPrivateQuota(fs.userUUID, 0); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// 本地临时缓存文件（系统临时目录）：提供完整的 Seek/WriteAt/追加语义，
+	// 避免对象存储不支持原地随机写的问题；本地缓存作为 *os.File 本身就是 afero.File。
+	cached, err := os.CreateTemp("", "ftp-*")
+	if err != nil {
+		return nil, err
+	}
+
+	// 叠加偏移感知的大小限制（与本地 wrapWriteFile 一致）。
+	var limited afero.File = cached
+	if fs.maxFileSize > 0 {
+		limited = &sizeLimitedFile{File: cached, maxSize: fs.maxFileSize}
+	}
+	rec := &remoteRecordingFile{
+		File:   limited,
+		cached: cached,
+		// Close 回调：写入远端（防覆盖 + 记录上传 + 索引同步）；本地缓存由 Close 统一清理。
+		onClose: func(size int64) error {
+			return fs.remoteUpload(cached, st, rootName, subPath, name, size, isPublic, isPrivate)
+		},
+	}
+	return rec, nil
+}
+
+// remoteUpload 把本地缓存文件一次性写入远端后端，并完成操作记录与索引同步。
+// 在 remoteRecordingFile.Close 中（缓存文件已 Seek 回开头）调用。
+func (fs *MultiRootFs) remoteUpload(cached *os.File, st storage.Storage, rootName, subPath, name string, size int64, isPublic, isPrivate bool) error {
+	// 远端写入前做防覆盖检查：公开目录仅允许新建（与 webdav 一致，替代本地 O_EXCL）。
+	if isPublic {
+		info, err := st.Stat(fs.ctx, subPath)
+		if err == nil && !info.IsDir {
+			return os.ErrPermission
+		}
+		if err != nil && !storage.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := fs.recordUpload(name, size, isPublic, isPrivate); err != nil {
+		return err
+	}
+	wc, err := st.OpenWriter(fs.ctx, subPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(wc, cached); err != nil {
+		wc.Close()
+		return err
+	}
+	return wc.Close()
+}
+
+// openRemoteRead 远端后端读取打开（OpenFile O_RDONLY 语义，RETR 用）。
+// 先 Stat 判存在与大小（记录下载 + 匿名限流），再 st.Open 返回按后端能力
+// 支持 Seek 的 storageReadFile（s3 完整支持 RETR+REST 续传；oss/webdav 降级顺序读）。
+func (fs *MultiRootFs) openRemoteRead(st storage.Storage, name, subPath string) (afero.File, error) {
+	info, err := st.Stat(fs.ctx, subPath)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir {
+		return nil, os.ErrInvalid // RETR 目录无意义；上层会回退到列表
+	}
+	if derr := fs.recordDownload(name, info.Size); derr != nil {
+		return nil, derr
+	}
+	rc, err := st.Open(fs.ctx, subPath)
+	if err != nil {
+		return nil, err
+	}
+	seeker, _ := rc.(io.Seeker)
+	return &storageReadFile{
+		rc:     rc,
+		seeker: seeker,
+		info:   &storageFileInfo{info: info},
+	}, nil
+}
+
+func (fs *MultiRootFs) recordUpload(name string, size int64, isPublic, isPrivate bool) error {
+	if fs.recordFn != nil {
+		rootName, relPath := fs.recordPath(name)
+		fs.recordFn("upload", relPath, filepath.Base(name), rootName, "", fs.clientIP, fs.userUUID, size)
+	}
+	if fs.backend == nil {
+		return nil
+	}
+	if isPublic {
+		rootName, relPath := fs.recordPath(name)
+		fs.backend.SyncPublicFile(rootName, relPath, fs.clientIP)
+		return nil
+	}
+	if isPrivate && fs.userUUID != "" {
+		_, relPath := fs.recordPath(name)
+		if err := fs.backend.AddPrivateFile(fs.userUUID, relPath, filepath.Base(name), size); err != nil {
+			utils.FTPWarn("FTP 私有上传写入索引失败",
+				utils.String("path", relPath),
+				utils.Err(err))
+			return err
+		}
+	}
+	return nil
+}
+
 func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	realPath, err := fs.resolvePath(name, "openfile")
 	if err != nil {
@@ -394,10 +637,19 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 	isWrite := flag&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_APPEND) != 0
 	isPublic := fs.isPublicPath(name)
 	isPrivate := fs.isPrivatePath(name)
+	rootName := ftpRootName(name)
+	_, subPath := fs.recordPath(name)
 
 	if isWrite {
+		// 远端后端：本地临时缓存 + Close 一次性写入远端（STOR/APPE/REST 全部落此分支）。
 		if isPublic {
-			if !fs.canCreatePublic(ftpRootName(name)) {
+			if st, remote := fs.storageFor(rootName); remote {
+				return fs.openRemoteWrite(st, name, isPublic, isPrivate)
+			}
+		}
+
+		if isPublic {
+			if !fs.canCreatePublic(rootName) {
 				return nil, os.ErrPermission
 			}
 			if err := fs.validateExtension(filepath.Base(name)); err != nil {
@@ -417,12 +669,22 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 			if existsOnDisk(realPath) {
 				return nil, os.ErrPermission
 			}
-		}
-		if err := fs.checkDiskSpace(realPath, isPrivate); err != nil {
-			return nil, err
+			if err := fs.checkDiskSpace(realPath, true); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := fs.checkDiskSpace(realPath, false); err != nil {
+				return nil, err
+			}
 		}
 	} else {
-		// 读模式（RETR）：打开成功后记录下载 + 匿名下载限流
+		// 读模式（RETR）：远端后端经 Storage 流式读取（Seek 按后端能力降级）。
+		if isPublic {
+			if st, remote := fs.storageFor(rootName); remote {
+				return fs.openRemoteRead(st, name, subPath)
+			}
+		}
+		// 本地后端（或私有路径）：打开成功后记录下载 + 匿名下载限流
 		f, err := afero.NewOsFs().OpenFile(realPath, flag, perm)
 		if err != nil {
 			return nil, err
@@ -496,11 +758,27 @@ func (fs *MultiRootFs) wrapWriteFile(f afero.File, name, realPath string, isPubl
 }
 
 func (fs *MultiRootFs) Remove(name string) error {
-	if fs.isPublicPath(name) {
+	isPublic := fs.isPublicPath(name)
+	if isPublic {
 		rootName, relPath := fs.recordPath(name)
 		if !fs.canManagePublic(rootName, relPath) {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.remove", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
+		}
+		if st, remote := fs.storageFor(rootName); remote {
+			// 远端后端：经 Storage 接口删除对象；先 Stat 确认存在（删除不存在的路径静默转移错误）。
+			_, err := st.Stat(fs.ctx, relPath)
+			if err != nil {
+				if storage.IsNotExist(err) {
+					return os.ErrNotExist
+				}
+				return err
+			}
+			if err := st.Remove(fs.ctx, relPath); err != nil {
+				return err
+			}
+			fs.recordRemove(name)
+			return nil
 		}
 	}
 	realPath, err := fs.resolvePath(name, "remove")
@@ -515,11 +793,25 @@ func (fs *MultiRootFs) Remove(name string) error {
 }
 
 func (fs *MultiRootFs) RemoveAll(name string) error {
-	if fs.isPublicPath(name) {
+	isPublic := fs.isPublicPath(name)
+	if isPublic {
 		rootName, relPath := fs.recordPath(name)
 		if !fs.canManagePublic(rootName, relPath) {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.removeall", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
+		}
+		if st, remote := fs.storageFor(rootName); remote {
+			if _, err := st.Stat(fs.ctx, relPath); err != nil {
+				if storage.IsNotExist(err) {
+					return os.ErrNotExist
+				}
+				return err
+			}
+			if err := st.RemoveAll(fs.ctx, relPath); err != nil {
+				return err
+			}
+			fs.recordRemove(name)
+			return nil
 		}
 	}
 	realPath, err := fs.resolvePath(name, "removeall")
@@ -583,6 +875,26 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.rename", oldName, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
+		// 远端后端：经 Storage 接口重命名（对象存储 CopyObject+RemoveObject 模拟移动）。
+		if st, remote := fs.storageFor(oldRoot); remote {
+			// 目标已存在（文件或目录）→ 拒绝覆盖（远端经 Storage Stat 判定，替代磁盘 existsOnDisk）
+			if _, serr := st.Stat(fs.ctx, newRel); serr == nil {
+				return os.ErrExist
+			} else if !storage.IsNotExist(serr) {
+				return serr
+			}
+			if err := st.Rename(fs.ctx, oldRel, newRel); err != nil {
+				return err
+			}
+			if fs.recordFn != nil {
+				fs.recordFn("rename", newRel, filepath.Base(newName), newRoot, "", fs.clientIP, fs.userUUID, 0)
+			}
+			if fs.backend == nil {
+				return nil
+			}
+			fs.backend.MovePublicFile(oldRoot, oldRel, newRel)
+			return nil
+		}
 	}
 	// 目标已存在（文件或目录）→ 拒绝覆盖
 	if existsOnDisk(newPath) {
@@ -637,16 +949,21 @@ func (fs *MultiRootFs) Stat(name string) (os.FileInfo, error) {
 		subParts := strings.SplitN(rest, "/", 2)
 		if len(subParts) == 1 {
 			// Stat on a root name directory (/public/photos)
-			rootPath, ok := fs.rootNames[subParts[0]]
-			if ok {
-				fi, err := afero.NewOsFs().Stat(rootPath)
-				if err != nil || !fi.IsDir() {
-					// 根目录在磁盘上不存在/不可访问时按不存在处理（避免幽灵目录）
-					return nil, os.ErrNotExist
-				}
-				return fi, nil
+			rootName := subParts[0]
+			rootPath, ok := fs.rootNames[rootName]
+			if !ok {
+				return nil, os.ErrNotExist
 			}
-			return nil, os.ErrNotExist
+			// 远端后端：根目录恒视为存在（对象存储无真实物理目录，磁盘 Stat 恒失败）。
+			if _, remote := fs.storageFor(rootName); remote {
+				return &virtualDirInfo{name: rootName}, nil
+			}
+			fi, err := afero.NewOsFs().Stat(rootPath)
+			if err != nil || !fi.IsDir() {
+				// 根目录在磁盘上不存在/不可访问时按不存在处理（避免幽灵目录）
+				return nil, os.ErrNotExist
+			}
+			return fi, nil
 		}
 	}
 
@@ -701,9 +1018,13 @@ func (fs *MultiRootFs) readDir(name string) ([]os.FileInfo, error) {
 
 	// /public → list root names (photos, documents, etc.)
 	if prefix == "public" && rest == "" {
-		// 只列出磁盘上真实存在的根目录，避免幽灵目录
+		// 远端后端（对象存储/远端 WebDAV）恒列出（无真实物理目录）；本地只列磁盘真实存在的根
 		entries := make([]os.FileInfo, 0, len(fs.rootNames))
 		for name, rootPath := range fs.rootNames {
+			if _, remote := fs.storageFor(name); remote {
+				entries = append(entries, &virtualDirInfo{name: name})
+				continue
+			}
 			if fi, err := afero.NewOsFs().Stat(rootPath); err == nil && fi.IsDir() {
 				entries = append(entries, &virtualDirInfo{name: name})
 			}
@@ -782,11 +1103,18 @@ func (a *ftpDriverAdapter) Open(name string) (afero.File, error) {
 	if prefix == "public" {
 		subParts := strings.SplitN(rest, "/", 2)
 		if len(subParts) == 1 {
-			// Just a root name — virtual directory listing (仅磁盘存在的根)
-			if rootPath, ok := a.fs.rootNames[subParts[0]]; ok {
-				if fi, err := afero.NewOsFs().Stat(rootPath); err == nil && fi.IsDir() {
-					return &virtualDir{fs: a.fs, name: name}, nil
-				}
+			// Just a root name — virtual directory listing
+			// （远端后端恒视为存在；本地要求磁盘真实存在的根，避免幽灵目录）
+			rootName := subParts[0]
+			rootPath, ok := a.fs.rootNames[rootName]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			if _, remote := a.fs.storageFor(rootName); remote {
+				return &virtualDir{fs: a.fs, name: name}, nil
+			}
+			if fi, err := afero.NewOsFs().Stat(rootPath); err == nil && fi.IsDir() {
+				return &virtualDir{fs: a.fs, name: name}, nil
 			}
 			return nil, os.ErrNotExist
 		}
@@ -948,6 +1276,51 @@ func (f *recordingFile) Close() error {
 		return f.onClose(size)
 	}
 	return nil
+}
+
+// remoteRecordingFile 远端写入的本地缓存文件包装：FTP 传输全部落到本地临时文件
+// （支持完整 Seek/WriteAt/追加/续传语义），Close 时经 remoteUpload 一次性写入远端
+// 后端，再清理本地缓存。返回值错误（如配额超限/远端写入失败）回传 FTP 客户端。
+type remoteRecordingFile struct {
+	afero.File            // 缓存文件（*os.File 链 sizeLimitedFile），继承全部读写方法
+	cached    *os.File    // 本地缓存真实句柄：Close 前 Seek 回开头 + 清理用
+	onClose   func(size int64) error
+	closed    bool
+}
+
+func (f *remoteRecordingFile) Close() error {
+	if f.closed {
+		return f.File.Close()
+	}
+	f.closed = true
+	// 回到文件开头，使 remoteUpload 的 io.Copy(wc, rec.cached) 从偏移 0 读出全部内容。
+	if _, err := f.cached.Seek(0, 0); err != nil {
+		return err
+	}
+	size := int64(0)
+	if fi, serr := f.cached.Stat(); serr == nil {
+		size = fi.Size()
+	}
+	// 远端写入期间缓存文件必须保持打开（io.Copy 依赖 rec.cached 句柄）。
+	var upErr error
+	if f.onClose != nil {
+		upErr = f.onClose(size)
+	}
+	// 远端写入完成后关闭并清理本地临时缓存（无论成败都清理）。
+	closeErr := f.File.Close()
+	os.Remove(f.cached.Name())
+	if upErr != nil {
+		return upErr
+	}
+	return closeErr
+}
+
+func (f *remoteRecordingFile) Sync() error {
+	return f.File.Sync()
+}
+
+func (f *remoteRecordingFile) Name() string {
+	return f.File.Name()
 }
 
 // virtualDirInfo implements os.FileInfo for virtual directories.

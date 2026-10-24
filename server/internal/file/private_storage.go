@@ -65,6 +65,11 @@ func (st *PrivateStorage) Paths(session *models.UploadSession) (targetPath strin
 	return
 }
 
+// ChunkObjectPaths 私有上传恒为本地后端，不参与远端分片降级。
+func (*PrivateStorage) ChunkObjectPaths(_ *models.UploadSession, _ int) (dirPath string, objectPath string, ok bool) {
+	return "", "", false
+}
+
 // cleanPrivateDir 清洗私有子目录段：禁止绝对路径/上级跳转，返回清理后的相对目录。
 func cleanPrivateDir(d string) (string, error) {
 	d = strings.TrimSpace(d)

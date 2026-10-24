@@ -87,16 +87,18 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
-| GET | `/api/v1/web/files/list` | `file.Handler.ListDirectories` | 目录列表 | 无 |
-| GET | `/api/v1/web/files/preview/*path` | `file.PreviewHandler.PreviewFile` | 文件预览 | 无 |
-| GET | `/api/v1/web/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 无 |
-| GET | `/api/v1/web/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 无 |
-| GET | `/api/v1/web/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 无 |
-| GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 无 |
-| GET | `/api/v1/web/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 无 |
+| GET | `/api/v1/web/files/list` | `file.Handler.ListDirectories` | 目录列表 | 受强制登录开关控制 |
+| GET | `/api/v1/web/files/preview/*path` | `file.PreviewHandler.PreviewFile` | 文件预览 | 受强制登录开关控制 |
+| GET | `/api/v1/web/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 受强制登录开关控制 |
+| GET | `/api/v1/web/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 受强制登录开关控制 |
+| GET | `/api/v1/web/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 受强制登录开关控制 |
+| GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 受强制登录开关控制 |
+| GET | `/api/v1/web/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 受强制登录开关控制 |
 | POST | `/api/v1/web/files/rename` | `file.FileHandlers.RenamePublicFileHandler` | 重命名文件 | JWT（上传者IP一致或管理员） |
 | POST | `/api/v1/web/files/move` | `file.FileHandlers.MoveFileHandler` | 移动文件 | JWT（上传者IP一致或管理员） |
 | DELETE | `/api/v1/web/files/delete` | `file.FileHandlers.DeleteFileHandler` | 删除文件 | JWT（上传者IP一致或管理员） |
+
+> **说明**：「受强制登录开关控制」的接口在 `account.require_login=false`（默认）时匿名可访问；开启后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。搜索联想（`/search-suggest`、`/search-spellcheck`、`/search-related`）为匿名例外。详见 docs/01「13. 强制登录（LoginGate）」。
 
 ### 目录列表
 
@@ -155,7 +157,7 @@ data: {"total":2,"matched":2}
 
 ## 分片上传
 
-无需认证，支持断点续传。
+无需认证，支持断点续传（开启强制登录 `account.require_login` 后需携带登录令牌）。
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
@@ -449,7 +451,7 @@ Content-Type: application/json
 | GET | `/api/v1/web/setup/default-config` | `setup.Handler.GetDefaultConfig` | 获取默认配置 | 无 |
 | GET | `/api/v1/web/config` | `config.Handler.GetConfig` | 获取系统配置 | JWT+Admin |
 | POST | `/api/v1/web/config` | `config.Handler.SaveConfig` | 保存系统配置 | JWT+Admin |
-| GET | `/api/v1/web/options` | `config.Handler.GetOptions` | 获取公开配置选项 | 无 |
+| GET | `/api/v1/web/options` | `config.Handler.GetOptions` | 获取公开配置选项 | 无（匿名例外，含 `account.requireLogin`） |
 | POST | `/api/v1/web/config/reload` | `config.Handler.ReloadConfig` | 重新加载配置 | JWT+Admin |
 
 ---
@@ -526,7 +528,7 @@ GET /api/v1/web/monitor/storage
 
 ## CLI 接口
 
-需要 JWT 认证。
+默认匿名可访问；开启强制登录（`account.require_login`）后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外。
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
@@ -598,6 +600,7 @@ Content-Type: application/json
 |--------|------|
 | `AuthRequired()` | 需要有效JWT Token |
 | `AuthOptional()` | 可选认证（有Token解析但不强制） |
+| `LoginGate(whiteList...)` | 强制登录闸门：开启 `account.require_login` 后拦截未认证请求，白名单命中者匿名放行（认证入口、`/setup/`、`/temp/`、`/share/:code`、`/options`、健康检查、搜索联想、CLI 脚本等） |
 | `RequireAdmin()` | 需要管理员角色 |
 | `APIKeyAuth()` | 需要有效的 API Key |
 | `TokenRefreshMiddleware()` | 自动刷新即将过期的Token |

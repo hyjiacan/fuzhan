@@ -14,6 +14,7 @@ import (
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
 	"fuzhan/internal/security"
+	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
 
 	ftpserver "github.com/fclairamb/ftpserverlib"
@@ -58,6 +59,7 @@ type FTPHandler struct {
 	authUser   AuthUserFunc
 	recordFn   ftpfs.OperationRecordFunc
 	backend    ftpfs.FtpBackend
+	storages   map[string]storage.Storage
 }
 
 // NewFTPHandler 创建 FTP 处理器
@@ -80,6 +82,11 @@ func (h *FTPHandler) SetBackend(backend ftpfs.FtpBackend) {
 	h.backend = backend
 }
 
+// SetStorages 设置远端存储后端映射（rootName → storage.Storage）
+func (h *FTPHandler) SetStorages(storages map[string]storage.Storage) {
+	h.storages = storages
+}
+
 // ftpDriver FTP驱动实现
 type ftpDriver struct {
 	rootDirs       map[string]string
@@ -87,6 +94,7 @@ type ftpDriver struct {
 	authUser       AuthUserFunc
 	recordFn       ftpfs.OperationRecordFunc
 	backend        ftpfs.FtpBackend
+	storages       map[string]storage.Storage
 	host           string
 	port           int
 	tlsCfg         *tls.Config
@@ -233,6 +241,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 			utils.String("user", user),
 			utils.String("ip", clientIP))
 		multiFs := ftpfs.NewMultiRootFs(d.rootDirs, "", "", clientIP, d.recordFn, d.backend)
+		multiFs.SetStorages(d.storages)
 		return &ftpClientDriver{Fs: multiFs.ClientDriver()}, nil
 	}
 
@@ -278,6 +287,7 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		utils.String("user", user),
 		utils.String("ip", clientIP))
 	multiFs := ftpfs.NewMultiRootFs(d.rootDirs, d.privateDir, uuid, clientIP, d.recordFn, d.backend)
+	multiFs.SetStorages(d.storages)
 	return &ftpClientDriver{Fs: multiFs.ClientDriver()}, nil
 }
 
@@ -373,6 +383,7 @@ func (h *FTPHandler) startOne(host string, port int, ftpCfg appconfig.FTPConfig,
 		authUser:       h.authUser,
 		recordFn:       h.recordFn,
 		backend:        h.backend,
+		storages:       h.storages,
 		host:           host,
 		port:           port,
 		tlsCfg:         tlsCfg,

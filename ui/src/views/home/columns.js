@@ -1,6 +1,7 @@
 import { h } from 'vue'
 import { ElButton } from 'element-plus'
 import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { downloadWithTicket, TicketMode } from '@/utils/download'
 import { keyNav } from '@/utils/a11y'
 import { isPreviewable } from '@/config/preview'
 import { highlightKeyword } from './highlight'
@@ -40,7 +41,6 @@ export function createColumns(ctx) {
     const isLatest = latestVersionPaths.value.has(row.path)
     const dirPath = row.path
     const downloadFullPath = row.path
-    const fileHref = `/download/${PathUtils.encodeFilePath(downloadFullPath)}`
     const isPreview = canPreview(row)
     const fullPath = row.path || ''
     const segments = fullPath.split('/').filter(Boolean)
@@ -65,7 +65,7 @@ export function createColumns(ctx) {
           }
         }, highlight(fileName))
         : h('a', {
-          href: fileHref,
+          href: isPreview ? undefined : `/download/${PathUtils.encodeFilePath(downloadFullPath)}`,
           class: isLatest ? 'file-link latest-version' : 'file-link',
           onClick: (e) => {
             if (isPreview) {
@@ -73,8 +73,10 @@ export function createColumns(ctx) {
               previewFile(row)
               return
             }
-            // 非预览：允许默认下载行为，稍后刷新列表更新下载次数
-            refreshAfterDownload()
+            // 非预览：换一次性票据后新标签原生下载（登录凭证不放 URL，故不能直接 href）
+            e.preventDefault()
+            downloadWithTicket(`/download/${PathUtils.encodeFilePath(downloadFullPath)}`)
+              .then(() => refreshAfterDownload())
           }
         }, highlight(fileName))
     ]
@@ -113,7 +115,7 @@ export function createColumns(ctx) {
             }
           }, highlight(fileName))
           : h('a', {
-            href: fileHref,
+            href: isPreview ? undefined : `/download/${PathUtils.encodeFilePath(downloadFullPath)}`,
             class: 'file-link',
             onClick: (e) => {
               if (isPreview) {
@@ -121,7 +123,9 @@ export function createColumns(ctx) {
                 previewFile(row)
                 return
               }
-              refreshAfterDownload()
+              e.preventDefault()
+              downloadWithTicket(`/download/${PathUtils.encodeFilePath(downloadFullPath)}`)
+                .then(() => refreshAfterDownload())
             }
           }, highlight(fileName))
       ])

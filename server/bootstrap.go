@@ -28,6 +28,7 @@ import (
 	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/setup"
+	"fuzhan/internal/storage"
 	temph "fuzhan/internal/temp"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
@@ -123,12 +124,21 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 
 	// ===== 启动阶段3: 服务初始化 =====
 	utils.Info("[启动] 阶段3: 服务初始化")
+
+	// 构建公开多根目录的存储后端映射（rootName → Storage）。
+	// 本地后端：rootPath 为磁盘根目录；远端后端：rootPath 为虚拟前缀。
+	publicStorages, storErr := buildPublicStorages(&cfg)
+	if storErr != nil {
+		return nil, true
+	}
+
 	// 使用 ServiceBuilder 明确服务依赖顺序
 	serviceDeps := services.BuildAllServices(
 		db,
 		appconfig.RootNames,
 		cfg.Storage.Temp.Path,
 		cfg.Storage.Private.Path,
+		publicStorages,
 	)
 
 	// 从构建结果中获取服务实例
@@ -226,7 +236,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	authMiddleware := middleware.NewAuthMiddleware(db)
 
 	// 创建处理器
-	baseHandler := file.NewBaseHandler(&cfg, indexService, recordRepo)
+	baseHandler := file.NewBaseHandler(&cfg, indexService, recordRepo, publicStorages)
 	fileHandlers := file.NewFileHandlers(baseHandler, fileService, db)
 	downloadHandlers := file.NewDownloadHandlers(downloadService)
 	searchHandlers := file.NewSearchHandlers(searchService, recordRepo)
@@ -239,7 +249,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 
 	// 上传会话处理器
 	chunkSize := cfg.Upload.ChunkSize
-	uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService)
+	uploadSessionSvc := services.NewUploadSessionService(db, chunkSize, indexService).WithPublicStorages(publicStorages)
 	taskService := services.NewTaskService(db)
 	// 启动对账：先把上一进程遗留的 pending/running 任务收尾为"进程重启中断"，
 	// 再启动扫描/哈希等任务，避免系统作业页残留"运行中"僵死记录。
@@ -302,6 +312,9 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	taskHandler := admin.NewTaskHandler(taskService)
 	// 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
 	indexService.SetTaskService(taskService)
+	// 将公开多根目录的存储后端注入索引服务（远端后端供扫描/哈希/一致性校验/增量同步使用；
+	// 本地后端不注入时保持 rootNames 物理路径语义）
+	indexService.SetStorages(publicStorages)
 
 	// ===== 文件名检索索引（自动补全 / 拼写纠错）=====
 	// 数据存放于 <data>/search_index，用于 HomeView 搜索框的下拉联想与纠错。
@@ -436,12 +449,50 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		idxSearch:                idxSearch,
 		resourceCollector:        resourceCollector,
 		ldapService:              ldapService,
+		publicStorages:           publicStorages,
 	}
 
 	// ===== 启动阶段4: 路由设置 =====
 	utils.Info("[启动] 阶段4: 路由设置完成")
 
 	return rt, false
+}
+
+// buildPublicStorages 根据配置的存储后端为每个公开根目录创建对应的 Storage 实例。
+// 本地后端直接使用物理根路径；远端后端使用虚拟前缀 + 连接配置。
+func buildPublicStorages(cfg *appconfig.Config) (map[string]storage.Storage, error) {
+	storages := make(map[string]storage.Storage, len(appconfig.RootNames))
+
+	conn := storage.ConnConfig{
+		Endpoint:       cfg.Storage.S3.Endpoint,
+		AccessKey:      cfg.Storage.S3.AccessKey,
+		SecretKey:      cfg.Storage.S3.SecretKey,
+		Bucket:         cfg.Storage.S3.Bucket,
+		Region:         cfg.Storage.S3.Region,
+		UseSSL:         cfg.Storage.S3.UseSSL,
+		WebDAVURL:      cfg.Storage.WebDAV.URL,
+		WebDAVUsername: cfg.Storage.WebDAV.Username,
+		WebDAVPassword: cfg.Storage.WebDAV.Password,
+	}
+
+	for rootName, rootPath := range appconfig.RootNames {
+		st, err := storage.NewStorageFromConfig(cfg.Storage.Backend, rootPath, conn)
+		if err != nil {
+			utils.Error("创建存储后端失败",
+				utils.String("root", rootName),
+				utils.String("backend", cfg.Storage.Backend),
+				utils.Err(err))
+			return nil, err
+		}
+		storages[rootName] = st
+	}
+
+	if appconfig.StorageBackendIsRemote() {
+		utils.Info("存储后端已切换为远端模式",
+			utils.String("backend", cfg.Storage.Backend),
+			utils.Int("roots", len(storages)))
+	}
+	return storages, nil
 }
 
 // createAdminUser 创建或更新管理员用户（-create-admin 命令行入口）

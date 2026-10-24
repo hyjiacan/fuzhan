@@ -34,6 +34,10 @@ func readConfig() {
 			Temp              TempFilesConfigWithStringQuota      `yaml:"temp"`
 			Private           PrivateStorageConfigWithStringQuota `yaml:"private"`
 			AllowedExtensions []string                            `yaml:"allowed_extensions"`
+			Backend           string                              `yaml:"backend"`
+			S3                S3StorageConfig                     `yaml:"s3,omitempty"`
+			OSS               OSSStorageConfig                    `yaml:"oss,omitempty"`
+			WebDAV            WebDAVStorageConfig                 `yaml:"webdav,omitempty"`
 		} `yaml:"storage"`
 		Upload struct {
 			Enabled     *bool                 `yaml:"enabled"` // 指针: nil=未设置, 按默认值 true
@@ -63,6 +67,10 @@ func readConfig() {
 	GlobalConfig.Server = tempConfig.Server
 	GlobalConfig.Account = tempConfig.Account
 	GlobalConfig.Storage.AllowedExtensions = tempConfig.Storage.AllowedExtensions
+	GlobalConfig.Storage.Backend = tempConfig.Storage.Backend
+	GlobalConfig.Storage.S3 = tempConfig.Storage.S3
+	GlobalConfig.Storage.OSS = tempConfig.Storage.OSS
+	GlobalConfig.Storage.WebDAV = tempConfig.Storage.WebDAV
 
 	// 转换根目录配额
 	for _, dirConfig := range tempConfig.Storage.Public.RootDirs {
@@ -220,6 +228,43 @@ func validateConfig() {
 			utils.String("file", ConfigPath))
 	}
 
+	// 存储后端：未配置时默认 local；非法值直接终止
+	if GlobalConfig.Storage.Backend == "" {
+		GlobalConfig.Storage.Backend = StorageBackendLocal
+	}
+	switch GlobalConfig.Storage.Backend {
+	case StorageBackendLocal, StorageBackendS3, StorageBackendMinIO, StorageBackendOSS, StorageBackendWebDAV:
+		// 合法值
+	default:
+		utils.Fatal("配置错误: storage.backend 取值非法",
+			utils.String("file", ConfigPath),
+			utils.String("backend", GlobalConfig.Storage.Backend),
+			utils.String("hint", "支持值: local / s3 / minio / oss / webdav"))
+	}
+
+	// 远端后端必须配置连接信息
+	if StorageBackendIsRemote() {
+		switch GlobalConfig.Storage.Backend {
+		case StorageBackendS3, StorageBackendMinIO:
+			if GlobalConfig.Storage.S3.Endpoint == "" || GlobalConfig.Storage.S3.AccessKey == "" ||
+				GlobalConfig.Storage.S3.SecretKey == "" || GlobalConfig.Storage.S3.Bucket == "" {
+				utils.Fatal("配置错误: 使用 s3/minio 后端时必须配置 storage.s3.endpoint/access_key/secret_key/bucket",
+					utils.String("file", ConfigPath))
+			}
+		case StorageBackendOSS:
+			if GlobalConfig.Storage.OSS.Endpoint == "" || GlobalConfig.Storage.OSS.AccessKey == "" ||
+				GlobalConfig.Storage.OSS.SecretKey == "" || GlobalConfig.Storage.OSS.Bucket == "" {
+				utils.Fatal("配置错误: 使用 oss 后端时必须配置 storage.oss.endpoint/access_key/secret_key/bucket",
+					utils.String("file", ConfigPath))
+			}
+		case StorageBackendWebDAV:
+			if GlobalConfig.Storage.WebDAV.URL == "" {
+				utils.Fatal("配置错误: 使用 webdav 后端时必须配置 storage.webdav.url",
+					utils.String("file", ConfigPath))
+			}
+		}
+	}
+
 	// 默认允许上传
 	if !GlobalConfig.Upload.Enabled {
 		utils.Info("配置: 公共目录上传已关闭")
@@ -254,16 +299,18 @@ func initRootNames(isSetup bool) {
 		GlobalConfig.Storage.Public.RootDirs[i].Path = expanded
 		rootDirConfig.Path = expanded
 
-		// 检查根目录是否存在
-		if _, err := os.Stat(rootDirConfig.Path); os.IsNotExist(err) {
-			if isSetup {
-				// 初始化引导阶段，记录警告但不阻止启动
-				utils.Warn("配置的根目录不存在（将在设置引导中配置）",
-					utils.String("path", rootDirConfig.Path))
-			} else {
-				utils.Fatal("配置的根目录不存在", utils.String("path", rootDirConfig.Path), utils.String("reason", "请检查配置文件"))
+		// 检查根目录是否存在（远端存储为虚拟前缀，跳过本地磁盘存在性校验）
+		if !StorageBackendIsRemote() {
+			if _, err := os.Stat(rootDirConfig.Path); os.IsNotExist(err) {
+				if isSetup {
+					// 初始化引导阶段，记录警告但不阻止启动
+					utils.Warn("配置的根目录不存在（将在设置引导中配置）",
+						utils.String("path", rootDirConfig.Path))
+				} else {
+					utils.Fatal("配置的根目录不存在", utils.String("path", rootDirConfig.Path), utils.String("reason", "请检查配置文件"))
+				}
+				continue
 			}
-			continue
 		}
 		dirName := filepath.Base(rootDirConfig.Path)
 		if dirName == "." || dirName == "" || dirName == string(os.PathSeparator) || dirName == ".." || dirName == "/" {
@@ -294,6 +341,13 @@ func initTempDirectories(isSetup bool) {
 	// 展开 ${work_dir} 占位符
 	GlobalConfig.Storage.Private.Path = ExpandWorkDirPath(GlobalConfig.Storage.Private.Path)
 	GlobalConfig.Storage.Temp.Path = ExpandWorkDirPath(GlobalConfig.Storage.Temp.Path)
+
+	// 远端存储为虚拟前缀，跳过本地目录创建
+	if StorageBackendIsRemote() {
+		utils.Info("远端存储后端已启用，跳过私有/临时文件本地目录初始化",
+			utils.String("backend", GlobalConfig.Storage.Backend))
+		return
+	}
 
 	// 确保临时文件根目录存在
 	if err := os.MkdirAll(GlobalConfig.Storage.Private.Path, 0755); err != nil {

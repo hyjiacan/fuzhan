@@ -218,7 +218,8 @@ const settings = reactive({
   account: {
     anonymous: { username: 'public' },
     reservedUsernames: [],
-    allowRegistration: false
+    allowRegistration: false,
+    requireLogin: false
   },
   server: {
     host: '0.0.0.0',
@@ -403,7 +404,8 @@ const loadSettings = async () => {
       settings.account = {
         anonymous: { username: cfg.account?.anonymous?.username || 'public' },
         reservedUsernames: cfg.account?.reservedUsernames || [],
-        allowRegistration: cfg.account?.allowRegistration ?? false
+        allowRegistration: cfg.account?.allowRegistration ?? false,
+        requireLogin: cfg.account?.requireLogin ?? false
       }
       settings.server.webdav = {
         enabled: cfg.server?.webdav?.enabled ?? false
@@ -631,7 +633,8 @@ const doSaveSettings = async () => {
       account: {
         anonymous: { username: settings.account.anonymous.username },
         reservedUsernames: settings.account.reservedUsernames,
-        allowRegistration: settings.account.allowRegistration
+        allowRegistration: settings.account.allowRegistration,
+        requireLogin: settings.account.requireLogin
       },
       server: {
         host: settings.server.host,
@@ -747,6 +750,7 @@ const doSaveSettings = async () => {
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
             allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
+            requireLogin: optionsRes.data.account?.requireLogin ?? false,
             anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || 'public'
           })
         }

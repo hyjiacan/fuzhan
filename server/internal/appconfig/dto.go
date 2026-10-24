@@ -214,6 +214,7 @@ type AccountResponse struct {
 	Anonymous         AnonymousResponse `json:"anonymous"`
 	ReservedUsernames []string          `json:"reservedUsernames"`
 	AllowRegistration bool              `json:"allowRegistration"` // 是否允许用户自行注册
+	RequireLogin      bool              `json:"requireLogin"`      // 是否强制登录：开启后 Web 界面仅登录用户可交互
 }
 
 // AnonymousResponse 匿名用户 DTO
@@ -312,6 +313,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			},
 			ReservedUsernames: c.Account.ReservedUsernames,
 			AllowRegistration: c.Account.AllowRegistration,
+			RequireLogin:      c.Account.RequireLogin,
 		},
 		Server: ServerResponse{
 			Host: c.Server.Host,
@@ -499,6 +501,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Account.Anonymous.Username = dto.Account.Anonymous.Username
 	cfg.Account.ReservedUsernames = dto.Account.ReservedUsernames
 	cfg.Account.AllowRegistration = dto.Account.AllowRegistration
+	cfg.Account.RequireLogin = dto.Account.RequireLogin
 
 	cfg.Database.Driver = dto.Database.Driver
 	cfg.Database.DSN = dto.Database.DSN

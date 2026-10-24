@@ -682,40 +682,73 @@ function onRangeChange() {
   loadHistory()
 }
 
-// ============ 实时通道：SSE 优先，失败/不支持时降级为轮询 ============
-let sse = null
+// ============ 实时通道：SSE（fetch 流式）优先，失败/不支持时降级为轮询 ============
+// EventSource 无法自定义请求头（登录凭证只走 Authorization，不进 URL），故改用
+// fetch 流式读取，按 "data: {json}\n\n" 帧解析；断流/连续失败 ≥2 次则降级轮询。
+const SSE_URL = '/api/v1/web/admin/resource/stream'
+let sseCtrl = null       // AbortController，停止时中断 fetch 流
+let sseReader = null
 let sseErrors = 0
 let pollTimer = null
 
 function startSSE() {
-  if (typeof window === 'undefined' || !window.EventSource) { startPolling(); return }
+  if (typeof window === 'undefined' || !window.fetch) { startPolling(); return }
   if (!localStorage.getItem('token')) { startPolling(); return }
   stopPolling()
-  try {
-    sse = new EventSource(ResourceApi.streamUrl())
-  } catch {
-    sse = null
-    startPolling()
-    return
-  }
-  realtimeMode.value = 'sse'
-  sse.onopen = () => { sseErrors = 0 }
-  sse.onmessage = (ev) => {
-    sseErrors = 0
-    try { applyRealtime(JSON.parse(ev.data)) } catch { /* 忽略异常帧 */ }
-  }
-  sse.onerror = () => {
-    // EventSource 断线会自动重连；连续失败则降级为轮询，避免无谓重连
-    sseErrors += 1
-    if (sseErrors >= 2) {
-      stopSSE()
-      startPolling()
+  const ctrl = new AbortController()
+  sseCtrl = ctrl
+  const token = localStorage.getItem('token') || ''
+  fetch(SSE_URL, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(async (resp) => {
+    if (ctrl.signal.aborted) return
+    if (!resp.ok || !resp.body) {
+      if (++sseErrors >= 2) { stopSSE(); startPolling() }
+      return
     }
-  }
+    realtimeMode.value = 'sse'
+    sseErrors = 0
+    const reader = resp.body.getReader()
+    sseReader = reader
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done || ctrl.signal.aborted) break
+        buffer += decoder.decode(value, { stream: true })
+        // 按 SSE 帧分隔（data: ...\n\n）逐帧解析，丢给 applyRealtime
+        let sep
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          const line = block
+            .split('\n')
+            .find((l) => l.startsWith('data:'))
+          if (!line) continue
+          try { applyRealtime(JSON.parse(line.slice(5).trim())) } catch { /* 忽略异常帧 */ }
+          sseErrors = 0
+        }
+      }
+    } catch (err) {
+      // 主动中止忽略；网络中断计入连续失败
+      if (!ctrl.signal.aborted) {
+        if (++sseErrors >= 2) { stopSSE(); startPolling() }
+      }
+    } finally {
+      if (ctrl.signal.aborted) return
+      // 正常 EOF（服务端关闭）或解码层异常：视为断流
+      if (++sseErrors >= 2) { stopSSE(); startPolling() }
+    }
+  }).catch(() => {
+    if (ctrl.signal.aborted) return
+    if (++sseErrors >= 2) { stopSSE(); startPolling() }
+  })
 }
 
 function stopSSE() {
-  if (sse) { sse.close(); sse = null }
+  if (sseCtrl) { sseCtrl.abort(); sseCtrl = null }
+  sseReader = null
   sseErrors = 0
 }
 

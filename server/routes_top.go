@@ -34,6 +34,9 @@ func (rt *runCtx) buildWebDAVHandler(prefix string) (http.Handler, webdav.UserAu
 
 	publicFS := webdav.NewPublicFileSystem(appconfig.RootNames)
 	publicFS.SetBackend(wdService)
+	// 注入公开多根目录的存储后端映射：远端后端（s3/minio/oss/webdav）经 Storage
+	// 接口访问对象存储，本地后端不注入（保持物理路径语义）
+	publicFS.SetStorages(rt.publicStorages)
 
 	var unifiedFS *webdav.UnifiedFileSystem
 	if rt.cfg.Storage.Private.Enabled {
