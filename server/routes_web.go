@@ -82,7 +82,6 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	{
 		private.GET("/files", privateStorageHandler.List)
 		private.GET("/quota", privateUploadHandler.QuotaHandler)
-		private.POST("/upload", privateStorageHandler.Upload) // 简单上传
 		private.DELETE("/files/:code", privateStorageHandler.Delete)
 
 		// 私有存储分片上传路由

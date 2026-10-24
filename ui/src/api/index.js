@@ -557,17 +557,6 @@ export const PrivateApi = {
     return request.get('/private/files', { params: { path: dir || undefined } })
   },
 
-  upload(file, { expireDate } = {}) {
-    const formData = new FormData()
-    formData.append('file', file)
-    if (expireDate) {
-      formData.append('expireDate', expireDate)
-    }
-    return request.post('/private/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-  },
-
   delete(code) {
     return request.delete(`/private/files/${code}`, { skipSuccessToast: true })
   },

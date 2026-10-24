@@ -2,7 +2,6 @@ package file
 
 import (
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -52,93 +51,6 @@ func isValidShareCode(code string) bool {
 		}
 	}
 	return true
-}
-
-// Upload 私有文件上传（简单上传，落真实文件名）
-func (h *PrivateStorageHandlers) Upload(c *gin.Context) {
-	userID, err := h.getUserUUID(c)
-	if err != nil {
-		utils.HandleUnauthorized(c, "用户未认证")
-		return
-	}
-
-	fh, header, err := c.Request.FormFile("file")
-	if err != nil {
-		middleware.LogOperation(c, "private.upload", "", fmt.Errorf("获取文件失败"))
-		utils.HandleBadRequest(c, "获取文件失败", nil)
-		return
-	}
-	defer fh.Close()
-
-	basePath := configPkg.GlobalConfig.Storage.Private.Path
-	userDir := GetPrivateUserPath(basePath, userID)
-	if err := os.MkdirAll(userDir, 0755); err != nil {
-		utils.HandleInternalServerError(c, "创建目录失败")
-		return
-	}
-
-	// 简单上传固定落到用户根目录；名称经净化后作为真实文件名。
-	cleanFilename := filepath.Base(filepath.Clean(header.Filename))
-	if cleanFilename == "." || strings.Contains(cleanFilename, "..") {
-		utils.HandleBadRequest(c, "无效的文件名", nil)
-		return
-	}
-	targetPath := filepath.Join(userDir, cleanFilename)
-	if _, err := os.Stat(targetPath); err == nil {
-		utils.HandleErrorCompat(c, http.StatusConflict, "同名文件已存在，请使用其他名称", nil)
-		return
-	}
-
-	out, err := os.Create(targetPath)
-	if err != nil {
-		utils.HandleInternalServerError(c, "创建文件失败")
-		return
-	}
-	fileSize, copyErr := io.Copy(out, fh)
-	closeErr := out.Close()
-	if copyErr != nil {
-		os.Remove(targetPath)
-		utils.HandleInternalServerError(c, "保存文件失败")
-		return
-	}
-	if closeErr != nil {
-		utils.HandleInternalServerError(c, "保存文件失败")
-		return
-	}
-
-	code, err := GenerateShareCode()
-	if err != nil {
-		os.Remove(targetPath)
-		utils.HandleInternalServerError(c, "生成分享码失败")
-		return
-	}
-
-	now := utils.Now()
-	rec := &models.FileRecordPrivate{ShareCode: code}
-	rec.FileName = cleanFilename
-	rec.FilePath = "/" + cleanFilename
-	rec.RootName = privateRootName
-	rec.FullPath = "/" + privateRootName + "/" + cleanFilename
-	rec.FileSize = fileSize
-	rec.IsDir = false
-	rec.Xxh3Hash = ""
-	rec.HashStatus = "pending"
-	rec.ModTime = now
-	rec.LastSyncedAt = now
-	rec.Status = models.FileStatusActive
-	rec.OwnerID = userID
-	rec.CreatedAt = now
-	rec.UpdatedAt = now
-	if db := configPkg.GetDB(); db != nil {
-		if err := db.Create(rec).Error; err != nil {
-			os.Remove(targetPath)
-			utils.HandleInternalServerError(c, "保存记录失败")
-			return
-		}
-	}
-
-	middleware.LogOperation(c, "private.upload", cleanFilename, nil)
-	utils.HandleSuccess(c, http.StatusCreated, "", gin.H{"code": code})
 }
 
 // List 私有文件列表

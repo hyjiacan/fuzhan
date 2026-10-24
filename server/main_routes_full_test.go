@@ -46,7 +46,6 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	private := web.Group("/private")
 	private.GET("/files", dummy)
 	private.GET("/quota", dummy)
-	private.POST("/upload", dummy)
 	private.DELETE("/files/:code", dummy)
 	pu := private.Group("/uploads")
 	pu.POST("/session", dummy)
@@ -126,7 +125,6 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 
 	temp := web.Group("/temp")
 	temp.GET("/list", dummy)
-	temp.POST("/upload", dummy)
 	temp.GET("/quota", dummy)
 	temp.GET("/client-ip", dummy)
 	temp.GET("/:code", dummy)

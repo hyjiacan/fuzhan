@@ -604,15 +604,9 @@
   }
   ```
 
-### 2. 上传私有文件
+### 2. 私有文件分片上传
 
-- **URL**：`POST /api/v1/web/private/upload`
-- **认证**：需要（JWT）
-- **Content-Type**：`multipart/form-data`
-- **参数**：
-  - `file`：上传的文件
-
-### 3. 私有文件分片上传
+私有文件仅支持分片上传（断点续传），不提供单次简单上传入口。
 
 | 操作 | URL |
 |------|-----|
@@ -623,12 +617,12 @@
 | 上传分片 | `POST /api/v1/web/private/uploads/chunk` |
 | 完成 | `POST /api/v1/web/private/uploads/finalize` |
 
-### 4. 获取私有存储配额
+### 3. 获取私有存储配额
 
 - **URL**：`GET /api/v1/web/private/quota`
 - **认证**：需要（JWT）
 
-### 5. 删除私有文件
+### 4. 删除私有文件
 
 - **URL**：`DELETE /api/v1/web/private/files/:code`
 - **认证**：需要（JWT）
