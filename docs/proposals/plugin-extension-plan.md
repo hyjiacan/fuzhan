@@ -6,10 +6,10 @@
 
 当前服务端在 `bootstrap.go` 中一次性装配全部服务与 Handler，随后经由 `runCtx → newRouter → run` 注册路由与启动后台任务。随着功能不断叠加，暴露出的问题：
 
-- **装配耦合**：[bootstrap.go](../server/bootstrap.go) 里 30+ 个依赖逐一手写进 `runCtx`，新增功能必然触碰主装配流程。
+- **装配耦合**：[bootstrap.go](../../server/bootstrap.go) 里 30+ 个依赖逐一手写进 `runCtx`，新增功能必然触碰主装配流程。
 - **全量生效**：FTP / OpenAPI / WebDAV / 行为分析 / 资源监控 / GitHub Release 同步等能力各自维护 `Enabled` 开关，但代码始终被编译、初始化、注册，无法真正按需裁剪。
-- **生命周期散落**：每个 worker 在 [server.go](../server/server.go) 的 `run()` 里用 `workerStart(wm, name, fn)` 手工登记，新增后台任务要改主循环。
-- **路由注册分散**：[routes_web.go](../server/routes_web.go) / [routes_admin.go](../server/routes_admin.go) / [routes_top.go](../server/routes_top.go) 手工分组，插件路由无统一挂载点。
+- **生命周期散落**：每个 worker 在 [server.go](../../server/server.go) 的 `run()` 里用 `workerStart(wm, name, fn)` 手工登记，新增后台任务要改主循环。
+- **路由注册分散**：[routes_web.go](../../server/routes_web.go) / [routes_admin.go](../../server/routes_admin.go) / [routes_top.go](../../server/routes_top.go) 手工分组，插件路由无统一挂载点。
 
 本方案引入一套轻量的**插件框架**，把「核心骨架」与「可选能力」解耦。
 
@@ -148,7 +148,7 @@ plugins:
 
 ## 5. 与现有热重载机制的衔接
 
-现有主循环（[server.go](../server/server.go) `run()`）每轮迭代会：
+现有主循环（[server.go](../../server/server.go) `run()`）每轮迭代会：
 
 1. `hotSwapDB()` —— 数据库驱动/DSN 变更时切换连接
 2. `newRouter()` —— 重建 gin Engine 与 FTP Handler
@@ -182,14 +182,14 @@ for _, w := range results.Workers {
 
 | 现状代码 | 建议插件 ID | 贡献的扩展点 | 依存 |
 |---|---|---|---|
-| [internal/ftp](../server/internal/ftp) + router.go FTP 组装 | `ftp` | Handlers(FTPHandler)、Worker(runFTPWorker) | auth, index |
-| [internal/access/webdav](../server/internal/access/webdav) | `webdav` | Routes(webdav 组)、Handlers(buildWebDAVHandler) | auth, index |
-| [internal/openapi](../server/internal/openapi)（含 ip 白名单/限流/统计） | `openapi` | Routes(open_api 组)、中间件(限流/IP) | auth(rbac), index |
-| [internal/githubReleaseGetter](../server/internal/githubReleaseGetter) | `github_release` | Worker(同步 worker)、Routes(管理/状态接口)、事件订阅 | task, notification |
-| [internal/notification](../server/internal/notification)（webhook 落地载体） | `notifications` | Routes、Worker(投递) | task |
-| [internal/behavioranalytics](../server/internal/behavioranalytics) | `behavior_analytics` | Routes | record |
-| [internal/resource](../server/internal/resource)（服务器资源监控） | `resource_monitor` | Worker(采集)、Routes | record |
-| [internal/security](../server/internal/security)（DDoS/事件中心） | `security` | 中间件(可选)、Worker | record |
+| [internal/ftp](../../server/internal/ftp) + router.go FTP 组装 | `ftp` | Handlers(FTPHandler)、Worker(runFTPWorker) | auth, index |
+| [internal/access/webdav](../../server/internal/access/webdav) | `webdav` | Routes(webdav 组)、Handlers(buildWebDAVHandler) | auth, index |
+| [internal/openapi](../../server/internal/openapi)（含 ip 白名单/限流/统计） | `openapi` | Routes(open_api 组)、中间件(限流/IP) | auth(rbac), index |
+| [internal/githubReleaseGetter](../../server/internal/githubReleaseGetter) | `github_release` | Worker(同步 worker)、Routes(管理/状态接口)、事件订阅 | task, notification |
+| [internal/notification](../../server/internal/notification)（webhook 落地载体） | `notifications` | Routes、Worker(投递) | task |
+| [internal/behavioranalytics](../../server/internal/behavioranalytics) | `behavior_analytics` | Routes | record |
+| [internal/resource](../../server/internal/resource)（服务器资源监控） | `resource_monitor` | Worker(采集)、Routes | record |
+| [internal/security](../../server/internal/security)（DDoS/事件中心） | `security` | 中间件(可选)、Worker | record |
 | 外部存储（S3/MinIO/OSS/WebDAV 后端，t5 引入） | `storage_s3` / `storage_oss` … | 存储后端实现（Host 存储接口实现） | model |
 | 日志分文件 + 统一错误日志（t7 引入） | ——（核心能力，不做插件） | —— | —— |
 | 日志查看页面（t8） | ——（核心管理页面） | —— | —— |
@@ -243,4 +243,4 @@ for _, w := range results.Workers {
 
 ---
 
-相关文档：[architecture.md](./architecture.md) · [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) · [component-inventory.md](./component-inventory.md)
+相关文档：[architecture.md](../design/architecture.md) · [SYSTEM_DESIGN.md](../design/SYSTEM_DESIGN.md) · [component-inventory.md](../design/component-inventory.md)

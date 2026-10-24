@@ -276,7 +276,7 @@
 | `/api/v1/web/api-keys/*` | API Key 管理（需管理员） |
 | `/webdav/*` | WebDAV 协议访问 |
 
-详见 [API_INTERFACE.md](./API_INTERFACE.md) 和 [api-contracts.md](./api-contracts.md)
+详见 [API_INTERFACE.md](../api/API_INTERFACE.md) 和 [api-contracts.md](../api/api-contracts.md)
 
 ## 部署说明
 

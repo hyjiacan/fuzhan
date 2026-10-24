@@ -66,14 +66,14 @@
 
 | 我想... | 查看此文档 |
 |---------|-----------|
-| **快速部署使用** | [用户手册](./docs/user-guide.md) |
-| **配置和管理** | [用户手册 - 配置指南](./docs/user-guide.md#配置指南) |
-| **FTP / WebDAV** | [FTP/WebDAV 使用指南](./docs/FTP_WEBDAV_GUIDE.md) |
-| **二次开发** | [开发指南](./docs/development-guide.md) |
-| **查看 API** | [API 接口文档](./docs/api-contracts.md) |
-| **了解架构** | [架构文档](./docs/architecture.md) |
-| **源码结构** | [源码树分析](./docs/source-tree-analysis.md) |
-| **系统资源规划** | [系统配置与资源规划](./docs/系统配置与资源规划.md) |
+| **快速部署使用** | [用户手册](./docs/guides/user-guide.md) |
+| **配置和管理** | [用户手册 - 配置指南](./docs/guides/user-guide.md#配置指南) |
+| **FTP / WebDAV** | [FTP/WebDAV 使用指南](./docs/guides/FTP_WEBDAV_GUIDE.md) |
+| **二次开发** | [开发指南](./docs/guides/development-guide.md) |
+| **查看 API** | [API 接口文档](./docs/api/api-contracts.md) |
+| **了解架构** | [架构文档](./docs/design/architecture.md) |
+| **源码结构** | [源码树分析](./docs/design/source-tree-analysis.md) |
+| **系统资源规划** | [系统配置与资源规划](./docs/guides/系统配置与资源规划.md) |
 
 ## 快速开始
 
@@ -303,7 +303,7 @@ ftps://localhost:2121
 # http://localhost:8080/webdav/
 ```
 
-详见 [FTP/WebDAV 使用指南](./docs/FTP_WEBDAV_GUIDE.md)。
+详见 [FTP/WebDAV 使用指南](./docs/guides/FTP_WEBDAV_GUIDE.md)。
 
 ### 7. 管理后台
 
@@ -316,7 +316,7 @@ ftps://localhost:2121
 
 ## API 接口
 
-所有 API 通过 `/api/v1/web/` 前缀访问。OpenAPI 文档（scalar）启用后可在界面查看，或阅读 [API 接口文档](./docs/api-contracts.md)。
+所有 API 通过 `/api/v1/web/` 前缀访问。OpenAPI 文档（scalar）启用后可在界面查看，或阅读 [API 接口文档](./docs/api/api-contracts.md)。
 
 ### 公开接口（无需认证）
 
@@ -349,7 +349,7 @@ ftps://localhost:2121
 | `/api/v1/web/admin/files` | 文件管理 |
 | `/api/v1/web/admin/...` | 任务、上传、统计、安全、OpenAPI/API Key 等 |
 
-> 详细且最新的端点清单请以 [API 接口文档](./docs/api-contracts.md) 为准，页面内 OpenAPI 文档为权威来源。
+> 详细且最新的端点清单请以 [API 接口文档](./docs/api/api-contracts.md) 为准，页面内 OpenAPI 文档为权威来源。
 
 ## 服务安装
 
@@ -387,15 +387,15 @@ fuzhan --uninstall
 | 文档 | 说明 |
 |------|------|
 | [文档索引](./docs/index.md) | 项目文档总览与快速参考 |
-| [用户手册](./docs/user-guide.md) | 安装部署、功能使用、常见问题 |
-| [开发指南](./docs/development-guide.md) | 环境配置、开发命令、构建部署、测试、代码规范 |
-| [API 接口文档](./docs/api-contracts.md) | 所有 API 端点详解 |
-| [架构文档](./docs/architecture.md) | 系统架构、技术栈、设计方案 |
-| [数据模型](./docs/data-models.md) | 数据库模型定义 |
-| [UI 组件清单](./docs/component-inventory.md) | Vue 组件、页面、路由、API 客户端 |
-| [源码分析](./docs/source-tree-analysis.md) | 目录结构、代码组织 |
-| [FTP/WebDAV 指南](./docs/FTP_WEBDAV_GUIDE.md) | FTP / WebDAV 配置和使用 |
-| [系统配置与资源规划](./docs/系统配置与资源规划.md) | 不同规模下的资源要求 |
+| [用户手册](./docs/guides/user-guide.md) | 安装部署、功能使用、常见问题 |
+| [开发指南](./docs/guides/development-guide.md) | 环境配置、开发命令、构建部署、测试、代码规范 |
+| [API 接口文档](./docs/api/api-contracts.md) | 所有 API 端点详解 |
+| [架构文档](./docs/design/architecture.md) | 系统架构、技术栈、设计方案 |
+| [数据模型](./docs/design/data-models.md) | 数据库模型定义 |
+| [UI 组件清单](./docs/design/component-inventory.md) | Vue 组件、页面、路由、API 客户端 |
+| [源码分析](./docs/design/source-tree-analysis.md) | 目录结构、代码组织 |
+| [FTP/WebDAV 指南](./docs/guides/FTP_WEBDAV_GUIDE.md) | FTP / WebDAV 配置和使用 |
+| [系统配置与资源规划](./docs/guides/系统配置与资源规划.md) | 不同规模下的资源要求 |
 
 ## 开源协议
 

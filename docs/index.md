@@ -1,6 +1,6 @@
 # 项目文档索引
 
-> 浮栈 (Light Share) 项目文档 | 更新时间: 2026-07-22
+> 浮栈 (Light Share) 项目文档 | 更新时间: 2026-10-25
 
 ---
 
@@ -47,33 +47,23 @@
 
 ---
 
-## 生成文档
+## 目录结构
 
-### 架构与设计
-
-- [架构文档](./architecture.md) — 系统架构、技术栈、核心模块、部署方案
-- [源码目录分析](./source-tree-analysis.md) — 目录结构详解、入口点、关键文件说明
-- [数据模型文档](./data-models.md) — 数据库模型定义（含 URLDownloadTask）
-- [URL 下载队列事件驱动改造方案](./URL下载队列事件驱动改造方案-2026-10-10.md) — 队列调度去轮询、按需定时唤醒与任务优先级设计
-
-### API 与数据
-
-- [API 接口文档](./api-contracts.md) — 所有 API 端点详解（含通知、API Key 管理）
-
-### 前端
-
-- [UI 组件清单](./component-inventory.md) — Vue 组件、页面、路由、状态管理、API 客户端
-
-### 用户文档
-
-- [用户手册](./user-guide.md) — 安装部署、功能使用、常见问题
-- [开发指南](./development-guide.md) — 环境配置、开发命令、构建部署、测试
-- [FTP/WebDAV 使用指南](./FTP_WEBDAV_GUIDE.md) — FTP 和 WebDAV 配置和使用
-- [系统配置与资源规划](./系统配置与资源规划.md) — 不同功能、不同文件规模下的 CPU/内存/磁盘/数据库要求
+```
+docs/
+├── index.md                     本文档（总索引）
+├── 00-…-总结.md ~ 08-测试计划.md  功能模块规格说明
+├── api/                         API 接口与契约
+├── design/                      架构、数据模型、源码结构、组件清单
+├── guides/                      用户手册、开发指南、协议指南、资源规划
+├── proposals/                   设计与改造方案（含未来规划）
+├── reports/                     历史审查报告与扫描产物（时间点快照）
+└── superpowers/                 历史实现计划与设计草稿
+```
 
 ---
 
-## 现有文档 (功能模块)
+## 功能模块规格
 
 | 文档 | 说明 |
 |------|------|
@@ -85,24 +75,55 @@
 | [05-临时文件分享模块.md](./05-临时文件分享模块.md) | 临时分享 |
 | [06-命令行接口模块.md](./06-命令行接口模块.md) | CLI 接口 |
 | [07-系统配置与选项模块.md](./07-系统配置与选项模块.md) | 配置管理 |
-| [08-测试计划.md](./08-测试计划.md) | 测试计划 |
-| [API_INTERFACE.md](./API_INTERFACE.md) | API 文档 |
-| [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) | 系统设计 |
-| [TEMPORARY_FILE_MANAGEMENT.md](./TEMPORARY_FILE_MANAGEMENT.md) | 临时文件管理 |
+| [08-测试计划.md](./08-测试计划.md) | 测试范围、用例统计与运行方式 |
 
 ---
 
-## BMad 流程文档
+## 架构与设计（design/）
 
-BMad 相关文档位于 `_bmad-output/` 目录:
+- [架构文档](./design/architecture.md) — 系统架构、技术栈、核心模块、部署方案
+- [SYSTEM_DESIGN.md](./design/SYSTEM_DESIGN.md) — 系统设计说明
+- [源码目录分析](./design/source-tree-analysis.md) — 目录结构详解、入口点、关键文件说明
+- [数据模型文档](./design/data-models.md) — 数据库模型定义（含 URLDownloadTask）
+- [UI 组件清单](./design/component-inventory.md) — Vue 组件、页面、路由、状态管理、API 客户端
+- [临时文件管理](./design/TEMPORARY_FILE_MANAGEMENT.md) — 临时文件的生命周期与清理策略
 
-| 类型 | 路径 |
-|------|------|
-| 产品需求 | `_bmad-output/planning-artifacts/prds/` |
-| 架构文档 | `_bmad-output/planning-artifacts/architecture/` |
-| UX 设计 | `_bmad-output/planning-artifacts/ux-designs/` |
-| 故事卡 | `_bmad-output/implementation-artifacts/stories/` |
-| 项目上下文 | `_bmad-output/project-context.md` |
+## API 与数据（api/）
+
+- [API 接口文档](./api/api-contracts.md) — 所有 API 端点详解（含通知、API Key 管理）
+- [API_INTERFACE.md](./api/API_INTERFACE.md) — API 接口定义汇总
+
+## 用户与开发指南（guides/）
+
+- [用户手册](./guides/user-guide.md) — 安装部署、功能使用、常见问题
+- [开发指南](./guides/development-guide.md) — 环境配置、开发命令、构建部署、测试
+- [FTP/WebDAV 使用指南](./guides/FTP_WEBDAV_GUIDE.md) — FTP 和 WebDAV 配置和使用
+- [系统配置与资源规划](./guides/系统配置与资源规划.md) — 不同功能、不同文件规模下的 CPU/内存/磁盘/数据库要求
+
+## 设计方案（proposals/）
+
+- [插件化扩展方案](./proposals/plugin-extension-plan.md) — 插件框架、生命周期与改造清单
+- [URL 下载队列事件驱动改造方案](./proposals/URL下载队列事件驱动改造方案-2026-10-10.md) — 队列调度去轮询、按需定时唤醒与任务优先级设计
+- [GitHub Release 二进制自动同步方案](./proposals/GitHub%20Release%20二进制自动同步方案.md) — 发布物同步与下载支持
+- [WebDAV 检索支持](./proposals/webdav检索支持.md) — WebDAV 协议下的文件检索设计
+- [文件名联想与纠错-双字段索引方案](./proposals/文件名联想与纠错-双字段索引方案.html) — 搜索联想与纠错索引设计
+- [系统设置页优化方案](./proposals/系统设置页优化方案.html) — 设置页交互与信息架构
+- [文件列表“最新版本”自动识别与高亮算法](./proposals/文件列表“最新版本”自动识别与高亮算法文档.md) — 版本识别与高亮算法
+
+## 审查与扫描报告（reports/）
+
+> 以下为时间点快照，结论仅对应当次审查时的代码状态。
+
+| 报告 | 日期 | 说明 |
+|------|------|------|
+| [安全审查报告](./reports/安全审查报告-2026-09-09.md) | 2026-09-09 | 安全风险与加固建议 |
+| [代码审查报告](./reports/代码审查报告-2026-10-09.md) | 2026-10-09 | 代码质量与可维护性 |
+| [数据库交互审查报告](./reports/数据库交互审查报告-2026-09-29.md) | 2026-09-29 | 数据库访问与事务规范 |
+| [系统配置使用点审计报告](./reports/系统配置使用点审计报告-2026-09-12.md) | 2026-09-12 | 配置项使用点审计 |
+| [FTP 功能审查报告](./reports/FTP功能审查报告-2026-09-12.md) | 2026-09-12 | FTP 功能与安全审查 |
+| [WebDAV 功能审查报告](./reports/WebDAV功能审查报告-2026-09-12.html) | 2026-09-12 | WebDAV 功能与安全审查 |
+| [后端性能报告](./reports/backend-performance-report.html) | - | 性能基准与瓶颈分析 |
+| [项目扫描报告](./reports/project-scan-report.json) | - | 项目结构扫描产物（机器可读） |
 
 ---
 
@@ -110,7 +131,7 @@ BMad 相关文档位于 `_bmad-output/` 目录:
 
 ### 1. 环境准备
 
-参考 [开发指南 - 环境要求](./development-guide.md#环境要求)
+参考 [开发指南 - 环境要求](./guides/development-guide.md#环境要求)
 
 ### 2. 本地开发
 
@@ -145,24 +166,23 @@ cd ui && yarn dev
 | RBAC 权限控制 | 基于角色的细粒度权限管理 |
 | OpenAPI 支持 | 自动生成 API 文档 |
 | 文件索引 | 搜索加速服务 |
+| 远端存储 | S3 / MinIO / OSS / WebDAV 存储后端 |
 | 行为分析 | 管理页按访问 / 上传 / 下载三种行为分行聚合，均支持按用户 / 按 IP 维度分析；下载行为含趋势（日/周/月）、时段热度、生命周期/衰减、热门文件（含扩散传播）、IP/用户来源分布、目录与类型聚合、失败/异常统计，支持近7/30天与自定义区间及单文件下钻 |
 
 ---
 
 ## 相关链接
 
-- [CLAUDE.md](../CLAUDE.md) — AI 开发指南
 - [UI README.md](../ui/README.md) — 前端说明
 - [go.mod](../server/go.mod) — Go 依赖
 - [package.json](../ui/package.json) — 前端依赖
 
 ---
 
-## 文档更新
-
-本文档由项目扫描自动生成。
+## 文档维护
 
 如需更新:
+
 1. 修改源码实现
-2. 重新运行文档生成
-3. 或手动编辑对应文档文件
+2. 重新运行文档生成，或手动编辑对应文档文件
+3. 新增文档请按 `api/` / `design/` / `guides/` / `proposals/` / `reports/` 分类归档，并在本索引中登记

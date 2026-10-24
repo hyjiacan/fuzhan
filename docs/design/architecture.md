@@ -512,7 +512,7 @@ POST /uploads/url (创建下载任务)
 
 ## 数据库访问规范
 
-浮栈支持 **SQLite / MySQL / PostgreSQL** 三种数据库，所有数据库代码必须同时兼容三者。本节为设计层面的强制约束，编码细则见 [开发指南 - 数据库交互规范](./development-guide.md#数据库交互规范)。
+浮栈支持 **SQLite / MySQL / PostgreSQL** 三种数据库，所有数据库代码必须同时兼容三者。本节为设计层面的强制约束，编码细则见 [开发指南 - 数据库交互规范](../guides/development-guide.md#数据库交互规范)。
 
 ### 1. ORM 优先
 
