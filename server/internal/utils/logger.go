@@ -43,11 +43,12 @@ type LoggerManager struct {
 	appLogger    *zap.Logger
 	errorLogger  *zap.Logger
 	accessLogger *zap.Logger
-	// 以下三个为按调用渠道分离的访问日志（access_log 开启时生效）：
-	// 便于分别跟踪 HTTP API / WebDAV / FTP 的请求与操作，互不干扰。
-	apiLogger    *zap.Logger
-	webdavLogger *zap.Logger
-	ftpLogger    *zap.Logger
+	// 以下为按调用渠道分离的访问日志（access_log 开启时生效）：
+	// 便于分别跟踪 HTTP API / WebDAV / FTP / OpenAPI 的请求与操作，互不干扰。
+	apiLogger     *zap.Logger
+	webdavLogger  *zap.Logger
+	ftpLogger     *zap.Logger
+	openapiLogger *zap.Logger
 	// 认证类事件日志按事件类型分离（access_log 开启时生效）：
 	// 登录事件写入 login.log，注册事件写入 register.log，便于分别审计与排查。
 	loginLogger    *zap.Logger
@@ -139,6 +140,9 @@ func (lm *LoggerManager) syncLoggers() {
 	}
 	if lm.ftpLogger != nil {
 		lm.ftpLogger.Sync()
+	}
+	if lm.openapiLogger != nil {
+		lm.openapiLogger.Sync()
 	}
 	if lm.loginLogger != nil {
 		lm.loginLogger.Sync()
@@ -234,11 +238,12 @@ func (lm *LoggerManager) setup() error {
 			zap.AddCallerSkip(1),
 		)
 
-		// 按调用渠道分离的访问日志：api.log / webdav.log / ftp.log。
+		// 按调用渠道分离的访问日志：api.log / webdav.log / ftp.log / openapi.log。
 		// 各自独立轮转，便于分别跟踪与统计分析。
 		lm.apiLogger = lm.createChannelLogger("api.log", encoderConfig)
 		lm.webdavLogger = lm.createChannelLogger("webdav.log", encoderConfig)
 		lm.ftpLogger = lm.createChannelLogger("ftp.log", encoderConfig)
+		lm.openapiLogger = lm.createChannelLogger("openapi.log", encoderConfig)
 
 		// 认证事件日志按事件类型分离：login.log / register.log。
 		// 登录与注册互不干扰，便于分别审计与排查。
@@ -250,6 +255,7 @@ func (lm *LoggerManager) setup() error {
 		lm.apiLogger = nil
 		lm.webdavLogger = nil
 		lm.ftpLogger = nil
+		lm.openapiLogger = nil
 		lm.loginLogger = nil
 		lm.registerLogger = nil
 	}
@@ -386,6 +392,11 @@ func FTPAccessLogger() *zap.Logger {
 	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.ftpLogger })
 }
 
+// OpenAPIAccessLogger 获取开放 API 访问日志器（openapi.log）
+func OpenAPIAccessLogger() *zap.Logger {
+	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.openapiLogger })
+}
+
 // LoginLogger 获取登录事件日志器（login.log）
 func LoginLogger() *zap.Logger {
 	return channelLoggerOf(func(m *LoggerManager) *zap.Logger { return m.loginLogger })
@@ -405,6 +416,12 @@ func IsWebDAVPath(path string) bool {
 // 调用方需先判定 IsWebDAVPath）。
 func IsAPIPath(path string) bool {
 	return strings.HasPrefix(path, constants.APIPathPrefix)
+}
+
+// IsOpenAPIPath 判断请求路径是否属于开放 API 渠道（同样以 /api/ 开头，
+// 调用方需在 IsWebDAVPath 之后、IsAPIPath 之前判定）。
+func IsOpenAPIPath(path string) bool {
+	return strings.HasPrefix(path, constants.OpenAPIPathPrefix)
 }
 
 // Debug 调试日志
@@ -542,6 +559,27 @@ func FTPError(msg string, fields ...zap.Field) {
 	ErrorLogger().Error(msg, fields...)
 }
 
+// OpenAPIAccess 开放 API 访问日志（写入 openapi.log）
+func OpenAPIAccess(msg string, fields ...zap.Field) {
+	OpenAPIAccessLogger().Info(msg, fields...)
+}
+
+// OpenAPIDebug 开放 API 调试日志（写入 openapi.log）
+func OpenAPIDebug(msg string, fields ...zap.Field) {
+	OpenAPIAccessLogger().Debug(msg, fields...)
+}
+
+// OpenAPIWarn 开放 API 警告日志（写入 openapi.log）
+func OpenAPIWarn(msg string, fields ...zap.Field) {
+	OpenAPIAccessLogger().Warn(msg, fields...)
+}
+
+// OpenAPIError 开放 API 错误日志（写入 openapi.log，并同步写入 error.log）
+func OpenAPIError(msg string, fields ...zap.Field) {
+	OpenAPIAccessLogger().Error(msg, fields...)
+	ErrorLogger().Error(msg, fields...)
+}
+
 // Login 登录事件日志（写入 login.log）
 func Login(msg string, fields ...zap.Field) {
 	LoginLogger().Info(msg, fields...)
@@ -577,6 +615,9 @@ func Sync() {
 	}
 	if lm.ftpLogger != nil {
 		lm.ftpLogger.Sync()
+	}
+	if lm.openapiLogger != nil {
+		lm.openapiLogger.Sync()
 	}
 	if lm.loginLogger != nil {
 		lm.loginLogger.Sync()

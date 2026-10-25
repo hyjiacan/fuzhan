@@ -8,6 +8,8 @@ const (
 	WebDAVPathPrefix = "/api/v1/webdav"
 	// WebDAVAliasPathPrefix 是 WebDAV 顶层别名路由前缀
 	WebDAVAliasPathPrefix = "/webdav"
+	// OpenAPIPathPrefix 开放 API 前缀。
+	OpenAPIPathPrefix = "/api/open/"
 	// APIPathPrefix HTTP API 前缀。
 	APIPathPrefix = "/api/"
 )

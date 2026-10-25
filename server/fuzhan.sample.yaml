@@ -293,7 +293,7 @@ log:
   max_age: 30                   # 旧日志文件保留天数
   compress: true                # 是否压缩旧日志
   split_by_level: true          # 是否按级别分离日志 (app.log/error.log)
-  access_log: true              # 是否记录访问日志；开启时按调用渠道分离为 access.log/api.log/webdav.log/ftp.log
+  access_log: true              # 是否记录访问日志；开启时按调用渠道分离为 access.log/api.log/webdav.log/ftp.log/openapi.log
   enable_console: true          # 是否输出到控制台
 
 # ----------------------------------------

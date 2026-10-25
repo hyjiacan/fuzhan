@@ -306,7 +306,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	}
 	if !services.SubmitDownloadRecord(rec) {
 		if err := h.db.Create(rec).Error; err != nil {
-			utils.Warn("记录开放接口下载操作失败", utils.Err(err))
+			utils.OpenAPIWarn("记录开放接口下载操作失败", utils.Err(err))
 		}
 	}
 

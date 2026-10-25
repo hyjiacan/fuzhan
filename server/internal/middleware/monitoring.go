@@ -46,8 +46,9 @@ func MonitoringMiddleware() gin.HandlerFunc {
 		// 高频/DDoS 观测：计全量请求（仅告警不阻断，未启用时零开销）
 		security.DDoSObserve(clientIP)
 		path := c.Request.URL.Path
-		// WebDAV 挂载于 /api/v1/webdav，需先于 API 前缀排除，归入独立渠道
-		isAPI := utils.IsAPIPath(path) && !utils.IsWebDAVPath(path)
+		// WebDAV 挂载于 /api/v1/webdav，开放 API 挂载于 /api/open，均需先于 API 前缀排除，
+		// 归入各自独立渠道。
+		isAPI := utils.IsAPIPath(path) && !utils.IsWebDAVPath(path) && !utils.IsOpenAPIPath(path)
 
 		// 记录客户端访问（与登录无关），用于管理端"在线IP"统计
 		// 状态/轮询类请求不计入，避免后台轮询将客户端 IP 误判为持续在线
@@ -97,6 +98,11 @@ func MonitoringMiddleware() gin.HandlerFunc {
 		switch {
 		case utils.IsWebDAVPath(path):
 			utils.WebDAVAccess("WebDAV请求", fields...)
+		case utils.IsOpenAPIPath(path):
+			fields = append(fields,
+				utils.String("action", method+" "+endpoint),
+			)
+			utils.OpenAPIAccess("开放API请求", fields...)
 		case isAPI:
 			// 补充操作详情：做了什么（action）、请求数据、异常消息。
 			// 不记录响应到前端的具体数据（result），避免业务数据落盘。

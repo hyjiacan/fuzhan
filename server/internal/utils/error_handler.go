@@ -77,11 +77,13 @@ func HandleError(c *gin.Context, statusCode int, code int, message string, error
 		if q := SanitizeQuery(c.Request.URL.RawQuery); q != "" {
 			fields = append(fields, String("query", q))
 		}
-		// 按请求渠道分流：WebDAV/API 的异常同步写入各自渠道日志，便于单独跟踪，
+		// 按请求渠道分流：WebDAV/开放 API/API 的异常同步写入各自渠道日志，便于单独跟踪，
 		// 同时仍写入 error.log 汇总；其余走通用错误日志。
 		switch {
 		case IsWebDAVPath(c.Request.URL.Path):
 			WebDAVError("请求处理异常", fields...)
+		case IsOpenAPIPath(c.Request.URL.Path):
+			OpenAPIError("请求处理异常", fields...)
 		case IsAPIPath(c.Request.URL.Path):
 			APIError("请求处理异常", fields...)
 		default:

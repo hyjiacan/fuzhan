@@ -102,7 +102,7 @@ func (b *webdavBackend) SyncPublicFile(rootName, relPath, uploaderIP string) {
 		return
 	}
 	if err := b.indexSvc.SyncFile(rootName, relPath); err != nil {
-		utils.Warn("WebDAV上传后同步索引失败",
+		utils.WebDAVWarn("WebDAV上传后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("path", relPath),
 			utils.Err(err))
@@ -113,7 +113,7 @@ func (b *webdavBackend) SyncPublicFile(rootName, relPath, uploaderIP string) {
 		if err := b.db.Model(&models.FileRecordPublic{}).
 			Where("root_name = ? AND file_path = ?", rootName, relPath).
 			UpdateColumn("uploader_ip", uploaderIP).Error; err != nil {
-			utils.Warn("WebDAV写入上传者IP失败",
+			utils.WebDAVWarn("WebDAV写入上传者IP失败",
 				utils.String("root", rootName),
 				utils.String("path", relPath),
 				utils.Err(err))
@@ -128,7 +128,7 @@ func (b *webdavBackend) RemovePublicFile(rootName, relPath string) {
 		return
 	}
 	if err := b.indexSvc.RemoveFile(rootName, relPath); err != nil {
-		utils.Warn("WebDAV删除后同步索引失败",
+		utils.WebDAVWarn("WebDAV删除后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("path", relPath),
 			utils.Err(err))
@@ -141,7 +141,7 @@ func (b *webdavBackend) MovePublicFile(rootName, oldRelPath, newRelPath string) 
 		return
 	}
 	if err := b.indexSvc.MoveFile(rootName, oldRelPath, newRelPath); err != nil {
-		utils.Warn("WebDAV重命名后同步索引失败",
+		utils.WebDAVWarn("WebDAV重命名后同步索引失败",
 			utils.String("root", rootName),
 			utils.String("oldPath", oldRelPath),
 			utils.String("newPath", newRelPath),
