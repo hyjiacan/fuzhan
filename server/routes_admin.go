@@ -109,6 +109,12 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	// Open API 调用统计（v3 Phase 3）
 	admin.GET("/open-api/stats", rt.openAPIStatsHandler.GetStats)
 
+	// 日志查看（后端日志文件列表与增量读取）
+	if lh := rt.logHandler; lh != nil {
+		admin.GET("/logs/files", lh.Files)
+		admin.GET("/logs/tail", lh.Tail)
+	}
+
 	// 服务器资源监控
 	resourceRoutes := admin.Group("/resource")
 	{

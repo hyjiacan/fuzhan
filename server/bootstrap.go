@@ -310,6 +310,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 注入调度器钩子：管理员重试可立即唤醒队列，删除可中断执行中的下载
 	adminURLDownloadHandler.SetTaskHooks(urlDispatcher.Notify, urlDispatcher.CancelTask)
 	taskHandler := admin.NewTaskHandler(taskService)
+	logHandler := admin.NewLogHandler()
 	// 将任务记录服务注入索引服务，使扫描/哈希等任务自动写入 task_records
 	indexService.SetTaskService(taskService)
 	// 将公开多根目录的存储后端注入索引服务（远端后端供扫描/哈希/一致性校验/增量同步使用；
@@ -428,6 +429,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		notificationHandler:      notificationHandler,
 		adminURLDownloadHandler:  adminURLDownloadHandler,
 		taskHandler:              taskHandler,
+		logHandler:               logHandler,
 		tempHandler:              tempHandler,
 		indexHandler:             indexHandler,
 		depHandler:               depHandler,

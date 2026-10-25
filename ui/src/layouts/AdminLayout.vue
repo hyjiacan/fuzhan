@@ -61,7 +61,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { safeStorage } from '@/utils/storage'
 import { SecurityApi } from '@/api'
 import {
-  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Warning, Close
+  Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Warning, Close, Document
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -112,6 +112,7 @@ const menuGroups = [
       { label: '系统作业', key: '/admin/tasks', icon: List },
       { label: '用户管理', key: '/admin/users', icon: User },
       { label: '安全事件', key: '/admin/security', icon: Warning },
+      { label: '日志', key: '/admin/logs', icon: Document },
       { label: 'OpenAPI', key: '/admin/openapi', icon: Key },
       { label: '设置', key: '/admin/settings', icon: Setting }
     ]

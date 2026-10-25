@@ -33,6 +33,7 @@ const AdminOnlineView = () => import(/* webpackChunkName: "views-admin-online" *
 const AdminResourceView = () => import(/* webpackChunkName: "views-admin-resource" */ '../views/AdminResourceView.vue')
 const AdminBehaviorAnalyticsView = () => import(/* webpackChunkName: "views-admin-behavior-analytics" */ '../views/AdminBehaviorAnalyticsView.vue')
 const AdminSecurityView = () => import(/* webpackChunkName: "views-admin-security" */ '../views/AdminSecurityView.vue')
+const AdminLogsView = () => import(/* webpackChunkName: "views-admin-logs" */ '../views/AdminLogsView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const OAuth2CallbackView = () => import('../views/OAuth2CallbackView.vue')
 
@@ -196,6 +197,12 @@ const router = createRouter({
           name: 'admin-security',
           component: AdminSecurityView,
           meta: { title: '安全事件' }
+        },
+        {
+          path: 'logs',
+          name: 'admin-logs',
+          component: AdminLogsView,
+          meta: { title: '日志' }
         },
         {
           path: 'api-keys',

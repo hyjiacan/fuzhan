@@ -548,6 +548,16 @@ export const AdminApi = {
   // 删除单条操作记录
   deleteRecord(id, action) {
     return request.post('/admin/records/delete', { id, action }, { skipSuccessToast: true })
+  },
+
+  // 日志查看
+  getLogFiles() {
+    return request.get('/admin/logs/files')
+  },
+
+  // 日志内容：支持 offset 增量游标与 before 向前翻页
+  getLogsTail(params) {
+    return request.get('/admin/logs/tail', { params })
   }
 }
 

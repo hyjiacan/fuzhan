@@ -65,6 +65,7 @@ type runCtx struct {
 	notificationHandler      *notification.Handler
 	adminURLDownloadHandler  *admin.URLDownloadHandler
 	taskHandler              *admin.TaskHandler
+	logHandler               *admin.LogHandler
 	tempHandler              *temph.Handler
 	indexHandler             *index.Handler
 	depHandler               *index.DependencyHandler
