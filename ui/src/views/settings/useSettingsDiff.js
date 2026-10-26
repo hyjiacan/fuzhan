@@ -53,6 +53,25 @@ const FIELD_LABELS = {
 
   allowedExtensions: '允许的扩展名',
 
+  storageBackend: '存储后端',
+  'storageBackend.backend': '存储类型',
+  'storageBackend.s3': 'S3/MinIO',
+  'storageBackend.s3.endpoint': '服务端点',
+  'storageBackend.s3.accessKey': 'AccessKey',
+  'storageBackend.s3.secretKey': 'SecretKey',
+  'storageBackend.s3.bucket': 'Bucket',
+  'storageBackend.s3.region': '区域',
+  'storageBackend.s3.useSSL': '使用 HTTPS',
+  'storageBackend.oss': '阿里云 OSS',
+  'storageBackend.oss.endpoint': '服务端点',
+  'storageBackend.oss.accessKey': 'AccessKey',
+  'storageBackend.oss.secretKey': 'SecretKey',
+  'storageBackend.oss.bucket': 'Bucket',
+  'storageBackend.webdav': 'WebDAV',
+  'storageBackend.webdav.url': '服务地址',
+  'storageBackend.webdav.username': '用户名',
+  'storageBackend.webdav.password': '密码',
+
   privateFiles: '私有文件',
   'privateFiles.enabled': '启用私有文件',
   'privateFiles.path': '存储路径',
@@ -161,6 +180,7 @@ const SECTION_NAMES = {
   database: '数据库',
   rootDirs: '共享目录',
   allowedExtensions: '访问控制',
+  storageBackend: '存储后端',
   privateFiles: '私有文件',
   privateQuotaGlobal: '私有文件',
   privateQuotaUser: '私有文件',
@@ -188,6 +208,7 @@ const SECTION_PANELS = {
   database: 'database',
   rootDirs: 'appInfo',
   allowedExtensions: 'access',
+  storageBackend: 'storage',
   privateFiles: 'filesQuota',
   privateQuotaGlobal: 'filesQuota',
   privateQuotaUser: 'filesQuota',
@@ -224,13 +245,17 @@ const SECRET_FIELDS = new Set([
   'database.mysqlPassword',
   'database.postgresPassword',
   'auth.ldap.bindPassword',
-  'auth.oauth2.clientSecret'
+  'auth.oauth2.clientSecret',
+  'storageBackend.s3.secretKey',
+  'storageBackend.oss.secretKey',
+  'storageBackend.webdav.password'
 ])
 
 // 枚举值中文名
 const VALUE_LABELS = {
   'database.driver': { sqlite: 'SQLite', mysql: 'MySQL', postgres: 'PostgreSQL' },
-  'openApi.ipAccessMode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' }
+  'openApi.ipAccessMode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' },
+  'storageBackend.backend': { local: '本地磁盘', s3: 'S3', minio: 'MinIO', oss: '阿里云 OSS', webdav: 'WebDAV' }
 }
 
 // 未单独登记的叶子字段通用中文名（如预览分组内的 enabled/mimes/exts）

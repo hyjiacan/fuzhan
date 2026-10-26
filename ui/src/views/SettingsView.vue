@@ -149,7 +149,7 @@ const navGroups = [
     title: '服务与存储',
     items: [
       { key: 'service', label: '服务配置', icon: Cpu },
-      { key: 'storage', label: '存储索引', icon: Files }
+      { key: 'storage', label: '存储与索引', icon: Files }
     ]
   },
   {
@@ -249,6 +249,12 @@ const settings = reactive({
   },
   rootDirs: [],
   allowedExtensions: [],
+  storageBackend: {
+    backend: 'local',
+    s3: { endpoint: '', accessKey: '', secretKey: '', bucket: '', region: '', useSSL: false },
+    oss: { endpoint: '', accessKey: '', secretKey: '', bucket: '' },
+    webdav: { url: '', username: '', password: '' }
+  },
   privateFiles: {
     enabled: false,
     path: ''
@@ -433,6 +439,28 @@ const loadSettings = async () => {
       }
       settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name, uploadEnabled: d.uploadEnabled !== false })) || []
       settings.allowedExtensions = cfg.allowedExtensions || []
+      settings.storageBackend = {
+        backend: cfg.storageBackend?.backend || 'local',
+        s3: {
+          endpoint: cfg.storageBackend?.s3?.endpoint || '',
+          accessKey: cfg.storageBackend?.s3?.accessKey || '',
+          secretKey: cfg.storageBackend?.s3?.secretKey || '',
+          bucket: cfg.storageBackend?.s3?.bucket || '',
+          region: cfg.storageBackend?.s3?.region || '',
+          useSSL: cfg.storageBackend?.s3?.useSSL ?? false
+        },
+        oss: {
+          endpoint: cfg.storageBackend?.oss?.endpoint || '',
+          accessKey: cfg.storageBackend?.oss?.accessKey || '',
+          secretKey: cfg.storageBackend?.oss?.secretKey || '',
+          bucket: cfg.storageBackend?.oss?.bucket || ''
+        },
+        webdav: {
+          url: cfg.storageBackend?.webdav?.url || '',
+          username: cfg.storageBackend?.webdav?.username || '',
+          password: cfg.storageBackend?.webdav?.password || ''
+        }
+      }
 
       settings.privateFiles.enabled = cfg.privateFiles?.enabled ?? false
       settings.privateFiles.path = cfg.privateFiles?.path || ''
@@ -575,6 +603,7 @@ const SECTION_SOURCES = {
   database: ['database'],
   rootDirs: ['rootDirs'],
   allowedExtensions: ['allowedExtensions'],
+  storageBackend: ['storageBackend'],
   privateFiles: ['privateFiles', 'privateQuotaGlobal', 'privateQuotaUser'],
   tempFiles: ['tempFiles', 'tempFilesQuotaGlobal', 'tempFilesQuotaPerIP'],
   upload: ['upload'],
@@ -613,13 +642,21 @@ const pollServerHealth = (url, maxRetries, interval, onReady) => {
   check()
 }
 
-// 危险操作二次确认：数据库驱动或访问控制等高风险变更
+// 危险操作二次确认：数据库驱动、存储后端等需重启生效的高风险变更
 const confirmCriticalChange = async () => {
   const dbChanged = settings.database.driver !== originalDatabaseDriver.value
-  if (dbChanged) {
+  const storageChanged = !!baselineSections && baselineSections.storageBackend !== JSON.stringify(settings.storageBackend)
+  if (dbChanged || storageChanged) {
+    const messages = []
+    if (dbChanged) {
+      messages.push('当前已切换数据库类型，切换后需重启服务生效，且已有数据需通过外部工具手动迁移。')
+    }
+    if (storageChanged) {
+      messages.push('存储后端或其连接参数已修改，需重启服务后才会生效。')
+    }
     try {
       await ElMessageBox.confirm(
-        '当前已切换数据库类型。切换后需重启服务方才生效，且已有数据需通过外部工具手动迁移。确定继续保存吗？',
+        messages.join('\n') + '\n确定继续保存吗？',
         '检测到高危配置变更',
         {
           confirmButtonText: '仍要保存',
@@ -678,6 +715,12 @@ const doSaveSettings = async () => {
       },
       rootDirs: settings.rootDirs,
       allowedExtensions: settings.allowedExtensions,
+      storageBackend: {
+        backend: settings.storageBackend.backend,
+        s3: { ...settings.storageBackend.s3 },
+        oss: { ...settings.storageBackend.oss },
+        webdav: { ...settings.storageBackend.webdav }
+      },
       privateFiles: {
         ...settings.privateFiles,
         quotaGlobal: settings.privateQuotaGlobal,

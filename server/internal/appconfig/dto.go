@@ -23,6 +23,7 @@ type ConfigDTO struct {
 	Database          DatabaseConfigDTO  `json:"database"`
 	RootDirs          []RootDirConfig    `json:"rootDirs"`
 	AllowedExtensions []string           `json:"allowedExtensions"`
+	StorageBackend    *StorageBackendDTO `json:"storageBackend"`
 	PrivateFiles      PrivateConfigDTO   `json:"privateFiles"`
 	TempFiles         TempFilesConfigDTO `json:"tempFiles"`
 	Upload            UploadConfigDTO    `json:"upload"`
@@ -84,13 +85,13 @@ type SecurityConfigDTO struct {
 }
 
 type OpenApiConfigDTO struct {
-	Enabled            bool     `json:"enabled"`
-	IpAccessMode       string   `json:"ipAccessMode"`
-	IpWhitelist        []string `json:"ipWhitelist"`
-	IpBlacklist        []string `json:"ipBlacklist"`
-	DomainWhitelist    []string `json:"domainWhitelist"`
-	RateLimitEnabled   bool     `json:"rateLimitEnabled"`
-	RequestsPerMinute  int      `json:"requestsPerMinute"`
+	Enabled           bool     `json:"enabled"`
+	IpAccessMode      string   `json:"ipAccessMode"`
+	IpWhitelist       []string `json:"ipWhitelist"`
+	IpBlacklist       []string `json:"ipBlacklist"`
+	DomainWhitelist   []string `json:"domainWhitelist"`
+	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
+	RequestsPerMinute int      `json:"requestsPerMinute"`
 }
 
 // WebhookConfigDTO Webhook 推送配置 DTO（对应 yaml webhook.*）
@@ -121,6 +122,40 @@ type RootDirConfig struct {
 	Path          string `json:"path"`
 	FullPath      string `json:"fullPath"`
 	UploadEnabled bool   `json:"uploadEnabled"`
+}
+
+// StorageBackendDTO 存储后端配置 DTO（对应 yaml storage.backend/s3/oss/webdav）。
+// 存储后端在服务启动时初始化，修改后需重启服务生效。
+type StorageBackendDTO struct {
+	Backend string                 `json:"backend"`
+	S3      S3StorageConfigDTO     `json:"s3"`
+	OSS     OSSStorageConfigDTO    `json:"oss"`
+	WebDAV  WebDAVStorageConfigDTO `json:"webdav"`
+}
+
+// S3StorageConfigDTO S3/MinIO 连接配置 DTO
+type S3StorageConfigDTO struct {
+	Endpoint  string `json:"endpoint"`
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
+	Bucket    string `json:"bucket"`
+	Region    string `json:"region"`
+	UseSSL    bool   `json:"useSSL"`
+}
+
+// OSSStorageConfigDTO 阿里云 OSS 连接配置 DTO
+type OSSStorageConfigDTO struct {
+	Endpoint  string `json:"endpoint"`
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
+	Bucket    string `json:"bucket"`
+}
+
+// WebDAVStorageConfigDTO WebDAV 连接配置 DTO
+type WebDAVStorageConfigDTO struct {
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // PrivateConfigDTO 私有存储 DTO（API 中字段名为 "temp"，兼容前端）
@@ -357,6 +392,28 @@ func (c *Config) ToDTO() ConfigDTO {
 		},
 		RootDirs:          rootDirs,
 		AllowedExtensions: c.Storage.AllowedExtensions,
+		StorageBackend: &StorageBackendDTO{
+			Backend: c.Storage.Backend,
+			S3: S3StorageConfigDTO{
+				Endpoint:  c.Storage.S3.Endpoint,
+				AccessKey: c.Storage.S3.AccessKey,
+				SecretKey: c.Storage.S3.SecretKey,
+				Bucket:    c.Storage.S3.Bucket,
+				Region:    c.Storage.S3.Region,
+				UseSSL:    c.Storage.S3.UseSSL,
+			},
+			OSS: OSSStorageConfigDTO{
+				Endpoint:  c.Storage.OSS.Endpoint,
+				AccessKey: c.Storage.OSS.AccessKey,
+				SecretKey: c.Storage.OSS.SecretKey,
+				Bucket:    c.Storage.OSS.Bucket,
+			},
+			WebDAV: WebDAVStorageConfigDTO{
+				URL:      c.Storage.WebDAV.URL,
+				Username: c.Storage.WebDAV.Username,
+				Password: c.Storage.WebDAV.Password,
+			},
+		},
 		TempFiles: TempFilesConfigDTO{
 			Enabled:           c.Storage.Temp.Enabled,
 			Path:              c.Storage.Temp.Path,
@@ -433,13 +490,13 @@ func (c *Config) ToDTO() ConfigDTO {
 		},
 		MimeTable: c.MimeTable,
 		OpenApi: &OpenApiConfigDTO{
-			Enabled:            c.OpenAPI.Enabled,
-			IpAccessMode:       c.OpenAPI.IPAccessMode,
-			IpWhitelist:        c.OpenAPI.IPWhitelist,
-			IpBlacklist:        c.OpenAPI.IPBlacklist,
-			DomainWhitelist:    c.OpenAPI.DomainWhitelist,
-			RateLimitEnabled:   c.OpenAPI.RateLimitEnabled,
-			RequestsPerMinute:  c.OpenAPI.RequestsPerMinute,
+			Enabled:           c.OpenAPI.Enabled,
+			IpAccessMode:      c.OpenAPI.IPAccessMode,
+			IpWhitelist:       c.OpenAPI.IPWhitelist,
+			IpBlacklist:       c.OpenAPI.IPBlacklist,
+			DomainWhitelist:   c.OpenAPI.DomainWhitelist,
+			RateLimitEnabled:  c.OpenAPI.RateLimitEnabled,
+			RequestsPerMinute: c.OpenAPI.RequestsPerMinute,
 		},
 		Index: IndexConfigDTO{
 			ScanStartDelaySeconds:         c.Index.ScanStartDelaySeconds,
@@ -544,6 +601,30 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	}
 
 	cfg.Storage.AllowedExtensions = dto.AllowedExtensions
+
+	// 存储后端连接配置
+	if dto.StorageBackend != nil {
+		cfg.Storage.Backend = dto.StorageBackend.Backend
+		cfg.Storage.S3 = S3StorageConfig{
+			Endpoint:  dto.StorageBackend.S3.Endpoint,
+			AccessKey: dto.StorageBackend.S3.AccessKey,
+			SecretKey: dto.StorageBackend.S3.SecretKey,
+			Bucket:    dto.StorageBackend.S3.Bucket,
+			Region:    dto.StorageBackend.S3.Region,
+			UseSSL:    dto.StorageBackend.S3.UseSSL,
+		}
+		cfg.Storage.OSS = OSSStorageConfig{
+			Endpoint:  dto.StorageBackend.OSS.Endpoint,
+			AccessKey: dto.StorageBackend.OSS.AccessKey,
+			SecretKey: dto.StorageBackend.OSS.SecretKey,
+			Bucket:    dto.StorageBackend.OSS.Bucket,
+		}
+		cfg.Storage.WebDAV = WebDAVStorageConfig{
+			URL:      dto.StorageBackend.WebDAV.URL,
+			Username: dto.StorageBackend.WebDAV.Username,
+			Password: dto.StorageBackend.WebDAV.Password,
+		}
+	}
 
 	// 私有存储（前端字段名 privateFiles）
 	cfg.Storage.Private.Enabled = dto.PrivateFiles.Enabled

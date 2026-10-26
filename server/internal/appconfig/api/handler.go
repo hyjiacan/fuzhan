@@ -148,6 +148,7 @@ type SaveConfigRequest struct {
 	Database          appconfig.DatabaseConfigDTO  `json:"database"`
 	RootDirs          []appconfig.RootDirConfig    `json:"rootDirs"`
 	AllowedExtensions []string                     `json:"allowedExtensions"`
+	StorageBackend    *appconfig.StorageBackendDTO `json:"storageBackend"`
 	PrivateFiles      appconfig.PrivateConfigDTO   `json:"privateFiles"`
 	TempFiles         appconfig.TempFilesConfigDTO `json:"tempFiles"`
 	Upload            appconfig.UploadConfigDTO    `json:"upload"`
@@ -182,6 +183,15 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	present := func(key string) bool {
 		_, ok := raw[key]
 		return ok
+	}
+
+	// 存储后端连接参数校验：切换后端后需重启服务，若参数不完整将导致下次启动失败，
+	// 因此在保存前拦截，避免把不可用的配置写入文件。
+	if present("storageBackend") && req.StorageBackend != nil {
+		if msg := validateStorageBackend(req.StorageBackend); msg != "" {
+			utils.HandleBadRequest(c, msg, nil)
+			return
+		}
 	}
 
 	// 加写锁保护配置并发修改。
@@ -326,6 +336,52 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			extList[i] = ext
 		}
 		updates.Add("storage.allowed_extensions", extList)
+	}
+
+	// —— 存储后端（服务启动时初始化，保存后需重启服务生效）——
+	if present("storageBackend") && req.StorageBackend != nil {
+		sb := req.StorageBackend
+		backend := strings.TrimSpace(sb.Backend)
+		if backend == "" {
+			backend = appconfig.StorageBackendLocal
+		}
+		appconfig.GlobalConfig.Storage.Backend = backend
+		updates.Add("storage.backend", backend)
+
+		appconfig.GlobalConfig.Storage.S3 = appconfig.S3StorageConfig{
+			Endpoint:  strings.TrimSpace(sb.S3.Endpoint),
+			AccessKey: strings.TrimSpace(sb.S3.AccessKey),
+			SecretKey: sb.S3.SecretKey,
+			Bucket:    strings.TrimSpace(sb.S3.Bucket),
+			Region:    strings.TrimSpace(sb.S3.Region),
+			UseSSL:    sb.S3.UseSSL,
+		}
+		updates.Add("storage.s3.endpoint", appconfig.GlobalConfig.Storage.S3.Endpoint)
+		updates.Add("storage.s3.access_key", appconfig.GlobalConfig.Storage.S3.AccessKey)
+		updates.Add("storage.s3.secret_key", appconfig.GlobalConfig.Storage.S3.SecretKey)
+		updates.Add("storage.s3.bucket", appconfig.GlobalConfig.Storage.S3.Bucket)
+		updates.Add("storage.s3.region", appconfig.GlobalConfig.Storage.S3.Region)
+		updates.Add("storage.s3.use_ssl", appconfig.GlobalConfig.Storage.S3.UseSSL)
+
+		appconfig.GlobalConfig.Storage.OSS = appconfig.OSSStorageConfig{
+			Endpoint:  strings.TrimSpace(sb.OSS.Endpoint),
+			AccessKey: strings.TrimSpace(sb.OSS.AccessKey),
+			SecretKey: sb.OSS.SecretKey,
+			Bucket:    strings.TrimSpace(sb.OSS.Bucket),
+		}
+		updates.Add("storage.oss.endpoint", appconfig.GlobalConfig.Storage.OSS.Endpoint)
+		updates.Add("storage.oss.access_key", appconfig.GlobalConfig.Storage.OSS.AccessKey)
+		updates.Add("storage.oss.secret_key", appconfig.GlobalConfig.Storage.OSS.SecretKey)
+		updates.Add("storage.oss.bucket", appconfig.GlobalConfig.Storage.OSS.Bucket)
+
+		appconfig.GlobalConfig.Storage.WebDAV = appconfig.WebDAVStorageConfig{
+			URL:      strings.TrimSpace(sb.WebDAV.URL),
+			Username: sb.WebDAV.Username,
+			Password: sb.WebDAV.Password,
+		}
+		updates.Add("storage.webdav.url", appconfig.GlobalConfig.Storage.WebDAV.URL)
+		updates.Add("storage.webdav.username", appconfig.GlobalConfig.Storage.WebDAV.Username)
+		updates.Add("storage.webdav.password", appconfig.GlobalConfig.Storage.WebDAV.Password)
 	}
 
 	// —— 私有文件存储（前端字段名 privateFiles）——
@@ -656,6 +712,36 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
 	response.HandleSuccess(c, http.StatusOK, "配置已保存并生效", nil)
+}
+
+// validateStorageBackend 校验存储后端类型与必填连接参数。
+// 返回空字符串表示通过；否则返回给用户的中文错误信息。
+func validateStorageBackend(sb *appconfig.StorageBackendDTO) string {
+	backend := strings.TrimSpace(sb.Backend)
+	if backend == "" {
+		backend = appconfig.StorageBackendLocal
+	}
+	switch backend {
+	case appconfig.StorageBackendLocal:
+		return ""
+	case appconfig.StorageBackendS3, appconfig.StorageBackendMinIO:
+		if strings.TrimSpace(sb.S3.Endpoint) == "" || strings.TrimSpace(sb.S3.Bucket) == "" ||
+			strings.TrimSpace(sb.S3.AccessKey) == "" || sb.S3.SecretKey == "" {
+			return "S3/MinIO 存储需填写端点、Bucket、AccessKey 与 SecretKey"
+		}
+	case appconfig.StorageBackendOSS:
+		if strings.TrimSpace(sb.OSS.Endpoint) == "" || strings.TrimSpace(sb.OSS.Bucket) == "" ||
+			strings.TrimSpace(sb.OSS.AccessKey) == "" || sb.OSS.SecretKey == "" {
+			return "OSS 存储需填写端点、Bucket、AccessKey 与 SecretKey"
+		}
+	case appconfig.StorageBackendWebDAV:
+		if strings.TrimSpace(sb.WebDAV.URL) == "" {
+			return "WebDAV 存储需填写服务地址"
+		}
+	default:
+		return "不支持的存储后端类型: " + backend
+	}
+	return ""
 }
 
 // TestLDAPConfig 测试 LDAP 连接。可选 JSON body（LDAPConfigDTO）用于测试未保存的表单值；
