@@ -5,6 +5,7 @@ import (
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/webhook"
 )
 
 const (
@@ -150,7 +151,25 @@ func Record(ev *models.SecurityEvent) bool {
 	if w == nil {
 		return false
 	}
-	return w.Submit(ev)
+	ok := w.Submit(ev)
+	// 派发安全事件 Webhook（非阻塞；未启用/满载时静默丢弃）。
+	// 负载为安全事件关键字段的快照，便于外部监控系统实时告警。
+	if ok {
+		webhook.Dispatch(webhook.EventSecurity, "security", map[string]interface{}{
+			"eventType": ev.EventType,
+			"severity":  ev.Severity,
+			"clientIP":  ev.ClientIP,
+			"identity":  ev.Identity,
+			"operation": ev.Operation,
+			"target":    ev.Target,
+			"guard":     ev.Guard,
+			"result":    ev.Result,
+			"reason":    ev.Reason,
+			"path":      ev.Path,
+			"statusCode": ev.StatusCode,
+		})
+	}
+	return ok
 }
 
 // StopWriter 停止全局安全事件写入器

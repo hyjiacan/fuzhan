@@ -16,6 +16,7 @@ import (
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/resource"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/webhook"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -158,6 +159,7 @@ type SaveConfigRequest struct {
 	Resource          appconfig.ResourceConfigDTO  `json:"resource"`
 	Security          appconfig.SecurityConfigDTO  `json:"security"`
 	Auth              appconfig.AuthConfigDTO      `json:"auth"`
+	Webhook           *appconfig.WebhookConfigDTO  `json:"webhook"`
 }
 
 func (h *Handler) SaveConfig(c *gin.Context) {
@@ -585,6 +587,29 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("auth.oauth2.insecure_skip_verify", oauth.InsecureSkipVerify)
 	}
 
+	// —— Webhook 推送配置 ——
+	if req.Webhook != nil && present("webhook") {
+		appconfig.GlobalConfig.Webhook.Enabled = req.Webhook.Enabled
+		appconfig.GlobalConfig.Webhook.Secret = req.Webhook.Secret
+		appconfig.GlobalConfig.Webhook.TimeoutSeconds = req.Webhook.TimeoutSeconds
+		appconfig.GlobalConfig.Webhook.MaxRetries = req.Webhook.MaxRetries
+		appconfig.GlobalConfig.Webhook.QueueSize = req.Webhook.QueueSize
+		if req.Webhook.URLs == nil {
+			req.Webhook.URLs = []string{}
+		}
+		appconfig.GlobalConfig.Webhook.URLs = req.Webhook.URLs
+		updates.Add("webhook.enabled", req.Webhook.Enabled)
+		urlList := make([]interface{}, len(req.Webhook.URLs))
+		for i, u := range req.Webhook.URLs {
+			urlList[i] = u
+		}
+		updates.Add("webhook.urls", urlList)
+		updates.Add("webhook.secret", req.Webhook.Secret)
+		updates.Add("webhook.timeout_seconds", req.Webhook.TimeoutSeconds)
+		updates.Add("webhook.max_retries", req.Webhook.MaxRetries)
+		updates.Add("webhook.queue_size", req.Webhook.QueueSize)
+	}
+
 	// 私有/临时文件存储目录创建
 	if appconfig.GlobalConfig.Storage.Private.Enabled && appconfig.GlobalConfig.Storage.Private.Path != "" {
 		for _, dir := range []string{
@@ -616,6 +641,11 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	utils.InitPreviewConfig(appconfig.GlobalConfig.Preview.InitConfig())
 	utils.InitMimeTable(appconfig.GlobalConfig.MimeTable)
 	appconfig.RunOnSaveHooks()
+
+	// 派发配置保存成功的 Webhook 事件（非阻塞；未启用时静默丢弃）
+	webhook.Dispatch(webhook.EventConfigSaved, "config", map[string]interface{}{
+		"app": appconfig.GlobalConfig.App.Name,
+	})
 
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
@@ -711,4 +741,33 @@ func (h *Handler) TestOAuth2Config(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "OAuth2 配置测试成功（端点可达）", nil)
+}
+
+// TestWebhookConfig 测试 Webhook 回调连通性：向当前（或 body 中临时）地址逐条发送测试事件。
+// 可选 JSON body（WebhookConfigDTO）用于测试未保存的表单值；body 为空时使用当前已保存的配置。
+func (h *Handler) TestWebhookConfig(c *gin.Context) {
+	cfg := appconfig.GetConfig().Webhook
+	body, _ := io.ReadAll(c.Request.Body)
+	if len(strings.TrimSpace(string(body))) > 0 {
+		var dto appconfig.WebhookConfigDTO
+		if err := json.Unmarshal(body, &dto); err != nil {
+			utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
+			return
+		}
+		cfg = webhookConfigFromDTO(dto)
+	}
+	results := webhook.TestPush(cfg, nil)
+	response.HandleSuccess(c, http.StatusOK, "Webhook 测试完成", results)
+}
+
+// webhookConfigFromDTO 将 Webhook 配置 DTO 转为内部配置（测试未保存表单值时使用）。
+func webhookConfigFromDTO(dto appconfig.WebhookConfigDTO) appconfig.WebhookConfig {
+	return appconfig.WebhookConfig{
+		Enabled:        dto.Enabled,
+		URLs:           dto.URLs,
+		Secret:         dto.Secret,
+		TimeoutSeconds: dto.TimeoutSeconds,
+		MaxRetries:     dto.MaxRetries,
+		QueueSize:      dto.QueueSize,
+	}
 }

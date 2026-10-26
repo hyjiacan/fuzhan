@@ -154,6 +154,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	configGroup.POST("", configHandler.SaveConfig)
 	configGroup.POST("/ldap/test", configHandler.TestLDAPConfig)
 	configGroup.POST("/oauth2/test", configHandler.TestOAuth2Config)
+	configGroup.POST("/webhook/test", configHandler.TestWebhookConfig)
 	configGroup.GET("/partitions", configHandler.ListPartitions)
 
 	// 临时文件路由（基于IP，无需认证）

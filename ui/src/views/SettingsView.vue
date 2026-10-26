@@ -71,7 +71,7 @@
 import { ref, reactive, shallowRef, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave } from 'vue-router'
-import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Key, Odometer, Expand, Fold } from '@element-plus/icons-vue'
+import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Key, Odometer, Bell, Expand, Fold } from '@element-plus/icons-vue'
 import { NumberUtils } from '@/utils'
 import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
@@ -86,6 +86,7 @@ import SettingsDatabase from './settings/SettingsDatabase.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsAuth from './settings/SettingsAuth.vue'
 import SettingsResource from './settings/SettingsResource.vue'
+import SettingsWebhook from './settings/SettingsWebhook.vue'
 import SettingsChangesDrawer from './settings/SettingsChangesDrawer.vue'
 import { diffSettings } from './settings/useSettingsDiff'
 import { formatToUnit } from './settings/useSettingsUtils'
@@ -163,7 +164,8 @@ const navGroups = [
     items: [
       { key: 'database', label: '数据库', icon: Coin },
       { key: 'access', label: '访问控制', icon: Lock },
-      { key: 'auth', label: '身份认证', icon: Key }
+      { key: 'auth', label: '身份认证', icon: Key },
+      { key: 'webhook', label: 'Webhook 推送', icon: Bell }
     ]
   },
   {
@@ -185,7 +187,8 @@ const panelMap = {
   database: SettingsDatabase,
   access: SettingsAccess,
   auth: SettingsAuth,
-  resource: SettingsResource
+  resource: SettingsResource,
+  webhook: SettingsWebhook
 }
 
 const currentComponent = computed(() => panelMap[activePanel.value])
@@ -281,6 +284,14 @@ const settings = reactive({
     ipBlacklist: '',
     rateLimitEnabled: true,
     requestsPerMinute: 60
+  },
+  webhook: {
+    enabled: false,
+    urls: [],
+    secret: '',
+    timeoutSeconds: 10,
+    maxRetries: 3,
+    queueSize: 1024
   },
   scanStartDelaySeconds: 10,
   scanCronExpression: '0 1 * * *',
@@ -474,6 +485,15 @@ const loadSettings = async () => {
         requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
       }
 
+      settings.webhook = {
+        enabled: cfg.webhook?.enabled ?? false,
+        urls: cfg.webhook?.urls || [],
+        secret: cfg.webhook?.secret || '',
+        timeoutSeconds: cfg.webhook?.timeoutSeconds || 10,
+        maxRetries: cfg.webhook?.maxRetries ?? 3,
+        queueSize: cfg.webhook?.queueSize ?? 1024
+      }
+
       settings.scanStartDelaySeconds = cfg.index?.scanStartDelaySeconds || 10
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
       settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
@@ -560,6 +580,7 @@ const SECTION_SOURCES = {
   preview: ['preview'],
   mimeTable: ['mimeTable'],
   openApi: ['openApi'],
+  webhook: ['webhook'],
   index: ['scanStartDelaySeconds', 'scanCronExpression', 'searchReconcileCronExpression'],
   resource: ['resource'],
   security: ['security'],
@@ -678,6 +699,14 @@ const doSaveSettings = async () => {
         ipBlacklist: settings.openApi.ipBlacklist.split('\n').filter(ip => ip.trim()),
         rateLimitEnabled: settings.openApi.rateLimitEnabled,
         requestsPerMinute: settings.openApi.requestsPerMinute
+      },
+      webhook: {
+        enabled: settings.webhook.enabled,
+        urls: settings.webhook.urls,
+        secret: settings.webhook.secret,
+        timeoutSeconds: settings.webhook.timeoutSeconds,
+        maxRetries: settings.webhook.maxRetries,
+        queueSize: settings.webhook.queueSize
       },
       index: {
         scanStartDelaySeconds: settings.scanStartDelaySeconds,

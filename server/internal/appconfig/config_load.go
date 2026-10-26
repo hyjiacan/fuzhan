@@ -53,6 +53,7 @@ func readConfig() {
 		OpenAPI   OpenAPIConfig     `yaml:"open_api"`
 		Index     IndexConfig       `yaml:"index"`
 		Resource  ResourceConfig    `yaml:"resource"`
+		Webhook   WebhookConfig     `yaml:"webhook"`
 	}
 
 	if err := yaml.Unmarshal(data, &tempConfig); err != nil {
@@ -95,6 +96,9 @@ func readConfig() {
 
 	// 加载服务器资源监控配置
 	GlobalConfig.Resource = tempConfig.Resource
+
+	// 加载 Webhook 通知配置
+	GlobalConfig.Webhook = tempConfig.Webhook
 
 	// 转换私有文件配额
 	var globalQuota, perUserQuota int64
@@ -284,6 +288,20 @@ func validateConfig() {
 	}
 	if GlobalConfig.OpenAPI.IPAccessMode == "" {
 		GlobalConfig.OpenAPI.IPAccessMode = "disable"
+	}
+
+	// Webhook 配置默认值
+	if GlobalConfig.Webhook.TimeoutSeconds <= 0 {
+		GlobalConfig.Webhook.TimeoutSeconds = 10
+	}
+	if GlobalConfig.Webhook.MaxRetries <= 0 {
+		GlobalConfig.Webhook.MaxRetries = 3
+	}
+	if GlobalConfig.Webhook.QueueSize <= 0 {
+		GlobalConfig.Webhook.QueueSize = 1024
+	}
+	if GlobalConfig.Webhook.Enabled && len(GlobalConfig.Webhook.URLs) == 0 {
+		utils.Warn("配置: webhook.enabled=true 但未配置 urls，Webhook 不会发送任何推送")
 	}
 }
 

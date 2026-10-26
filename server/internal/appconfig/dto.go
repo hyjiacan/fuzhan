@@ -34,6 +34,7 @@ type ConfigDTO struct {
 	Resource          ResourceConfigDTO  `json:"resource"`
 	Security          SecurityConfigDTO  `json:"security"`
 	Auth              AuthConfigDTO      `json:"auth"`
+	Webhook           *WebhookConfigDTO  `json:"webhook"`
 }
 
 // AuthConfigDTO 认证配置 DTO
@@ -89,6 +90,16 @@ type OpenApiConfigDTO struct {
 	IpBlacklist       []string `json:"ipBlacklist"`
 	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
 	RequestsPerMinute int      `json:"requestsPerMinute"`
+}
+
+// WebhookConfigDTO Webhook 推送配置 DTO（对应 yaml webhook.*）
+type WebhookConfigDTO struct {
+	Enabled        bool     `json:"enabled"`
+	URLs           []string `json:"urls"`
+	Secret         string   `json:"secret"`
+	TimeoutSeconds int      `json:"timeoutSeconds"`
+	MaxRetries     int      `json:"maxRetries"`
+	QueueSize      int      `json:"queueSize"`
 }
 
 // AppConfigDTO 应用配置 DTO
@@ -443,6 +454,14 @@ func (c *Config) ToDTO() ConfigDTO {
 			TrustProxy:     c.Security.TrustProxy,
 			AllowedOrigins: c.Security.AllowedOrigins,
 		},
+		Webhook: &WebhookConfigDTO{
+			Enabled:        c.Webhook.Enabled,
+			URLs:           c.Webhook.URLs,
+			Secret:         c.Webhook.Secret,
+			TimeoutSeconds: c.Webhook.TimeoutSeconds,
+			MaxRetries:     c.Webhook.MaxRetries,
+			QueueSize:      c.Webhook.QueueSize,
+		},
 		Auth: AuthConfigDTO{
 			LDAP: LDAPConfigDTO{
 				Enabled:            c.Auth.LDAP.Enabled,
@@ -576,6 +595,15 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 		cfg.OpenAPI.IPBlacklist = dto.OpenApi.IpBlacklist
 		cfg.OpenAPI.RateLimitEnabled = dto.OpenApi.RateLimitEnabled
 		cfg.OpenAPI.RequestsPerMinute = dto.OpenApi.RequestsPerMinute
+	}
+
+	if dto.Webhook != nil {
+		cfg.Webhook.Enabled = dto.Webhook.Enabled
+		cfg.Webhook.URLs = dto.Webhook.URLs
+		cfg.Webhook.Secret = dto.Webhook.Secret
+		cfg.Webhook.TimeoutSeconds = dto.Webhook.TimeoutSeconds
+		cfg.Webhook.MaxRetries = dto.Webhook.MaxRetries
+		cfg.Webhook.QueueSize = dto.Webhook.QueueSize
 	}
 
 	// 索引配置

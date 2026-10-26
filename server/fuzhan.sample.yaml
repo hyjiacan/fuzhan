@@ -380,3 +380,19 @@ resource:
   sampling_interval: 5          # 内存实时采样间隔（秒），默认 5
   collect_interval: 60          # 历史数据采集间隔（秒），默认 60（每分钟一条）
   retention_days: 7             # 历史数据保留天数，默认 7
+
+# ----------------------------------------
+# Webhook 通知配置
+# ----------------------------------------
+# 可选：启用后应用内关键事件（系统作业完成任务/失败/取消、安全事件、配置变更等）会以
+# HTTP POST JSON 推送到 urls 中的全部回调地址。每条请求带 X-Fuzhan-Signature（HMAC-SHA256
+# 报头签名），接收方可按 secret 校验推送来源；失败时按指数退避自动重试 max_retries 次。
+# 事件经进程内有界队列异步派发（队列容量 queue_size，满载时丢弃并记录告警日志），
+# 不会阻塞业务请求。默认关闭。
+# webhook:
+#   enabled: false              # 是否启用 Webhook 推送（默认 false）
+#   urls: []                    # 回调地址列表（HTTP POST 目标），可配置多个
+#   secret: ""                  # 签名密钥（HMAC-SHA256），留空则不生成签名
+#   timeout_seconds: 10         # 单次请求超时（秒），默认 10
+#   max_retries: 3              # 失败重试次数，默认 3（指数退避：0.2s/0.4s/0.8s...）
+#   queue_size: 1024            # 进程内事件队列容量，默认 1024

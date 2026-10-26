@@ -31,6 +31,7 @@ import (
 	"fuzhan/internal/storage"
 	temph "fuzhan/internal/temp"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/webhook"
 	"fuzhan/pkg/jwt"
 
 	"github.com/gin-gonic/gin"
@@ -179,6 +180,14 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 初始化下载计数批量记录器：下载热路径只入队（非阻塞），后台周期攒批批量落库，
 	// 消除每次下载同步 UPDATE 索引表造成的写放大与请求线程阻塞
 	services.InitDownloadCountRecorder(db)
+
+	// 初始化 Webhook 派发器：进程内有界队列异步推送关键事件（任务/安全/配置变更）。
+	// 未启用时 Send 静默丢弃，零开销；配置保存后由钩子同步启用开关支持热启停。
+	webhook.Init(cfg.Webhook)
+	webhook.Get().Start()
+	appconfig.AddOnSaveHook(func() {
+		webhook.Sync(appconfig.GetWebhookConfig())
+	})
 
 	// LDAP 认证服务（v3 Phase 2）
 	ldapService := auth.NewLDAPService(db, &auth.LDAPConfig{

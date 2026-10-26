@@ -297,6 +297,19 @@ type DDosConfig struct {
 	CooldownMinutes int  `yaml:"cooldown_minutes,omitempty"` // 告警冷却（分钟），默认 10
 }
 
+// WebhookConfig Webhook 通知配置。
+// 独立顶层节，启用后应用内关键事件（任务完成/失败、安全事件、配置变更通知等）以
+// HTTP POST 推送到 urls 中的全部回调地址。带 HMAC-SHA256 签名与指数退避重试。
+// Enabled=false 时派发器不发送；TimeoutSeconds/MaxRetries/QueueSize <=0 时使用默认值。
+type WebhookConfig struct {
+	Enabled        bool     `yaml:"enabled,omitempty"`          // 是否启用 Webhook 推送（默认 false）
+	URLs           []string `yaml:"urls,omitempty"`             // 回调地址列表（HTTP POST 目标）
+	Secret         string   `yaml:"secret,omitempty"`           // 签名密钥，用于生成 X-Fuzhan-Signature 报头
+	TimeoutSeconds int      `yaml:"timeout_seconds,omitempty"`  // 单次请求超时（秒），默认 10
+	MaxRetries     int      `yaml:"max_retries,omitempty"`      // 失败重试次数，默认 3（指数退避）
+	QueueSize      int      `yaml:"queue_size,omitempty"`       // 进程内事件队列容量，默认 1024，满载丢弃并告警
+}
+
 // Config 主配置结构体
 type Config struct {
 	// WorkDir 工作目录。映射到顶层 yaml 键 work_dir。
@@ -321,6 +334,7 @@ type Config struct {
 	OpenAPI   OpenAPIConfig     `yaml:"open_api"`
 	Index     IndexConfig       `yaml:"index"`    // 文件索引配置
 	Resource  ResourceConfig    `yaml:"resource"` // 服务器资源监控配置
+	Webhook   WebhookConfig     `yaml:"webhook"`  // Webhook 通知配置
 }
 
 // ResourceConfig 服务器资源监控配置
@@ -735,6 +749,14 @@ func GetDDoSConfig() DDosConfig {
 	dd := GlobalConfig.DDos
 	configMu.RUnlock()
 	return dd
+}
+
+// GetWebhookConfig 返回 Webhook 通知配置（供派发器实时读取，支持配置热更新）。
+func GetWebhookConfig() WebhookConfig {
+	configMu.RLock()
+	wh := GlobalConfig.Webhook
+	configMu.RUnlock()
+	return wh
 }
 
 // GetUploadRateLimit 返回上传频率限制配置（供上传限流器每个请求实时读取，

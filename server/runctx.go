@@ -31,7 +31,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
 // runCtx 汇总路由注册与 worker 运行所需的全部依赖，
 // 避免在 main 中通过闭包传递上百个局部变量，也便于热重启时复用同一份依赖重新构建 Engine。
 type runCtx struct {

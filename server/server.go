@@ -17,6 +17,7 @@ import (
 	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/webhook"
 	"fuzhan/pkg/jwt"
 )
 
@@ -237,6 +238,8 @@ func (rt *runCtx) run() {
 			security.StopWriter()
 			// 停止下载计数批量记录器，排空未落库的计数
 			services.StopDownloadCountRecorder()
+			// 停止 Webhook 派发器，排空已排队事件（幂等）
+			webhook.Stop()
 			utils.Info("服务器已关闭")
 			return
 		case <-configCh:

@@ -189,6 +189,10 @@ export const ConfigApi = {
     return request.post('/config/oauth2/test', oauth2Config)
   },
 
+  testWebhook(webhookConfig) {
+    return request.post('/config/webhook/test', webhookConfig)
+  },
+
   // 本机磁盘分区列表（含总容量/剩余容量），供共享目录选择存储分区
   partitions() {
     return request.get('/config/partitions')
