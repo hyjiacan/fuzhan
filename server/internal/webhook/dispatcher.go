@@ -20,11 +20,16 @@ import (
 type Dispatcher struct {
 	ch      chan Event
 	done    chan struct{}
+	ctx     context.Context
+	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	once    sync.Once
 	seq     atomic.Uint64
 	enabled atomic.Bool
 }
+
+// webhookDrainTimeout 进程退出时等待队列排空的最长时间，超时后取消在途请求。
+const webhookDrainTimeout = 5 * time.Second
 
 // NewDispatcher 创建派发器。
 // 队列容量取 max(config.QueueSize, 1)，同时记录是否启用，避免每次投递读配置加锁。
@@ -33,9 +38,12 @@ func NewDispatcher(cfg appconfig.WebhookConfig) *Dispatcher {
 	if queue <= 0 {
 		queue = 1024
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	d := &Dispatcher{
-		ch:   make(chan Event, queue),
-		done: make(chan struct{}),
+		ch:     make(chan Event, queue),
+		done:   make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	d.enabled.Store(cfg.Enabled)
 	return d
@@ -131,7 +139,7 @@ func (d *Dispatcher) dispatch(ev Event) {
 	if !cfg.Enabled {
 		return // 派发期间被热更新关闭，直接丢弃本轮已取出的事件
 	}
-	ctx := context.Background()
+	ctx := d.ctx
 	// 每次构造 client 以实时读取超时配置（代价可忽略）
 	client := &http.Client{Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
 	s := &sender{
@@ -159,7 +167,22 @@ func (d *Dispatcher) Sync(cfg appconfig.WebhookConfig) {
 }
 
 // Stop 停止派发：关闭投递口并等待已排队事件排空后退出（幂等，进程退出时调用）。
+// 为避免关机被长时间阻塞（重试/超时叠加），排空最多等待 webhookDrainTimeout，
+// 超时后取消在途请求并等待消费协程退出。
 func (d *Dispatcher) Stop() {
 	d.once.Do(func() { close(d.done) })
-	d.wg.Wait()
+	finished := make(chan struct{})
+	go func() {
+		d.wg.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(webhookDrainTimeout):
+		utils.Warn("Webhook 派发器排空超时，取消在途发送",
+			utils.Duration("timeout", webhookDrainTimeout))
+		d.cancel()
+		<-finished
+	}
+	d.cancel()
 }

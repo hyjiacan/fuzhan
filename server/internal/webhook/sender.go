@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,6 +56,12 @@ func delay(attempt int) time.Duration {
 	return base
 }
 
+// permanentError 标记不应重试的发送错误（如 4xx 客户端错误：地址失效、签名不符等）。
+type permanentError struct{ err error }
+
+func (e *permanentError) Error() string { return e.err.Error() }
+func (e *permanentError) Unwrap() error { return e.err }
+
 // send 向 url 发送一条事件，失败时按指数退避重试，返回最终错误（含 URL）。
 func (s *sender) send(ctx context.Context, url string, ev Event) error {
 	body, err := newPayload(ev)
@@ -68,6 +75,11 @@ func (s *sender) send(ctx context.Context, url string, ev Event) error {
 		err := s.sendOnce(ctx, url, body, sig)
 		if err == nil {
 			return nil
+		}
+		// 不可重试错误（4xx 等）直接返回，避免无意义的重试与退避等待
+		var perm *permanentError
+		if errors.As(err, &perm) {
+			return perm.err
 		}
 		if attempt >= s.maxRetries {
 			return err
@@ -114,9 +126,15 @@ func (s *sender) sendOnce(ctx context.Context, url string, body []byte, sig stri
 		utils.Info("Webhook 推送成功",
 			utils.String("url", url),
 			utils.Duration("elapsed", done),
-			utils.String("event", resp.Status))
+			utils.String("status", resp.Status))
 		return nil
 	}
-	// 4xx 为客户端错误（地址失效/签名不符），重试无意义但也无法区分，统一交给上层策略
-	return fmt.Errorf("Webhook 返回非成功状态码: %s", resp.Status)
+	err = fmt.Errorf("Webhook 返回非成功状态码: %s", resp.Status)
+	// 4xx 为客户端错误（地址失效/签名不符），重试无意义；
+	// 408（超时）与 429（限流）属于临时性错误，仍按可重试处理。
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 &&
+		resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusTooManyRequests {
+		return &permanentError{err: err}
+	}
+	return err
 }

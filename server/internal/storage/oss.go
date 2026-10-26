@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	pathpkg "path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,33 +80,37 @@ func (s *OSSStorage) notExistError(err error) error {
 // Stat 返回对象元信息。
 func (s *OSSStorage) Stat(ctx context.Context, path string) (StatInfo, error) {
 	p := s.resolve(path)
-	if p == "" {
+	if strings.Trim(path, "/") == "" {
+		// 根目录视为恒存在（即使配置了对象前缀且前缀下暂无对象）。
 		return StatInfo{Name: "/", IsDir: true, Mode: os.ModeDir | 0755}, nil
 	}
-	// 目录检测：存在以 p+"/" 开头的对象则视为目录。
-	if strings.HasSuffix(p, "/") {
-		res, err := s.bucket.ListObjects(oss.Prefix(p), oss.MaxKeys(1), oss.Delimiter("/"))
-		if err != nil {
-			return StatInfo{}, err
-		}
-		if len(res.Objects) > 0 || len(res.CommonPrefixes) > 0 {
-			return StatInfo{Name: pathpkg.Base(p), IsDir: true, Mode: os.ModeDir | 0755}, nil
-		}
-		return StatInfo{}, &os.PathError{Op: "stat", Path: path, Err: os.ErrNotExist}
-	}
 	headers, err := s.bucket.GetObjectMeta(p)
-	if err != nil {
-		return StatInfo{}, s.notExistError(err)
+	if err == nil {
+		size := parseContentLength(headers.Get("Content-Length"))
+		modTime, _ := http.ParseTime(headers.Get("Last-Modified"))
+		return StatInfo{
+			Name:    pathpkg.Base(p),
+			Size:    size,
+			IsDir:   false,
+			Mode:    0644,
+			ModTime: modTime,
+		}, nil
 	}
-	size := parseContentLength(headers.Get("Content-Length"))
-	modTime, _ := http.ParseTime(headers.Get("Last-Modified"))
-	return StatInfo{
-		Name:    pathpkg.Base(p),
-		Size:    size,
-		IsDir:   false,
-		Mode:    0644,
-		ModTime: modTime,
-	}, nil
+	// 仅当确认对象不存在时才探测目录，鉴权/网络等其它错误直接返回。
+	var se oss.ServiceError
+	if !errors.As(err, &se) || se.StatusCode != http.StatusNotFound {
+		return StatInfo{}, err
+	}
+	// 目录检测：存在以 p+"/" 开头的对象则视为目录。
+	base := strings.TrimSuffix(p, "/")
+	res, err := s.bucket.ListObjects(oss.Prefix(base+"/"), oss.MaxKeys(1), oss.Delimiter("/"))
+	if err != nil {
+		return StatInfo{}, err
+	}
+	if len(res.Objects) > 0 || len(res.CommonPrefixes) > 0 {
+		return StatInfo{Name: pathpkg.Base(base), IsDir: true, Mode: os.ModeDir | 0755}, nil
+	}
+	return StatInfo{}, &os.PathError{Op: "stat", Path: path, Err: os.ErrNotExist}
 }
 
 // Open 打开对象用于流式读取（OSS 返回的响应体不支持 Seek）。
@@ -308,13 +314,14 @@ func (s *OSSStorage) serveLarge(ctx context.Context, w http.ResponseWriter, r *h
 		return err
 	}
 	defer reader.Close()
-	w.Header().Set("Content-Type", http.DetectContentType(nil))
+	ct, body := sniffContentType(name, reader)
+	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Content-Length", itoa(info.Size))
 	if name != "" {
 		w.Header().Set("Content-Disposition", contentDispositionAttachment(name))
 	}
 	w.WriteHeader(http.StatusOK)
-	_, err = io.Copy(w, reader)
+	_, err = io.Copy(w, body)
 	return err
 }
 
@@ -327,6 +334,28 @@ func parseContentLength(v string) int64 {
 // contentDispositionAttachment 构造下载响应头 Content-Disposition。
 func contentDispositionAttachment(name string) string {
 	return `attachment; filename="` + strings.ReplaceAll(name, `"`, `_`) + `"`
+}
+
+// contentTypeFor 按文件名扩展名推断 Content-Type；无法识别时按二进制流处理。
+func contentTypeFor(name string) string {
+	if name != "" {
+		if ext := strings.ToLower(filepath.Ext(name)); ext != "" {
+			if ct := mime.TypeByExtension(ext); ct != "" {
+				return ct
+			}
+		}
+	}
+	return "application/octet-stream"
+}
+
+// sniffContentType 读取前 512 字节嗅探真实内容类型，并返回可继续完整读取的 Reader。
+func sniffContentType(name string, r io.Reader) (string, io.Reader) {
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(r, head)
+	if n == 0 {
+		return contentTypeFor(name), r
+	}
+	return http.DetectContentType(head[:n]), io.MultiReader(bytes.NewReader(head[:n]), r)
 }
 
 // itoa 将整数转为十进制字符串。

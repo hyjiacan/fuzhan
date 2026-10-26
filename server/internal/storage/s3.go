@@ -72,35 +72,36 @@ func (s *S3Storage) notExistError(err error) error {
 // 目录（其下存在对象的前缀）返回 IsDir=true；否则对具体对象做 Head。
 func (s *S3Storage) Stat(ctx context.Context, path string) (StatInfo, error) {
 	p := s.resolve(path)
-	if p == "" {
-		// 根目录视为恒存在。
+	if strings.Trim(path, "/") == "" {
+		// 根目录视为恒存在（即使配置了对象前缀且前缀下暂无对象）。
 		return StatInfo{Name: "/", IsDir: true, Mode: os.ModeDir | 0755}, nil
 	}
-	// 目录检测：若存在以 p+"/" 开头的对象，则视为目录。
-	if strings.HasSuffix(p, "/") {
-		for o := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
-			Prefix:    p,
-			Recursive: false,
-			MaxKeys:   1,
-		}) {
-			if o.Err != nil {
-				return StatInfo{}, o.Err
-			}
-			return StatInfo{Name: pathpkg.Base(p), IsDir: true, Mode: os.ModeDir | 0755, ModTime: o.LastModified}, nil
-		}
-		return StatInfo{}, &os.PathError{Op: "stat", Path: path, Err: os.ErrNotExist}
-	}
 	info, err := s.client.StatObject(ctx, s.bucket, p, minio.StatObjectOptions{})
-	if err != nil {
-		return StatInfo{}, s.notExistError(err)
+	if err == nil {
+		return StatInfo{
+			Name:    pathpkg.Base(info.Key),
+			Size:    info.Size,
+			IsDir:   false,
+			Mode:    0644,
+			ModTime: info.LastModified,
+		}, nil
 	}
-	return StatInfo{
-		Name:    pathpkg.Base(info.Key),
-		Size:    info.Size,
-		IsDir:   false,
-		Mode:    0644,
-		ModTime: info.LastModified,
-	}, nil
+	resp := minio.ToErrorResponse(err)
+	if resp.Code != "NoSuchKey" && resp.Code != "NoSuchBucket" && resp.StatusCode != http.StatusNotFound {
+		return StatInfo{}, err
+	}
+	// 对象不存在：若存在以 p+"/" 开头的对象，则视为目录。
+	for o := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
+		Prefix:    strings.TrimSuffix(p, "/") + "/",
+		Recursive: false,
+		MaxKeys:   1,
+	}) {
+		if o.Err != nil {
+			return StatInfo{}, o.Err
+		}
+		return StatInfo{Name: pathpkg.Base(strings.TrimSuffix(p, "/")), IsDir: true, Mode: os.ModeDir | 0755, ModTime: o.LastModified}, nil
+	}
+	return StatInfo{}, &os.PathError{Op: "stat", Path: path, Err: os.ErrNotExist}
 }
 
 // Open 打开对象用于流式读取。

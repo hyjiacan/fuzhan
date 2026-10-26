@@ -477,7 +477,6 @@ async function onPoll() {
     if (seq !== reqSeq) return
     const data = (res && res.data) || {}
     cursor.value = data.next_offset
-    if (data.has_more) hasMoreOlder.value = true
     addLines((data.lines || []).map(normalizeLine), false)
   } catch (e) {
     // 轮询失败静默：保留现有视图与游标，下轮重试补拉

@@ -196,13 +196,14 @@ func (s *WebDAVStorage) ServeContent(ctx context.Context, w http.ResponseWriter,
 			return err
 		}
 		defer rc.Close()
-		w.Header().Set("Content-Type", http.DetectContentType(nil))
+		ct, body := sniffContentType(name, rc)
+		w.Header().Set("Content-Type", ct)
 		w.Header().Set("Content-Length", itoa(info.Size))
 		if name != "" {
 			w.Header().Set("Content-Disposition", contentDispositionAttachment(name))
 		}
 		w.WriteHeader(http.StatusOK)
-		_, err = io.Copy(w, rc)
+		_, err = io.Copy(w, body)
 		return err
 	}
 
@@ -218,7 +219,7 @@ func (s *WebDAVStorage) ServeContent(ctx context.Context, w http.ResponseWriter,
 		return err
 	}
 	defer rc.Close()
-	w.Header().Set("Content-Type", http.DetectContentType(nil))
+	w.Header().Set("Content-Type", contentTypeFor(name))
 	w.Header().Set("Content-Range", contentRange(start, end, info.Size))
 	w.Header().Set("Content-Length", itoa(length))
 	w.WriteHeader(http.StatusPartialContent)
