@@ -86,7 +86,7 @@
           {{ following ? '· 跟随最新' : '· 已暂停跟随（上翻阅读中）' }}
         </span>
         <span class="status-right">
-          每 {{ pollMs / 1000 }} 秒增量拉取 · 已缓存 {{ lines.length }} / 最多 {{ MAX_BUFFER_LINES }} 行
+          每 {{ POLL_MS / 1000 }} 秒增量拉取 · 已缓存 {{ lines.length }} / 最多 {{ MAX_BUFFER_LINES }} 行
         </span>
       </div>
 
