@@ -425,8 +425,9 @@ async function handleMount() {
   following.value = true
   scrollTop.value = 0
   try {
-    const data = await AdminApi.getLogsTail({ file: file.value, lines: INITIAL_LINES })
+    const res = await AdminApi.getLogsTail({ file: file.value, lines: INITIAL_LINES })
     if (seq !== reqSeq) return
+    const data = (res && res.data) || {}
     cursor.value = data.next_offset
     hasMoreOlder.value = !!data.has_more
     addLines((data.lines || []).map(normalizeLine), false)
@@ -468,12 +469,13 @@ async function onPoll() {
   }
   const seq = reqSeq
   try {
-    const data = await AdminApi.getLogsTail({
+    const res = await AdminApi.getLogsTail({
       file: file.value,
       lines: FETCH_LINES,
       offset: cursor.value,
     })
     if (seq !== reqSeq) return
+    const data = (res && res.data) || {}
     cursor.value = data.next_offset
     if (data.has_more) hasMoreOlder.value = true
     addLines((data.lines || []).map(normalizeLine), false)
@@ -491,7 +493,7 @@ async function loadOlder() {
   const anchor = lines.value[0].pos
   const seq = reqSeq
   try {
-    const data = await AdminApi.getLogsTail({
+    const res = await AdminApi.getLogsTail({
       file: file.value,
       lines: FETCH_LINES,
       before: anchor,
@@ -499,6 +501,7 @@ async function loadOlder() {
       keyword: keyword.value || '',
     })
     if (seq !== reqSeq) return
+    const data = (res && res.data) || {}
     const older = (data.lines || []).map(normalizeLine)
     const prevScroll = viewportRef.value ? viewportRef.value.scrollTop : 0
     addLines(older, true)
