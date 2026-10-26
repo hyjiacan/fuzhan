@@ -1,6 +1,6 @@
 # 用户手册
 
-> 浮栈 (Light Share) 用户指南 | 更新时间: 2026-06-12
+> 浮栈 (Light Share) 用户指南 | 更新时间: 2026-10-26
 
 ---
 
@@ -10,6 +10,7 @@
 - [配置指南](#配置指南)
 - [功能使用](#功能使用)
 - [FTP 访问](#ftp-访问)
+- [API 访问](#api-访问)
 - [常见问题](#常见问题)
 
 ---
@@ -51,6 +52,31 @@ chmod +x ./fuzhan
 
 配置完成后，访问 `http://localhost:8080` 即可使用。
 
+### 安装为系统服务
+
+**Windows:**
+
+```powershell
+# 安装为开机自启服务
+.\fuzhan.exe --install
+
+# 自定义服务名称与描述
+.\fuzhan.exe --install --name "Fuzhan" --display "浮栈文件服务" --description "轻量级文件分享服务"
+
+# 卸载服务
+.\fuzhan.exe --uninstall
+```
+
+**Linux (systemd):**
+
+```bash
+sudo ./fuzhan --install
+sudo ./fuzhan --uninstall
+```
+
+> 安装为服务后，请确认工作目录与 `fuzhan.yaml`、`data/`、`logs/` 的相对位置正确；
+> 若需调整，请修改服务定义中的工作目录。
+
 ---
 
 ## 配置指南
@@ -61,9 +87,37 @@ chmod +x ./fuzhan
 
 ```yaml
 server:
-  host: "0.0.0.0"  # 监听地址，0.0.0.0 表示所有网卡
-  port: 8080       # 服务端口
+  host: "0.0.0.0"      # 监听地址，0.0.0.0 表示所有网卡
+  http:
+    enabled: true      # 是否启用 HTTP
+    port: 8080         # HTTP 端口
+  https:
+    enabled: false     # 是否启用 HTTPS
+    port: 8443         # HTTPS 端口
+  ftp:
+    enabled: false     # 是否启用 FTP
+    port: 2121         # FTP 端口
+    passive_port_start: 2122   # 被动模式数据端口范围
+    passive_port_end: 2221
+  ftps:
+    enabled: false     # 是否启用 FTPS
+    port: 990
+  webdav:
+    enabled: false     # 是否启用 WebDAV（复用 HTTP/HTTPS 端口）
+  tls:
+    cert_file: ""      # TLS 证书（HTTPS/FTPS 共用）
+    key_file: ""
 ```
+
+### 数据库
+
+```yaml
+database:
+  driver: "sqlite"     # sqlite / mysql / postgres
+  dsn: "./fuzhan.db"   # SQLite 路径，或 MySQL/PostgreSQL 连接串
+```
+
+> 切换数据库类型后需重启服务生效，已有数据需通过外部工具自行迁移。
 
 ### 共享目录
 
@@ -112,14 +166,72 @@ storage:
     default_expire_days: 30
 ```
 
-### FTP 服务
+### 存储后端
+
+存储后端决定公开、私有与临时文件的实际存放位置，支持：
+
+| 取值 | 说明 |
+|------|------|
+| `local` | 本地磁盘（默认） |
+| `s3` | AWS S3 或 S3 兼容对象存储 |
+| `minio` | MinIO（S3 兼容协议） |
+| `oss` | 阿里云 OSS |
+| `webdav` | 远端 WebDAV 服务 |
 
 ```yaml
-ftp:
-  enabled: true
-  port: 2121           # FTP 端口
-  tls: false           # 是否启用 TLS 加密
+storage:
+  backend: "local"     # local / s3 / minio / oss / webdav
+  s3:                  # backend=s3/minio 时使用
+    endpoint: "https://s3.amazonaws.com"
+    access_key: "..."
+    secret_key: "..."
+    bucket: "..."
+    region: "us-east-1"
+    use_ssl: true
+  oss:                 # backend=oss 时使用
+    endpoint: "oss-cn-hangzhou.aliyuncs.com"
+    access_key: "..."
+    secret_key: "..."
+    bucket: "..."
+  webdav:              # backend=webdav 时使用
+    url: "https://example.com/dav"
+    username: "..."
+    password: "..."
 ```
+
+> **修改存储后端后必须重启服务才能生效**（服务启动时才会初始化存储连接）。
+> 选择远端后端时，`storage.public.root_dirs[].path` 作为对象存储中的虚拟前缀，不再对应本地目录。
+
+### 上传与预览
+
+```yaml
+upload:
+  chunk_size: 10485760         # 分片大小（字节），默认 10MB
+  max_file_size: 17179869184   # 最大文件大小（字节），0 表示不限制
+  url_upload:
+    enabled: false             # 是否允许从 URL 下载文件到服务器
+    allowed_ip_ranges: []      # URL 源地址白名单（留空时拒绝内网/回环/保留地址）
+    max_concurrent: 2          # 全局同时进行的 URL 上传任务数
+    max_retries: 3             # 失败重试次数（4xx 不重试）
+  rate_limit:
+    window_minutes: 1          # 上传频率统计窗口（分钟）
+    max_requests: 0            # 窗口内单 IP 最大上传操作数，0 表示不限制
+
+preview:
+  enabled: true                # 预览全局开关
+  groups:                      # 各分组独立开关与 MIME/扩展名白名单
+    image: { enabled: true, mimes: "image/png,image/jpeg", exts: "png,jpg,jpeg" }
+    text: { enabled: true, mimes: "text/*", exts: "txt,md,log", max_inline_size: "1M", text_chunk_size: "100K" }
+    audio: { enabled: true, mimes: "audio/mpeg,audio/wav", exts: "mp3,wav" }
+    video: { enabled: true, mimes: "video/mp4,video/webm", exts: "mp4,webm" }
+    document: { enabled: true, mimes: "application/pdf", exts: "pdf" }
+    custom: { enabled: false, mimes: "", exts: "" }   # 兜底白名单，默认关闭
+```
+
+### FTP 服务
+
+FTP/FTPS 的启用与端口在 `server.ftp` / `server.ftps` 节点配置（见「服务配置」），
+TLS 证书由 `server.tls` 统一提供。客户端连接方式见 [FTP 访问](#ftp-访问)。
 
 ### 日志配置
 
@@ -141,7 +253,7 @@ log:
 - **OAuth2 / OIDC**：对接外部统一认证系统（授权码模式）。启用后登录页会展示外部认证入口，
   点击后跳转到外部系统完成认证，回调后自动映射为本地用户。支持 OIDC Issuer 自动发现端点。
 
-> 配置说明与字段含义详见[认证与授权模块](../01-认证与授权模块.md)。
+> 配置说明与字段含义详见[认证与授权模块](../requirements/01-认证与授权模块.md)。
 
 ---
 
@@ -162,21 +274,33 @@ log:
 
 ### 文件上传
 
+- 点击上传按钮或将文件拖拽到页面即可上传，大文件自动按分片上传并支持断点续传。
+- 管理员开启 `upload.url_upload.enabled` 后，可在上传面板中填写文件 URL，由服务器下载到当前目录。
+- 公共目录是否允许上传由管理员按目录配置；上传大小、分片大小与频率限制由服务端统一约束。
+
 **临时分享（无需登录）：**
-1. 点击"临时上传"或拖拽文件到上传区域
-2. 系统生成临时链接和提取码
-3. 分享链接给他人下载
+
+1. 进入「临时分享」并上传文件
+2. 系统生成临时链接与提取码
+3. 分享链接给他人，对方凭提取码下载
+4. 文件按配置的过期天数自动清理，也可设置下载后立即删除
 
 **私有存储（需要登录）：**
-1. 登录后进入"我的文件"
+
+1. 登录后进入「我的文件」
 2. 点击上传按钮或拖拽文件
-3. 文件保存在私有空间中
+3. 文件保存在私有空间，仅本人可见（管理员可在后台管理）
 
 ### 文件搜索
 
 1. 在顶部搜索框输入关键词
-2. 支持实时搜索，显示匹配结果
-3. 点击结果直接下载
+2. 支持实时搜索、文件名联想与大小写不敏感匹配
+3. 点击结果直接下载，或进入所在目录
+
+### 文件预览
+
+在文件列表中点击可预览的文件即可在线查看，支持图片、文本/代码、音频、视频、PDF 等类型。
+管理员可在**系统设置 › 预览配置**中按分组开关并配置允许的 MIME 与扩展名；未启用或类型不支持时直接下载。
 
 ### 文件操作
 
@@ -194,6 +318,21 @@ log:
   内存同时展示总量与已用量的具体值。实时数据经 SSE（`/admin/resource/stream`）推送，
   不可用时自动降级为轮询。
 - **历史曲线**：按 `collect_interval` 周期落库的历史数据，可切换时间范围查看，超长区间自动降采样。
+
+### 管理后台
+
+管理员登录后可进入管理后台，主要模块包括：
+
+- **仪表盘**：用户数、文件数、存储用量、近期上传与分享等概览。
+- **用户与用户组**：创建/禁用用户、重置密码、分配角色与用户组权限。
+- **文件管理**：浏览并管理所有公共目录文件，支持重命名、移动、删除。
+- **分享管理**：查看与撤销临时分享、私有分享链接。
+- **系统设置**：应用名称、共享目录、上传/下载限制、存储后端、预览、MIME 表、数据库、访问控制、身份认证、Webhook、资源监控等。
+- **日志查看**：按级别与来源筛选服务端日志，便于排查问题。
+- **API Key 管理**：为脚本或第三方系统签发、禁用 API Key，并限制可用 IP/域名。
+- **存储索引**：查看存储后端连接状态与索引信息。
+
+> 存储后端、数据库、HTTP/HTTPS/FTP 端口等底层配置修改后需重启服务生效；其余配置保存后即时生效。
 
 ---
 
@@ -248,6 +387,17 @@ ftp://localhost:2121
 - 上传本地文件到根目录
 - 创建新文件夹
 - 删除文件/文件夹
+
+---
+
+## API 访问
+
+服务端提供 REST API，接口前缀为 `/api/v1`，可用于脚本、自动化与第三方集成。
+
+- **认证方式**：登录后获取 JWT，通过 `Authorization: Bearer <token>` 调用；或在管理后台创建 API Key，通过 `X-API-Key: <key>` 调用。
+- **统一响应**：`{ "success": true, "code": 0, "message": "", "data": ... }`。
+- **API Key 限制**：可为每个 Key 配置允许访问的 IP / 域名白名单，未配置时默认拒绝。
+- **完整端点**：参见 [API 接口文档](../design/api/api-contracts.md)。
 
 ---
 
@@ -333,4 +483,4 @@ fuzhan --uninstall
 
 - 查看 `logs/` 目录下的日志文件
 - 检查 [常见问题](#常见问题) 部分
-- 参考 [开发指南](./development-guide.md) 了解更多配置选项
+- 参考 [开发指南](../development/development-guide.md) 了解更多配置选项

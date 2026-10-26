@@ -344,7 +344,7 @@ fuzhan/                              # 项目根目录
 ### 后端入口
 
 ```
-server/cmd/fuzhan/main.go
+server/main.go
     │
     ├── flag.Parse()                    # 解析命令行参数
     ├── appconfig.DoInitWithConfig()    # 加载配置（支持热重载）
@@ -360,8 +360,7 @@ server/cmd/fuzhan/main.go
     │   └── ...（其他服务）
     ├── FTP server start（goroutine）
     ├── cleanup worker start（goroutine）
-    ├── router.SetupRouter()           # 设置 Gin 路由
-    ├── router.RegisterAPIRoutes()     # 注册 API 路由
+    ├── setupRouter()                  # 设置 Gin 路由并注册各领域路由
     ├── http.Server{...} + ListenAndServe
     ├── signal.Notify（SIGINT/SIGTERM）
     ├── context cancellation → hot-restart loop
@@ -396,7 +395,7 @@ ui/src/main.js
 
 | 文件 | 说明 |
 |------|------|
-| `server/cmd/fuzhan/main.go` | 入口点，含 worker 生命周期（context 取消 + 热重启循环） |
+| `server/main.go` | 入口点，含 worker 生命周期（context 取消 + 热重启循环） |
 | `server/internal/appconfig/` | YAML 配置加载、DTO、校验与写入（核心在 config.go/loader.go 等） |
 | `server/internal/appconfig/api/` | 配置管理 HTTP 接口（读取/保存/连通性测试） |
 | `server/internal/appconfig/config.go` | 完整配置结构体（多个子配置块） |

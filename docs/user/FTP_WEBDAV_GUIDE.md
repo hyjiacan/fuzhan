@@ -42,8 +42,7 @@ account:
 ```yaml
 server:
   webdav:
-    enabled: false     # 设为 true 启用
-    port: 0            # 0 表示与 HTTP/HTTPS 同端口
+    enabled: false     # 设为 true 启用（与 HTTP/HTTPS 同端口）
 ```
 
 WebDAV 统一端点为 `/api/v1/webdav`，支持可选 BasicAuth 认证。
@@ -52,29 +51,29 @@ WebDAV 统一端点为 `/api/v1/webdav`，支持可选 BasicAuth 认证。
 
 ```bash
 # 列出 public/ 目录（匿名）
-curl -X PROPFIND http://localhost:8888/api/v1/webdav/public/
+curl -X PROPFIND http://localhost:8080/api/v1/webdav/public/
 
 # 上传文件到 public/ 目录（需要认证用户有写入权限）
-curl -u username:password -T file.txt http://localhost:8888/api/v1/webdav/public/my_files/file.txt
+curl -u username:password -T file.txt http://localhost:8080/api/v1/webdav/public/my_files/file.txt
 
 # 从 public/ 下载文件（匿名）
-curl http://localhost:8888/api/v1/webdav/public/my_files/file.txt
+curl http://localhost:8080/api/v1/webdav/public/my_files/file.txt
 
 # 访问 private/ 目录（需要认证）
-curl -u username:password -X PROPFIND http://localhost:8888/api/v1/webdav/private/
+curl -u username:password -X PROPFIND http://localhost:8080/api/v1/webdav/private/
 ```
 
 ### Windows 资源管理器
 
 1. 打开「此电脑」→ 右键「添加一个网络位置」
-2. 输入地址：`http://localhost:8888/api/v1/webdav/public/`
+2. 输入地址：`http://localhost:8080/api/v1/webdav/public/`
 3. 如需认证，勾选「登录时使用其他用户名」并输入凭据
 4. 完成后可在资源管理器中直接操作文件
 
 ### macOS Finder
 
 1. 菜单栏「前往」→「连接服务器」(Cmd+K)
-2. 输入地址：`http://localhost:8888/api/v1/webdav/public/`
+2. 输入地址：`http://localhost:8080/api/v1/webdav/public/`
 3. 选择「注册用户」并输入凭据（匿名则选「访客」）
 4. 连接后可在 Finder 中直接操作
 
@@ -86,12 +85,12 @@ sudo apt install davfs2  # Debian/Ubuntu
 sudo yum install davfs2  # CentOS/RHEL
 
 # 挂载（匿名）
-sudo mount -t davfs http://localhost:8888/api/v1/webdav/public/ /mnt/webdav
+sudo mount -t davfs http://localhost:8080/api/v1/webdav/public/ /mnt/webdav
 
 # 挂载（认证）
-sudo mount -t davfs http://localhost:8888/api/v1/webdav/ /mnt/webdav
+sudo mount -t davfs http://localhost:8080/api/v1/webdav/ /mnt/webdav
 # 将用户名和密码写入 ~/.davfs2/secrets：
-# http://localhost:8888/api/v1/webdav/ username password
+# http://localhost:8080/api/v1/webdav/ username password
 ```
 
 ### 第三方客户端
@@ -111,7 +110,7 @@ server:
   # FTP 配置
   ftp:
     enabled: false
-    port: 21           # FTP 端口
+    port: 2121         # FTP 端口，0 表示使用默认 2121
     # 被动模式数据端口范围（留空使用默认 2122-2221）
     # passive_port_start: 2122
     # passive_port_end: 2221
@@ -136,12 +135,12 @@ server:
 
 ```bash
 # 匿名登录（只读 public/）
-ftp localhost 21
+ftp localhost 2121
 # Name: anonymous
 # Password: (任意或直接回车)
 
 # 用户登录
-ftp localhost 21
+ftp localhost 2121
 # Name: username
 # Password: your_password
 
@@ -168,7 +167,7 @@ ftp> passive
 
 ### Windows 资源管理器
 
-1. 打开「此电脑」→ 在地址栏输入：`ftp://localhost:21/`
+1. 打开「此电脑」→ 在地址栏输入：`ftp://localhost:2121/`
 2. 右键选择「登录」，输入用户名和密码
 3. 匿名可勾选「匿名登录」
 
@@ -192,7 +191,7 @@ ftp> passive
 lftp -u username,password ftps://localhost:990
 
 # 使用 curl
-curl -k --ftp-ssl -u username:password ftp://localhost:21/
+curl -k --ftp-ssl -u username:password ftp://localhost:2121/
 ```
 
 ---

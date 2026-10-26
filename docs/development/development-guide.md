@@ -50,54 +50,62 @@
 ```
 fuzhan/
 ├── server/                  # Go 后端
-│   ├── cmd/
-│   │   ├── fuzhan/     # 程序入口
-│   │   │   └── main.go     # 入口（worker 生命周期 + 热重启）
-│   │   └── xxh3sum/        # xxhash 命令行工具
-│   │
-│   ├── internal/           # 核心应用代码
-│   │   ├── access/         # WebDAV / FTP 虚拟文件系统
-│   │   ├── admin/          # 管理员功能
-│   │   ├── auth/           # 认证（JWT/API Key/LDAP/OAuth2/RBAC）
-│   │   ├── cli/            # CLI 接口
-│   │   ├── config/         # 配置管理
-│   │   ├── file/           # 文件操作
-│   │   ├── ftp/            # FTP 服务器
-│   │   ├── health/         # 健康检查
-│   │   ├── index/          # 文件索引
-│   │   ├── middleware/     # 中间件
-│   │   ├── models/         # 数据模型
-│   │   ├── monitor/        # 系统监控
-│   │   ├── notification/   # 通知系统
-│   │   ├── openapi/        # OpenAPI 支持
-│   │   ├── repositories/   # 数据访问层
-│   │   ├── router/         # 路由配置
-│   │   ├── services/       # 业务服务
-│   │   ├── setup/          # 初始化向导
-│   │   └── temp/           # 临时文件
-│   │
-│   ├── pkg/                # 公共包
-│   │   ├── jwt/
-│   │   ├── pathutils/
-│   │   ├── response/
-│   │   └── xxh3/
-│   │
-│   ├── integration/        # 集成测试
-│   └── web/                # 嵌入的前端资源
+│   ├── main.go              # 程序入口（命令行 + 生命周期 + 热重启）
+│   ├── bootstrap.go         # 依赖装配与启动引导
+│   ├── router.go            # 路由装配
+│   ├── routes_top.go        # 顶层/公开路由
+│   ├── routes_web.go        # 业务接口路由
+│   ├── routes_admin.go      # 管理接口路由
+│   ├── server.go            # HTTP/HTTPS/FTP/WebDAV 服务生命周期
+│   ├── workers.go           # 后台任务调度
+│   ├── runctx.go            # 运行上下文
+│   ├── internal/            # 核心应用代码（按领域分包）
+│   │   ├── access/          # 访问协议（FTP/WebDAV）虚拟文件系统
+│   │   ├── accessguard/     # 访问控制与 IP/域名白名单
+│   │   ├── admin/           # 管理后台
+│   │   ├── appconfig/       # 配置定义、加载、保存与接口
+│   │   ├── auth/            # 认证（JWT/API Key/LDAP/OAuth2/RBAC）
+│   │   ├── behavioranalytics/ # 行为分析
+│   │   ├── cli/             # CLI 接口
+│   │   ├── downloadticket/  # 下载票据
+│   │   ├── file/            # 文件操作
+│   │   ├── filedir/         # 目录与配额
+│   │   ├── ftp/             # FTP/FTPS 服务器
+│   │   ├── githubReleaseGetter/ # GitHub Release 同步
+│   │   ├── index/           # 文件索引
+│   │   ├── middleware/      # Gin 中间件
+│   │   ├── models/          # 数据模型
+│   │   ├── monitor/         # 系统监控
+│   │   ├── notification/    # 通知系统
+│   │   ├── online/          # 在线用户
+│   │   ├── openapi/         # OpenAPI 支持
+│   │   ├── repositories/    # 数据访问层
+│   │   ├── resource/        # 资源监控
+│   │   ├── search/          # 搜索与联想
+│   │   ├── security/        # 安全审计
+│   │   ├── services/        # 跨领域业务服务
+│   │   ├── setup/           # 初始化向导
+│   │   ├── storage/         # 存储后端（local/s3/oss/webdav）
+│   │   ├── temp/            # 临时文件
+│   │   ├── utils/           # 日志与通用工具
+│   │   ├── webdav/          # WebDAV 服务器
+│   │   └── webhook/         # Webhook 推送
+│   ├── integration/         # 集成测试
+│   ├── web/                 # 嵌入的前端资源
+│   └── scalar/              # 嵌入的 OpenAPI 文档页
 │
-├── ui/                     # Vue 前端
-│   ├── src/                # 源码
-│   │   ├── views/          # 页面（13个）
-│   │   ├── components/     # 组件
-│   │   ├── api/            # API 客户端
-│   │   ├── store/          # 状态管理
-│   │   ├── router/         # 路由
-│   │   └── plugins/        # Vue 插件
-│   ├── package.json
-│   └── vite.config.js
+├── ui/                      # Vue 前端
+│   ├── src/
+│   │   ├── views/           # 页面
+│   │   ├── components/      # 组件
+│   │   ├── api/             # API 客户端
+│   │   ├── store/           # 状态管理
+│   │   ├── router/          # 路由
+│   │   └── plugins/         # Vue 插件
+│   └── package.json
 │
-├── docs/                   # 文档
-└── _bmad-output/           # BMad 流程文档
+├── docs/                    # 文档（requirements/design/user/development）
+└── README.md
 ```
 
 ---
@@ -114,14 +122,13 @@ cd fuzhan
 ### 2. 启动后端
 
 ```bash
-# 进入程序入口目录
-cd server/cmd/fuzhan
+# 进入后端目录
+cd server
 
 # 直接运行
-go run main.go
+go run .
 
-# 或使用 Air 热重载开发（从 server 目录）
-cd server
+# 或使用 Air 热重载开发
 air
 
 # 或使用构建版本
@@ -152,11 +159,11 @@ yarn dev
 
 ## 开发命令
 
-### 后端 (server/cmd/fuzhan/)
+### 后端 (server/)
 
 | 命令 | 说明 |
 |------|------|
-| `go run main.go` | 直接运行 |
+| `go run .` | 直接运行 |
 | `cd server && air` | 热重载开发 |
 | `go build -ldflags "-s -w" -o fuzhan` | 生产构建 |
 | `go test ./...` | 运行所有测试 |
@@ -222,44 +229,7 @@ chmod +x build.sh
 
 ### 服务安装
 
-将程序安装为系统服务，实现开机自启和后台运行。
-
-**命令行参数：**
-| 参数 | 说明 |
-|------|------|
-| `--install` | 安装服务 |
-| `--uninstall` | 卸载服务 |
-| `--status` | 查看服务状态 |
-| `--force-stop` | 强制停止服务 |
-| `--name <name>` | 指定服务名称（默认 fuzhan） |
-| `--user <user>` | 指定运行用户（Linux/macOS） |
-| `-c <path>` | 指定配置文件路径 |
-| `--create-admin <user>:<pass>` | 创建管理员用户 |
-
-**使用示例：**
-```bash
-# 安装服务（使用默认名称）
-fuzhan --install
-
-# 指定名称安装
-fuzhan --install --name myservice
-
-# 创建管理员
-fuzhan --create-admin admin:password123
-
-# 查看服务状态
-fuzhan --status
-
-# 卸载服务
-fuzhan --uninstall
-```
-
-**平台支持：**
-| 平台 | 实现方式 | 权限要求 |
-|------|----------|----------|
-| Windows | sc.exe | 管理员权限 |
-| Linux | systemd | sudo |
-| macOS | launchd | sudo（系统级）或用户目录 |
+安装为系统服务的参数与平台支持见[用户手册 - 安装为系统服务](../user/user-guide.md#安装为系统服务)。
 
 ### 前端构建
 
@@ -274,186 +244,25 @@ yarn build
 
 ## 配置说明
 
-配置文件: `fuzhan.yaml`
+配置文件 `fuzhan.yaml` 的完整字段说明、示例与热更新行为见[用户手册 - 配置指南](../user/user-guide.md#配置指南)。
 
-### 主要配置项
-
-```yaml
-# 服务设置
-server:
-  host: "0.0.0.0"
-  port: 8080
-  webdav:
-    enabled: false
-    port: 0
-
-# 数据库
-database:
-  driver: "sqlite"  # sqlite, mysql, postgres
-  dsn: "./fuzhan.db"
-
-# 存储配置
-storage:
-  public:
-    root_dirs:
-      - path: "./data/share1"
-        quota: "10GB"  # 0 表示无限制
-
-  allowed_extensions: []  # 空表示允许所有类型
-
-  # 私有存储
-  private:
-    enabled: true
-    path: "./private_files"
-    quota:
-      global: "100G"    # 全局配额
-      per_user: "10G"   # 单用户配额
-    # 私有文件永久保存，无过期概念（仅临时文件有过期时间）
-
-  # 临时文件
-  temp:
-    enabled: true
-    path: "./temp_files"
-    quota:
-      global: "10G"
-      per_ip: "500M"    # 单IP配额
-    default_expire_days: 7
-    delete_on_download: true  # 下载后删除
-
-# 身份认证配置（可选）：LDAP / OAuth2
-auth:
-  ldap:
-    enabled: false
-    host: "ldap.example.com"
-    port: 389
-    use_ssl: false
-    base_dn: "dc=example,dc=com"
-    bind_dn: ""
-    bind_password: ""
-    user_filter: ""            # 如 (uid=%s)
-    auto_create_user: false
-  oauth2:
-    enabled: false
-    provider_name: ""          # 如 "企业 SSO"
-    client_id: ""
-    client_secret: ""
-    issuer: ""                 # OIDC Issuer，配置后自动发现端点
-    auth_url: ""               # 授权端点
-    token_url: ""              # 令牌端点
-    user_info_url: ""          # 用户信息端点
-    scopes: []                 # 默认 [openid, profile, email]
-    redirect_url: ""           # 回调地址，留空按当前域名推断
-    username_claim: ""         # 默认 preferred_username
-    auto_create_user: false
-
-# 上传配置
-upload:
-  chunk_size: 10485760      # 10MB 分片大小
-  max_file_size: 17179869184 # 16GB 最大文件
-  url_upload:
-    enabled: false
-    allowed_ip_ranges: []   # CIDR 网段，留空时不限制公网，但会拒绝内网/回环/链路本地等保留地址（安全默认，防 SSRF）
-
-# 预览配置
-# 每个分组可独立开关并维护各自的 MIME/扩展名列表（逗号分隔，支持通配符）；
-# mimes/exts 未配置时回退内置默认表（仅含浏览器原生可渲染的类型），
-# 显式留空时该组不命中任何文件（custom 组同语义，仅已配置条目参与匹配）。
-# custom 组默认关闭，需显式启用。
-# 同时命中多个分组时按优先序 image > audio > video > document > text > custom 归类。
-preview:
-  enabled: true             # 预览全局开关，关闭后所有预览入口不可用（未配置视为开启）
-  groups:
-    image:
-      enabled: true         # 图片分组（未配置视为开启）
-      mimes: "image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-      exts: "png,jpg,jpeg,gif,bmp,webp,svg,ico"
-    text:
-      enabled: true         # 文本分组，大小配置归属本组
-      mimes: "text/*,application/json,application/xml,application/javascript"
-      exts: "txt,md,log,json,..."
-      max_inline_size: "1M"   # 文本最大内联显示大小，超过需下载查看
-      text_chunk_size: "100K" # 文本分块读取大小
-    audio:
-      enabled: true         # 音频分组
-      mimes: "audio/mpeg,audio/wav,audio/ogg"
-      exts: "mp3,wav,flac,..."
-    video:
-      enabled: true         # 视频分组
-      mimes: "video/mp4,video/webm,video/ogg"
-      exts: "mp4,webm,..."
-    document:
-      enabled: true         # 文档分组（PDF）
-      mimes: "application/pdf"
-      exts: "pdf"
-    custom:
-      enabled: false        # 自定义分组：兜底白名单，默认关闭；仅已配置条目参与匹配，留空不命中任何文件
-      mimes: ""
-      exts: ""
-
-# FTP 服务
-ftp:
-  enabled: false
-  port: 2121
-  tls: false
-
-# OpenAPI 配置（可选）
-openapi:
-  enabled: false
-  rate_limit: 100
-
-# 日志
-log:
-  level: "info"
-  directory: "./logs"
-  max_size: 100    # MB
-  max_backups: 30
-  compress: true
-```
-
-### 环境变量覆盖
+### 环境变量
 
 | 变量 | 说明 |
 |------|------|
-| `fuzhan_CONFIG` | 配置文件路径 |
-| `fuzhan_PORT` | 服务端口 |
+| `FUZHAN_CONFIG` | 配置文件路径 |
+| `FUZHAN_PORT` | 服务端口 |
 
 ### 配置热重载
 
 修改 `fuzhan.yaml` 后，程序自动检测变更并热重启：
-- 文件系统监听配置变更
-- 自动触发 worker 热重启
-- 支持动态更新日志级别
+- 文件系统监听配置变更，自动触发 worker 热重启；
+- 日志级别等可热更新配置即时生效；
+- 存储后端、HTTP/HTTPS/FTP 端口、数据库等底层配置需重启进程生效。
 
-### FTP 使用方法
+### FTP / WebDAV
 
-**匿名访问（无需登录）：**
-```
-服务器: localhost
-端口: 2121
-用户名: anonymous
-密码: (任意或留空)
-```
-
-**客户端示例：**
-
-FileZilla:
-1. 主机: `ftp://localhost`
-2. 端口: `2121`
-3. 协议: FTP
-4. 加密: 不使用 TLS
-5. 登录类型: 匿名
-
-### WebDAV 使用方法
-
-**启用 WebDAV:**
-```yaml
-server:
-  webdav:
-    enabled: true
-    port: 0  # 0 表示与 HTTP 同端口
-```
-
-**访问端点:** `/webdav/`
+协议启用方式、认证与客户端连接见[FTP/WebDAV 使用指南](../user/FTP_WEBDAV_GUIDE.md)。
 
 ---
 
@@ -463,7 +272,7 @@ server:
 
 1. 在 `server/internal/{module}/` 创建或编辑 handler 文件
 2. 定义请求/响应结构体
-3. 在 `server/internal/router/router.go` 注册路由
+3. 在 `server/routes_web.go`（或对应领域路由文件）注册路由
 4. 在 `server/internal/services/` 实现业务逻辑（如需要）
 5. 添加单元测试
 
@@ -480,7 +289,7 @@ func NewHandler(c *gin.Context) {
     utils.HandleSuccess(c, http.StatusOK, "成功", result)
 }
 
-// server/internal/router/router.go - 在 RegisterAPIRoutes 中注册
+// server/routes_web.go - 在对应路由组中注册
 api.POST("/new-endpoint", deps.NewHandler)
 ```
 

@@ -243,4 +243,4 @@ for _, w := range results.Workers {
 
 ---
 
-相关文档：[architecture.md](../design/architecture.md) · [SYSTEM_DESIGN.md](../design/SYSTEM_DESIGN.md) · [component-inventory.md](../design/component-inventory.md)
+相关文档：[architecture.md](../architecture.md) · [SYSTEM_DESIGN.md](../SYSTEM_DESIGN.md) · [component-inventory.md](../component-inventory.md)

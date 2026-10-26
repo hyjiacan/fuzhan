@@ -28,8 +28,9 @@
 ```
 浮栈 (fuzhan)
 ├── server/                         # 后端 (Go + Gin 框架)
-│   ├── cmd/fuzhan/            # 程序入口
-│   │   └── main.go                # 主程序入口 + worker 生命周期
+│   ├── main.go                    # 主程序入口 + worker 生命周期
+│   ├── bootstrap.go               # 依赖装配与启动引导
+│   ├── router.go                  # 路由装配
 │   ├── cmd/xxh3sum/               # xxh3 命令行工具
 │   │
 │   ├── internal/                  # 核心应用代码（重构后）
@@ -44,7 +45,7 @@
 │   │   │   ├── oauth2.go          # OAuth2 / OIDC 外部认证
 │   │   │   └── rbac.go            # RBAC 权限
 │   │   ├── cli/                   # CLI 模块
-│   │   ├── config/                # 配置管理
+│   │   ├── appconfig/             # 配置定义、加载、保存与接口
 │   │   ├── file/                  # 文件操作
 │   │   │   ├── handler.go         # 文件处理器
 │   │   │   ├── download.go        # 下载
@@ -65,7 +66,7 @@
 │   │   ├── openapi/               # OpenAPI 支持
 │   │   ├── repositories/          # 数据访问层
 │   │   ├── resource/              # 服务器资源监控（采样/硬件/SSE）
-│   │   ├── router/                # 路由配置
+│   │   ├── storage/               # 存储后端（local/s3/oss/webdav）
 │   │   ├── services/              # 业务服务
 │   │   │   ├── auth_service.go
 │   │   │   ├── file_service.go
@@ -113,7 +114,7 @@
 
 ### 模块详细说明
 
-#### 1. 主程序入口 (server/cmd/fuzhan/main.go)
+#### 1. 主程序入口 (server/main.go)
 
 - 程序启动点，负责初始化应用程序和设置 HTTP 路由
 - Worker 生命周期管理（context cancellation + hot-restart loop）
@@ -276,7 +277,7 @@
 | `/api/v1/web/api-keys/*` | API Key 管理（需管理员） |
 | `/webdav/*` | WebDAV 协议访问 |
 
-详见 [API_INTERFACE.md](../api/API_INTERFACE.md) 和 [api-contracts.md](../api/api-contracts.md)
+详见 [API_INTERFACE.md](./api/API_INTERFACE.md) 和 [api-contracts.md](./api/api-contracts.md)
 
 ## 部署说明
 
