@@ -14,6 +14,10 @@
           <el-icon><RefreshIcon /></el-icon>
           刷新
         </el-button>
+        <el-button type="primary" @click="showCreateUserModal">
+          <el-icon><PlusIcon /></el-icon>
+          添加用户
+        </el-button>
       </el-space>
     </el-card>
 
@@ -40,6 +44,41 @@
         />
       </div>
     </el-card>
+
+    <el-dialog v-model="createUserModalVisible" title="添加用户" width="420px">
+      <el-form ref="createFormRef" :model="createUserForm" label-width="80px">
+        <el-form-item label="用户名" prop="username">
+          <el-input
+            v-model="createUserForm.username"
+            :maxlength="32"
+            placeholder="3-32位字符"
+          />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input
+            v-model="createUserForm.password"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="至少6位"
+          />
+        </el-form-item>
+        <el-form-item label="角色" prop="role">
+          <el-select v-model="createUserForm.role" style="width: 100%">
+            <el-option label="普通用户" value="user" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="createUserModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="creatingUser" @click="handleCreateUser">
+            确认创建
+          </el-button>
+        </el-space>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="resetPasswordModalVisible" title="重置用户密码" width="400px">
       <el-form ref="resetFormRef" :model="resetPasswordForm" label-width="100px">
@@ -86,6 +125,9 @@ import { TableConst, TimeUtils } from '@/utils'
 const RefreshIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 16, height: 16 }, [
   h('path', { d: 'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z' })
 ])
+const PlusIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 16, height: 16 }, [
+  h('path', { d: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z' })
+])
 
 const loading = ref(false)
 const users = ref([])
@@ -93,6 +135,14 @@ const searchQuery = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const createUserModalVisible = ref(false)
+const creatingUser = ref(false)
+const createFormRef = ref(null)
+const createUserForm = ref({
+  username: '',
+  password: '',
+  role: 'user'
+})
 const resetPasswordModalVisible = ref(false)
 const resettingPassword = ref(false)
 const resetFormRef = ref(null)
@@ -238,6 +288,47 @@ const loadUsers = async () => {
     console.error(error)
   } finally {
     loading.value = false
+  }
+}
+
+const showCreateUserModal = () => {
+  createUserForm.value = {
+    username: '',
+    password: '',
+    role: 'user'
+  }
+  createUserModalVisible.value = true
+}
+
+const handleCreateUser = async () => {
+  if (!createUserForm.value.username || createUserForm.value.username.trim().length < 3) {
+    ElMessage.error('用户名至少3个字符')
+    return
+  }
+  if (createUserForm.value.password.length < 6) {
+    ElMessage.error('密码至少6位')
+    return
+  }
+
+  creatingUser.value = true
+  try {
+    const data = await AdminApi.createUser(
+      createUserForm.value.username.trim(),
+      createUserForm.value.password,
+      createUserForm.value.role
+    )
+    if (data.success) {
+      ElMessage.success('用户创建成功')
+      createUserModalVisible.value = false
+      onSearch()
+    } else {
+      ElMessage.error(data.message || '用户创建失败')
+    }
+  } catch (error) {
+    ElMessage.error('用户创建失败')
+    console.error(error)
+  } finally {
+    creatingUser.value = false
   }
 }
 

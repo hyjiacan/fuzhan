@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -137,6 +138,81 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 
 	utils.Info("获取用户列表成功", utils.Int("page", page), utils.Int("page_size", pageSize), utils.Int64("total", total))
 	return &UserListResult{Users: items, Total: total}, nil
+}
+
+// CreateUser 管理员主动创建用户
+func (s *AdminService) CreateUser(callerUUID, username, password, role string) (*models.User, error) {
+	// 校验调用者是管理员
+	var caller models.User
+	if err := s.db.Where("uuid = ? AND role = ?", callerUUID, "admin").First(&caller).Error; err != nil {
+		utils.Warn("创建用户失败: 无权操作", utils.String("caller_uuid", callerUUID))
+		return nil, fmt.Errorf("无权操作：仅管理员可创建用户")
+	}
+
+	username = strings.TrimSpace(username)
+	if len(username) < 3 || len(username) > 32 {
+		return nil, fmt.Errorf("用户名长度需在3到32个字符之间")
+	}
+	if len(password) < 6 || len(password) > 128 {
+		return nil, fmt.Errorf("密码长度需在6到128个字符之间")
+	}
+	switch role {
+	case "", "user":
+		role = "user"
+	case "admin":
+		role = "admin"
+	default:
+		return nil, fmt.Errorf("角色不合法")
+	}
+
+	for _, reserved := range appconfig.GetReservedUsernames() {
+		if strings.EqualFold(username, reserved) {
+			return nil, fmt.Errorf("该用户名不允许使用")
+		}
+	}
+
+	var existingUser models.User
+	if err := s.db.Where("username = ?", username).First(&existingUser).Error; err == nil {
+		return nil, fmt.Errorf("用户名已存在")
+	}
+
+	uuid, err := newUserUUID()
+	if err != nil {
+		utils.Error("创建用户失败: 生成UUID错误", utils.Err(err))
+		return nil, fmt.Errorf("生成UUID失败: %w", err)
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		utils.Error("创建用户失败: 密码加密错误", utils.Err(err))
+		return nil, fmt.Errorf("密码加密失败: %w", err)
+	}
+
+	user := &models.User{
+		UUID:         uuid,
+		Username:     username,
+		PasswordHash: string(hashedPassword),
+		Role:         role,
+	}
+
+	if err := s.db.Create(user).Error; err != nil {
+		utils.Error("创建用户失败: 保存用户错误", utils.Err(err))
+		return nil, fmt.Errorf("创建用户失败: %w", err)
+	}
+
+	utils.Info("管理员创建用户成功", utils.String("admin", caller.Username), utils.String("new_user", username), utils.String("role", role))
+	return user, nil
+}
+
+// newUserUUID 生成用户 UUID v4
+func newUserUUID() (string, error) {
+	uuid := make([]byte, 16)
+	if _, err := rand.Read(uuid); err != nil {
+		return "", err
+	}
+	uuid[6] = (uuid[6] & 0x0f) | 0x40
+	uuid[8] = (uuid[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
 // ResetPassword 重置用户密码

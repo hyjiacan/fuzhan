@@ -107,6 +107,40 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", result)
 }
 
+// CreateUserHandler 处理管理员主动创建用户
+func (h *Handler) CreateUserHandler(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required,min=3,max=32"`
+		Password string `json:"password" binding:"required,min=6,max=128"`
+		Role     string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.LogOperation(c, "admin.user.create", req.Username, err)
+		response.HandleBadRequest(c, "用户名需3-32个字符且密码至少6位", nil)
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	user, err := h.adminService.CreateUser(callerUUID, req.Username, req.Password, req.Role)
+	if err != nil {
+		middleware.LogOperation(c, "admin.user.create", req.Username, err)
+		msg := err.Error()
+		if strings.Contains(msg, "无权操作") || strings.Contains(msg, "用户名") || strings.Contains(msg, "角色") {
+			response.HandleBadRequest(c, msg, nil)
+			return
+		}
+		response.HandleInternalServerError(c, msg)
+		return
+	}
+
+	middleware.LogOperation(c, "admin.user.create", req.Username, nil)
+	response.HandleSuccess(c, http.StatusCreated, "用户创建成功", gin.H{
+		"uuid":     user.UUID,
+		"username": user.Username,
+		"role":     user.Role,
+	})
+}
+
 // ResetPasswordHandler 处理重置用户密码
 func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 	uuid := c.Param("uuid")
