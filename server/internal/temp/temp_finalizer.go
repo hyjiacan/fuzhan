@@ -76,7 +76,7 @@ func (f *Finalizer) Complete(session *models.UploadSession, targetPath string) (
 		return nil, fmt.Errorf("保存临时文件记录失败: %w", err)
 	}
 
-	// 同步到临时文件索引表（与简单上传一致，码作为 file_path）
+	// 同步到临时文件索引表（分片上传完成后落库，码作为 file_path）
 	tempRecord := models.FileRecordTemp{
 		FileRecordBase: models.FileRecordBase{
 			FileName:     session.FileName,
