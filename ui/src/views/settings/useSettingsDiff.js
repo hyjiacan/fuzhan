@@ -104,6 +104,7 @@ const FIELD_LABELS = {
   'openApi.ipAccessMode': '访问模式',
   'openApi.ipWhitelist': 'IP 白名单',
   'openApi.ipBlacklist': 'IP 黑名单',
+  'openApi.domainWhitelist': '域名白名单',
   'openApi.rateLimitEnabled': '频率限制',
   'openApi.requestsPerMinute': '请求频率(次/分钟)',
 

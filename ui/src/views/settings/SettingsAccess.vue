@@ -21,6 +21,15 @@
             />
             <div class="field-hint">{{ settings.openApi.ipAccessMode === 'allow' ? '白名单中的 IP 允许访问' : '黑名单中的 IP 将被拒绝访问' }}</div>
           </el-form-item>
+          <el-form-item label="域名白名单" v-if="settings.openApi.ipAccessMode === 'allow'">
+            <el-input
+              v-model="domainWhitelistDisplay"
+              type="textarea"
+              placeholder="每行一个域名，如 example.com（自动匹配其所有子域）"
+              :rows="3"
+            />
+            <div class="field-hint">白名单模式下，除 IP/CIDR 外，来源于这些域名（含子域）的请求也允许访问</div>
+          </el-form-item>
           <el-form-item label="频率限制">
             <el-switch v-model="settings.openApi.rateLimitEnabled" />
             <div class="field-hint">限制调用频率，防止滥用</div>
@@ -191,6 +200,14 @@ const ipAccessListDisplay = computed({
     } else if (props.settings.openApi.ipAccessMode === 'deny') {
       props.settings.openApi.ipBlacklist = list.join('\n')
     }
+  }
+})
+
+// 域名白名单显示转换（数组 <-> 文本框）
+const domainWhitelistDisplay = computed({
+  get: () => (props.settings.openApi.domainWhitelist || '').split('\n').filter(s => s.trim()).join('\n'),
+  set: (val) => {
+    props.settings.openApi.domainWhitelist = val.split('\n').map(s => s.trim()).filter(Boolean).join('\n')
   }
 })
 

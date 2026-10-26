@@ -84,12 +84,13 @@ type SecurityConfigDTO struct {
 }
 
 type OpenApiConfigDTO struct {
-	Enabled           bool     `json:"enabled"`
-	IpAccessMode      string   `json:"ipAccessMode"`
-	IpWhitelist       []string `json:"ipWhitelist"`
-	IpBlacklist       []string `json:"ipBlacklist"`
-	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
-	RequestsPerMinute int      `json:"requestsPerMinute"`
+	Enabled            bool     `json:"enabled"`
+	IpAccessMode       string   `json:"ipAccessMode"`
+	IpWhitelist        []string `json:"ipWhitelist"`
+	IpBlacklist        []string `json:"ipBlacklist"`
+	DomainWhitelist    []string `json:"domainWhitelist"`
+	RateLimitEnabled   bool     `json:"rateLimitEnabled"`
+	RequestsPerMinute  int      `json:"requestsPerMinute"`
 }
 
 // WebhookConfigDTO Webhook 推送配置 DTO（对应 yaml webhook.*）
@@ -432,12 +433,13 @@ func (c *Config) ToDTO() ConfigDTO {
 		},
 		MimeTable: c.MimeTable,
 		OpenApi: &OpenApiConfigDTO{
-			Enabled:           c.OpenAPI.Enabled,
-			IpAccessMode:      c.OpenAPI.IPAccessMode,
-			IpWhitelist:       c.OpenAPI.IPWhitelist,
-			IpBlacklist:       c.OpenAPI.IPBlacklist,
-			RateLimitEnabled:  c.OpenAPI.RateLimitEnabled,
-			RequestsPerMinute: c.OpenAPI.RequestsPerMinute,
+			Enabled:            c.OpenAPI.Enabled,
+			IpAccessMode:       c.OpenAPI.IPAccessMode,
+			IpWhitelist:        c.OpenAPI.IPWhitelist,
+			IpBlacklist:        c.OpenAPI.IPBlacklist,
+			DomainWhitelist:    c.OpenAPI.DomainWhitelist,
+			RateLimitEnabled:   c.OpenAPI.RateLimitEnabled,
+			RequestsPerMinute:  c.OpenAPI.RequestsPerMinute,
 		},
 		Index: IndexConfigDTO{
 			ScanStartDelaySeconds:         c.Index.ScanStartDelaySeconds,
@@ -593,6 +595,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 		cfg.OpenAPI.IPAccessMode = dto.OpenApi.IpAccessMode
 		cfg.OpenAPI.IPWhitelist = dto.OpenApi.IpWhitelist
 		cfg.OpenAPI.IPBlacklist = dto.OpenApi.IpBlacklist
+		cfg.OpenAPI.DomainWhitelist = dto.OpenApi.DomainWhitelist
 		cfg.OpenAPI.RateLimitEnabled = dto.OpenApi.RateLimitEnabled
 		cfg.OpenAPI.RequestsPerMinute = dto.OpenApi.RequestsPerMinute
 	}

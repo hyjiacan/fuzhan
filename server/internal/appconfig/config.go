@@ -395,13 +395,14 @@ type OAuth2Config struct {
 
 // OpenAPIConfig Open API 配置
 type OpenAPIConfig struct {
-	Enabled           bool     `yaml:"enabled"`
-	IPAccessMode      string   `yaml:"ip_access_mode"` // disable / whitelist / blacklist
-	IPWhitelist       []string `yaml:"ip_whitelist"`   // CIDR 白名单
-	IPBlacklist       []string `yaml:"ip_blacklist"`   // CIDR 黑名单
-	RateLimitEnabled  bool     `yaml:"rate_limit_enabled"`
-	RequestsPerMinute int      `yaml:"requests_per_minute"`
-	BurstSize         int      `yaml:"burst_size"`
+	Enabled          bool     `yaml:"enabled"`
+	IPAccessMode     string   `yaml:"ip_access_mode"` // disable / whitelist / blacklist
+	IPWhitelist      []string `yaml:"ip_whitelist"`   // CIDR 白名单
+	IPBlacklist      []string `yaml:"ip_blacklist"`   // CIDR 黑名单
+	DomainWhitelist  []string `yaml:"domain_whitelist"` // 域名白名单（白名单模式下生效）
+	RateLimitEnabled bool     `yaml:"rate_limit_enabled"`
+	RequestsPerMinute int     `yaml:"requests_per_minute"`
+	BurstSize         int     `yaml:"burst_size"`
 }
 
 // LDAPClientConfig LDAP 客户端配置

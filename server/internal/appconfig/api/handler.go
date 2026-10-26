@@ -454,6 +454,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.OpenAPI.IPAccessMode = req.OpenApi.IpAccessMode
 		appconfig.GlobalConfig.OpenAPI.IPWhitelist = req.OpenApi.IpWhitelist
 		appconfig.GlobalConfig.OpenAPI.IPBlacklist = req.OpenApi.IpBlacklist
+		appconfig.GlobalConfig.OpenAPI.DomainWhitelist = req.OpenApi.DomainWhitelist
 		appconfig.GlobalConfig.OpenAPI.RateLimitEnabled = req.OpenApi.RateLimitEnabled
 		updates.Add("open_api.enabled", req.OpenApi.Enabled)
 		updates.Add("open_api.ip_access_mode", req.OpenApi.IpAccessMode)
@@ -467,6 +468,11 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			ipBlacklist[i] = ip
 		}
 		updates.Add("open_api.ip_blacklist", ipBlacklist)
+		domainWhitelist := make([]interface{}, len(req.OpenApi.DomainWhitelist))
+		for i, d := range req.OpenApi.DomainWhitelist {
+			domainWhitelist[i] = d
+		}
+		updates.Add("open_api.domain_whitelist", domainWhitelist)
 		updates.Add("open_api.rate_limit_enabled", req.OpenApi.RateLimitEnabled)
 		if req.OpenApi.RequestsPerMinute > 0 {
 			appconfig.GlobalConfig.OpenAPI.RequestsPerMinute = req.OpenApi.RequestsPerMinute

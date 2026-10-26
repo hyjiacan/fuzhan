@@ -386,7 +386,18 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		openAPICfg.IPAccessMode,
 		openAPICfg.IPWhitelist,
 		openAPICfg.IPBlacklist,
+		openAPICfg.DomainWhitelist,
 	)
+	// 配置保存后热更新 OpenAPI IP/域名访问控制（无需重启即生效）
+	appconfig.AddOnSaveHook(func() {
+		cur := appconfig.GetConfig().OpenAPI
+		openAPIIPAccessCfg.UpdateConfig(openapi.NewIPAccessConfigFromAppConfig(
+			cur.IPAccessMode,
+			cur.IPWhitelist,
+			cur.IPBlacklist,
+			cur.DomainWhitelist,
+		))
+	})
 	openAPICallStat := openapi.NewAPICallStat(10000)
 	openAPIStatsHandler := openapi.NewStatsHandler(openAPICallStat)
 

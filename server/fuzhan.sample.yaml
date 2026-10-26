@@ -363,6 +363,7 @@ security:
 #   ip_access_mode: disable    # disable / whitelist / blacklist
 #   ip_whitelist: []           # CIDR 白名单
 #   ip_blacklist: []           # CIDR 黑名单
+#   domain_whitelist: []       # 域名白名单（白名单模式下生效，如 "example.com" 会匹配其所有子域）
 #   rate_limit_enabled: false  # 是否启用频率限制
 #   requests_per_minute: 60    # 每分钟请求上限
 #   burst_size: 10             # 突发容忍量

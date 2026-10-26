@@ -117,6 +117,109 @@ func TestIPAccessMiddleware_NilConfig(t *testing.T) {
 	}
 }
 
+// 白名单模式：空名单默认禁止（安全默认，而非放行所有人）
+func TestIPAccessMiddleware_WhitelistEmptyDeny(t *testing.T) {
+	w := testRequest(IPAccessMiddleware(&IPAccessConfig{
+		Mode: "whitelist", CIDRList: []string{},
+	}), "10.0.0.1:12345")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for empty whitelist, got %d", w.Code)
+	}
+}
+
+// 白名单模式：Host 匹配域名白名单时放行（含子域、忽略端口/大小写）
+func TestIPAccessMiddleware_WhitelistByDomain(t *testing.T) {
+	r := gin.New()
+	r.Use(IPAccessMiddleware(&IPAccessConfig{
+		Mode: "whitelist", CIDRList: []string{}, DomainList: []string{"example.com"},
+	}))
+	r.GET("/", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Host = "API.example.com:8080"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for domain in whitelist, got %d", rec.Code)
+	}
+}
+
+// 白名单模式：Host 不匹配域名且 IP 不在 CIDR 时拒绝
+func TestIPAccessMiddleware_WhitelistDomainMismatch(t *testing.T) {
+	r := gin.New()
+	r.Use(IPAccessMiddleware(&IPAccessConfig{
+		Mode: "whitelist", CIDRList: []string{}, DomainList: []string{"allowed.com"},
+	}))
+	r.GET("/", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Host = "other.com"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for host not in domain whitelist, got %d", rec.Code)
+	}
+}
+
+// 白名单模式：IP 命中 CIDR 即使 Host 不匹配也放行
+func TestIPAccessMiddleware_WhitelistIPWithDomains(t *testing.T) {
+	r := gin.New()
+	r.Use(IPAccessMiddleware(&IPAccessConfig{
+		Mode: "whitelist", CIDRList: []string{"10.0.0.0/8"}, DomainList: []string{"allowed.com"},
+	}))
+	r.GET("/", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Host = "other.com"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for whitelisted IP, got %d", rec.Code)
+	}
+}
+
+// 模式归一化：前端历史值 allow/deny/none 正确映射
+func TestNormalizeIPAccessMode(t *testing.T) {
+	cases := map[string]string{
+		"whitelist": "whitelist",
+		"allow":     "whitelist",
+		"blacklist": "blacklist",
+		"deny":      "blacklist",
+		"disable":   "disable",
+		"none":      "disable",
+		"":          "disable",
+		"unknown":   "disable",
+	}
+	for in, want := range cases {
+		if got := NormalizeIPAccessMode(in); got != want {
+			t.Errorf("NormalizeIPAccessMode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// 热更新：UpdateConfig 后中间件按新配置生效
+func TestIPAccessConfig_Update(t *testing.T) {
+	cfg := &IPAccessConfig{Mode: "whitelist", CIDRList: []string{"10.0.0.0/8"}}
+	cfg.UpdateConfig(&IPAccessConfig{Mode: "whitelist", CIDRList: []string{"192.168.0.0/16"}})
+	snap := cfg.Snapshot()
+	if snap.Mode != "whitelist" {
+		t.Errorf("mode not updated: %q", snap.Mode)
+	}
+	if len(snap.CIDRList) != 1 || snap.CIDRList[0] != "192.168.0.0/16" {
+		t.Errorf("cidr not updated: %v", snap.CIDRList)
+	}
+	// 10.x 应被拒绝，192.168.x 应放行
+	w := testRequest(IPAccessMiddleware(cfg), "10.0.0.1:12345")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for old whitelist ip after update, got %d", w.Code)
+	}
+	w2 := testRequest(IPAccessMiddleware(cfg), "192.168.1.1:12345")
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected 200 for new whitelist ip after update, got %d", w2.Code)
+	}
+}
+
 // ==================== 频率限制器测试 ====================
 
 func TestRateLimiter_ConfigUpdate(t *testing.T) {

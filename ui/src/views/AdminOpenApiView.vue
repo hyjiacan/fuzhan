@@ -58,6 +58,19 @@
             </el-form-item>
           </el-form>
         </el-col>
+        <el-col :span="12" v-if="openApiConfig.ipAccessMode === 'allow'">
+          <el-form label-width="120px">
+            <el-form-item label="域名白名单">
+              <el-input
+                v-model="domainWhitelistDisplay"
+                type="textarea"
+                placeholder="每行一个域名，如 example.com（自动匹配其所有子域）"
+                :rows="4"
+              />
+              <div class="field-hint">除 IP/CIDR 外，来源于这些域名（含子域）的请求也允许访问</div>
+            </el-form-item>
+          </el-form>
+        </el-col>
       </el-row>
       <el-space style="margin-top: 16px;">
         <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
@@ -216,8 +229,16 @@ const openApiConfig = ref({
   ipAccessMode: 'none',
   ipWhitelist: '',
   ipBlacklist: '',
+  domainWhitelist: '',
   rateLimitEnabled: true,
   requestsPerMinute: 60
+})
+
+const domainWhitelistDisplay = computed({
+  get: () => (openApiConfig.value.domainWhitelist || '').split('\n').filter(s => s.trim()).join('\n'),
+  set: (val) => {
+    openApiConfig.value.domainWhitelist = val.split('\n').map(s => s.trim()).filter(Boolean).join('\n')
+  }
 })
 
 const ipAccessListDisplay = computed({
@@ -336,6 +357,7 @@ async function loadConfig() {
         ipAccessMode: cfg.ipAccessMode || 'none',
         ipWhitelist: (cfg.ipWhitelist || []).join('\n'),
         ipBlacklist: (cfg.ipBlacklist || []).join('\n'),
+        domainWhitelist: (cfg.domainWhitelist || []).join('\n'),
         rateLimitEnabled: cfg.rateLimitEnabled ?? true,
         requestsPerMinute: cfg.requestsPerMinute || 60
       }
@@ -354,6 +376,7 @@ async function saveConfig() {
         ipAccessMode: openApiConfig.value.ipAccessMode,
         ipWhitelist: openApiConfig.value.ipWhitelist.split('\n').filter(ip => ip.trim()),
         ipBlacklist: openApiConfig.value.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        domainWhitelist: openApiConfig.value.domainWhitelist.split('\n').filter(d => d.trim()),
         rateLimitEnabled: openApiConfig.value.rateLimitEnabled,
         requestsPerMinute: openApiConfig.value.requestsPerMinute
       }

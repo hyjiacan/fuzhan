@@ -282,6 +282,7 @@ const settings = reactive({
     ipAccessMode: 'none',
     ipWhitelist: '',
     ipBlacklist: '',
+    domainWhitelist: '',
     rateLimitEnabled: true,
     requestsPerMinute: 60
   },
@@ -481,6 +482,7 @@ const loadSettings = async () => {
         ipAccessMode: cfg.openApi?.ipAccessMode || 'none',
         ipWhitelist: (cfg.openApi?.ipWhitelist || []).join('\n'),
         ipBlacklist: (cfg.openApi?.ipBlacklist || []).join('\n'),
+        domainWhitelist: (cfg.openApi?.domainWhitelist || []).join('\n'),
         rateLimitEnabled: cfg.openApi?.rateLimitEnabled ?? true,
         requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
       }
@@ -697,6 +699,7 @@ const doSaveSettings = async () => {
         ipAccessMode: settings.openApi.ipAccessMode,
         ipWhitelist: settings.openApi.ipWhitelist.split('\n').filter(ip => ip.trim()),
         ipBlacklist: settings.openApi.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        domainWhitelist: settings.openApi.domainWhitelist.split('\n').filter(d => d.trim()),
         rateLimitEnabled: settings.openApi.rateLimitEnabled,
         requestsPerMinute: settings.openApi.requestsPerMinute
       },

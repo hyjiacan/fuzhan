@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,21 +26,40 @@ func FeatureGateMiddleware(enabled bool) gin.HandlerFunc {
 	}
 }
 
-// NewIPAccessConfigFromAppConfig 从 appconfig 的 OpenAPIConfig 创建 IPAccessConfig
-func NewIPAccessConfigFromAppConfig(mode string, whitelist, blacklist []string) *IPAccessConfig {
-	cfg := &IPAccessConfig{Mode: mode}
-	switch mode {
+// NewIPAccessConfigFromAppConfig 从 appconfig 的 OpenAPIConfig 创建 IPAccessConfig。
+// mode 兼容 yaml 值（whitelist/blacklist/disable）与前端历史值（allow/deny/none）。
+func NewIPAccessConfigFromAppConfig(mode string, whitelist, blacklist, domainWhitelist []string) *IPAccessConfig {
+	cfg := &IPAccessConfig{Mode: NormalizeIPAccessMode(mode)}
+	switch cfg.Mode {
 	case "whitelist":
 		cfg.CIDRList = whitelist
+		cfg.DomainList = domainWhitelist
 	case "blacklist":
 		cfg.CIDRList = blacklist
-	default:
-		cfg.Mode = "disable"
 	}
 	if len(cfg.CIDRList) == 0 {
 		cfg.CIDRList = []string{}
 	}
+	if len(cfg.DomainList) == 0 {
+		cfg.DomainList = []string{}
+	}
 	return cfg
+}
+
+// NormalizeIPAccessMode 将前端/配置中的模式值归一化为 whitelist/blacklist/disable。
+// 前端历史值： allow=白名单、deny=黑名单、none=不限制。
+func NormalizeIPAccessMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "whitelist", "allow":
+		return "whitelist"
+	case "blacklist", "deny":
+		return "blacklist"
+	case "disable", "none", "":
+		return "disable"
+	default:
+		// 未知值视作不限制，避免无法访问 openapi
+		return "disable"
+	}
 }
 
 // NewRateLimitConfigFromAppConfig 从 appconfig 的 OpenAPIConfig 创建 RateLimitConfig
@@ -53,27 +73,81 @@ func NewRateLimitConfigFromAppConfig(enabled bool, rpm, burst int) *RateLimitCon
 
 // ==================== IP 访问控制 ====================
 
-// IPAccessConfig IP 访问控制配置
+// IPAccessConfig IP/域名访问控制配置
 type IPAccessConfig struct {
-	Mode     string   `json:"mode" yaml:"mode"`
-	CIDRList []string `json:"cidrList" yaml:"cidr_list"`
+	mu         sync.RWMutex
+	Mode       string   `json:"mode" yaml:"mode"`
+	CIDRList   []string `json:"cidrList" yaml:"cidr_list"`
+	DomainList []string `json:"domainList" yaml:"domain_list"`
 }
 
-// IPAccessMiddleware IP 访问控制中间件
-func IPAccessMiddleware(cfg *IPAccessConfig) gin.HandlerFunc {
-	if cfg == nil || cfg.Mode == "disable" {
-		return func(c *gin.Context) { c.Next() }
+// UpdateConfig 热更新访问控制配置（线程安全）
+func (c *IPAccessConfig) UpdateConfig(cfg *IPAccessConfig) {
+	if cfg == nil {
+		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Mode = cfg.Mode
+	c.CIDRList = append([]string(nil), cfg.CIDRList...)
+	c.DomainList = append([]string(nil), cfg.DomainList...)
+}
 
-	var parsedNets []*net.IPNet
-	for _, cidr := range cfg.CIDRList {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err == nil {
-			parsedNets = append(parsedNets, ipNet)
+// Snapshot 在锁保护下读取当前访问控制配置的副本
+func (c *IPAccessConfig) Snapshot() *IPAccessConfig {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return &IPAccessConfig{
+		Mode:       c.Mode,
+		CIDRList:   append([]string(nil), c.CIDRList...),
+		DomainList: append([]string(nil), c.DomainList...),
+	}
+}
+
+// isDomainMatched 校验请求 Host 是否命中域名白名单。
+// 规则：精确匹配（忽略大小写），或以 "." 前缀的子域匹配（.example.com 匹配 sub.example.com）。
+func isDomainMatched(host string, domains []string) bool {
+	if len(domains) == 0 {
+		return false
+	}
+	h := strings.ToLower(strings.TrimSpace(host))
+	// 去掉 Host 中的端口，便于配置里只写域名
+	if i := strings.LastIndex(h, ":"); i >= 0 && !strings.Contains(h[i:], "]") {
+		h = h[:i]
+	}
+	if h == "" {
+		return false
+	}
+	for _, d := range domains {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if d == "" {
+			continue
+		}
+		d = strings.TrimPrefix(d, "*.")
+		if h == d {
+			return true
+		}
+		if strings.HasSuffix(h, "."+d) {
+			return true
 		}
 	}
+	return false
+}
 
+// IPAccessMiddleware IP/域名访问控制中间件。
+// 白名单模式：空名单或无匹配一律拒绝（默认禁止）；黑名单模式：命中即拒。
+func IPAccessMiddleware(cfg *IPAccessConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 通过锁安全读取配置快照，避免与 UpdateConfig 并发写入产生数据竞态
+		cfg = cfg.Snapshot()
+		if cfg == nil || cfg.Mode == "disable" {
+			c.Next()
+			return
+		}
+
 		// 使用 utils.GetRealIP 获取客户端 IP：当 TrustProxy 配置为 false 时，
 		// 严格取 RemoteAddr，避免攻击者伪造 X-Forwarded-For/X-Real-IP 绕过 IP 白名单。
 		// gin 的 c.ClientIP() 默认信任所有代理，直接使用存在白名单绕过风险。
@@ -84,9 +158,17 @@ func IPAccessMiddleware(cfg *IPAccessConfig) gin.HandlerFunc {
 			return
 		}
 
-		allowed := false
+		var parsedNets []*net.IPNet
+		for _, cidr := range cfg.CIDRList {
+			_, ipNet, err := net.ParseCIDR(cidr)
+			if err == nil {
+				parsedNets = append(parsedNets, ipNet)
+			}
+		}
+
 		if cfg.Mode == "whitelist" {
-			allowed = len(parsedNets) == 0
+			// 白名单模式默认禁止：IP 不在 CIDR 列表、Host 不匹配域名列表，一律拒绝
+			allowed := isDomainMatched(c.Request.Host, cfg.DomainList)
 			for _, ipNet := range parsedNets {
 				if ipNet.Contains(clientIP) {
 					allowed = true
@@ -94,7 +176,7 @@ func IPAccessMiddleware(cfg *IPAccessConfig) gin.HandlerFunc {
 				}
 			}
 			if !allowed {
-				response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden, "IP 不在白名单中")
+				response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden, "访问来源不在白名单中")
 				c.Abort()
 				return
 			}
