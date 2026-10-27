@@ -31,41 +31,44 @@
 
     <!-- 基础统计 -->
     <div class="stats-section" v-loading="statsLoading">
-      <div class="stats-panel trend-panel">
-        <div class="panel-title">近 7 日事件趋势</div>
-        <div class="trend-chart">
-          <div v-for="p in stats.trend" :key="p.date" class="trend-col">
-            <div class="trend-bars">
-              <i class="bar high" :style="{ height: barH(p.high, maxDay) }" :title="'高危 ' + p.high"></i>
-              <i class="bar medium" :style="{ height: barH(p.medium, maxDay) }" :title="'中危 ' + p.medium"></i>
-              <i class="bar low" :style="{ height: barH(p.low, maxDay) }" :title="'低危 ' + p.low"></i>
+      <el-empty v-if="statsError" class="stats-error" description="统计加载失败，暂无法展示" :image-size="60" />
+      <template v-else>
+        <div class="stats-panel trend-panel">
+          <div class="panel-title">近 7 日事件趋势</div>
+          <div class="trend-chart">
+            <div v-for="p in stats.trend" :key="p.date" class="trend-col">
+              <div class="trend-bars">
+                <i class="bar high" :style="{ height: barH(p.high, maxDay) }" :title="'高危 ' + p.high"></i>
+                <i class="bar medium" :style="{ height: barH(p.medium, maxDay) }" :title="'中危 ' + p.medium"></i>
+                <i class="bar low" :style="{ height: barH(p.low, maxDay) }" :title="'低危 ' + p.low"></i>
+              </div>
+              <div class="trend-label">{{ shortDate(p.date) }}</div>
             </div>
-            <div class="trend-label">{{ shortDate(p.date) }}</div>
           </div>
         </div>
-      </div>
-      <div class="stats-panel">
-        <div class="panel-title">TOP 来源 IP（近 7 日）</div>
-        <ul class="top-list">
-          <li v-for="(t, i) in stats.topIPs" :key="t.label">
-            <span class="rank">{{ i + 1 }}</span>
-            <span class="top-label mono">{{ t.label }}</span>
-            <span class="top-count">{{ t.n }}</span>
-          </li>
-          <li v-if="!stats.topIPs.length" class="empty">暂无数据</li>
-        </ul>
-      </div>
-      <div class="stats-panel">
-        <div class="panel-title">TOP 事件类型（近 7 日）</div>
-        <ul class="top-list">
-          <li v-for="(t, i) in stats.topTypes" :key="t.label">
-            <span class="rank">{{ i + 1 }}</span>
-            <span class="top-label">{{ eventTypeLabel(t.label) }}</span>
-            <span class="top-count">{{ t.n }}</span>
-          </li>
-          <li v-if="!stats.topTypes.length" class="empty">暂无数据</li>
-        </ul>
-      </div>
+        <div class="stats-panel">
+          <div class="panel-title">TOP 来源 IP（近 7 日）</div>
+          <ul class="top-list">
+            <li v-for="(t, i) in stats.topIPs" :key="t.label">
+              <span class="rank">{{ i + 1 }}</span>
+              <span class="top-label mono">{{ t.label }}</span>
+              <span class="top-count">{{ t.n }}</span>
+            </li>
+            <li v-if="!stats.topIPs.length" class="empty">暂无数据</li>
+          </ul>
+        </div>
+        <div class="stats-panel">
+          <div class="panel-title">TOP 事件类型（近 7 日）</div>
+          <ul class="top-list">
+            <li v-for="(t, i) in stats.topTypes" :key="t.label">
+              <span class="rank">{{ i + 1 }}</span>
+              <span class="top-label">{{ eventTypeLabel(t.label) }}</span>
+              <span class="top-count">{{ t.n }}</span>
+            </li>
+            <li v-if="!stats.topTypes.length" class="empty">暂无数据</li>
+          </ul>
+        </div>
+      </template>
     </div>
 
     <!-- 近期锁定事件 -->
@@ -147,7 +150,10 @@
           <template #default="{ row }">{{ row.statusCode || '-' }}</template>
         </el-table-column>
       </el-table>
-      <el-empty v-if="!loading && eventList.length === 0" description="没有符合条件的风险事件" :image-size="80" />
+      <el-empty v-if="!loading && eventsError" description="事件列表加载失败" :image-size="80">
+        <el-button size="small" @click="loadEvents">重试</el-button>
+      </el-empty>
+      <el-empty v-else-if="!loading && eventList.length === 0" description="没有符合条件的风险事件" :image-size="80" />
       <div class="pagination-wrap" v-if="total > 0">
         <el-pagination
           v-model:current-page="page"
@@ -216,11 +222,14 @@ const guardLabel = (g) => guardMeta[g] || g || '-'
 // ============ 统计卡片 ============
 const unread = ref({ total: 0, high: 0 })
 const dist = ref({ total: 0, high: 0, medium: 0, low: 0 })
+// 统计接口是否加载失败；失败时卡片显示未知，不展示「0」误导
+const statsError = ref(false)
+const unreadError = ref(false)
 const statCards = computed(() => [
-  { key: 'high', label: '高危（未读）', value: unread.value.high, sub: `全部高危 ${dist.value.high}` },
-  { key: 'medium', label: '中危', value: dist.value.medium, sub: '' },
-  { key: 'low', label: '低危', value: dist.value.low, sub: '' },
-  { key: 'total', label: '事件总数', value: dist.value.total, sub: `未读 ${unread.value.total}` }
+  { key: 'high', label: '高危（未读）', value: unreadError.value ? '—' : unread.value.high, sub: statsError.value ? '未知' : `全部高危 ${dist.value.high}` },
+  { key: 'medium', label: '中危', value: statsError.value ? '—' : dist.value.medium, sub: '' },
+  { key: 'low', label: '低危', value: statsError.value ? '—' : dist.value.low, sub: '' },
+  { key: 'total', label: '事件总数', value: statsError.value ? '—' : dist.value.total, sub: unreadError.value ? '未知' : `未读 ${unread.value.total}` }
 ])
 const unreadCount = computed(() => unread.value.total)
 
@@ -240,6 +249,7 @@ const shortDate = (d) => (d || '').slice(5)
 // ============ 事件列表 ============
 const loading = ref(false)
 const eventList = ref([])
+const eventsError = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -273,6 +283,7 @@ const openDetail = (row) => {
 // ============ 数据加载 ============
 const loadStats = async () => {
   statsLoading.value = true
+  statsError.value = false
   try {
     const res = await SecurityApi.stats()
     if (res.success && res.data) {
@@ -283,36 +294,46 @@ const loadStats = async () => {
         locks: res.data.locks || []
       }
       dist.value = res.data.severity || dist.value
+    } else {
+      statsError.value = true
     }
   } catch (e) {
-    // 忽略统计失败
+    // 统计失败：标记未知，不展示空图表冒充「无事件」
+    statsError.value = true
   } finally {
     statsLoading.value = false
   }
 }
 
 const loadUnread = async () => {
+  unreadError.value = false
   try {
     const res = await SecurityApi.unreadSummary()
     if (res.success && res.data) {
       unread.value = { total: res.data.total || 0, high: res.data.high || 0 }
+    } else {
+      unreadError.value = true
     }
   } catch (e) {
-    // 忽略
+    unreadError.value = true
   }
 }
 
 const loadEvents = async () => {
   loading.value = true
+  eventsError.value = false
   try {
     const res = await SecurityApi.list(buildParams())
     if (res.success && res.data) {
       eventList.value = res.data.list || []
       total.value = res.data.total || 0
+    } else {
+      eventsError.value = true
     }
   } catch (e) {
     eventList.value = []
     total.value = 0
+    eventsError.value = true
   } finally {
     loading.value = false
   }
@@ -455,6 +476,14 @@ onUnmounted(() => {
         margin-bottom: 12px;
         color: @text-color;
       }
+    }
+
+    .stats-error {
+      grid-column: 1 / -1;
+      background: @bg-color;
+      border-radius: @content-radius;
+      box-shadow: @shadow-sm;
+      padding: 24px 0;
     }
 
     .trend-chart {

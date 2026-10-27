@@ -14,7 +14,7 @@
               <div class="stat-content stat-storage">
                 <el-icon :size="32"><component :is="StorageIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ formatSize(storageStats.usedSpace) }}</div>
+                  <div class="stat-value">{{ storageError ? '—' : formatSize(storageStats.usedSpace) }}</div>
                   <div class="stat-label">已用存储</div>
                 </div>
               </div>
@@ -25,7 +25,7 @@
               <div class="stat-content stat-files">
                 <el-icon :size="32"><component :is="FileIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ indexStats.totalFiles.toLocaleString('zh-CN') }}</div>
+                  <div class="stat-value">{{ indexError ? '—' : indexStats.totalFiles.toLocaleString('zh-CN') }}</div>
                   <div class="stat-label">文件总数</div>
                 </div>
               </div>
@@ -36,7 +36,7 @@
               <div class="stat-content stat-dups">
                 <el-icon :size="32"><component :is="DuplicateIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ indexStats.duplicateGroups }}</div>
+                  <div class="stat-value">{{ indexError ? '—' : indexStats.duplicateGroups }}</div>
                   <div class="stat-label">重复文件组</div>
                 </div>
               </div>
@@ -47,7 +47,7 @@
               <div class="stat-content stat-users">
                 <el-icon :size="32"><component :is="UserIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ stats.activeUsers }}</div>
+                  <div class="stat-value">{{ accessError ? '—' : stats.activeUsers }}</div>
                   <div class="stat-label">活跃用户</div>
                 </div>
               </div>
@@ -165,7 +165,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, h, onMounted } from 'vue'
+import { ref, h, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
@@ -212,6 +212,11 @@ const indexStats = ref({
   totalSize: 0,
   duplicateGroups: 0
 })
+
+// 各数据源加载失败标记（失败时不展示假的 0 值，显示 "—"）
+const storageError = ref(false)
+const indexError = ref(false)
+const accessError = ref(false)
 
 // ============ Icons ============
 const UserIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -276,6 +281,11 @@ const loadStats = async () => {
       ElMessage.warning(`部分统计数据加载失败 (${failedCount}/6)，请刷新重试`)
     }
 
+    // 记录各数据源失败态，失败时显示 "—" 而非假 0
+    storageError.value = !storageData.success
+    indexError.value = !indexStatsData.success
+    accessError.value = !accessData.success
+
     if (usersData.success) {
       stats.value.totalUsers = usersData.data?.total ?? (usersData.data || []).length ?? 0
     }
@@ -291,8 +301,8 @@ const loadStats = async () => {
     }
 
     if (accessData.success) {
-      stats.value.activeUsers = accessData.data?.activeUsers || 0
-      stats.value.onlineIPs = accessData.data?.onlineIPs || 0
+      stats.value.activeUsers = accessData.data?.activeUsers ?? 0
+      stats.value.onlineIPs = accessData.data?.onlineIPs ?? 0
     }
 
     if (keywordsData.success) {
@@ -317,47 +327,6 @@ const loadStats = async () => {
   } catch (e) {
     console.error('获取统计数据失败', e)
   }
-}
-
-// ============ 僵尸文件数据加载 ============
-
-const loadZombieSessions = async () => {
-  zombieLoading.value = true
-  try {
-    const data = await AdminApi.getSessions()
-    if (data.success) {
-      const sessionList = (data.data && data.data.sessions) || []
-      zombieSessions.value = sessionList
-      zombieStats.totalSessions = sessionList.length
-      zombieStats.zombieSessions = sessionList.filter(s =>
-        s.status === 'expired' || s.status === 'pending' || s.status === 'in_progress'
-      ).length
-      zombieStats.totalSize = sessionList.reduce((sum, s) => sum + (s.uploadedSize || 0), 0)
-    }
-  } catch (e) {
-    console.error('加载会话列表失败', e)
-  } finally {
-    zombieLoading.value = false
-  }
-}
-
-const zombieHandleSelectionChange = (keys) => {
-  zombieSelectedRowKeys.value = keys
-}
-
-const zombieCleanSelected = () => {
-  if (zombieSelectedRowKeys.value.length === 0) {
-    ElMessage.info('请先选择要清理的会话')
-    return
-  }
-  const selected = zombieSessions.value.filter(s => zombieSelectedRowKeys.value.includes(s.id))
-  zombieSelectedSessions.value = selected
-  zombieConfirmVisible.value = true
-}
-
-const zombieCleanSession = (session) => {
-  zombieSelectedSessions.value = [session]
-  zombieConfirmVisible.value = true
 }
 
 onMounted(() => {
@@ -592,38 +561,6 @@ onMounted(() => {
     }
 
     .quota-value {
-      color: @text-color-secondary;
-    }
-  }
-
-  .zombie-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .zombie-count {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-
-    .warning-icon {
-      color: @warning-color;
-    }
-
-    .zombie-info {
-      text-align: left;
-    }
-
-    .zombie-number {
-      font-size: 36px;
-      font-weight: 700;
-      color: @warning-color;
-    }
-
-    .zombie-label {
-      font-size: @font-size-sm;
       color: @text-color-secondary;
     }
   }

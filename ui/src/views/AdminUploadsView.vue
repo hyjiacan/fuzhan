@@ -17,7 +17,7 @@
               <div class="stat-content">
                 <el-icon :size="32" color="#faad14"><ZombieIcon /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ zombieStats.zombieSessions }}</div>
+                  <div class="stat-value">{{ zombieStatsAvailable ? zombieStats.zombieSessions : '—' }}</div>
                   <div class="stat-label">过期会话</div>
                 </div>
               </div>
@@ -28,7 +28,7 @@
               <div class="stat-content">
                 <el-icon :size="32" color="#1890ff"><FileIcon /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ zombieStats.totalSessions }}</div>
+                  <div class="stat-value">{{ zombieStatsAvailable ? zombieStats.totalSessions : '—' }}</div>
                   <div class="stat-label">总会话</div>
                 </div>
               </div>
@@ -39,7 +39,7 @@
               <div class="stat-content">
                 <el-icon :size="32" color="#f5222d"><TrashIcon /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ formatSize(zombieStats.totalSize) }}</div>
+                  <div class="stat-value">{{ zombieStatsAvailable ? formatSize(zombieStats.totalSize) : '—' }}</div>
                   <div class="stat-label">占用空间</div>
                 </div>
               </div>
@@ -106,50 +106,6 @@
 
       <!-- URL上传标签页 -->
       <el-tab-pane name="url-tasks" label="URL上传">
-        <!-- 统计卡片 -->
-        <el-row :gutter="16" style="margin-bottom: 16px;">
-          <el-col :span="6">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <div class="stat-info">
-                  <div class="stat-value">{{ urlStats.total }}</div>
-                  <div class="stat-label">全部任务</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <div class="stat-info">
-                  <div class="stat-value" style="color: #52c41a;">{{ urlStats.completed }}</div>
-                  <div class="stat-label">已完成</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <div class="stat-info">
-                  <div class="stat-value" style="color: #ff4d4f;">{{ urlStats.failed }}</div>
-                  <div class="stat-label">失败</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="stat-card" shadow="never">
-              <div class="stat-content">
-                <div class="stat-info">
-                  <div class="stat-value" style="color: #1890ff;">{{ urlStats.downloading }}</div>
-                  <div class="stat-label">上传中/等待</div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
-
         <!-- 过滤和操作栏 -->
         <el-card shadow="never">
           <template #header>
@@ -285,7 +241,7 @@ const zombie = useZombieSessions()
 const {
   zombieLoading, zombieCleaning, zombieConfirmVisible,
   zombieCleanMode,
-  zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats,
+  zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats, zombieStatsAvailable,
   zombiePage, zombiePageSize, zombieTotal,
   zombieColumns, loadZombieSessions,
   onZombiePageChange, onZombiePageSizeChange,
@@ -297,7 +253,7 @@ const url = useUrlTasks()
 const {
   urlLoading, deleting, retrying, deleteModalVisible, retryModalVisible,
   toDeleteTasks, toRetryTasks, urlSelectedRowKeys, urlStatusFilter,
-  urlPage, urlPageSize, urlTotal, urlTasks, urlStats, urlColumns,
+  urlPage, urlPageSize, urlTotal, urlTasks, urlColumns,
   loadURLTasks, onURLStatusFilterChange, onURLPageSizeChange,
   batchDelete, batchRetry, confirmDelete, confirmRetry
 } = url

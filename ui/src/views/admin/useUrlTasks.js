@@ -1,4 +1,4 @@
-import { ref, reactive, computed, h } from 'vue'
+import { ref, computed, h } from 'vue'
 import { ElMessage, ElButton, ElTag, ElCheckbox } from 'element-plus'
 import { AdminApi } from '@/api'
 import { TimeUtils } from '@/utils'
@@ -34,13 +34,6 @@ export const useUrlTasks = () => {
   const urlPageSize = ref(20)
   const urlTotal = ref(0)
   const urlTasks = ref([])
-
-  const urlStats = reactive({
-    total: 0,
-    completed: 0,
-    failed: 0,
-    downloading: 0
-  })
 
   // 勾选（el-table-v2 不内置选择列，手动实现）
   const urlIsAllSelected = computed(() => {
@@ -207,7 +200,6 @@ export const useUrlTasks = () => {
           urlPage.value = res.data.page
           urlPageSize.value = res.data.pageSize
           urlTotal.value = res.data.total
-          updateURLStats(res.data.items || [])
         } else {
           ElMessage.error(res.message || '加载失败')
         }
@@ -217,13 +209,6 @@ export const useUrlTasks = () => {
         urlLoading.value = false
         onLoaded?.()
       })
-  }
-
-  function updateURLStats(items) {
-    urlStats.total = items.length
-    urlStats.completed = items.filter(t => t.status === 'completed').length
-    urlStats.failed = items.filter(t => t.status === 'failed').length
-    urlStats.downloading = items.filter(t => t.status === 'pending' || t.status === 'downloading').length
   }
 
   function onURLStatusFilterChange() {
@@ -321,7 +306,7 @@ export const useUrlTasks = () => {
   return {
     urlLoading, deleting, retrying, deleteModalVisible, retryModalVisible,
     toDeleteTasks, toRetryTasks, urlSelectedRowKeys, urlStatusFilter,
-    urlPage, urlPageSize, urlTotal, urlTasks, urlStats, urlColumns,
+    urlPage, urlPageSize, urlTotal, urlTasks, urlColumns,
     loadURLTasks, onURLStatusFilterChange, onURLPageSizeChange,
     batchDelete, batchRetry, confirmDelete, confirmRetry
   }

@@ -35,17 +35,23 @@ const state = reactive({
   // 系统配置
   config: {
     appName: '',
-    version: '1.0.0',
+    version: '',
     privateStorageEnabled: false,
-    tempFilesEnabled: true,
+    tempFilesEnabled: false,
     ftpEnabled: false,
-    ftpPort: 2121,
+    ftpPort: null,
     webdavEnabled: false,
     openApiEnabled: false,
     allowRegistration: false,
     requireLogin: false,
-    anonymousUsername: 'public'
+    anonymousUsername: ''
   },
+
+  // 配置是否已从后端成功加载（成功后为 true；失败时后端被视为异常，配置不可信）
+  configLoaded: false,
+
+  // 启动级错误：配置/初始化请求失败时置 true，不再渲染正常应用
+  startupError: false,
 
   // 当前浏览路径
   currentPath: '/',
@@ -98,6 +104,16 @@ const mutations = {
   // 设置应用配置
   setConfig(config) {
     state.config = { ...state.config, ...config }
+  },
+
+  // 标记配置是否已从后端成功加载
+  setConfigLoaded(loaded) {
+    state.configLoaded = loaded
+  },
+
+  // 设置启动级错误状态（后端不可用）
+  setStartupError(value) {
+    state.startupError = value
   },
 
   // 设置文件列表

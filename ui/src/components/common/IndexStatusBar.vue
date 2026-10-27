@@ -14,6 +14,12 @@
       <template #content>索引扫描进行中，请勿在页面上重复触发</template>
     </el-tooltip>
 
+    <!-- 加载失败：未知态，不冒充「尚未扫描」 -->
+    <span v-else-if="loadError" class="status-item idle">
+      <el-icon class="icon"><Warning /></el-icon>
+      索引状态未知
+    </span>
+
     <!-- 空闲状态 -->
     <template v-else>
       <span class="status-item idle">
@@ -36,7 +42,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Loading, FolderChecked } from '@element-plus/icons-vue'
+import { Loading, FolderChecked, Warning } from '@element-plus/icons-vue'
 import { IndexApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
@@ -56,15 +62,21 @@ const status = ref({
   scanProgress: 0,
   scanTotal: 0,
 })
+// 后端接口是否加载成功；失败时状态条显示未知，不展示「尚未扫描」等误导状态
+const loadError = ref(false)
 
 const fetchStatus = async () => {
   try {
     const res = await IndexApi.getScanStatus()
     if (res && res.data) {
       status.value = res.data
+      loadError.value = false
+    } else {
+      loadError.value = true
     }
   } catch (e) {
-    // 静默失败，Footer 不弹错误
+    // 静默失败，Footer 不弹错误；标记为未知态
+    loadError.value = true
   }
 }
 

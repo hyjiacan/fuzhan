@@ -276,13 +276,9 @@ const pagination = ref({
   itemCount: 0
 })
 
-// 可授予的接口权限目录（由后端 /admin/open-api/scopes 提供；加载失败时回退到内置清单）
-const fallbackScopes = [
-  { scope: 'open_api:files:duplicates', desc: '重复文件查询', group: '文件信息' },
-  { scope: 'open_api:files:notes', desc: '文件备注查询', group: '文件信息' },
-  { scope: 'open_api:files:depends', desc: '文件依赖树查询', group: '文件信息' }
-]
-const scopeCatalog = ref(fallbackScopes)
+// 可授予的接口权限目录（由后端 /admin/open-api/scopes 提供；
+// 加载失败时保持为空，不回退到前端内置清单——目录缺失即后端异常态）
+const scopeCatalog = ref([])
 
 // 按分组聚合权限项，供创建弹窗分组渲染
 const scopeGroups = computed(() => {
@@ -460,8 +456,11 @@ async function loadScopeCatalog() {
     if (res.success && Array.isArray(res.data?.scopes) && res.data.scopes.length) {
       scopeCatalog.value = res.data.scopes
     }
+    // 空目录亦为后端返回的真实结果，保持为空而非填充内置清单
   } catch (e) {
-    console.error('加载接口权限目录失败，使用内置清单', e)
+    // 加载失败保持为空：权限目录缺失时创建 Key 的权限勾选不可用，
+    // 属后端异常态，不再回退到前端内置清单
+    console.error('加载接口权限目录失败:', e)
   }
 }
 

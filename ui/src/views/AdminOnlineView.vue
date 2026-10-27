@@ -126,7 +126,7 @@ const loadData = async () => {
     const res = await AdminApi.getOnlineIps(page.value, pageSize.value)
     if (res.success && res.data) {
       onlineList.value = Array.isArray(res.data.online) ? res.data.online : []
-      total.value = res.data.total || 0
+      total.value = res.data.total ?? 0
       if (res.data.idleTimeoutSeconds > 0) {
         idleTimeoutSeconds.value = res.data.idleTimeoutSeconds
       }

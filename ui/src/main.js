@@ -18,6 +18,8 @@ const app = createApp(App)
 // 导出初始化状态供其他组件使用，避免重复请求
 export let isAppInitialized = false
 export let initializationComplete = false
+// 导出错误态，供 App.vue 渲染启动失败占位页
+export let isStartupError = false
 
 // 通知轮询定时器（模块级声明，供 startNotificationPolling / cleanupNotificationPolling 使用）
 let notificationPollInitTimer = null
@@ -32,8 +34,6 @@ validateTokenOnServer()
 // 先加载公开配置与初始化状态（在 mount 之前完成，确保首屏路由守卫能读到 requireLogin 等配置），
 // 因此「强制登录」模式下可正确将未登录用户重定向到登录页
 loadConfigAndCheckSetup()
-// 启动通知轮询
-startNotificationPolling()
 
 async function loadConfigAndCheckSetup() {
   try {
@@ -46,26 +46,30 @@ async function loadConfigAndCheckSetup() {
     // 处理配置
     if (optionsRes.data) {
       const d = optionsRes.data
-      // 更新 store 中的配置
+      // 更新 store 中的配置（仅写入后端返回的真实值，不引入前端兜底值）
       store.setConfig({
         appName: d.app?.name || '',
-        version: d.app?.version || '1.0.0',
+        version: d.app?.version || '',
         privateStorageEnabled: d.privateStorage?.enabled ?? false,
-        tempFilesEnabled: d.tempFiles?.enabled ?? true,
+        tempFilesEnabled: d.tempFiles?.enabled ?? false,
         ftpEnabled: d.ftp?.enabled ?? false,
-        ftpPort: d.ftp?.port ?? 2121,
+        ftpPort: d.ftp?.port ?? null,
         webdavEnabled: d.webdav?.enabled ?? false,
         openApiEnabled: d.openApi?.enabled ?? false,
         allowRegistration: d.account?.allowRegistration ?? false,
         requireLogin: d.account?.requireLogin ?? false,
-        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || 'public'
+        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || ''
       })
+      store.setConfigLoaded(true)
       // 更新页面标题
       if (d.app?.name) {
         document.title = d.app.name
       }
       // 加载预览配置（复用已获取的数据）
       loadPreviewConfig(optionsRes.data)
+    } else {
+      // 后端未返回配置数据，视为配置加载失败
+      throw new Error('配置数据为空')
     }
 
     // 检查初始化状态：只有后端明确返回「未初始化」（initialized === false）才跳转初始化页，
@@ -74,12 +78,14 @@ async function loadConfigAndCheckSetup() {
       setSetupRedirect(true)
     } else {
       isAppInitialized = true
+      // 配置加载成功后才启动通知轮询（后端不可用时轮询无意义）
+      startNotificationPolling()
     }
   } catch (e) {
-    // 配置/状态请求失败时不阻塞应用挂载：保留默认配置。
-    // 初始化状态无法确认时视为已初始化（避免误跳转初始化页）
+    // 配置/初始化请求失败：后端不可用，整体进入异常态，不再用默认配置挂载正常应用
     console.error('加载配置或初始化状态失败:', e)
-    isAppInitialized = true
+    isStartupError = true
+    store.setStartupError(true)
   } finally {
     // 初始化检查完成标记（HomeView 等据此避免重复请求 setup/status）
     initializationComplete = true

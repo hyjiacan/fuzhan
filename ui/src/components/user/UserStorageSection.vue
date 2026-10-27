@@ -51,23 +51,24 @@ import { NumberUtils } from '@/utils'
 
 const quotaInfo = ref({
   used: 0,
-  quota: 1024 * 1024 * 1024
+  quota: null
 })
 const fileCount = ref(0)
 const tempQuotaInfo = ref({
   used: 0,
-  limit: 1024 * 1024 * 1024
+  limit: null
 })
 
-const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
+// 配额未知（后端未返回）时显示占位符
+const formatSize = (bytes) => (bytes == null || bytes === 0) ? '—' : NumberUtils.formatFileSize(bytes)
 
 const quotaPercentage = computed(() => {
-  if (quotaInfo.value.quota === 0) return 0
+  if (!quotaInfo.value.quota) return 0
   return Math.round((quotaInfo.value.used / quotaInfo.value.quota) * 100)
 })
 
 const tempQuotaPercentage = computed(() => {
-  if (tempQuotaInfo.value.limit === 0) return 0
+  if (!tempQuotaInfo.value.limit) return 0
   return Math.round((tempQuotaInfo.value.used / tempQuotaInfo.value.limit) * 100)
 })
 

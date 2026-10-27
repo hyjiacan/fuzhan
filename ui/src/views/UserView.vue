@@ -38,7 +38,7 @@
             :stroke-width="20"
             :status="quotaStatus === 'error' ? 'exception' : quotaStatus"
           >
-            {{ NumberUtils.formatFileSize(quotaInfo.used) }} / {{ NumberUtils.formatFileSize(quotaInfo.quota) }}
+            {{ formatSize(quotaInfo.used) }} / {{ formatSize(quotaInfo.quota) }}
           </el-progress>
           <template #footer>
             <div class="quota-hint">已存储 {{ fileCount }} 个文件</div>
@@ -56,7 +56,7 @@
         :stroke-width="20"
         :status="tempQuotaStatus === 'error' ? 'exception' : tempQuotaStatus"
       >
-        {{ NumberUtils.formatFileSize(tempQuotaInfo.used) }} / {{ NumberUtils.formatFileSize(tempQuotaInfo.limit) }}
+        {{ formatSize(tempQuotaInfo.used) }} / {{ formatSize(tempQuotaInfo.limit) }}
       </el-progress>
     </el-card>
 
@@ -119,12 +119,12 @@ const userInfo = ref({
 })
 const quotaInfo = ref({
   used: 0,
-  quota: 1024 * 1024 * 1024 // 默认 1GB
+  quota: null
 })
 const fileCount = ref(0)
 const tempQuotaInfo = ref({
   used: 0,
-  limit: 1024 * 1024 * 1024
+  limit: null
 })
 const passwordForm = ref({
   oldPassword: '',
@@ -134,14 +134,17 @@ const passwordForm = ref({
 const changingPassword = ref(false)
 const formRef = ref(null)
 
+// 配额未知（后端未返回）时显示占位符
+const formatSize = (bytes) => (bytes == null || bytes === 0) ? '—' : NumberUtils.formatFileSize(bytes)
+
 // Computed
 const quotaPercentage = computed(() => {
-  if (quotaInfo.value.quota === 0) return 0
+  if (!quotaInfo.value.quota) return 0
   return Math.round((quotaInfo.value.used / quotaInfo.value.quota) * 100)
 })
 
 const tempQuotaPercentage = computed(() => {
-  if (tempQuotaInfo.value.limit === 0) return 0
+  if (!tempQuotaInfo.value.limit) return 0
   return Math.round((tempQuotaInfo.value.used / tempQuotaInfo.value.limit) * 100)
 })
 

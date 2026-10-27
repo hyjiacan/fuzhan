@@ -15,9 +15,6 @@ const sessionStatusMap = {
   expired: { text: '已过期', type: 'error' }
 }
 
-// 判定为僵尸会话（可清理）的状态集合
-const ZOMBIE_STATES = ['expired', 'pending', 'in_progress']
-
 /**
  * 僵尸（过期）上传会话管理与清理。
  */
@@ -39,6 +36,8 @@ export const useZombieSessions = () => {
     totalSessions: 0,
     totalSize: 0
   })
+  // 后端是否返回了真实全局聚合统计；未返回时统计卡片显示未知，不做当前页估算
+  const zombieStatsAvailable = ref(false)
 
   // 勾选（el-table-v2 不内置选择列，手动实现）
   const zombieIsAllSelected = computed(() => {
@@ -147,16 +146,15 @@ export const useZombieSessions = () => {
       if (data.success) {
         zombieSessions.value = (data.data && data.data.sessions) || []
         zombieTotal.value = data.data?.total || 0
+        // 仅信任后端返回的全局聚合统计；缺失时保持未知，不用当前页估算冒充全局值
         const stats = data.data?.stats
         if (stats) {
           zombieStats.totalSessions = stats.totalSessions || 0
           zombieStats.zombieSessions = stats.zombieSessions || 0
           zombieStats.totalSize = stats.totalSize || 0
+          zombieStatsAvailable.value = true
         } else {
-          // 后端未返回聚合统计时退化为当前页估算
-          zombieStats.totalSessions = zombieTotal.value
-          zombieStats.zombieSessions = zombieSessions.value.filter(s => ZOMBIE_STATES.includes(s.status)).length
-          zombieStats.totalSize = zombieSessions.value.reduce((sum, s) => sum + (s.uploadedSize || 0), 0)
+          zombieStatsAvailable.value = false
         }
       }
     } catch (e) {
@@ -240,7 +238,7 @@ export const useZombieSessions = () => {
   return {
     zombieLoading, zombieCleaning, zombieConfirmVisible,
     zombieCleanMode,
-    zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats,
+    zombieSelectedRowKeys, zombieSelectedSessions, zombieSessions, zombieStats, zombieStatsAvailable,
     zombiePage, zombiePageSize, zombieTotal,
     zombieColumns, loadZombieSessions,
     onZombiePageChange, onZombiePageSizeChange,

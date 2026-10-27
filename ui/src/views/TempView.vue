@@ -11,7 +11,9 @@
         </span>
       </div>
       <div class="header-right">
-        <span class="quota-badge">用量: {{ formatSize(used) }} / {{ quota > 0 ? formatSize(quota) : '无限制' }}</span>
+        <span class="quota-badge">
+          用量: {{ quota == null ? '—' : formatSize(used) }} / {{ quota == null ? '—' : (quota > 0 ? formatSize(quota) : '无限制') }}
+        </span>
       </div>
     </div>
 
@@ -182,8 +184,9 @@ const loading = ref(false)
 const files = ref([])
 const subdirs = ref([])
 const currentDir = ref('')
-const quota = ref(0)
-const used = ref(0)
+// 配额与用量：null 表示后端未返回（未知），0 表示无限制
+const quota = ref(null)
+const used = ref(null)
 const clientIP = ref('')
 const accessCodeInput = ref('')
 const accessingCode = ref(false)
@@ -261,10 +264,11 @@ const pagedData = computed(() => {
 })
 
 // 格式化
-const formatSize = (bytes) => bytes === 0 ? '-' : NumberUtils.formatFileSize(bytes)
+const formatSize = (bytes) => (bytes == null || bytes === 0) ? '-' : NumberUtils.formatFileSize(bytes)
 
 // 计算配额颜色
 const quotaColor = computed(() => {
+  if (quota.value == null || quota.value <= 0) return '#18a058'
   const percent = (used.value / quota.value) * 100
   if (percent >= 90) return '#d03050'
   if (percent >= 70) return '#f0a020'
@@ -453,8 +457,8 @@ const loadFiles = async (dir) => {
     if (data.success) {
       files.value = data.data?.files || []
       subdirs.value = data.data?.subdirs || []
-      quota.value = data.data?.quota?.limit || 0
-      used.value = data.data?.quota?.used || 0
+      quota.value = data.data?.quota?.limit ?? null
+      used.value = data.data?.quota?.used ?? null
     }
   } catch (error) {
     ElMessage.error('加载文件列表失败')

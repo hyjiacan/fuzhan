@@ -221,7 +221,17 @@
 
     <el-card>
       <template #header><span>支持的事件（{{ events.length }}）</span></template>
-      <div class="event-table">
+      <el-alert
+        v-if="eventsError"
+        type="error"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px;"
+      >
+        事件目录加载失败，无法展示可用事件；请检查后端服务后刷新页面重试。
+      </el-alert>
+      <el-empty v-else-if="eventsLoaded && !events.length" description="后端未配置可用事件" :image-size="60" />
+      <div v-else class="event-table">
         <div class="event-group" v-for="g in eventGroups" :key="g.label">
           <div class="event-group-title">{{ g.label }}</div>
           <div class="event-row" v-for="ev in g.items" :key="ev.event">
@@ -247,32 +257,24 @@ const testingIndex = ref(-1)
 const testingAll = ref(false)
 const allTestResults = ref([])
 
-// 事件目录：优先后端目录，失败回退内置列表
+// 事件目录：由后端 /admin/config/webhook/events 提供；
+// 加载失败保持为空——事件目录缺失即后端异常态，不回退到前端内置清单
 const events = ref([])
-const fallbackEvents = [
-  { event: 'task.started', desc: '系统作业开始执行（扫描/哈希/清理/URL 下载等）', category: '任务' },
-  { event: 'task.finished', desc: '系统作业完成', category: '任务' },
-  { event: 'task.failed', desc: '系统作业失败（含进程重启中断的对账记录）', category: '任务' },
-  { event: 'task.canceled', desc: '系统作业被取消', category: '任务' },
-  { event: 'security.event', desc: '安全事件（登录暴破/越权拒绝/频率限制/DDoS 告警）', category: '安全' },
-  { event: 'file.upload_started', desc: '创建上传会话，开始上传文件', category: '文件' },
-  { event: 'file.upload_canceled', desc: '取消上传会话', category: '文件' },
-  { event: 'file.uploaded', desc: '上传会话完成，文件写入最终路径', category: '文件' },
-  { event: 'file.renamed', desc: '文件/目录重命名', category: '文件' },
-  { event: 'file.moved', desc: '文件/目录移动', category: '文件' },
-  { event: 'file.deleted', desc: '文件/目录删除', category: '文件' },
-  { event: 'auth.login_success', desc: '本地/OAuth2 登录成功', category: '认证' },
-  { event: 'auth.login_failed', desc: '本地/OAuth2 登录失败（含限流锁定）', category: '认证' }
-]
+const eventsLoaded = ref(false)
+const eventsError = ref(false)
 
 const loadEvents = async () => {
   try {
     const res = await ConfigApi.webhookEvents()
     if (res.success && res.data) events.value = res.data
-    else events.value = fallbackEvents
+    // 空列表为后端返回的真实结果，保持为空
+    eventsLoaded.value = true
+    eventsError.value = false
   } catch (e) {
-    console.error('加载 Webhook 事件目录失败', e)
-    events.value = fallbackEvents
+    // 加载失败保持为空，并标记加载失败以便界面给出错误提示
+    console.error('加载 Webhook 事件目录失败:', e)
+    eventsLoaded.value = true
+    eventsError.value = true
   }
 }
 loadEvents()

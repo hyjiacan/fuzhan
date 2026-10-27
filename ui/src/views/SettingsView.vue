@@ -40,7 +40,11 @@
 
       <!-- 内容面板 -->
       <div class="settings-content">
-        <transition name="panel-fade" mode="out-in">
+        <el-skeleton v-if="!settingsLoaded && !settingsLoadError" :rows="8" animated style="padding: 24px;" />
+        <el-empty v-else-if="settingsLoadError" description="配置加载失败，请稍后重试">
+          <el-button type="primary" @click="loadSettings">重新加载</el-button>
+        </el-empty>
+        <transition v-else name="panel-fade" mode="out-in">
           <component :is="currentComponent" :key="activePanel" :settings="settings" />
         </transition>
       </div>
@@ -52,11 +56,11 @@
           <template v-if="isDirty"><span class="dot warning"></span>当前有未保存的更改</template>
         </div>
         <div class="actions-btns">
-          <el-button :disabled="!isDirty" @click="showChanges = true">
+          <el-button :disabled="!settingsLoaded || !isDirty" @click="showChanges = true">
             查看更改{{ changeList.length ? `（${changeList.length}）` : '' }}
           </el-button>
-          <el-button :disabled="!isDirty" @click="handleReset">重置</el-button>
-          <el-button type="primary" :loading="saving" :disabled="!isDirty" @click="saveSettings">
+          <el-button :disabled="!settingsLoaded || !isDirty" @click="handleReset">重置</el-button>
+          <el-button type="primary" :loading="saving" :disabled="!settingsLoaded || !isDirty" @click="saveSettings">
             保存配置{{ isDirty ? '' : ' ✓' }}
           </el-button>
         </div>
@@ -134,6 +138,9 @@ const activePanel = shallowRef('appInfo')
 const collapsed = ref(false)
 // 变更预览抽屉开关
 const showChanges = ref(false)
+// 配置是否已从后端加载成功；成功前不渲染表单面板，避免以默认值冒充真实配置
+const settingsLoaded = ref(false)
+const settingsLoadError = ref(false)
 
 // 侧栏分节分组：基础 / 服务存储 / 预览类型 / 数据安全 / 资源
 const navGroups = [
@@ -398,6 +405,7 @@ const buildPostgresDsn = () => {
 }
 
 const loadSettings = async () => {
+  settingsLoadError.value = false
   try {
     const data = await ConfigApi.get()
     if (data.success && data.data) {
@@ -593,10 +601,15 @@ const loadSettings = async () => {
 
       // 重置脏标记基线
       markClean()
+      settingsLoaded.value = true
+    } else {
+      throw new Error('配置数据为空')
     }
   } catch (e) {
     console.error('加载设置失败', e)
     message.error('加载设置失败')
+    settingsLoaded.value = false
+    settingsLoadError.value = true
   }
 }
 
@@ -859,12 +872,12 @@ const doSaveSettings = async () => {
             privateStorageEnabled: optionsRes.data.privateStorage?.enabled ?? false,
             tempFilesEnabled: optionsRes.data.tempFiles?.enabled ?? true,
             ftpEnabled: optionsRes.data.ftp?.enabled ?? false,
-            ftpPort: optionsRes.data.ftp?.port ?? 2121,
+            ftpPort: optionsRes.data.ftp?.port ?? null,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
             allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
             requireLogin: optionsRes.data.account?.requireLogin ?? false,
-            anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || 'public'
+            anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || ''
           })
         }
       } catch (e) {

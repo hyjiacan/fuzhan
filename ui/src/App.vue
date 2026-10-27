@@ -1,16 +1,19 @@
 <template>
   <el-config-provider :locale="zhCn">
-    <AppShell />
+    <!-- 启动级错误：配置/初始化加载失败时后端被视为不可用，渲染占位页而非正常应用 -->
+    <StartupErrorPage v-if="startupError" />
+    <AppShell v-else />
     <ToastContainer />
     <GlobalLoadingBar />
   </el-config-provider>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@/styles/global.less'
 import AppShell from '@/components/common/AppShell.vue'
+import StartupErrorPage from '@/components/common/StartupErrorPage.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue'
 import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
@@ -18,6 +21,9 @@ import { useToast } from '@/composables/useToast.js'
 import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
 import { useTheme } from '@/composables/useTheme'
 import store from '@/store'
+
+// 启动级错误态（store 中的响应式状态，后端不可用时为 true）
+const startupError = computed(() => store.state.startupError)
 
 // 初始化主题（配合 index.html 首屏脚本，跟随系统 + 手动切换 + 持久化）
 const { init: initTheme } = useTheme()
@@ -54,6 +60,9 @@ const checkHealth = async () => {
 onMounted(() => {
   // 页面卡顿检测：提示用户是否切换到简洁模式（选择存 localStorage）
   useLiteModeSuggestion().start(10000)
+
+  // 启动级失败（后端不可用）时不再发起健康检查
+  if (store.state.startupError) return
 
   // 健康检查延迟到浏览器空闲时执行（非首屏关键请求），避免与首屏关键请求争抢带宽。
   // requestIdleCallback 不支持的浏览器回退到 8 秒后执行。

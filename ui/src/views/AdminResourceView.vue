@@ -6,10 +6,11 @@
         <p class="description">服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量</p>
       </div>
       <div class="header-right">
-        <el-tag v-if="!enabled" type="warning">资源监控未启用</el-tag>
-        <el-tag v-else :type="collectorRunning ? 'success' : 'info'" effect="light">
-          {{ collectorRunning ? '采集运行中' : '等待首帧' }}
-        </el-tag>
+        <el-tag v-if="enabled === false" type="warning">资源监控未启用</el-tag>
+      <el-tag v-else-if="enabled === null" type="info">状态未知</el-tag>
+      <el-tag v-else :type="collectorRunning ? 'success' : 'info'" effect="light">
+        {{ collectorRunning ? '采集运行中' : '等待首帧' }}
+      </el-tag>
         <!-- <el-tag v-if="enabled && realtimeMode" type="success" effect="plain" size="small">
           {{ realtimeMode === 'sse' ? '实时推送' : '轮询' }}
         </el-tag> -->
@@ -21,7 +22,7 @@
     </div>
 
     <el-alert
-      v-if="!enabled"
+      v-if="enabled === false"
       type="warning"
       :closable="false"
       class="enable-tip"
@@ -204,7 +205,8 @@ import { useTheme } from '@/composables/useTheme'
 
 // ============ 状态 ============
 const loading = ref(false)
-const enabled = ref(true)
+// 资源监控启用状态：null 表示未知（配置未加载 / 加载失败），不擅自假定已启用
+const enabled = ref(null)
 const collectorRunning = ref(false)
 const samplingInterval = ref(5)
 const hiRange = ref('1h')
@@ -798,7 +800,10 @@ onMounted(async () => {
   try {
     const cfg = await ConfigApi.get()
     enabled.value = cfg.data?.resource?.enabled !== false
-  } catch { /* 配置读取失败时默认已启用 */ }
+  } catch {
+    // 配置读取失败：启用状态保持 unknown（null），不擅自回退为「已启用」，
+    // 也不启动实时采集（后端可能不可用）
+  }
 
   await loadSnapshot()
   await loadHistory()
