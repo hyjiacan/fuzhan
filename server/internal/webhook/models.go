@@ -9,7 +9,7 @@ package webhook
 import "time"
 
 // 事件类型（event 取值）。触发点要求：
-//   - task.*、security.event、config.saved 来自各自模块；
+//   - task.*、security.event 来自各自模块；
 //   - 其余事件在 middleware.LogOperation 中按 operation 映射统一派发（见 audit.go）。
 const (
 	EventTaskStarted  = "task.started"   // 系统作业开始执行
@@ -17,7 +17,6 @@ const (
 	EventTaskFailed   = "task.failed"    // 系统作业失败
 	EventTaskCanceled = "task.canceled"  // 系统作业被取消
 	EventSecurity     = "security.event" // 安全事件
-	EventConfigSaved  = "config.saved"   // 配置保存成功
 )
 
 // EventCatalogItem 事件目录条目（供管理接口/前端动态渲染）。
@@ -28,16 +27,16 @@ type EventCatalogItem struct {
 }
 
 // EventCatalog 返回完整事件目录。前端据此动态渲染事件选项，避免前后端列表漂移。
-// 事件过滤语法：空列表匹配全部；支持精确（file.uploaded）、前缀通配（file.*）、*。
+// 事件过滤语法：空列表表示不接收任何事件（默认拒绝）；支持精确（file.uploaded）、
+// 前缀通配（file.*）与 `*`（全部）。
 func EventCatalog() []EventCatalogItem {
 	return []EventCatalogItem{
-		// 作业、安全与配置（原有）
+		// 作业与安全
 		{EventTaskStarted, "系统作业开始执行（扫描/哈希/清理/URL 下载等）", "任务"},
 		{EventTaskFinished, "系统作业完成", "任务"},
 		{EventTaskFailed, "系统作业失败（含进程重启中断的对账记录）", "任务"},
 		{EventTaskCanceled, "系统作业被取消", "任务"},
 		{EventSecurity, "安全事件（登录暴破/越权拒绝/频率限制/DDoS 告警）", "安全"},
-		{EventConfigSaved, "配置保存成功", "配置"},
 		// 文件
 		{"file.upload_started", "创建上传会话，开始上传文件", "文件"},
 		{"file.upload_canceled", "取消上传会话", "文件"},
@@ -55,7 +54,7 @@ func EventCatalog() []EventCatalogItem {
 		{"url_task.retried", "URL 下载任务重试", "URL 任务"},
 		{"url_task.deleted", "URL 下载任务删除", "URL 任务"},
 		{"url_task.checksummed", "URL 下载任务校验和更新", "URL 任务"},
-		// 用户、认证、会话与系统
+		// 用户与认证
 		{"user.registered", "新用户注册", "用户"},
 		{"user.created", "管理员创建用户", "用户"},
 		{"user.deleted", "管理员删除用户", "用户"},
@@ -63,11 +62,6 @@ func EventCatalog() []EventCatalogItem {
 		{"user.password_changed", "密码修改/重置", "用户"},
 		{"auth.login_success", "本地/OAuth2 登录成功", "认证"},
 		{"auth.login_failed", "本地/OAuth2 登录失败（含限流锁定）", "认证"},
-		{"session.cleaned", "清理在线会话", "会话"},
-		{"system.cert_uploaded", "上传 TLS 证书", "系统"},
-		{"system.key_uploaded", "上传 TLS 私钥", "系统"},
-		{"system.records_cleared", "清理记录", "系统"},
-		{"system.records_deleted", "删除记录", "系统"},
 	}
 }
 

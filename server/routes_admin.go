@@ -108,6 +108,8 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 
 	// Open API 调用统计（v3 Phase 3）
 	admin.GET("/open-api/stats", rt.openAPIStatsHandler.GetStats)
+	// Open API 可授予的接口权限目录（供 API Key 创建时分组勾选）
+	admin.GET("/open-api/scopes", rt.openAPIHandler.GetScopeCatalog)
 
 	// 日志查看（后端日志文件列表与增量读取）
 	if lh := rt.logHandler; lh != nil {

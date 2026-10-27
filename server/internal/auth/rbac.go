@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"fuzhan/internal/models"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -129,11 +130,20 @@ func (s *RBACService) RequireScopeOptional(requiredScope string) gin.HandlerFunc
 	}
 }
 
-// scopeHierarchy 定义 scope 的层级关系
+// scopeHierarchy 定义 scope 的层级关系（兼容 reader/writer 授予全部读取类权限，
+// 细粒度 permission 之间相互独立；admin 仅供内部使用）
 var rbacScopeHierarchy = map[string][]string{
-	"open_api:admin":  {"open_api:reader", "open_api:writer", "open_api:admin"},
-	"open_api:writer": {"open_api:reader", "open_api:writer"},
-	"open_api:reader": {"open_api:reader"},
+	models.ScopeOpenAPIAdmin: {
+		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter, models.ScopeOpenAPIAdmin,
+		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+	},
+	models.ScopeOpenAPIWriter: {
+		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter,
+		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+	},
+	models.ScopeOpenAPIReader: {
+		models.ScopeOpenAPIReader, models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+	},
 }
 
 // hasRequiredScope 检查 scopes 中是否有需要的 scope（含层级关系）

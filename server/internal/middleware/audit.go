@@ -131,8 +131,8 @@ func LogOperation(c *gin.Context, operation, target string, err error) {
 
 	// Webhook 事件派发：把 operation 映射为事件类型并异步推送。
 	// 此处集中映射，避免改动 70+ 个 LogOperation 调用点。
-	// config.update / search / request.rejected 明确不派发（分别由
-	// config.saved、security.event 覆盖；search 为高频只读噪音）。
+	// config.update / search / request.rejected 明确不派发（配置变更不再推送，
+	// security.event 已覆盖安全类拒绝，search 为高频只读噪音）。
 	dispatchWebhookEvent(operation, err, map[string]interface{}{
 		"operator":    operator,
 		"clientIp":    clientIP,
@@ -202,24 +202,13 @@ func dispatchWebhookEvent(operation string, err error, payload map[string]interf
 	case "auth.change_password", "admin.user.reset_password":
 		event, ok = "user.password_changed", true
 	case "auth.login", "auth.oauth2.login":
-		event, ok = "auth.login_success", false
-		if ok {
-			if err != nil {
-				event = "auth.login_failed"
-			}
-			webhook.Dispatch(event, "audit", payload)
+		// 登录成功/失败分别派发，便于接收方准确告警（不受下方成功才派发规则约束）
+		event := "auth.login_success"
+		if err != nil {
+			event = "auth.login_failed"
 		}
+		webhook.Dispatch(event, "audit", payload)
 		return
-	case "admin.session.cleanup", "admin.session.cleanup_all":
-		event, ok = "session.cleaned", true
-	case "admin.cert.upload":
-		event, ok = "system.cert_uploaded", true
-	case "admin.key.upload":
-		event, ok = "system.key_uploaded", true
-	case "admin.records.clear":
-		event, ok = "system.records_cleared", true
-	case "admin.records.delete":
-		event, ok = "system.records_deleted", true
 	}
 	if !ok {
 		return

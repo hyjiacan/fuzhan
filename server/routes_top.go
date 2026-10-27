@@ -7,6 +7,7 @@ import (
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
+	"fuzhan/internal/models"
 	"fuzhan/internal/openapi"
 	"fuzhan/internal/utils"
 	webdavsvc "fuzhan/internal/webdav"
@@ -118,12 +119,12 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openAPI.GET("/files/search", rt.openAPIHandler.SearchFiles)
 		// FR-3.3: 文件下载 API（公开）
 		openAPI.GET("/files/download/*path", rt.openAPIHandler.DownloadFile)
-		// FR-3.5: 重复文件查询 API（需认证，需要 reader scope）
-		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope("open_api:reader"), rt.openAPIHandler.ListDuplicates)
-		// FR-3.6: 文件备注查询 API（需认证，需要 reader scope）
-		openAPI.GET("/files/notes", rt.rbacService.RequireScope("open_api:reader"), rt.openAPIHandler.GetNotes)
-		// FR-4.1: 文件依赖树查询 API（需认证，需要 reader scope）
-		openAPI.GET("/files/:id/depends", rt.rbacService.RequireScope("open_api:reader"), rt.openAPIHandler.GetDependencyTree)
+		// FR-3.5: 重复文件查询 API（需认证，需要重复文件查询权限）
+		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope(models.ScopeFilesDuplicates), rt.openAPIHandler.ListDuplicates)
+		// FR-3.6: 文件备注查询 API（需认证，需要文件备注查询权限）
+		openAPI.GET("/files/notes", rt.rbacService.RequireScope(models.ScopeFilesNotes), rt.openAPIHandler.GetNotes)
+		// FR-4.1: 文件依赖树查询 API（需认证，需要文件依赖树查询权限）
+		openAPI.GET("/files/:id/depends", rt.rbacService.RequireScope(models.ScopeFilesDepends), rt.openAPIHandler.GetDependencyTree)
 		// FR-3.10: OpenAPI 文档（公开）
 		openAPI.GET("/openapi.json", rt.openAPIHandler.GetOpenAPISpec)
 		openAPI.GET("/docs", rt.openAPIHandler.GetDocsPage)

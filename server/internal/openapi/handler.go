@@ -17,6 +17,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// GetScopeCatalog 返回可授予的 OpenAPI 接口权限目录（管理端按分组渲染）
+// GET /api/v1/web/admin/open-api/scopes
+func (h *Handler) GetScopeCatalog(c *gin.Context) {
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{"scopes": models.OpenAPIScopeCatalog()})
+}
+
 // escapeLike 转义 LIKE 通配符（% _ 及转义符自身），须配合 SQL 的 ESCAPE '\' 使用，
 // 避免用户输入中的 %/_ 被当作通配符而放大匹配范围。
 func escapeLike(s string) string {

@@ -121,16 +121,27 @@
         <el-form-item label="名称" prop="name">
           <el-input v-model="createForm.name" :maxlength="128" placeholder="给这个 Key 起个名字" />
         </el-form-item>
-        <el-form-item label="权限范围" prop="scopes">
-          <el-select v-model="createForm.scopes" placeholder="选择权限范围">
-            <el-option
-              v-for="opt in scopeOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-          <div class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>open_api:writer - 额外包含文件备注、依赖关系</div>
+        <el-form-item label="接口权限" prop="scopes">
+          <div class="scope-groups">
+            <div v-for="group in scopeGroups" :key="group.label" class="scope-group">
+              <div class="scope-group-head">
+                <span class="scope-group-title">{{ group.label }}</span>
+                <div class="scope-group-actions">
+                  <el-button link size="small" @click="setGroupScopes(group, true)">全选</el-button>
+                  <el-button link size="small" @click="setGroupScopes(group, false)">清空</el-button>
+                </div>
+              </div>
+              <el-checkbox-group v-model="createForm.scopes">
+                <el-checkbox v-for="item in group.items" :key="item.scope" :label="item.scope">
+                  <span class="scope-name">{{ item.desc }}</span>
+                  <span class="scope-code">{{ item.scope }}</span>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+          <div class="field-hint">
+            仅需为需要认证的接口授权；文件列表 / 搜索 / 下载为公开接口，无需勾选。
+          </div>
         </el-form-item>
         <el-form-item label="过期时间" prop="expiresIn">
           <el-select v-model="createForm.expiresIn" placeholder="选择过期时间">
@@ -216,12 +227,13 @@ const currentUserId = ref(0)
 
 const createForm = ref({
   name: '',
-  scopes: 'open_api:reader',
+  scopes: [],
   expiresIn: 0
 })
 
 const createRules = {
-  name: [{ required: true, message: '请输入名称', trigger: 'blur' }]
+  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+  scopes: [{ type: 'array', required: true, min: 1, message: '请至少勾选一项接口权限', trigger: 'change' }]
 }
 
 const openApiConfig = ref({
@@ -264,10 +276,44 @@ const pagination = ref({
   itemCount: 0
 })
 
-const scopeOptions = [
-  { label: '读取 (open_api:reader)', value: 'open_api:reader' },
-  { label: '读写 (open_api:writer)', value: 'open_api:writer' }
+// 可授予的接口权限目录（由后端 /admin/open-api/scopes 提供；加载失败时回退到内置清单）
+const fallbackScopes = [
+  { scope: 'open_api:files:duplicates', desc: '重复文件查询', group: '文件信息' },
+  { scope: 'open_api:files:notes', desc: '文件备注查询', group: '文件信息' },
+  { scope: 'open_api:files:depends', desc: '文件依赖树查询', group: '文件信息' }
 ]
+const scopeCatalog = ref(fallbackScopes)
+
+// 按分组聚合权限项，供创建弹窗分组渲染
+const scopeGroups = computed(() => {
+  const groups = []
+  const map = new Map()
+  for (const item of scopeCatalog.value) {
+    if (!map.has(item.group)) {
+      const g = { label: item.group, items: [] }
+      map.set(item.group, g)
+      groups.push(g)
+    }
+    map.get(item.group).items.push(item)
+  }
+  return groups
+})
+
+// 整组全选 / 清空
+const setGroupScopes = (group, checked) => {
+  const names = group.items.map((i) => i.scope)
+  const rest = createForm.value.scopes.filter((s) => !names.includes(s))
+  createForm.value.scopes = checked ? [...rest, ...names] : rest
+}
+
+// 权限展示：兼容旧版 reader/writer 等合并权限
+const scopeLabels = (scopes) => (scopes || '').split(',').map((s) => s.trim()).filter(Boolean)
+const scopeLabel = (scope) => {
+  const legacy = { 'open_api:reader': '读取（兼容）', 'open_api:writer': '读写（兼容）', 'open_api:admin': '管理（内部）' }
+  if (legacy[scope]) return legacy[scope]
+  const item = scopeCatalog.value.find((i) => i.scope === scope)
+  return item ? item.desc : scope
+}
 
 const expiryOptions = [
   { label: '永不过期', value: 0 },
@@ -298,9 +344,13 @@ const columns = computed(() => [
     ]) },
   { title: 'Key ID', key: 'keyId', dataKey: 'keyId', width: 140 },
   {
-    title: '权限', key: 'scopes', width: 160,
-    cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
-      () => row.scopes)
+    title: '权限', key: 'scopes', width: 300,
+    cellRenderer: ({ rowData: row }) => h('div', { style: 'display: flex; align-items: center; gap: 4px; overflow: hidden;' },
+      scopeLabels(row.scopes).map((s) => h(ElTag, {
+        size: 'small',
+        key: s,
+        type: s === 'open_api:admin' ? 'warning' : (s === 'open_api:reader' || s === 'open_api:writer' ? 'success' : 'info')
+      }, () => scopeLabel(s))))
   },
   {
     title: '状态', key: 'status', width: 80,
@@ -404,6 +454,17 @@ function handlePageSizeChange() {
   loadApiKeys()
 }
 
+async function loadScopeCatalog() {
+  try {
+    const res = await ApiKeyApi.listScopes()
+    if (res.success && Array.isArray(res.data?.scopes) && res.data.scopes.length) {
+      scopeCatalog.value = res.data.scopes
+    }
+  } catch (e) {
+    console.error('加载接口权限目录失败，使用内置清单', e)
+  }
+}
+
 async function loadApiKeys() {
   loading.value = true
   try {
@@ -442,7 +503,7 @@ async function handleCreate() {
     const res = await ApiKeyApi.create({
       name: createForm.value.name,
       userId: currentUserId.value || 1,
-      scopes: createForm.value.scopes,
+      scopes: createForm.value.scopes.join(','),
       expiresIn: createForm.value.expiresIn
     })
     if (res.success) {
@@ -451,7 +512,7 @@ async function handleCreate() {
       rawKey.value = res.data?.rawKey || ''
       showRawKeyModal.value = true
       loadApiKeys()
-      createForm.value = { name: '', scopes: 'open_api:reader', expiresIn: 0 }
+      createForm.value = { name: '', scopes: [], expiresIn: 0 }
     } else {
       ElMessage.error(res.message || '创建失败')
     }
@@ -512,6 +573,7 @@ async function handleDelete() {
 
 onMounted(() => {
   loadConfig()
+  loadScopeCatalog()
   loadApiKeys()
   loadCurrentUser()
   updateTableSize()
@@ -532,12 +594,6 @@ onUnmounted(() => {
 .admin-openapi {
   padding: @container-padding;
 
-  .field-hint {
-    font-size: 12px;
-    color: @text-color-secondary;
-    line-height: 1.5;
-  }
-
   .table-v2-wrap {
     height: 420px;
   }
@@ -547,6 +603,74 @@ onUnmounted(() => {
     justify-content: flex-end;
     padding: 12px 0 0;
   }
+}
+
+// 以下样式用于创建弹窗（Element Plus 会 Teleport 到 body，不能嵌套在 .admin-openapi 下）
+.field-hint {
+  font-size: 12px;
+  color: @text-color-secondary;
+  line-height: 1.5;
+}
+
+.scope-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.scope-group {
+  border: 1px solid @border-color-light;
+  border-radius: @border-radius-sm;
+  padding: 6px 10px 8px;
+
+  :deep(.el-checkbox-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  :deep(.el-checkbox) {
+    height: auto;
+    margin-right: 0;
+  }
+
+  :deep(.el-checkbox__label) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: normal;
+    line-height: 1.6;
+  }
+}
+
+.scope-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.scope-group-title {
+  font-size: @font-size-xs;
+  font-weight: 600;
+  color: @text-color;
+}
+
+.scope-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scope-name {
+  font-size: @font-size-xs;
+  color: @text-color;
+}
+
+.scope-code {
+  font-family: @font-family-mono;
+  font-size: @font-size-xs;
+  color: @text-color-secondary;
 }
 
 @media @tablet {

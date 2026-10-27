@@ -47,6 +47,14 @@ func NewDispatcher(cfg appconfig.WebhookConfig) *Dispatcher {
 		cancel: cancel,
 	}
 	d.enabled.Store(cfg.Enabled)
+	// 事件权限为空表示不接收任何事件（默认拒绝）；启动时提示，避免端点静默失效
+	for _, ep := range cfg.EffectiveEndpoints() {
+		if ep.IsEnabled() && len(ep.Events) == 0 {
+			utils.Warn("Webhook 端点未配置事件权限，将不接收任何事件",
+				utils.String("name", ep.Name),
+				utils.String("url", redactURL(ep.URL)))
+		}
+	}
 	return d
 }
 

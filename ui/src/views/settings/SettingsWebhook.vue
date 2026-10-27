@@ -76,24 +76,47 @@
             <el-input v-model="ep.url" placeholder="https://example.com/hook/fuzhan" />
           </el-form-item>
 
-          <el-form-item label="事件过滤">
-            <el-select
-              v-model="ep.events"
-              multiple
-              collapse-tags
-              collapse-tags-tooltip
-              filterable
-              clearable
-              placeholder="空 = 接收全部事件"
-              style="width: 100%;"
-            >
-              <el-option-group v-for="cat in eventGroups" :key="cat.label" :label="cat.label">
-                <el-option v-for="ev in cat.items" :key="ev.event" :label="`${ev.event} — ${ev.desc}`" :value="ev.event" />
-              </el-option-group>
-            </el-select>
-            <div class="field-hint">
-              留空表示全部事件；可精确选择，也可输入通配符（如
-              <code>file.*</code>、<code>task.*</code>、<code>*</code>）匹配整类。
+          <el-form-item label="事件权限">
+            <div class="event-perm">
+              <el-switch
+                v-model="ep._allEvents"
+                active-text="接收全部事件"
+                @change="(v) => toggleAllEvents(ep, v)"
+              />
+              <div v-if="!ep._allEvents" class="event-groups">
+                <div v-for="cat in eventGroups" :key="cat.label" class="event-group">
+                  <div class="event-group-head">
+                    <span class="event-group-title">{{ cat.label }}</span>
+                    <div class="event-group-actions">
+                      <el-button link size="small" @click="setGroupEvents(ep, cat, true)">全选</el-button>
+                      <el-button link size="small" @click="setGroupEvents(ep, cat, false)">清空</el-button>
+                    </div>
+                  </div>
+                  <el-checkbox-group v-model="ep.events">
+                    <el-checkbox v-for="ev in cat.items" :key="ev.event" :label="ev.event">
+                      <span class="event-name">{{ ev.event }}</span>
+                      <span class="event-desc">{{ ev.desc }}</span>
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                <div v-if="customEvents(ep).length" class="event-group">
+                  <div class="event-group-head">
+                    <span class="event-group-title">自定义规则</span>
+                  </div>
+                  <div class="event-tags">
+                    <el-tag v-for="ev in customEvents(ep)" :key="ev" size="small" closable @close="removeEvent(ep, ev)">{{ ev }}</el-tag>
+                  </div>
+                </div>
+              </div>
+              <div v-if="ep._allEvents" class="field-hint">
+                已显式订阅全部事件（YAML 中为 <code>*</code>），新增事件同样会被推送。
+              </div>
+              <div v-else-if="!ep.events || !ep.events.length" class="field-hint is-error">
+                未选择任何事件：该回调不会收到任何推送（默认拒绝）。
+              </div>
+              <div v-else class="field-hint">
+                仅推送所勾选的事件；后续新增事件需手动勾选。
+              </div>
             </div>
           </el-form-item>
 
@@ -110,7 +133,7 @@
             </div>
           </el-form-item>
 
-          <el-form-item v-if="ep._authPreset !== 'none' && ep._authPreset !== 'custom'" :label="authPresetLabel">
+          <el-form-item v-if="ep._authPreset !== 'none' && ep._authPreset !== 'custom'" :label="authPresetLabel(ep)">
             <template v-if="ep._authPreset === 'bearer'">
               <el-input v-model="ep._token" type="password" show-password placeholder="Bearer Token 值" autocomplete="new-password" style="width: 320px;" />
               <el-button size="small" style="margin-left: 8px;" @click="applyAuthPreset(ep)">填入 Headers</el-button>
@@ -232,7 +255,6 @@ const fallbackEvents = [
   { event: 'task.failed', desc: '系统作业失败（含进程重启中断的对账记录）', category: '任务' },
   { event: 'task.canceled', desc: '系统作业被取消', category: '任务' },
   { event: 'security.event', desc: '安全事件（登录暴破/越权拒绝/频率限制/DDoS 告警）', category: '安全' },
-  { event: 'config.saved', desc: '配置保存成功', category: '配置' },
   { event: 'file.upload_started', desc: '创建上传会话，开始上传文件', category: '文件' },
   { event: 'file.upload_canceled', desc: '取消上传会话', category: '文件' },
   { event: 'file.uploaded', desc: '上传会话完成，文件写入最终路径', category: '文件' },
@@ -276,6 +298,7 @@ const newEndpoint = () => ({
   secret: '',
   timeoutSeconds: 0,
   maxRetries: 0,
+  _allEvents: false,
   _authPreset: 'none',
   _token: '',
   _keyName: '',
@@ -299,21 +322,51 @@ const syncFromEndpoint = (ep) => {
     ep._initialized = true
     ep._headersRows = rowsFromMap(ep.headers)
     ep._queryRows = rowsFromMap(ep.query)
+    // 事件权限：显式 `*` 视为接收全部；空列表表示不接收任何事件（默认拒绝）
+    ep._allEvents = Array.isArray(ep.events) && ep.events.includes('*')
+    if (!Array.isArray(ep.events)) ep.events = []
     ep._testResult = null
   }
 }
 
+// 接收全部事件：写入显式 `*` 规则，避免依赖“留空即全部”的隐式语义
+const toggleAllEvents = (ep, all) => {
+  ep.events = all ? ['*'] : []
+}
+
+// 事件权限按分类勾选：整组全选 / 清空（通配规则仍由后端支持，界面不再直接输入）
+const setGroupEvents = (ep, cat, checked) => {
+  const names = cat.items.map((i) => i.event)
+  const rest = (ep.events || []).filter((e) => e !== '*' && !names.includes(e))
+  ep.events = checked ? [...rest, ...names] : rest
+}
+
+// 目录之外的自定义规则（如历史配置中的 file.*）：单独展示，避免不可见残留
+const catalogEventNames = computed(() => new Set((events.value || []).map((e) => e.event)))
+const customEvents = (ep) => (ep.events || []).filter((e) => e !== '*' && !catalogEventNames.value.has(e))
+const removeEvent = (ep, ev) => {
+  ep.events = (ep.events || []).filter((e) => e !== ev)
+}
+
 watch(endpoints, (list) => {
   ;(list || []).forEach(syncFromEndpoint)
-}, { immediate: true, deep: false })
+}, { immediate: true })
 
-// 行数组变化时同步写回正式字段（供 SettingsView 统一保存）
+// 行数组变化时同步写回正式字段（供 SettingsView 统一保存）。
+// 写入前先比对，避免自身写入再次触发深度监听形成无限递归（Maximum recursive updates）。
+const sameMap = (cur, next) => {
+  const keys = Object.keys(cur || {})
+  if (keys.length !== Object.keys(next).length) return false
+  return keys.every((k) => cur[k] === next[k])
+}
+
 watch(endpoints, (list) => {
   ;(list || []).forEach((ep) => {
-    if (ep._initialized) {
-      ep.headers = mapFromRows(ep._headersRows || [])
-      ep.query = mapFromRows(ep._queryRows || [])
-    }
+    if (!ep._initialized) return
+    const headers = mapFromRows(ep._headersRows || [])
+    if (!sameMap(ep.headers, headers)) ep.headers = headers
+    const query = mapFromRows(ep._queryRows || [])
+    if (!sameMap(ep.query, query)) ep.query = query
   })
 }, { deep: true })
 
@@ -332,13 +385,13 @@ const removeKv = (rows, i) => rows.splice(i, 1)
 
 const authVisible = (ep) => (ep._headersRows && ep._headersRows.length) || (ep._queryRows && ep._queryRows.length)
 
-const authPresetLabel = computed(() => {
-  const preset = endpoints.value[testingIndex.value]?._authPreset
+const authPresetLabel = (ep) => {
+  const preset = ep?._authPreset
   if (preset === 'bearer') return 'Bearer Token'
   if (preset === 'apikey') return 'API Key'
   if (preset === 'urltoken') return 'Token'
   return 'Token 值'
-})
+}
 
 const applyAuthPreset = (ep) => {
   if (ep._authPreset === 'bearer') {
@@ -449,6 +502,81 @@ const testAll = async () => {
 .field-hint {
   color: @text-color-secondary;
   font-size: 12px;
+
+  &.is-error {
+    color: @error-color;
+  }
+}
+
+.event-perm {
+  width: 100%;
+}
+
+.event-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.event-group {
+  border: 1px solid @border-color-light;
+  border-radius: @border-radius-sm;
+  padding: 6px 10px 8px;
+
+  :deep(.el-checkbox-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  :deep(.el-checkbox) {
+    height: auto;
+    margin-right: 0;
+  }
+
+  :deep(.el-checkbox__label) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: normal;
+    line-height: 1.6;
+  }
+}
+
+.event-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.event-group-title {
+  font-size: @font-size-xs;
+  font-weight: 600;
+  color: @text-color;
+}
+
+.event-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-name {
+  font-family: @font-family-mono;
+  font-size: @font-size-xs;
+}
+
+.event-desc {
+  color: @text-color-secondary;
+  font-size: @font-size-xs;
+}
+
+.event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .endpoint-list {

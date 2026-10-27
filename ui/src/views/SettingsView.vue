@@ -196,14 +196,16 @@ const currentComponent = computed(() => panelMap[activePanel.value])
 // 脏标记：以 settings 序列化快照为基准，判断是否存在未保存更改
 // 基线用 ref 而非普通变量，否则 markClean 更新基线时 isDirty 不会重算（保存后脏标记无法复位）
 const baselineSnapshot = ref('')
-// 直接序列化响应式对象：若用 toRaw 剥离代理，computed 无法收集字段依赖，isDirty 将永不响应变更
-const serialize = (v) => JSON.stringify(v)
+// 直接序列化响应式对象：若用 toRaw 剥离代理，computed 无法收集字段依赖，isDirty 将永不响应变更。
+// 同时忽略以下划线开头的 UI 临时字段（如 Webhook 端点的 _headersRows），
+// 这些字段由设置面板初始化时写入，不代表用户更改，不能计入脏标记。
+const serialize = (v) => JSON.stringify(v, (key, value) => (key.startsWith('_') ? undefined : value))
 const isDirty = computed(() => baselineSnapshot.value !== '' && serialize(settings) !== baselineSnapshot.value)
-// 变更明细：逐字段对比当前 settings 与基线快照
+// 变更明细：逐字段对比当前 settings 与基线快照（同样剔除 `_` 前缀的 UI 临时字段）
 const changeList = computed(() => {
   if (!isDirty.value || !baselineSnapshot.value) return []
   try {
-    return diffSettings(settings, JSON.parse(baselineSnapshot.value))
+    return diffSettings(JSON.parse(serialize(settings)), JSON.parse(baselineSnapshot.value))
   } catch (e) {
     console.error('生成设置变更明细失败', e)
     return []
@@ -519,7 +521,15 @@ const loadSettings = async () => {
       settings.webhook = {
         enabled: cfg.webhook?.enabled ?? false,
         urls: cfg.webhook?.urls || [],
-        endpoints: cfg.webhook?.endpoints || [],
+        // 端点字段归一化：后端 enabled 缺省为 null（视为启用）、headers/query 缺省为 null，
+        // 统一为确定值，避免设置面板初始化写回时被误判为未保存更改
+        endpoints: (cfg.webhook?.endpoints || []).map((ep) => ({
+          ...ep,
+          enabled: ep.enabled !== false,
+          events: Array.isArray(ep.events) ? ep.events : [],
+          headers: ep.headers || {},
+          query: ep.query || {}
+        })),
         secret: cfg.webhook?.secret || '',
         timeoutSeconds: cfg.webhook?.timeoutSeconds || 10,
         maxRetries: cfg.webhook?.maxRetries ?? 3,
@@ -594,7 +604,7 @@ const loadSettings = async () => {
 const markClean = () => {
   baselineSnapshot.value = serialize(settings)
   baselineSections = {}
-  for (const k of Object.keys(settings)) baselineSections[k] = JSON.stringify(settings[k])
+  for (const k of Object.keys(settings)) baselineSections[k] = serialize(settings[k])
 }
 
 // configData 顶层节 -> 其来源的 settings 顶层节，用于判定该节是否因变更而随请求提交
@@ -621,7 +631,7 @@ const SECTION_SOURCES = {
 }
 
 // 判定任一来源设置节是否相对基线变化；基线尚未建立时视为全量提交
-const sectionChanged = (keys) => !baselineSections || keys.some(k => baselineSections[k] !== JSON.stringify(settings[k]))
+const sectionChanged = (keys) => !baselineSections || keys.some(k => baselineSections[k] !== serialize(settings[k]))
 
 // 等待服务就绪后导航
 const pollServerHealth = (url, maxRetries, interval, onReady) => {
@@ -647,7 +657,7 @@ const pollServerHealth = (url, maxRetries, interval, onReady) => {
 // 危险操作二次确认：数据库驱动、存储后端等需重启生效的高风险变更
 const confirmCriticalChange = async () => {
   const dbChanged = settings.database.driver !== originalDatabaseDriver.value
-  const storageChanged = !!baselineSections && baselineSections.storageBackend !== JSON.stringify(settings.storageBackend)
+  const storageChanged = !!baselineSections && baselineSections.storageBackend !== serialize(settings.storageBackend)
   if (dbChanged || storageChanged) {
     const messages = []
     if (dbChanged) {
@@ -675,8 +685,33 @@ const confirmCriticalChange = async () => {
   return true
 }
 
+// 构建 Webhook 端点提交数据：仅保留正式字段，剔除 _authPreset/_headersRows 等 UI 临时字段
+const webhookEndpointPayload = (ep) => ({
+  name: ep.name,
+  url: ep.url,
+  enabled: ep.enabled,
+  events: Array.isArray(ep.events) ? ep.events : [],
+  secret: ep.secret,
+  timeoutSeconds: ep.timeoutSeconds,
+  maxRetries: ep.maxRetries,
+  headers: ep.headers || {},
+  query: ep.query || {}
+})
+
+// Webhook 事件权限校验：启用 Webhook 且该节有改动时，启用中的端点必须显式指定事件
+// （事件列表为空表示不接收任何事件，属默认拒绝，故要求至少勾选一个事件或开启「接收全部事件」）
+const validateWebhookPermissions = () => {
+  if (!settings.webhook.enabled) return true
+  const bad = settings.webhook.endpoints.find((ep) => ep.enabled !== false && !(ep.events && ep.events.length))
+  if (!bad) return true
+  message.error(`回调地址「${bad.name || bad.url || '未命名'}」未选择任何事件，请在「事件权限」中勾选事件或开启「接收全部事件」`)
+  return false
+}
+
 // 执行保存配置
 const doSaveSettings = async () => {
+  if (sectionChanged(SECTION_SOURCES.webhook) && !validateWebhookPermissions()) return
+
   // 危险操作二次确认
   const proceed = await confirmCriticalChange()
   if (!proceed) return
@@ -751,7 +786,7 @@ const doSaveSettings = async () => {
       webhook: {
         enabled: settings.webhook.enabled,
         urls: settings.webhook.urls,
-        endpoints: settings.webhook.endpoints,
+        endpoints: settings.webhook.endpoints.map(webhookEndpointPayload),
         secret: settings.webhook.secret,
         timeoutSeconds: settings.webhook.timeoutSeconds,
         maxRetries: settings.webhook.maxRetries,

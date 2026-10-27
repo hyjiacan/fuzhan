@@ -27,11 +27,60 @@ func (ApiKey) TableName() string {
 	return "api_keys"
 }
 
-// scopeHierarchy 定义 scope 的层级关系（包含关系）
+// 细粒度 OpenAPI scope（按接口授权）。
+// 保留 reader/writer/admin 作为兼容层级：reader/writer 覆盖全部读取类接口，
+// admin 仅供内部使用，管理接口不允许授予。
+const (
+	ScopeOpenAPIReader   = "open_api:reader"
+	ScopeOpenAPIWriter   = "open_api:writer"
+	ScopeOpenAPIAdmin    = "open_api:admin"
+	ScopeFilesDuplicates = "open_api:files:duplicates"
+	ScopeFilesNotes      = "open_api:files:notes"
+	ScopeFilesDepends    = "open_api:files:depends"
+)
+
+// ScopeCatalogItem 一项可授予的 OpenAPI 接口权限
+type ScopeCatalogItem struct {
+	Scope string `json:"scope"`
+	Desc  string `json:"desc"`
+	Group string `json:"group"`
+}
+
+// OpenAPIScopeCatalog 细粒度接口权限目录（仅包含需要认证的接口，公开接口无需授权）
+func OpenAPIScopeCatalog() []ScopeCatalogItem {
+	return []ScopeCatalogItem{
+		{ScopeFilesDuplicates, "重复文件查询", "文件信息"},
+		{ScopeFilesNotes, "文件备注查询", "文件信息"},
+		{ScopeFilesDepends, "文件依赖树查询", "文件信息"},
+	}
+}
+
+// IsGrantableScope 判断 scope 是否允许通过管理接口授予
+func IsGrantableScope(scope string) bool {
+	if scope == ScopeOpenAPIReader || scope == ScopeOpenAPIWriter {
+		return true
+	}
+	for _, item := range OpenAPIScopeCatalog() {
+		if item.Scope == scope {
+			return true
+		}
+	}
+	return false
+}
+
+// scopeHierarchy 定义 scope 的层级关系（包含关系）；兼容 reader/writer 授予全部读取类权限
 var scopeHierarchy = map[string][]string{
-	"open_api:admin":  {"open_api:reader", "open_api:writer", "open_api:admin"},
-	"open_api:writer": {"open_api:reader", "open_api:writer"},
-	"open_api:reader": {"open_api:reader"},
+	ScopeOpenAPIAdmin: {
+		ScopeOpenAPIReader, ScopeOpenAPIWriter, ScopeOpenAPIAdmin,
+		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+	},
+	ScopeOpenAPIWriter: {
+		ScopeOpenAPIReader, ScopeOpenAPIWriter,
+		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+	},
+	ScopeOpenAPIReader: {
+		ScopeOpenAPIReader, ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+	},
 }
 
 // HasScope 检查是否拥有指定 scope（包含层级关系）

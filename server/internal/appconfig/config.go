@@ -307,7 +307,7 @@ type WebhookEndpoint struct {
 	Secret         string            `yaml:"secret,omitempty"`          // 空继承全局签名密钥
 	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty"` // 0 继承全局超时（秒）
 	MaxRetries     int               `yaml:"max_retries,omitempty"`     // 0 继承全局重试次数
-	Events         []string          `yaml:"events,omitempty"`          // 事件过滤：空=全部；支持精确/前缀通配
+	Events         []string          `yaml:"events,omitempty"`          // 事件权限：空=不接收任何事件；支持精确/前缀通配/*
 	Headers        map[string]string `yaml:"headers,omitempty"`         // 接收方鉴权等自定义请求头
 	Query          map[string]string `yaml:"query,omitempty"`           // 追加到回调 URL 的查询参数
 }
@@ -317,11 +317,11 @@ func (e WebhookEndpoint) IsEnabled() bool {
 	return e.Enabled == nil || *e.Enabled
 }
 
-// MatchesEvent 判断事件名是否命中该端点的过滤规则。
-// 空事件列表匹配全部；支持 `*`、精确（file.uploaded）与前缀通配（file.*）。
+// MatchesEvent 判断事件名是否命中该端点的事件权限规则（默认拒绝）。
+// 空事件列表表示不接收任何事件；支持 `*`（全部）、精确（file.uploaded）与前缀通配（file.*）。
 func (e WebhookEndpoint) MatchesEvent(name string) bool {
 	if len(e.Events) == 0 {
-		return true
+		return false
 	}
 	for _, rule := range e.Events {
 		if rule == "" || rule == "*" || rule == name {
@@ -335,8 +335,8 @@ func (e WebhookEndpoint) MatchesEvent(name string) bool {
 }
 
 // WebhookConfig Webhook 通知配置。
-// 独立顶层节，启用后应用内关键事件（任务完成/失败、安全事件、配置变更通知等）以
-// HTTP POST 推送到 endpoints 中的全部回调地址。带 HMAC-SHA256 签名与指数退避重试。
+// 独立顶层节，启用后应用内关键事件（任务完成/失败、安全事件、文件与用户操作等）以
+// HTTP POST 推送到 endpoints 中的回调地址（按端点事件权限过滤）。带 HMAC-SHA256 签名与指数退避重试。
 // Enabled=false 时派发器不发送；TimeoutSeconds/MaxRetries/QueueSize <=0 时使用默认值。
 // URLs 为旧版字段，仅用于兼容读取（写入时统一使用 endpoints），不再写入。
 type WebhookConfig struct {
@@ -363,7 +363,8 @@ func (c WebhookConfig) EffectiveEndpoints() []WebhookEndpoint {
 			if u == "" {
 				continue
 			}
-			out = append(out, WebhookEndpoint{URL: u})
+			// 旧版 urls 语义为「接收全部事件」，转换为端点时显式写入 `*` 保持行为一致
+			out = append(out, WebhookEndpoint{URL: u, Events: []string{"*"}})
 		}
 		return out
 	}

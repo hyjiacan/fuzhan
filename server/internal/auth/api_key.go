@@ -83,10 +83,14 @@ func (s *ApiKeyService) CreateApiKey(req CreateApiKeyRequest) (*CreateApiKeyResp
 		expiresAt = &t
 	}
 
-	// 设置默认 scope
+	// 设置默认 scope，并校验/规范化权限范围（拒绝未定义或仅内部可用的 scope）
 	scopes := req.Scopes
 	if scopes == "" {
-		scopes = "open_api:reader"
+		scopes = models.ScopeOpenAPIReader
+	}
+	scopes, err = normalizeScopes(scopes)
+	if err != nil {
+		return nil, err
 	}
 
 	apiKey := models.ApiKey{
@@ -109,6 +113,31 @@ func (s *ApiKeyService) CreateApiKey(req CreateApiKeyRequest) (*CreateApiKeyResp
 		ApiKey: apiKey,
 		RawKey: fmt.Sprintf("%s:%s", keyID, rawKey), // keyID:rawKey 格式
 	}, nil
+}
+
+// normalizeScopes 校验并规范化逗号分隔的 scope 列表：去重、去空白，
+// 仅允许管理接口可授予的 scope（拒绝 admin、* 等内部/通配权限）。
+func normalizeScopes(scopes string) (string, error) {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 4)
+	for _, s := range strings.Split(scopes, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if !models.IsGrantableScope(s) {
+			return "", fmt.Errorf("不支持的权限范围: %s", s)
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return "", fmt.Errorf("权限范围不能为空")
+	}
+	return strings.Join(out, ","), nil
 }
 
 // ValidateApiKey 验证 API Key 并返回对应的 scope

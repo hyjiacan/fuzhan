@@ -730,11 +730,6 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	utils.InitMimeTable(appconfig.GlobalConfig.MimeTable)
 	appconfig.RunOnSaveHooks()
 
-	// 派发配置保存成功的 Webhook 事件（非阻塞；未启用时静默丢弃）
-	webhook.Dispatch(webhook.EventConfigSaved, "config", map[string]interface{}{
-		"app": appconfig.GlobalConfig.App.Name,
-	})
-
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
 	response.HandleSuccess(c, http.StatusOK, "配置已保存并生效", nil)

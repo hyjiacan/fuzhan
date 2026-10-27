@@ -827,6 +827,11 @@ export const ApiKeyApi = {
 
   delete(id) {
     return request.delete(`/admin/api-keys/${id}`, { skipSuccessToast: true })
+  },
+
+  // 可授予的 OpenAPI 接口权限目录（按 group 分组渲染）
+  listScopes() {
+    return request.get('/admin/open-api/scopes')
   }
 }
 
