@@ -295,6 +295,7 @@ const settings = reactive({
   webhook: {
     enabled: false,
     urls: [],
+    endpoints: [],
     secret: '',
     timeoutSeconds: 10,
     maxRetries: 3,
@@ -518,6 +519,7 @@ const loadSettings = async () => {
       settings.webhook = {
         enabled: cfg.webhook?.enabled ?? false,
         urls: cfg.webhook?.urls || [],
+        endpoints: cfg.webhook?.endpoints || [],
         secret: cfg.webhook?.secret || '',
         timeoutSeconds: cfg.webhook?.timeoutSeconds || 10,
         maxRetries: cfg.webhook?.maxRetries ?? 3,
@@ -749,6 +751,7 @@ const doSaveSettings = async () => {
       webhook: {
         enabled: settings.webhook.enabled,
         urls: settings.webhook.urls,
+        endpoints: settings.webhook.endpoints,
         secret: settings.webhook.secret,
         timeoutSeconds: settings.webhook.timeoutSeconds,
         maxRetries: settings.webhook.maxRetries,

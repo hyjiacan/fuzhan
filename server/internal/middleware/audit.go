@@ -9,6 +9,7 @@ import (
 	"fuzhan/internal/models"
 	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/webhook"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -127,6 +128,108 @@ func LogOperation(c *gin.Context, operation, target string, err error) {
 	default:
 		utils.Info("操作审计", fields...)
 	}
+
+	// Webhook 事件派发：把 operation 映射为事件类型并异步推送。
+	// 此处集中映射，避免改动 70+ 个 LogOperation 调用点。
+	// config.update / search / request.rejected 明确不派发（分别由
+	// config.saved、security.event 覆盖；search 为高频只读噪音）。
+	dispatchWebhookEvent(operation, err, map[string]interface{}{
+		"operator":    operator,
+		"clientIp":    clientIP,
+		"operation":   operation,
+		"target":      target,
+		"result":      result,
+		"statusCode":  c.Writer.Status(),
+		"durationMs":  duration,
+	})
+}
+
+// dispatchWebhookEvent 将审计 operation 映射为 Webhook 事件并异步派发。
+// 事件名代表「已完成」的动作，除登录外仅在 err == nil 时派发；
+// 登录成功/失败分别派发，便于接收方准确告警。
+func dispatchWebhookEvent(operation string, err error, payload map[string]interface{}) {
+	if !webhook.Enabled() {
+		return
+	}
+	// 明确不派发的 operation
+	switch operation {
+	case "config.update", "search", "request.rejected":
+		return
+	}
+
+	// operation -> 事件类型 映射
+	var event string
+	ok := false
+	switch operation {
+	case "upload.session.create":
+		event, ok = "file.upload_started", true
+	case "upload.session.cancel":
+		event, ok = "file.upload_canceled", true
+	case "upload.session.finalize":
+		event, ok = "file.uploaded", true
+	case "file.rename":
+		event, ok = "file.renamed", true
+	case "file.move":
+		event, ok = "file.moved", true
+	case "file.delete":
+		event, ok = "file.deleted", true
+	case "private.download":
+		event, ok = "private.downloaded", true
+	case "private.delete":
+		event, ok = "private.deleted", true
+	case "temp.download":
+		event, ok = "temp.downloaded", true
+	case "temp.delete":
+		event, ok = "temp.deleted", true
+	case "temp.upload.session.cancel":
+		event, ok = "temp.upload_canceled", true
+	case "upload.url.cancel":
+		event, ok = "url_task.canceled", true
+	case "upload.url.retry":
+		event, ok = "url_task.retried", true
+	case "upload.url.delete":
+		event, ok = "url_task.deleted", true
+	case "upload.url.checksum":
+		event, ok = "url_task.checksummed", true
+	case "auth.register":
+		event, ok = "user.registered", true
+	case "admin.user.create":
+		event, ok = "user.created", true
+	case "admin.user.delete":
+		event, ok = "user.deleted", true
+	case "admin.user.set_disabled", "admin.user.disable", "admin.user.enable":
+		event, ok = "user.status_changed", true
+	case "auth.change_password", "admin.user.reset_password":
+		event, ok = "user.password_changed", true
+	case "auth.login", "auth.oauth2.login":
+		event, ok = "auth.login_success", false
+		if ok {
+			if err != nil {
+				event = "auth.login_failed"
+			}
+			webhook.Dispatch(event, "audit", payload)
+		}
+		return
+	case "admin.session.cleanup", "admin.session.cleanup_all":
+		event, ok = "session.cleaned", true
+	case "admin.cert.upload":
+		event, ok = "system.cert_uploaded", true
+	case "admin.key.upload":
+		event, ok = "system.key_uploaded", true
+	case "admin.records.clear":
+		event, ok = "system.records_cleared", true
+	case "admin.records.delete":
+		event, ok = "system.records_deleted", true
+	}
+	if !ok {
+		return
+	}
+
+	// 非登录事件：仅成功时派发（事件名代表已完成动作）
+	if err != nil {
+		return
+	}
+	webhook.Dispatch(event, "audit", payload)
 }
 
 // getClientIP 从 Gin Context 获取客户端 IP

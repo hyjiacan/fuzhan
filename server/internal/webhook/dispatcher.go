@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,27 +134,43 @@ func (d *Dispatcher) run() {
 	}
 }
 
-// dispatch 将单条事件发送到当前配置的全部回调地址。
+// dispatch 将单条事件发送到当前配置的全部启用端点。
+// 逐端点独立构造 sender 以应用端点级 secret/headers/query 与超时配置；空 URL、
+// 禁用或不匹配事件过滤规则的端点跳过。
 func (d *Dispatcher) dispatch(ev Event) {
 	cfg := d.currentConfig()
 	if !cfg.Enabled {
 		return // 派发期间被热更新关闭，直接丢弃本轮已取出的事件
 	}
 	ctx := d.ctx
+	timeout := cfg.TimeoutSeconds
+	maxRetries := cfg.MaxRetries
 	// 每次构造 client 以实时读取超时配置（代价可忽略）
-	client := &http.Client{Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
-	s := &sender{
-		client:     client,
-		secret:     cfg.Secret,
-		maxRetries: cfg.MaxRetries,
-	}
-	for _, rawURL := range cfg.URLs {
-		if rawURL == "" {
+	for _, ep := range cfg.EffectiveEndpoints() {
+		if !ep.IsEnabled() || strings.TrimSpace(ep.URL) == "" {
 			continue
 		}
-		if err := s.send(ctx, rawURL, ev); err != nil {
+		if !ep.MatchesEvent(ev.Event) {
+			continue
+		}
+		epTimeout := ep.TimeoutSeconds
+		if epTimeout <= 0 {
+			epTimeout = timeout
+		}
+		epRetries := ep.MaxRetries
+		if epRetries <= 0 {
+			epRetries = maxRetries
+		}
+		client := &http.Client{Timeout: time.Duration(epTimeout) * time.Second}
+		s := &sender{
+			client:     client,
+			secret:     cfg.Secret,
+			maxRetries: epRetries,
+			endpoint:   &ep,
+		}
+		if _, err := s.send(ctx, ep.URL, ev); err != nil {
 			utils.Error("Webhook 推送最终失败",
-				utils.String("url", rawURL),
+				utils.String("url", redactURL(ep.URL)),
 				utils.String("event", ev.Event),
 				utils.Int64("id", int64(ev.ID)),
 				utils.Err(err))

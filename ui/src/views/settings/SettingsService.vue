@@ -3,7 +3,7 @@
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
         <template #header><span>WEB 服务</span></template>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="监听地址">
             <el-select v-model="settings.server.host">
               <el-option v-for="opt in ipOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -41,7 +41,7 @@
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
         <template #header><span>FTP 服务</span></template>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="启用 FTP">
             <el-switch v-model="settings.server.ftp.enabled" />
             <div class="field-hint">开启后可通过 FTP 协议访问共享文件</div>
@@ -65,7 +65,7 @@
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
         <template #header><span>FTPS 服务</span></template>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="启用 FTPS">
             <el-switch v-model="settings.server.ftps.enabled" />
             <div class="field-hint">开启后可通过 FTPS（FTP over TLS）安全访问</div>
@@ -84,13 +84,13 @@
         <el-alert type="info" :show-icon="false" :closable="false" style="margin-bottom: 16px;">
           <span class="field-hint">WebDAV 通过 HTTP/HTTPS 端口提供访问，无需额外端口配置。</span>
         </el-alert>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="启用 WebDAV">
             <el-switch v-model="settings.server.webdav.enabled" />
             <div class="field-hint">开启后可通过 WebDAV 客户端浏览文件</div>
           </el-form-item>
           <el-form-item label="公开用户名" v-if="settings.server.webdav.enabled">
-            <el-input v-model="settings.account.anonymous.username" placeholder="public" />
+            <el-input autocomplete="off" v-model="settings.account.anonymous.username" placeholder="public" />
             <div class="field-hint">WebDAV/FTP 公开目录的默认用户名</div>
           </el-form-item>
         </el-form>
@@ -103,10 +103,10 @@
         <el-alert type="info" :show-icon="false" :closable="false" style="margin-bottom: 16px;">
           <span class="field-hint">TLS 证书由 HTTPS 和 FTPS 共享使用，配置一次即可。</span>
         </el-alert>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="证书文件">
             <div style="display: flex; align-items: center; gap: 12px;">
-              <el-input v-model="settings.server.tls.certFile" placeholder="未配置" readonly style="width: 250px;" />
+              <el-input autocomplete="off" v-model="settings.server.tls.certFile" placeholder="未配置" readonly style="width: 250px;" />
               <el-upload
                 :show-file-list="false"
                 accept=".pem,.crt"
@@ -119,7 +119,7 @@
           </el-form-item>
           <el-form-item label="密钥文件">
             <div style="display: flex; align-items: center; gap: 12px;">
-              <el-input v-model="settings.server.tls.keyFile" placeholder="未配置" readonly style="width: 250px;" />
+              <el-input autocomplete="off" v-model="settings.server.tls.keyFile" placeholder="未配置" readonly style="width: 250px;" />
               <el-upload
                 :show-file-list="false"
                 accept=".key"

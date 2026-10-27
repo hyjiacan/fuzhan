@@ -34,6 +34,28 @@ func postConfig(t *testing.T, path, body string, h *Handler) {
 	h.SaveConfig(c)
 }
 
+// TestValidateLDAPConfig 覆盖 LDAP 启用条件与端口范围的保存前校验。
+func TestValidateLDAPConfig(t *testing.T) {
+	cases := []struct {
+		name string
+		dto  appconfig.LDAPConfigDTO
+		want string
+	}{
+		{"未启用可留空", appconfig.LDAPConfigDTO{Enabled: false}, ""},
+		{"启用缺地址", appconfig.LDAPConfigDTO{Enabled: true, BaseDN: "dc=example,dc=com"}, "启用 LDAP 时必须填写服务器地址"},
+		{"启用缺 BaseDN", appconfig.LDAPConfigDTO{Enabled: true, Host: "ldap.example.com"}, "启用 LDAP 时必须填写 Base DN"},
+		{"端口越界", appconfig.LDAPConfigDTO{Enabled: false, Port: 70000}, "LDAP 端口必须在 1-65535 之间"},
+		{"完整配置", appconfig.LDAPConfigDTO{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com", Port: 389}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := validateLDAPConfig(tc.dto); got != tc.want {
+				t.Errorf("validateLDAPConfig() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestSaveConfig_PersistsSecurity 验证安全配置（信任代理头 / CORS）经
 // SaveConfig 写入 GlobalConfig 并持久化到配置文件，覆盖 security 节点保存链路。
 func TestSaveConfig_PersistsSecurity(t *testing.T) {

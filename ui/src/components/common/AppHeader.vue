@@ -669,6 +669,11 @@ const handleLogout = () => {
   AuthApi.clearAuth();
   localStorage.removeItem("userRole");
   updateAuthState();
+  // 强制登录模式下退出后必须停留在登录页，不能回到匿名可访问的首页
+  if (store.state.config.requireLogin === true) {
+    router.push({ name: "login" });
+    return;
+  }
   router.push({ path: "/", query: {} });
 };
 </script>

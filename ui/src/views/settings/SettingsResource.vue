@@ -3,7 +3,7 @@
     <el-col :span="24" :sm="24" :xs="24">
       <el-card>
         <template #header><span>服务器资源监控配置</span></template>
-        <el-form label-width="120px">
+        <el-form autocomplete="off" label-width="120px">
           <el-form-item label="启用监控">
             <el-switch v-model="settings.resource.enabled" />
             <div class="field-hint">开启后在管理「资源监控」页展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO</div>

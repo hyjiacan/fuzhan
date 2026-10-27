@@ -236,3 +236,49 @@ func TestLDAPService_TestConnection_NoHost(t *testing.T) {
 		t.Error("未配置 Host 时 TestConnection 应返回错误")
 	}
 }
+
+func TestLDAPService_FindOrCreateUser_Disabled(t *testing.T) {
+	db := setupLDAPTestDB(t)
+	if err := db.Create(&models.User{
+		Username:     "disabled_ldap_user",
+		PasswordHash: "",
+		Disabled:     true,
+	}).Error; err != nil {
+		t.Fatalf("创建禁用用户失败: %v", err)
+	}
+
+	svc := NewLDAPService(db, &LDAPConfig{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com"})
+	if _, err := svc.findOrCreateUser("disabled_ldap_user", map[string]string{"dn": "uid=disabled_ldap_user,dc=example,dc=com"}); err == nil {
+		t.Fatal("已禁用的本地用户不应通过 LDAP 认证")
+	}
+}
+
+func TestLDAPService_SyncUsers_SkipWhenAutoCreateDisabled(t *testing.T) {
+	// 未开启自动创建时不应建立连接，直接返回 0
+	svc := NewLDAPService(nil, &LDAPConfig{
+		Enabled:        true,
+		Host:           "127.0.0.1",
+		Port:           1,
+		BaseDN:         "dc=example,dc=com",
+		AutoCreateUser: false,
+	})
+	created, err := svc.SyncUsers()
+	if err != nil {
+		t.Fatalf("未开启自动创建时同步应直接跳过，实际返回错误: %v", err)
+	}
+	if created != 0 {
+		t.Errorf("未开启自动创建时创建数应为 0，实际 %d", created)
+	}
+}
+
+func TestLDAPService_SyncUsers_IncompleteConfig(t *testing.T) {
+	svc := NewLDAPService(nil, &LDAPConfig{
+		Enabled:        true,
+		Host:           "127.0.0.1",
+		Port:           1,
+		AutoCreateUser: true,
+	})
+	if _, err := svc.SyncUsers(); err == nil {
+		t.Fatal("缺少 Base DN 时同步应返回错误")
+	}
+}

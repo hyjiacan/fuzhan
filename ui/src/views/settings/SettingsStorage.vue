@@ -15,7 +15,7 @@
           </template>
         </el-alert>
 
-        <el-form label-width="140px" class="backend-form">
+        <el-form autocomplete="off" label-width="140px" class="backend-form">
           <el-form-item label="存储类型">
             <el-radio-group v-model="settings.storageBackend.backend">
               <el-radio-button label="local">本地磁盘</el-radio-button>
@@ -29,20 +29,20 @@
 
           <template v-if="isS3">
             <el-form-item label="服务端点">
-              <el-input v-model="settings.storageBackend.s3.endpoint" placeholder="如 https://s3.amazonaws.com 或 http://127.0.0.1:9000" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.s3.endpoint" placeholder="如 https://s3.amazonaws.com 或 http://127.0.0.1:9000" />
               <div class="field-hint">S3/MinIO 服务地址，MinIO 通常为 http://主机:9000</div>
             </el-form-item>
             <el-form-item label="AccessKey">
-              <el-input v-model="settings.storageBackend.s3.accessKey" placeholder="访问密钥 ID" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.s3.accessKey" placeholder="访问密钥 ID" />
             </el-form-item>
             <el-form-item label="SecretKey">
-              <el-input v-model="settings.storageBackend.s3.secretKey" type="password" show-password placeholder="访问密钥" />
+              <el-input autocomplete="new-password" v-model="settings.storageBackend.s3.secretKey" type="password" show-password placeholder="访问密钥" />
             </el-form-item>
             <el-form-item label="Bucket">
-              <el-input v-model="settings.storageBackend.s3.bucket" placeholder="存储桶名称" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.s3.bucket" placeholder="存储桶名称" />
             </el-form-item>
             <el-form-item label="区域">
-              <el-input v-model="settings.storageBackend.s3.region" placeholder="如 us-east-1，MinIO 可留空" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.s3.region" placeholder="如 us-east-1，MinIO 可留空" />
             </el-form-item>
             <el-form-item label="使用 HTTPS">
               <el-switch v-model="settings.storageBackend.s3.useSSL" />
@@ -51,28 +51,28 @@
 
           <template v-if="backend === 'oss'">
             <el-form-item label="服务端点">
-              <el-input v-model="settings.storageBackend.oss.endpoint" placeholder="如 oss-cn-hangzhou.aliyuncs.com" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.oss.endpoint" placeholder="如 oss-cn-hangzhou.aliyuncs.com" />
             </el-form-item>
             <el-form-item label="AccessKey">
-              <el-input v-model="settings.storageBackend.oss.accessKey" placeholder="访问密钥 ID" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.oss.accessKey" placeholder="访问密钥 ID" />
             </el-form-item>
             <el-form-item label="SecretKey">
-              <el-input v-model="settings.storageBackend.oss.secretKey" type="password" show-password placeholder="访问密钥" />
+              <el-input autocomplete="new-password" v-model="settings.storageBackend.oss.secretKey" type="password" show-password placeholder="访问密钥" />
             </el-form-item>
             <el-form-item label="Bucket">
-              <el-input v-model="settings.storageBackend.oss.bucket" placeholder="存储桶名称" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.oss.bucket" placeholder="存储桶名称" />
             </el-form-item>
           </template>
 
           <template v-if="backend === 'webdav'">
             <el-form-item label="服务地址">
-              <el-input v-model="settings.storageBackend.webdav.url" placeholder="如 https://example.com/dav" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.webdav.url" placeholder="如 https://example.com/dav" />
             </el-form-item>
             <el-form-item label="用户名">
-              <el-input v-model="settings.storageBackend.webdav.username" placeholder="可留空" />
+              <el-input autocomplete="off" v-model="settings.storageBackend.webdav.username" placeholder="可留空" />
             </el-form-item>
             <el-form-item label="密码">
-              <el-input v-model="settings.storageBackend.webdav.password" type="password" show-password placeholder="可留空" />
+              <el-input autocomplete="new-password" v-model="settings.storageBackend.webdav.password" type="password" show-password placeholder="可留空" />
             </el-form-item>
           </template>
 
@@ -86,17 +86,17 @@
 
       <el-card class="index-card">
         <template #header><span>文件索引配置</span></template>
-        <el-form label-width="140px">
+        <el-form autocomplete="off" label-width="140px">
           <el-form-item label="扫描启动延迟">
             <el-input-number v-model="settings.scanStartDelaySeconds" :min="0" :step="1" style="width: 200px;" />
             <div class="field-hint">启动后延迟执行首次扫描（秒），默认 10</div>
           </el-form-item>
           <el-form-item label="定时扫描间隔">
-            <el-input v-model="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
+            <el-input autocomplete="off" v-model="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
             <div class="field-hint">Cron 表达式，默认 <code>0 1 * * *</code>（每天凌晨 1:00）</div>
           </el-form-item>
           <el-form-item label="检索索引对齐间隔">
-            <el-input v-model="settings.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨5点）" />
+            <el-input autocomplete="off" v-model="settings.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨5点）" />
             <div class="field-hint">定时校正检索索引与文件表对齐，默认 <code>0 5 * * *</code>（每天凌晨 5:00，与定时扫描错开）</div>
           </el-form-item>
         </el-form>

@@ -9,6 +9,7 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
+	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -123,10 +124,15 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 	if s.ldapService != nil && s.ldapService.IsEnabled() {
 		user, err := s.ldapService.Authenticate(username, password)
 		if err == nil {
+			if user.Disabled {
+				return nil, errors.New("账户已被禁用")
+			}
 			return user, nil
 		}
-		// LDAP 失败时记录日志并降级到本地认证
-		// 不直接返回错误，给本地认证机会
+		// LDAP 失败时记录调试日志并降级到本地认证，不直接返回错误，
+		// 以避免 LDAP 服务不可用时拒绝仍可用本地密码登录的账户。
+		utils.Debug("LDAP 认证未通过，回退本地认证",
+			utils.String("username", username), utils.Err(err))
 	}
 
 	// 第二步：本地密码认证
@@ -145,6 +151,9 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return nil, errors.New("用户名或密码错误")
+	}
+	if user.Disabled {
+		return nil, errors.New("账户已被禁用")
 	}
 
 	return &user, nil

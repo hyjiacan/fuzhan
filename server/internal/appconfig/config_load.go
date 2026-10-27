@@ -300,8 +300,8 @@ func validateConfig() {
 	if GlobalConfig.Webhook.QueueSize <= 0 {
 		GlobalConfig.Webhook.QueueSize = 1024
 	}
-	if GlobalConfig.Webhook.Enabled && len(GlobalConfig.Webhook.URLs) == 0 {
-		utils.Warn("配置: webhook.enabled=true 但未配置 urls，Webhook 不会发送任何推送")
+	if GlobalConfig.Webhook.Enabled && len(GlobalConfig.Webhook.EffectiveEndpoints()) == 0 {
+		utils.Warn("配置: webhook.enabled=true 但未配置 endpoints（或旧 urls）为空，Webhook 不会发送任何推送")
 	}
 }
 

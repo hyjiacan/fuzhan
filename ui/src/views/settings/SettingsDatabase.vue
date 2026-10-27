@@ -7,7 +7,7 @@
 
     <el-divider />
 
-    <el-form :model="settings" label-width="120px">
+    <el-form autocomplete="off" :model="settings" label-width="120px">
       <el-form-item label="数据库类型">
         <div class="db-driver-list">
           <label
@@ -25,13 +25,13 @@
       </el-form-item>
 
       <el-form-item v-if="settings.database.driver === 'sqlite'" label="数据库文件" prop="database.dsn">
-        <el-input v-model="settings.database.dsn" :maxlength="1024" placeholder="fuzhan.db" />
+        <el-input autocomplete="off" v-model="settings.database.dsn" :maxlength="1024" placeholder="fuzhan.db" />
         <div class="field-hint">SQLite 数据库文件路径</div>
       </el-form-item>
 
       <template v-if="settings.database.driver === 'mysql'">
         <el-form-item label="主机地址" prop="database.mysqlHost">
-          <el-input v-model="settings.database.mysqlHost" :maxlength="255" placeholder="localhost" />
+          <el-input autocomplete="off" v-model="settings.database.mysqlHost" :maxlength="255" placeholder="localhost" />
           <div class="field-hint">MySQL 服务器地址，本机用 localhost，远程写 IP 或域名</div>
         </el-form-item>
         <el-form-item label="端口" prop="database.mysqlPort">
@@ -47,14 +47,14 @@
           <div class="field-hint">该账号对应的密码，仅用于连接数据库</div>
         </el-form-item>
         <el-form-item label="数据库名" prop="database.mysqlDatabase">
-          <el-input v-model="settings.database.mysqlDatabase" :maxlength="64" placeholder="fuzhan" />
+          <el-input autocomplete="off" v-model="settings.database.mysqlDatabase" :maxlength="64" placeholder="fuzhan" />
           <div class="field-hint">要使用的目标数据库，需在 MySQL 中提前创建好</div>
         </el-form-item>
       </template>
 
       <template v-if="settings.database.driver === 'postgres'">
         <el-form-item label="主机地址" prop="database.postgresHost">
-          <el-input v-model="settings.database.postgresHost" :maxlength="255" placeholder="localhost" />
+          <el-input autocomplete="off" v-model="settings.database.postgresHost" :maxlength="255" placeholder="localhost" />
           <div class="field-hint">PostgreSQL 服务器地址，本机用 localhost，远程写 IP 或域名</div>
         </el-form-item>
         <el-form-item label="端口" prop="database.postgresPort">
@@ -70,7 +70,7 @@
           <div class="field-hint">该账号对应的密码，仅用于连接数据库</div>
         </el-form-item>
         <el-form-item label="数据库名" prop="database.postgresDatabase">
-          <el-input v-model="settings.database.postgresDatabase" :maxlength="64" placeholder="fuzhan" />
+          <el-input autocomplete="off" v-model="settings.database.postgresDatabase" :maxlength="64" placeholder="fuzhan" />
           <div class="field-hint">要使用的目标数据库，需在 PostgreSQL 中提前创建好</div>
         </el-form-item>
       </template>

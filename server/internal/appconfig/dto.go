@@ -94,14 +94,58 @@ type OpenApiConfigDTO struct {
 	RequestsPerMinute int      `json:"requestsPerMinute"`
 }
 
+// WebhookEndpointDTO 单条 Webhook 回调地址 DTO（对应 yaml webhook.endpoints[]）
+type WebhookEndpointDTO struct {
+	Name           string            `json:"name"`
+	URL            string            `json:"url"`
+	Enabled        *bool             `json:"enabled"`
+	Secret         string            `json:"secret"`
+	TimeoutSeconds int               `json:"timeoutSeconds"`
+	MaxRetries     int               `json:"maxRetries"`
+	Events         []string          `json:"events"`
+	Headers        map[string]string `json:"headers"`
+	Query          map[string]string `json:"query"`
+}
+
 // WebhookConfigDTO Webhook 推送配置 DTO（对应 yaml webhook.*）
 type WebhookConfigDTO struct {
-	Enabled        bool     `json:"enabled"`
-	URLs           []string `json:"urls"`
-	Secret         string   `json:"secret"`
-	TimeoutSeconds int      `json:"timeoutSeconds"`
-	MaxRetries     int      `json:"maxRetries"`
-	QueueSize      int      `json:"queueSize"`
+	Enabled        bool                 `json:"enabled"`
+	URLs           []string             `json:"urls,omitempty"` // 旧版，仅兼容读取
+	Endpoints      []WebhookEndpointDTO `json:"endpoints"`
+	Secret         string               `json:"secret"`
+	TimeoutSeconds int                  `json:"timeoutSeconds"`
+	MaxRetries     int                  `json:"maxRetries"`
+	QueueSize      int                  `json:"queueSize"`
+}
+
+// EndpointToDTO 将内部端点结构转为 DTO。
+func EndpointToDTO(e WebhookEndpoint) WebhookEndpointDTO {
+	return WebhookEndpointDTO{
+		Name:           e.Name,
+		URL:            e.URL,
+		Enabled:        e.Enabled,
+		Secret:         e.Secret,
+		TimeoutSeconds: e.TimeoutSeconds,
+		MaxRetries:     e.MaxRetries,
+		Events:         e.Events,
+		Headers:        e.Headers,
+		Query:          e.Query,
+	}
+}
+
+// EndpointFromDTO 将 DTO 转为内部端点结构（默认 nil 视为启用，由保存方决定）。
+func EndpointFromDTO(d WebhookEndpointDTO) WebhookEndpoint {
+	return WebhookEndpoint{
+		Name:           d.Name,
+		URL:            d.URL,
+		Enabled:        d.Enabled,
+		Secret:         d.Secret,
+		TimeoutSeconds: d.TimeoutSeconds,
+		MaxRetries:     d.MaxRetries,
+		Events:         d.Events,
+		Headers:        d.Headers,
+		Query:          d.Query,
+	}
 }
 
 // AppConfigDTO 应用配置 DTO
@@ -515,11 +559,11 @@ func (c *Config) ToDTO() ConfigDTO {
 		},
 		Webhook: &WebhookConfigDTO{
 			Enabled:        c.Webhook.Enabled,
-			URLs:           c.Webhook.URLs,
 			Secret:         c.Webhook.Secret,
 			TimeoutSeconds: c.Webhook.TimeoutSeconds,
 			MaxRetries:     c.Webhook.MaxRetries,
 			QueueSize:      c.Webhook.QueueSize,
+			Endpoints:      endpointsToDTO(c.Webhook.EffectiveEndpoints()),
 		},
 		Auth: AuthConfigDTO{
 			LDAP: LDAPConfigDTO{
@@ -554,6 +598,18 @@ func (c *Config) ToDTO() ConfigDTO {
 			},
 		},
 	}
+}
+
+// endpointsToDTO 将内部端点列表转为 DTO 列表。
+func endpointsToDTO(eps []WebhookEndpoint) []WebhookEndpointDTO {
+	if len(eps) == 0 {
+		return []WebhookEndpointDTO{}
+	}
+	out := make([]WebhookEndpointDTO, len(eps))
+	for i, e := range eps {
+		out[i] = EndpointToDTO(e)
+	}
+	return out
 }
 
 // ConfigFromDTO 从 API DTO 构建内部 Config
@@ -683,11 +739,16 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 
 	if dto.Webhook != nil {
 		cfg.Webhook.Enabled = dto.Webhook.Enabled
-		cfg.Webhook.URLs = dto.Webhook.URLs
 		cfg.Webhook.Secret = dto.Webhook.Secret
 		cfg.Webhook.TimeoutSeconds = dto.Webhook.TimeoutSeconds
 		cfg.Webhook.MaxRetries = dto.Webhook.MaxRetries
 		cfg.Webhook.QueueSize = dto.Webhook.QueueSize
+		if dto.Webhook.Endpoints != nil {
+			cfg.Webhook.Endpoints = make([]WebhookEndpoint, len(dto.Webhook.Endpoints))
+			for i, e := range dto.Webhook.Endpoints {
+				cfg.Webhook.Endpoints[i] = EndpointFromDTO(e)
+			}
+		}
 	}
 
 	// 索引配置

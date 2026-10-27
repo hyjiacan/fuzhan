@@ -25,9 +25,9 @@
           </div>
         </template>
         <div class="field-hint group-desc">{{ g.desc }}</div>
-        <el-form label-width="90px">
+        <el-form autocomplete="off" label-width="90px">
           <el-form-item label="MIME 类型">
-            <el-input
+            <el-input autocomplete="off"
               v-model="settings.preview.groups[g.key].mimes"
               :maxlength="1024"
               type="textarea"
@@ -38,7 +38,7 @@
             <div class="field-hint">{{ g.mimesHint }}</div>
           </el-form-item>
           <el-form-item label="文件扩展名">
-            <el-input
+            <el-input autocomplete="off"
               v-model="settings.preview.groups[g.key].exts"
               :maxlength="1024"
               type="textarea"
@@ -51,14 +51,14 @@
           <template v-if="g.key === 'text'">
             <el-form-item label="最大内联大小">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <el-input v-model="maxInlineSizeDisplay" :maxlength="32" placeholder="如 1m, 2m" style="width: 200px;" :disabled="!settings.preview.enabled" />
+                <el-input autocomplete="off" v-model="maxInlineSizeDisplay" :maxlength="32" placeholder="如 1m, 2m" style="width: 200px;" :disabled="!settings.preview.enabled" />
                 <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.preview.groups.text.maxInlineSize) }}</span>
               </div>
               <div class="field-hint">文本直接返回内容的大小上限，超过则分块加载</div>
             </el-form-item>
             <el-form-item label="文本分块大小">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <el-input v-model="textChunkSizeDisplay" placeholder="如 100k, 200k" style="width: 200px;" :disabled="!settings.preview.enabled" />
+                <el-input autocomplete="off" v-model="textChunkSizeDisplay" placeholder="如 100k, 200k" style="width: 200px;" :disabled="!settings.preview.enabled" />
                 <span style="color: var(--el-text-color-placeholder);">{{ formatSize(settings.preview.groups.text.textChunkSize) }}</span>
               </div>
               <div class="field-hint">预览大文本文件时分块读取的大小</div>

@@ -5,7 +5,7 @@
       <el-col :xs="24">
         <el-card class="mime-card">
           <template #header><span>添加</span></template>
-          <el-input
+          <el-input autocomplete="off"
             v-model="batchText"
             type="textarea"
             placeholder="每行一条，如：&#10;epub=application/epub+zip&#10;exe application/x-msdownload&#10;ipa:application/octet-stream"

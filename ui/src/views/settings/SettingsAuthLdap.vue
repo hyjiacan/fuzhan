@@ -6,16 +6,11 @@
         <span class="card-sub">Active Directory / OpenLDAP</span>
       </div>
     </template>
-    <el-form label-width="140px">
-      <el-form-item label="启用 LDAP">
-        <el-switch v-model="settings.auth.ldap.enabled" />
-        <div class="field-hint" style="margin-left: 12px;">启用后登录先走 LDAP 认证，失败再回退本地密码</div>
-      </el-form-item>
-
+    <el-form autocomplete="off" label-width="140px">
       <el-row :gutter="16">
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="服务器地址">
-            <el-input v-model="settings.auth.ldap.host" placeholder="如 ldap.example.com" />
+            <el-input autocomplete="off" v-model="settings.auth.ldap.host" placeholder="如 ldap.example.com" />
           </el-form-item>
         </el-col>
         <el-col :span="12" :sm="12" :xs="24">
@@ -26,12 +21,12 @@
       </el-row>
 
       <el-form-item label="使用 LDAPS">
-        <el-switch v-model="settings.auth.ldap.useSSL" />
+        <el-switch v-model="settings.auth.ldap.useSSL" @change="handleUseSSLChange" />
         <div class="field-hint" style="margin-left: 12px;">勾选后走 TLS 加密（通常端口 636）</div>
       </el-form-item>
 
       <el-form-item label="Base DN">
-        <el-input v-model="settings.auth.ldap.baseDN" placeholder="如 dc=example,dc=com" />
+        <el-input autocomplete="off" v-model="settings.auth.ldap.baseDN" placeholder="如 dc=example,dc=com" />
       </el-form-item>
 
       <el-row :gutter="16">
@@ -48,7 +43,7 @@
       </el-row>
 
       <el-form-item label="用户过滤器">
-        <el-input v-model="settings.auth.ldap.userFilter" placeholder="如 (uid=%s) 或 AD 的 (sAMAccountName=%s)，%s 为用户名" />
+        <el-input autocomplete="off" v-model="settings.auth.ldap.userFilter" placeholder="如 (uid=%s) 或 AD 的 (sAMAccountName=%s)，%s 为用户名" />
         <div class="field-hint">%s 会被替换为登录用户名；留空则默认 (uid=%s)</div>
       </el-form-item>
 
@@ -90,6 +85,13 @@ const props = defineProps({
 
 const testing = ref(false)
 const testResult = ref('')
+
+// 切换 LDAPS 时同步默认端口：仅在当前端口是对应协议的默认值时联动，保留自定义端口
+const handleUseSSLChange = (useSSL) => {
+  const ld = props.settings.auth.ldap
+  if (useSSL && ld.port === 389) ld.port = 636
+  if (!useSSL && ld.port === 636) ld.port = 389
+}
 
 const testConnection = async () => {
   const ld = props.settings.auth.ldap

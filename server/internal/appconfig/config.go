@@ -297,17 +297,77 @@ type DDosConfig struct {
 	CooldownMinutes int  `yaml:"cooldown_minutes,omitempty"` // 告警冷却（分钟），默认 10
 }
 
+// WebhookEndpoint 单条 Webhook 回调地址记录。
+// 每个地址可独立启用/命名/配置密钥/超时/重试/事件过滤与接收方鉴权（headers/query），
+// 空或 0 的字段回退到 WebhookConfig 全局默认值。
+type WebhookEndpoint struct {
+	Name           string            `yaml:"name,omitempty"`            // 显示名称
+	URL            string            `yaml:"url"`                       // 回调地址（HTTP POST 目标）
+	Enabled        *bool             `yaml:"enabled,omitempty"`         // nil 视为启用
+	Secret         string            `yaml:"secret,omitempty"`          // 空继承全局签名密钥
+	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty"` // 0 继承全局超时（秒）
+	MaxRetries     int               `yaml:"max_retries,omitempty"`     // 0 继承全局重试次数
+	Events         []string          `yaml:"events,omitempty"`          // 事件过滤：空=全部；支持精确/前缀通配
+	Headers        map[string]string `yaml:"headers,omitempty"`         // 接收方鉴权等自定义请求头
+	Query          map[string]string `yaml:"query,omitempty"`           // 追加到回调 URL 的查询参数
+}
+
+// IsEnabled 返回端点是否启用：Enabled == nil 表示未显式指定，视为启用。
+func (e WebhookEndpoint) IsEnabled() bool {
+	return e.Enabled == nil || *e.Enabled
+}
+
+// MatchesEvent 判断事件名是否命中该端点的过滤规则。
+// 空事件列表匹配全部；支持 `*`、精确（file.uploaded）与前缀通配（file.*）。
+func (e WebhookEndpoint) MatchesEvent(name string) bool {
+	if len(e.Events) == 0 {
+		return true
+	}
+	for _, rule := range e.Events {
+		if rule == "" || rule == "*" || rule == name {
+			return true
+		}
+		if len(rule) > 2 && strings.HasSuffix(rule, ".*") && strings.HasPrefix(name, rule[:len(rule)-1]) {
+			return true
+		}
+	}
+	return false
+}
+
 // WebhookConfig Webhook 通知配置。
 // 独立顶层节，启用后应用内关键事件（任务完成/失败、安全事件、配置变更通知等）以
-// HTTP POST 推送到 urls 中的全部回调地址。带 HMAC-SHA256 签名与指数退避重试。
+// HTTP POST 推送到 endpoints 中的全部回调地址。带 HMAC-SHA256 签名与指数退避重试。
 // Enabled=false 时派发器不发送；TimeoutSeconds/MaxRetries/QueueSize <=0 时使用默认值。
+// URLs 为旧版字段，仅用于兼容读取（写入时统一使用 endpoints），不再写入。
 type WebhookConfig struct {
-	Enabled        bool     `yaml:"enabled,omitempty"`          // 是否启用 Webhook 推送（默认 false）
-	URLs           []string `yaml:"urls,omitempty"`             // 回调地址列表（HTTP POST 目标）
-	Secret         string   `yaml:"secret,omitempty"`           // 签名密钥，用于生成 X-Fuzhan-Signature 报头
-	TimeoutSeconds int      `yaml:"timeout_seconds,omitempty"`  // 单次请求超时（秒），默认 10
-	MaxRetries     int      `yaml:"max_retries,omitempty"`      // 失败重试次数，默认 3（指数退避）
-	QueueSize      int      `yaml:"queue_size,omitempty"`       // 进程内事件队列容量，默认 1024，满载丢弃并告警
+	Enabled        bool              `yaml:"enabled,omitempty"`        // 是否启用 Webhook 推送（默认 false）
+	URLs           []string          `yaml:"urls,omitempty"`           // 旧版回调地址列表（仅兼容读取）
+	Endpoints      []WebhookEndpoint `yaml:"endpoints,omitempty"`      // 回调地址记录列表（每地址独立配置）
+	Secret         string            `yaml:"secret,omitempty"`         // 默认签名密钥，用于生成 X-Fuzhan-Signature 报头
+	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty"` // 默认单次请求超时（秒），默认 10
+	MaxRetries     int               `yaml:"max_retries,omitempty"`    // 默认失败重试次数，默认 3（指数退避）
+	QueueSize      int               `yaml:"queue_size,omitempty"`     // 进程内事件队列容量，默认 1024，满载丢弃并告警
+}
+
+// EffectiveEndpoints 返回参与派发的端点列表：
+// endpoints 非空时返回其副本；否则把旧版 urls 转为启用端点（兼容旧配置）。
+func (c WebhookConfig) EffectiveEndpoints() []WebhookEndpoint {
+	if len(c.Endpoints) > 0 {
+		out := make([]WebhookEndpoint, len(c.Endpoints))
+		copy(out, c.Endpoints)
+		return out
+	}
+	if len(c.URLs) > 0 {
+		out := make([]WebhookEndpoint, 0, len(c.URLs))
+		for _, u := range c.URLs {
+			if u == "" {
+				continue
+			}
+			out = append(out, WebhookEndpoint{URL: u})
+		}
+		return out
+	}
+	return nil
 }
 
 // Config 主配置结构体

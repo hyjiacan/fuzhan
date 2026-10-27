@@ -35,21 +35,34 @@ type LDAPConfig struct {
 
 // LDAPService LDAP 认证服务
 type LDAPService struct {
-	db  *gorm.DB
-	cfg *LDAPConfig
-	mu  sync.RWMutex
+	db   *gorm.DB
+	cfg  *LDAPConfig
+	mu   sync.RWMutex
+	wake chan struct{} // 配置热更新时唤醒同步协程，立即按新配置执行一轮同步
 }
 
 // NewLDAPService 创建 LDAP 服务
 func NewLDAPService(db *gorm.DB, cfg *LDAPConfig) *LDAPService {
-	return &LDAPService{db: db, cfg: cfg}
+	return &LDAPService{db: db, cfg: cfg, wake: make(chan struct{}, 1)}
 }
 
 // UpdateConfig 热更新配置（配置保存后由 main 注册的 OnSave 钩子调用）
 func (s *LDAPService) UpdateConfig(cfg *LDAPConfig) {
+	if cfg == nil {
+		return
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	changed := s.cfg == nil || *s.cfg != *cfg
 	s.cfg = cfg
+	s.mu.Unlock()
+	if !changed || !cfg.Enabled || !cfg.AutoCreateUser {
+		return
+	}
+	// 仅在 LDAP 相关配置变化且需要同步时非阻塞唤醒，避免任意配置保存都触发目录查询
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 }
 
 // GetConfig 获取当前配置
@@ -70,7 +83,17 @@ func (s *LDAPService) dial(cfg *LDAPConfig) (*ldap.Conn, error) {
 	if cfg == nil || cfg.Host == "" {
 		return nil, errors.New("LDAP 服务器地址未配置")
 	}
-	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+	// 端口未配置时按协议补默认值，避免拼出 host:0 连接失败
+	port := cfg.Port
+	if port <= 0 {
+		port = 389
+		if cfg.UseSSL {
+			port = 636
+		}
+	}
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
+	// 同时限制 TCP 建连和后续操作超时，避免目录不可达时请求长时间挂起
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var (
 		conn *ldap.Conn
 		err  error
@@ -80,9 +103,10 @@ func (s *LDAPService) dial(cfg *LDAPConfig) (*ldap.Conn, error) {
 			ServerName:         cfg.Host, // 默认校验证书与主机名，防中间人
 			InsecureSkipVerify: cfg.InsecureSkipVerify,
 		}
-		conn, err = ldap.DialURL("ldaps://"+addr, ldap.DialWithTLSConfig(tlsCfg))
+		conn, err = ldap.DialURL("ldaps://"+addr,
+			ldap.DialWithDialer(dialer), ldap.DialWithTLSConfig(tlsCfg))
 	} else {
-		conn, err = ldap.DialURL("ldap://" + addr)
+		conn, err = ldap.DialURL("ldap://"+addr, ldap.DialWithDialer(dialer))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("连接 LDAP 服务器失败: %w", err)
@@ -198,6 +222,9 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 	result := s.db.Where("username = ?", username).First(&user)
 
 	if result.Error == nil {
+		if user.Disabled {
+			return nil, errors.New("账户已被禁用")
+		}
 		return &user, nil
 	}
 
@@ -230,18 +257,22 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 		return nil, fmt.Errorf("创建本地用户失败: %w", err)
 	}
 
-	s.db.Create(&models.AuthRecord{
+	if err := s.db.Create(&models.AuthRecord{
 		UserID:       user.ID,
 		AuthType:     "ldap",
 		ExternalID:   attrs["dn"],
 		ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["uid"], username),
 		ProviderName: host,
-	})
+	}).Error; err != nil {
+		// 关联记录失败不影响本次登录（用户已创建），但需记录以便排查
+		utils.Warn("写入 LDAP 认证关联失败",
+			utils.String("username", username), utils.Err(err))
+	}
 
 	return &user, nil
 }
 
-// firstNonEmpty 返回第一个非空字符串，均空时返回 fallback
+// firstNonEmpty 返回第一个非空字符串，全部为空时返回空串
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
@@ -266,6 +297,22 @@ func (s *LDAPService) TestConnection() error {
 	if cfg.BindDN != "" {
 		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
 			return fmt.Errorf("服务账号绑定失败: %w", err)
+		}
+	}
+	// 配置了 Base DN 时做一次 base 范围查询，验证目录存在且账号有读取权限，
+	// 避免仅连接成功但目录配置错误仍提示“连接成功”。
+	if cfg.BaseDN != "" {
+		req := ldap.NewSearchRequest(
+			cfg.BaseDN,
+			ldap.ScopeBaseObject,
+			ldap.NeverDerefAliases,
+			1, 0, false,
+			"(objectClass=*)",
+			[]string{"dn"},
+			nil,
+		)
+		if _, err := conn.Search(req); err != nil {
+			return fmt.Errorf("Base DN 校验失败: %w", err)
 		}
 	}
 	return nil
@@ -303,11 +350,15 @@ func (s *LDAPService) syncFilter(cfg *LDAPConfig) string {
 	return "(uid=*)"
 }
 
-// SyncUsers 从 LDAP 目录全量同步用户到本地（缺失则自动创建）
+// SyncUsers 从 LDAP 目录同步用户到本地，仅创建本地缺失的账户。
+// 未启用自动创建时没有同步意义，直接返回 0；已在本地存在的用户不会重复创建。
 func (s *LDAPService) SyncUsers() (int, error) {
 	cfg := s.GetConfig()
-	if cfg == nil || !cfg.Enabled {
-		return 0, errors.New("LDAP 未启用")
+	if cfg == nil || !s.IsEnabled() {
+		return 0, errors.New("LDAP 未启用或配置不完整")
+	}
+	if !cfg.AutoCreateUser {
+		return 0, nil
 	}
 
 	conn, err := s.dial(cfg)
@@ -332,7 +383,8 @@ func (s *LDAPService) SyncUsers() (int, error) {
 		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName"},
 		nil,
 	)
-	sr, err := conn.Search(req)
+	// 使用分页查询，避免目录条目超过服务端单次返回上限（如 AD 默认 1000 条）时同步被截断
+	sr, err := conn.SearchWithPaging(req, 500)
 	if err != nil {
 		return 0, fmt.Errorf("LDAP 目录同步查询失败: %w", err)
 	}
@@ -342,6 +394,17 @@ func (s *LDAPService) SyncUsers() (int, error) {
 	for _, entry := range sr.Entries {
 		username := entry.GetAttributeValue(usernameAttr)
 		if username == "" {
+			continue
+		}
+		// 先判断本地是否已存在：同步只负责补建缺失账户，避免把“已存在”计为新建
+		var count int64
+		if err := s.db.Model(&models.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+			failed++
+			utils.Warn("LDAP 目录同步：查询本地用户失败",
+				utils.String("username", username), utils.Err(err))
+			continue
+		}
+		if count > 0 {
 			continue
 		}
 		if _, err := s.findOrCreateUser(username, entryAttributes(entry)); err != nil {
@@ -358,15 +421,24 @@ func (s *LDAPService) SyncUsers() (int, error) {
 	return created, nil
 }
 
-// StartSyncWorker 按 sync_interval 周期启动目录同步协程，直到 ctx 结束
-// 每个周期从 GetConfig 重新读取配置，支持热更新；未启用时静默跳过。
+// StartSyncWorker 按 sync_interval 周期启动目录同步协程，直到 ctx 结束。
+// 启动及配置保存后立即执行一轮同步，之后按间隔循环；未启用或未开启自动创建时跳过。
 func (s *LDAPService) StartSyncWorker(ctx context.Context) {
 	go func() {
 		for {
 			cfg := s.GetConfig()
-			interval := time.Duration(cfg.SyncInterval) * time.Second
-			if interval <= 0 {
-				interval = 3600 * time.Second
+			if cfg != nil && cfg.Enabled && cfg.AutoCreateUser {
+				created, err := s.SyncUsers()
+				if err != nil {
+					utils.Warn("LDAP 目录同步失败", utils.Err(err))
+				} else {
+					utils.Info("LDAP 目录同步完成", utils.Int("created", created))
+				}
+			}
+
+			interval := 3600 * time.Second
+			if cfg != nil && cfg.SyncInterval > 0 {
+				interval = time.Duration(cfg.SyncInterval) * time.Second
 			}
 			timer := time.NewTimer(interval)
 			select {
@@ -374,17 +446,9 @@ func (s *LDAPService) StartSyncWorker(ctx context.Context) {
 				timer.Stop()
 				return
 			case <-timer.C:
-			}
-
-			cur := s.GetConfig()
-			if cur == nil || !cur.Enabled {
-				continue
-			}
-			created, err := s.SyncUsers()
-			if err != nil {
-				utils.Warn("LDAP 目录同步失败", utils.Err(err))
-			} else {
-				utils.Info("LDAP 目录同步完成", utils.Int("created", created))
+			case <-s.wake:
+				// 配置已热更新，立即进入下一轮，按新配置同步
+				timer.Stop()
 			}
 		}
 	}()

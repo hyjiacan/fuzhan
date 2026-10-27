@@ -128,68 +128,71 @@ func updateFieldInNode(node *yaml.Node, path []string, value interface{}) bool {
 	return updateFieldInNode(newVal, path[1:], value)
 }
 
-// setNodeValue 根据值类型设置节点
+// setNodeValue 根据值类型递归构建 YAML 节点（深拷贝语义：直接重建子节点，
+// 不共享调用方传入的 value 结构）。支持 string/int/int64/float64/bool、
+// map[string]string、map[string]interface{} 与 []interface{}（含任意嵌套）。
 func setNodeValue(node *yaml.Node, value interface{}) bool {
 	if node == nil {
 		return false
 	}
+	*node = *yamlNodeOf(value)
+	return true
+}
+
+// yamlNodeOf 将 Go 值转换为 yaml.Node（递归处理嵌套的序列/映射）。
+func yamlNodeOf(value interface{}) *yaml.Node {
 	switch v := value.(type) {
 	case string:
-		node.Kind = yaml.ScalarNode
-		node.Tag = ""
-		node.Value = v
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: v}
 	case int:
-		node.Kind = yaml.ScalarNode
-		node.Tag = ""
-		node.Value = fmt.Sprintf("%d", v)
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", v)}
 	case int64:
-		node.Kind = yaml.ScalarNode
-		node.Tag = ""
-		node.Value = fmt.Sprintf("%d", v)
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", v)}
 	case float64:
-		node.Kind = yaml.ScalarNode
-		node.Tag = ""
-		node.Value = fmt.Sprintf("%v", v)
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", v)}
 	case bool:
-		node.Kind = yaml.ScalarNode
-		node.Tag = ""
-		node.Value = fmt.Sprintf("%t", v)
-	case []interface{}:
-		seq := &yaml.Node{Kind: yaml.SequenceNode, Style: node.Style}
-		for _, item := range v {
-			switch m := item.(type) {
-			case map[string]interface{}:
-				mapNode := &yaml.Node{Kind: yaml.MappingNode}
-				for k, val := range m {
-					keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: k}
-					valStr := fmt.Sprintf("%v", val)
-					valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: valStr}
-					mapNode.Content = append(mapNode.Content, keyNode, valNode)
-				}
-				seq.Content = append(seq.Content, mapNode)
-			default:
-				itemNode := &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", item)}
-				seq.Content = append(seq.Content, itemNode)
-			}
-		}
-		*node = *seq
-		return true
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%t", v)}
 	case map[string]string:
-		mapNode := &yaml.Node{Kind: yaml.MappingNode}
 		keys := make([]string, 0, len(v))
 		for k := range v {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
+		mapNode := &yaml.Node{Kind: yaml.MappingNode}
 		for _, k := range keys {
-			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: k}
-			valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: v[k]}
-			mapNode.Content = append(mapNode.Content, keyNode, valNode)
+			mapNode.Content = append(mapNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: k},
+				yamlNodeOf(v[k]))
 		}
-		*node = *mapNode
-		return true
+		return mapNode
+	case map[string]interface{}:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		mapNode := &yaml.Node{Kind: yaml.MappingNode}
+		for _, k := range keys {
+			mapNode.Content = append(mapNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: k},
+				yamlNodeOf(v[k]))
+		}
+		return mapNode
+	case []interface{}:
+		seq := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, item := range v {
+			seq.Content = append(seq.Content, yamlNodeOf(item))
+		}
+		return seq
+	case []string:
+		seq := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, item := range v {
+			seq.Content = append(seq.Content, yamlNodeOf(item))
+		}
+		return seq
+	default:
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", value)}
 	}
-	return true
 }
 
 // ConfigUpdates 配置更新映射类型

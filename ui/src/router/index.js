@@ -65,7 +65,9 @@ const router = createRouter({
       // 「强制登录」模式下未登录用户的登录/注册/外部认证页面
       path: '/login',
       name: 'login',
-      component: LoginView
+      component: LoginView,
+      // 登录页使用独立布局，不渲染公共 header/footer
+      meta: { standalone: true }
     },
     {
       path: '/temp',

@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -67,7 +68,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {
-		middleware.LogOperation(c, "auth.register", req.Username, nil)
+		middleware.LogOperation(c, "auth.register", req.Username, fmt.Errorf("注册被频率限制锁定"))
 		recordAuthEvent(c, models.EventAuthLocked, "auth.register", req.Username, models.SeverityHigh, "尝试过于频繁，注册被频率限制锁定")
 		handleLoginBlocked(c)
 		return
@@ -93,7 +94,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {
-		middleware.LogOperation(c, "auth.login", req.Username, nil)
+		middleware.LogOperation(c, "auth.login", req.Username, fmt.Errorf("登录被频率限制锁定"))
 		recordAuthEvent(c, models.EventAuthLocked, "auth.login", req.Username, models.SeverityHigh, "尝试过于频繁，登录被频率限制锁定")
 		handleLoginBlocked(c)
 		return

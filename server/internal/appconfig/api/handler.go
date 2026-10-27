@@ -194,6 +194,14 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 	}
 
+	// LDAP 连接参数校验：启用时缺地址或 Base DN 会导致认证不可用，保存前拦截
+	if present("auth") {
+		if msg := validateLDAPConfig(req.Auth.LDAP); msg != "" {
+			utils.HandleBadRequest(c, msg, nil)
+			return
+		}
+	}
+
 	// 加写锁保护配置并发修改。
 	// 注意：RunOnSaveHooks 内部的钩子会通过 GetConfig 申请读锁，
 	// 绝不能持写锁跨钩子执行，否则同 goroutine RWMutex 自死锁。
@@ -656,20 +664,38 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Webhook.TimeoutSeconds = req.Webhook.TimeoutSeconds
 		appconfig.GlobalConfig.Webhook.MaxRetries = req.Webhook.MaxRetries
 		appconfig.GlobalConfig.Webhook.QueueSize = req.Webhook.QueueSize
-		if req.Webhook.URLs == nil {
-			req.Webhook.URLs = []string{}
-		}
-		appconfig.GlobalConfig.Webhook.URLs = req.Webhook.URLs
 		updates.Add("webhook.enabled", req.Webhook.Enabled)
-		urlList := make([]interface{}, len(req.Webhook.URLs))
-		for i, u := range req.Webhook.URLs {
-			urlList[i] = u
-		}
-		updates.Add("webhook.urls", urlList)
 		updates.Add("webhook.secret", req.Webhook.Secret)
 		updates.Add("webhook.timeout_seconds", req.Webhook.TimeoutSeconds)
 		updates.Add("webhook.max_retries", req.Webhook.MaxRetries)
 		updates.Add("webhook.queue_size", req.Webhook.QueueSize)
+
+		// 端点：写入 NewEndpoints（nil 表示未改变，不产生更新）；非 nil 时完成旧 urls → endpoints 迁移
+		newEndpoints := appconfig.WebhookConfig{Endpoints: endpointsFromDTO(req.Webhook.Endpoints)}.Endpoints
+		appconfig.GlobalConfig.Webhook.Endpoints = newEndpoints
+		if req.Webhook.Endpoints != nil {
+			appconfig.GlobalConfig.Webhook.URLs = nil
+			updates.Add("webhook.urls", []interface{}{})
+			epList := make([]interface{}, len(newEndpoints))
+			for i, ep := range newEndpoints {
+				m := map[string]interface{}{
+					"name":            ep.Name,
+					"url":             ep.URL,
+					"secret":          ep.Secret,
+					"timeout_seconds": ep.TimeoutSeconds,
+					"max_retries":     ep.MaxRetries,
+					"events":          stringListToInterface(ep.Events),
+					"headers":         stringMapToInterface(ep.Headers),
+					"query":           stringMapToInterface(ep.Query),
+				}
+				// 仅显式设置时才写入 enabled（nil 视为启用，写入 null 无意义）
+				if ep.Enabled != nil {
+					m["enabled"] = *ep.Enabled
+				}
+				epList[i] = m
+			}
+			updates.Add("webhook.endpoints", epList)
+		}
 	}
 
 	// 私有/临时文件存储目录创建
@@ -712,6 +738,24 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	// 记录配置修改操作，便于审计追踪（关键操作需留痕）
 	middleware.LogOperation(c, "config.update", "global_config", nil)
 	response.HandleSuccess(c, http.StatusOK, "配置已保存并生效", nil)
+}
+
+// validateLDAPConfig 校验 LDAP 配置：启用时必须提供服务器地址与 Base DN，端口需在合法范围。
+// 端口为 0 表示使用协议默认值（LDAP 389 / LDAPS 636）。
+func validateLDAPConfig(dto appconfig.LDAPConfigDTO) string {
+	if dto.Port < 0 || dto.Port > 65535 {
+		return "LDAP 端口必须在 1-65535 之间"
+	}
+	if !dto.Enabled {
+		return ""
+	}
+	if strings.TrimSpace(dto.Host) == "" {
+		return "启用 LDAP 时必须填写服务器地址"
+	}
+	if strings.TrimSpace(dto.BaseDN) == "" {
+		return "启用 LDAP 时必须填写 Base DN"
+	}
+	return ""
 }
 
 // validateStorageBackend 校验存储后端类型与必填连接参数。
@@ -835,10 +879,19 @@ func (h *Handler) TestOAuth2Config(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "OAuth2 配置测试成功（端点可达）", nil)
 }
 
-// TestWebhookConfig 测试 Webhook 回调连通性：向当前（或 body 中临时）地址逐条发送测试事件。
+// TestWebhookConfig 测试 Webhook 回调连通性：向当前（或 body 中临时）端点逐条发送测试事件。
 // 可选 JSON body（WebhookConfigDTO）用于测试未保存的表单值；body 为空时使用当前已保存的配置。
+// body 内 endpoints 仅含单条时，则只测试该条（前端「单条测试」）。
 func (h *Handler) TestWebhookConfig(c *gin.Context) {
-	cfg := appconfig.GetConfig().Webhook
+	cfg := appconfig.WebhookConfig{
+		Enabled:        appconfig.GetConfig().Webhook.Enabled,
+		Endpoints:      appconfig.GetConfig().Webhook.Endpoints,
+		URLs:           appconfig.GetConfig().Webhook.URLs,
+		Secret:         appconfig.GetConfig().Webhook.Secret,
+		TimeoutSeconds: appconfig.GetConfig().Webhook.TimeoutSeconds,
+		MaxRetries:     appconfig.GetConfig().Webhook.MaxRetries,
+		QueueSize:      appconfig.GetConfig().Webhook.QueueSize,
+	}
 	body, _ := io.ReadAll(c.Request.Body)
 	if len(strings.TrimSpace(string(body))) > 0 {
 		var dto appconfig.WebhookConfigDTO
@@ -848,18 +901,71 @@ func (h *Handler) TestWebhookConfig(c *gin.Context) {
 		}
 		cfg = webhookConfigFromDTO(dto)
 	}
-	results := webhook.TestPush(cfg, nil)
+	results := webhook.TestPush(cfg)
 	response.HandleSuccess(c, http.StatusOK, "Webhook 测试完成", results)
 }
 
+// ListWebhookEvents 返回 Webhook 事件目录（前端动态渲染事件选项，避免与后端列表漂移）。
+func (h *Handler) ListWebhookEvents(c *gin.Context) {
+	response.HandleSuccess(c, http.StatusOK, "", webhook.EventCatalog())
+}
+
 // webhookConfigFromDTO 将 Webhook 配置 DTO 转为内部配置（测试未保存表单值时使用）。
+// 未显式提供的全局字段使用当前已保存值补齐，保证单条端点测试也能正常工作。
 func webhookConfigFromDTO(dto appconfig.WebhookConfigDTO) appconfig.WebhookConfig {
-	return appconfig.WebhookConfig{
+	saved := appconfig.GetConfig().Webhook
+	cfg := appconfig.WebhookConfig{
 		Enabled:        dto.Enabled,
-		URLs:           dto.URLs,
+		Endpoints:      endpointsFromDTO(dto.Endpoints),
 		Secret:         dto.Secret,
 		TimeoutSeconds: dto.TimeoutSeconds,
 		MaxRetries:     dto.MaxRetries,
 		QueueSize:      dto.QueueSize,
 	}
+	if cfg.Secret == "" {
+		cfg.Secret = saved.Secret
+	}
+	if cfg.TimeoutSeconds <= 0 {
+		cfg.TimeoutSeconds = saved.TimeoutSeconds
+	}
+	if cfg.MaxRetries <= 0 {
+		cfg.MaxRetries = saved.MaxRetries
+	}
+	if cfg.QueueSize <= 0 {
+		cfg.QueueSize = saved.QueueSize
+	}
+	return cfg
+}
+
+// endpointsFromDTO 将 DTO 端点列表转为内部端点列表（nil 保持 nil，空列表保持空）。
+func endpointsFromDTO(dtos []appconfig.WebhookEndpointDTO) []appconfig.WebhookEndpoint {
+	if dtos == nil {
+		return nil
+	}
+	out := make([]appconfig.WebhookEndpoint, len(dtos))
+	for i, d := range dtos {
+		out[i] = appconfig.EndpointFromDTO(d)
+	}
+	return out
+}
+
+// stringListToInterface 将 []string 转为便于 YAML 序列化的 []interface{}。
+func stringListToInterface(ss []string) []interface{} {
+	out := make([]interface{}, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
+}
+
+// stringMapToInterface 将 map[string]string 转为便于 YAML 序列化的 map[string]interface{}。
+func stringMapToInterface(m map[string]string) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
