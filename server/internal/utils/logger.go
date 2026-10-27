@@ -162,7 +162,7 @@ func (lm *LoggerManager) setup() error {
 		lm.config.Directory = "./logs"
 	}
 	if lm.config.MaxSize == 0 {
-		lm.config.MaxSize = 100 // 100MB
+		lm.config.MaxSize = 10 // 10MB
 	}
 	if lm.config.MaxBackups == 0 {
 		lm.config.MaxBackups = 30
@@ -189,7 +189,7 @@ func (lm *LoggerManager) setup() error {
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
 		EncodeTime:     zapcore.ISO8601TimeEncoder,
 		EncodeDuration: zapcore.MillisDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,

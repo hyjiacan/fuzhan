@@ -36,7 +36,8 @@ var logRotatedPattern = regexp.MustCompile(
 	`^(app|error|access|api|webdav|ftp|openapi|login|register)-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`,
 )
 
-// logANSIRe 匹配终端颜色转义序列（app.log 使用 CapitalColorLevelEncoder，含 ANSI 颜色码）
+// logANSIRe 匹配终端颜色转义序列（旧版本 app.log/error.log 曾使用
+// CapitalColorLevelEncoder 写入 ANSI 颜色码；现统一为无色编码，此处仅兜底清理历史残留）
 var logANSIRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 // 日志级别序，用于 level 阈值过滤

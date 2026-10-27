@@ -108,7 +108,7 @@ func InitLogging() {
 		GlobalConfig.Log.Level = "info"
 	}
 	if GlobalConfig.Log.MaxSize == 0 {
-		GlobalConfig.Log.MaxSize = 100
+		GlobalConfig.Log.MaxSize = 10 // 默认 10MB，避免单个日志文件长时间不轮转
 	}
 	if GlobalConfig.Log.MaxBackups == 0 {
 		GlobalConfig.Log.MaxBackups = 30

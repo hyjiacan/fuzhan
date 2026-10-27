@@ -38,6 +38,19 @@ func isNonActivityRequest(method, path string) bool {
 	return false
 }
 
+// isStaticAssetRequest 判断请求是否命中前端静态资源（SPA 构建产物与 OpenAPI
+// 文档资源）或 favicon.ico。这类资源由浏览器高频加载，记录进 access.log 会
+// 让访问日志快速膨胀且无排查价值，因此跳过落盘。
+func isStaticAssetRequest(path string) bool {
+	switch {
+	case strings.HasPrefix(path, "/assets/"),
+		strings.HasPrefix(path, "/scalar/assets/"),
+		path == "/favicon.ico":
+		return true
+	}
+	return false
+}
+
 // MonitoringMiddleware 监控中间件
 func MonitoringMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -116,6 +129,10 @@ func MonitoringMiddleware() gin.HandlerFunc {
 			}
 			utils.APIAccess("API操作", fields...)
 		default:
+			// 静态资源 / favicon 不写入 access.log，避免其高频加载导致日志膨胀
+			if isStaticAssetRequest(path) {
+				return
+			}
 			utils.Access("HTTP请求", fields...)
 		}
 	}
