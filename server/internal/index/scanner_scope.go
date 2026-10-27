@@ -36,6 +36,7 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 
 	now := utils.Now()
 	var batch []models.FileRecordTemp
+	lastFlush := time.Now()
 
 	// 已索引的临时文件 code 集合，避免每轮扫描重复插入导致索引膨胀
 	existingKeys := make(map[string]struct{})
@@ -97,7 +98,8 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 		progress.SetCurrentFile(tf.Filename)
 		progress.SetScanned(int64(i + 1))
 
-		if len(batch) >= s.batchSize {
+		// 满批或达到时间兜底间隔即落库
+		if len(batch) >= s.batchSize || time.Since(lastFlush) >= scanBatchFlushInterval {
 			release := lockWrite()
 			err := s.db.CreateInBatches(batch, s.batchSize).Error
 			release()
@@ -105,6 +107,7 @@ func (s *Scanner) runTempScan(ctx context.Context) {
 				utils.Error("批量写入 file_records_temp 失败", utils.Err(err))
 			}
 			batch = batch[:0]
+			lastFlush = time.Now()
 		}
 	}
 
@@ -166,6 +169,7 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 	progress.SetTotalFiles(totalFiles)
 	now := utils.Now()
 	var batch []models.FileRecordPrivate
+	lastFlush := time.Now()
 	var scanned int64
 
 	// 已索引的私有文件 code 集合，避免每轮扫描重复插入导致索引膨胀
@@ -272,7 +276,8 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 			default:
 			}
 
-			if len(batch) >= s.batchSize {
+			// 满批或达到时间兜底间隔即落库
+			if len(batch) >= s.batchSize || time.Since(lastFlush) >= scanBatchFlushInterval {
 				release := lockWrite()
 				err := s.db.CreateInBatches(batch, s.batchSize).Error
 				release()
@@ -280,6 +285,7 @@ func (s *Scanner) runPrivateScan(ctx context.Context) {
 					utils.Error("批量写入 file_records_private 失败", utils.Err(err))
 				}
 				batch = batch[:0]
+				lastFlush = time.Now()
 			}
 		}
 	}

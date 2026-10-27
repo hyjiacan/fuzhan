@@ -237,6 +237,7 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 
 	var scanned int64 // 当前根目录已扫描文件数
 	var added int64   // 当前根目录新增索引数
+	lastFlush := time.Now()
 	progress := s.getOrCreateProgress(ScanScopePublic)
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
@@ -282,13 +283,15 @@ func (s *Scanner) scanRootDir(ctx context.Context, rootName, rootPath string) (*
 			progress.IncTotal() // 单趟扫描：总文件数随新增条目递增，避免预先整树统计
 			progress.SetCurrentFile(e.relPath)
 
-			if len(batch) >= s.batchSize {
+			// 满批或达到时间兜底间隔即落库
+			if len(batch) >= s.batchSize || time.Since(lastFlush) >= scanBatchFlushInterval {
 				if ferr := flushBatch(); ferr != nil {
 					consumerErr = ferr
 					cancel() // 中止剩余遍历，避免写库失败后继续无意义扫描
 					return
 				}
 				batch = batch[:0]
+				lastFlush = time.Now()
 			}
 
 			// 定期输出进度

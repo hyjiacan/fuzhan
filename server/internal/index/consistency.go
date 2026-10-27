@@ -121,6 +121,24 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 	now := utils.Now()
 	// 文件系统存在但索引缺失的记录 → 收集后批量新增，避免大目录首次校验时逐条写库
 	var pendingCreate []models.FileRecordPublic
+	lastCreateFlush := time.Now()
+	// flushPendingCreate 批量新增已收集的缺失记录；满批或达到时间兜底间隔即触发
+	flushPendingCreate := func() {
+		if len(pendingCreate) == 0 {
+			return
+		}
+		release := lockWrite()
+		err := c.db.CreateInBatches(pendingCreate, 200).Error
+		release()
+		if err != nil {
+			utils.Error("自动修复批量新增索引记录失败",
+				utils.String("root", rootName),
+				utils.Int("count", len(pendingCreate)),
+				utils.Err(err))
+		}
+		pendingCreate = pendingCreate[:0]
+		lastCreateFlush = time.Now()
+	}
 	// 索引存在但文件系统已删除的记录 ID → 收集后批量标记删除
 	var missingInFSIDs []uint
 
@@ -163,6 +181,10 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 				},
 			})
 			report.AutoFixed++
+			// 满批或达到时间兜底间隔即落库，避免大目录遍历期间记录只存在内存
+			if len(pendingCreate) >= 200 || time.Since(lastCreateFlush) >= scanBatchFlushInterval {
+				flushPendingCreate()
+			}
 			return nil
 		}
 
@@ -248,16 +270,7 @@ func (c *ConsistencyChecker) checkRootDir(ctx context.Context, rootName, rootPat
 	}
 
 	// 3. 批量新增文件系统存在但索引缺失的记录
-	if len(pendingCreate) > 0 {
-		release := lockWrite()
-		if err := c.db.CreateInBatches(pendingCreate, 200).Error; err != nil {
-			utils.Error("自动修复批量新增索引记录失败",
-				utils.String("root", rootName),
-				utils.Int("count", len(pendingCreate)),
-				utils.Err(err))
-		}
-		release()
-	}
+	flushPendingCreate()
 
 	// 4. 处理 DB 中有但文件系统上不存在的记录
 	for path, rec := range dbMap {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fuzhan/internal/accessguard"
 	"fuzhan/internal/admin"
@@ -617,6 +618,10 @@ func printStartupSummary(cfg *appconfig.Config) {
 	}
 }
 
+// cleanupTimeout 关闭收尾（关库 + 刷日志）的等待上限；超时直接退出进程，
+// 避免收尾步骤阻塞（如 SQLite 关连接、stdout 管道刷盘）导致进程迟迟不返回控制台
+const cleanupTimeout = 5 * time.Second
+
 // runServer 用 gin.ReleaseMode 准备运行环境，进入主循环（热重启驱动 worker）
 func runServer(configPath string) {
 	gin.SetMode(gin.ReleaseMode)
@@ -627,7 +632,23 @@ func runServer(configPath string) {
 	printStartupSummary(rt.cfg)
 	rt.run()
 
-	// 主循环退出后的收尾：关闭数据库连接并刷空日志缓冲
-	appconfig.CloseDB()
-	utils.Sync()
+	// 主循环退出后的收尾：关闭数据库连接并刷空日志缓冲。
+	// 放到独立 goroutine 并设置上限，任何一步阻塞都不会无限等待
+	start := time.Now()
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		utils.Info("关闭收尾：正在关闭数据库连接")
+		appconfig.CloseDB()
+		utils.Info("关闭收尾：数据库连接已关闭",
+			utils.Duration("elapsed", time.Since(start)))
+		utils.Sync()
+	}()
+	select {
+	case <-cleanupDone:
+		utils.Info("关闭收尾完成", utils.Duration("elapsed", time.Since(start)))
+	case <-time.After(cleanupTimeout):
+		fmt.Fprintf(os.Stderr, "关闭收尾超时(%s)，强制退出进程\n", cleanupTimeout)
+		os.Exit(0)
+	}
 }

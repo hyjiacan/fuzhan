@@ -220,6 +220,12 @@ func (rt *runCtx) run() {
 		select {
 		case <-sigCh:
 			utils.Info("正在关闭服务器...")
+			// 第二次中断信号：跳过所有清理直接退出，避免收尾阻塞时无法结束进程
+			go func() {
+				<-sigCh
+				fmt.Fprintln(os.Stderr, "再次收到中断信号，跳过清理直接退出进程")
+				os.Exit(1)
+			}()
 			cancel()
 			stopAllWorkers(wm)
 			waitWorkersWithTimeout(wm)

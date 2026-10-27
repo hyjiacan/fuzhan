@@ -2,6 +2,7 @@ package security
 
 import (
 	"sync"
+	"time"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
@@ -15,6 +16,9 @@ const (
 	WriterBuffer = 1024
 	// writerBatchSize 单个 worker 攒批批量提交的条数，降低逐条 insert 的写放大
 	writerBatchSize = 100
+	// writerFlushInterval 单个 worker 攒批落库的时间兜底：即使不满 writerBatchSize 也按该间隔刷库，
+	// 避免低流量时事件长期滞留内存（只有攒满一批或进程退出时才落库）
+	writerFlushInterval = time.Second
 )
 
 // SecurityEventWriter 有界异步安全事件写入器。
@@ -58,6 +62,9 @@ func (w *SecurityEventWriter) worker() {
 		w.writeBatch(batch)
 		batch = batch[:0]
 	}
+	// 时间兜底：低流量下不足一批时也能及时落库，避免事件滞留内存直到退出
+	ticker := time.NewTicker(writerFlushInterval)
+	defer ticker.Stop()
 	for {
 		select {
 		case ev := <-w.ch:
@@ -65,6 +72,8 @@ func (w *SecurityEventWriter) worker() {
 			if len(batch) >= w.batchSize {
 				flush()
 			}
+		case <-ticker.C:
+			flush()
 		case <-w.done:
 			for {
 				select {

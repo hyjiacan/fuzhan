@@ -3,11 +3,16 @@ package index
 import (
 	"context"
 	"sync"
+	"time"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/storage"
 	"gorm.io/gorm"
 )
+
+// scanBatchFlushInterval 批量入库的时间兜底：即使不满 batchSize，也按该间隔把已累积记录落库，
+// 避免大目录扫描期间新增记录长时间只存在内存中
+const scanBatchFlushInterval = 3 * time.Second
 
 // Scanner 全量扫描器
 // 负责对公开/临时/私有文件进行全量扫描, 为每个文件建立索引记录。
