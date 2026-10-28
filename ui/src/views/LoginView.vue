@@ -123,7 +123,7 @@
             去登录
           </el-button>
         </div>
-        <div v-else-if="privateStorageEnabled && allowRegistration" class="auth-switch">
+        <div v-else-if="allowRegistration" class="auth-switch">
           <span class="auth-switch-text">还没有账号？</span>
           <el-button link type="primary" class="switch-link" @click="isRegisterMode = true">
             立即注册
@@ -154,7 +154,6 @@ const route = useRoute()
 const router = useRouter()
 
 const appName = computed(() => store.state.config.appName || '浮栈')
-const privateStorageEnabled = computed(() => store.state.config.privateStorageEnabled !== false)
 const allowRegistration = computed(() => store.state.config.allowRegistration === true)
 const requireLogin = computed(() => store.state.config.requireLogin === true)
 
@@ -269,11 +268,18 @@ const handleRegister = async () => {
     try {
       const data = await AuthApi.register(registerForm.username, registerForm.password)
       if (data.success) {
-        ElMessage.success('注册成功，请登录')
-        // 自动填充登录表单并切回登录模式
-        loginForm.username = registerForm.username
-        loginForm.password = ''
-        isRegisterMode.value = false
+        // 注册即登录（与轻量版一致）：服务端已签发 Cookie 会话，这里同步本地登录态
+        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username)
+        try {
+          const userData = await AuthApi.getUserInfo()
+          if (userData.success && userData.data) {
+            localStorage.setItem('userRole', userData.data.role || 'user')
+          }
+        } catch (e) {
+          // 角色获取失败不阻断登录
+        }
+        ElMessage.success('注册成功，已自动登录')
+        finishAuth()
       } else {
         ElMessage.error(data.message || '注册失败')
       }
@@ -289,18 +295,46 @@ const backToBrowse = () => {
   router.replace('/files')
 }
 
-onMounted(() => {
-  // 已登录则直接离开登录页（下载类 redirect 直接执行下载）
+onMounted(async () => {
+  // 本地已标记登录 → 直接离开登录页
   if (AuthApi.isLoggedIn()) {
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-    if (executeLoginDownload(redirect)) return
-    router.replace('/files')
+    leaveLoginPage()
     return
+  }
+  // localStorage 无登录态时，仍可能持有后端 HttpOnly Cookie 会话
+  //（如 lite 端登录后打开 Vue 登录页的场景）。此时向服务端验证登录态，
+  // 通过则恢复前端登录态并自动回跳，避免停留在登录页。
+  try {
+    const data = await AuthApi.getUserInfo()
+    if (data.success && data.data) {
+      const userData = data.data
+      AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+      store.setAuthenticated(true)
+      if (userData.role) {
+        localStorage.setItem('userRole', userData.role)
+      }
+      window.dispatchEvent(new CustomEvent('auth:changed'))
+      leaveLoginPage()
+      return
+    }
+  } catch (e) {
+    // 无会话 / 会话失效 / 后端不可用：停留在登录页，不打断用户
   }
   loadOAuth2Status()
   // 聚焦用户名输入框
   loginFormRef.value?.focus?.()
 })
+
+// 已登录时离开登录页：优先执行下载类 redirect，否则回跳 redirect 指定的站内地址（默认文件页）
+const leaveLoginPage = async () => {
+  const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+    ? route.query.redirect
+    : ''
+  // executeLoginDownload 为 async（恒返回 Promise），必须 await 判断其结果，
+  // 直接 if(...) 会把始终 truthy 的 Promise 当作已发下载 → 下面的 replace 永不执行
+  if (await executeLoginDownload(redirect)) return
+  router.replace(redirect || '/files')
+}
 </script>
 
 <style lang="less" scoped>

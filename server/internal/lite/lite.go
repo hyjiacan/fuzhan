@@ -14,10 +14,12 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/filedir"
+	"fuzhan/internal/middleware"
 	"fuzhan/internal/resources"
 	"fuzhan/internal/search"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
+	"fuzhan/pkg/jwt"
 )
 
 // liteName 轻量版页面的展示名称，统一用于标题等处。
@@ -51,6 +53,11 @@ type page struct {
 	Recommends  []suggestion
 	Corrections []suggestion
 	Rows        []row
+	// 页头登录态：LoggedIn 为 true 时显示用户名与「退出」，否则显示登录/注册入口。
+	// 是否展示「注册」仅由「允许注册」开关控制（与 Vue 一致，不依赖私有存储）。
+	LoggedIn     bool
+	Username     string
+	ShowRegister bool
 }
 
 // suggestion 检索推荐/纠错项
@@ -190,6 +197,13 @@ func Handle(w http.ResponseWriter, r *http.Request, svc *services.SearchService,
 		// logo.png 为嵌入/磁盘资源，统一以 /assets/icons/logo.png 引用
 		LogoPath: "/assets/icons/logo.png",
 	}
+	// 页头登录态：依据 HttpOnly 会话 Cookie 判定。Cookie 里的 JWT 只用于本页展示与
+	// LoginGate 放行；下载仍走「换票 + URL 票据」链路，身份鉴别与 web 完全一致。
+	if claims, err := jwt.ParseJWT(middleware.TokenFromRequest(r)); err == nil {
+		page.LoggedIn = true
+		page.Username = claims.Username
+	}
+	page.ShowRegister = AllowRegistration()
 
 	segs := resolveSegments(r)
 

@@ -50,6 +50,15 @@
               @click="showLoginModal = true"
               >登录</a
             >
+            <template v-if="allowRegistration">
+              <span class="auth-separator">/</span>
+              <a
+                class="login-link"
+                href="javascript:void(0)"
+                @click="showRegisterModal = true"
+                >注册</a
+              >
+            </template>
           </template>
         </div>
       </nav>
@@ -70,6 +79,15 @@
             @click="showLoginModal = true"
             >登录</a
           >
+          <template v-if="allowRegistration">
+            <span class="auth-separator">/</span>
+            <a
+              class="login-link"
+              href="javascript:void(0)"
+              @click="showRegisterModal = true"
+              >注册</a
+            >
+          </template>
         </template>
       </div>
     </div>
@@ -153,7 +171,7 @@
         >
           登录
         </el-button>
-        <div v-if="privateStorageEnabled && allowRegistration" class="auth-switch">
+        <div v-if="allowRegistration" class="auth-switch">
           <span class="auth-switch-text">还没有账号？</span>
           <el-button
             link
@@ -328,11 +346,6 @@ const route = useRoute();
 // Config
 const appName = computed(() => store.state.config.appName);
 
-// 私有存储是否启用
-const privateStorageEnabled = computed(
-  () => store.state.config.privateStorageEnabled !== false,
-);
-
 // 是否允许用户自行注册（后台开关，热生效）
 const allowRegistration = computed(
   () => store.state.config.allowRegistration === true,
@@ -435,7 +448,7 @@ const handleShowLoginDialog = () => {
 // 注册弹框事件处理
 const handleShowRegisterDialog = () => {
   updateAuthState();
-  if (!authState.isLoggedIn && privateStorageEnabled.value && allowRegistration.value) {
+  if (!authState.isLoggedIn && allowRegistration.value) {
     showRegisterModal.value = true;
   }
 };
@@ -489,12 +502,11 @@ const visibleNavItems = computed(() => {
     items.push(item);
   }
 
-  // 登录后额外显示角色入口
+  // 登录后均显示「个人」入口；管理员额外显示「管理」入口
   if (authState.isLoggedIn) {
+    items.push({ path: "/user", name: "个人" });
     if (authState.isAdmin) {
       items.push({ path: "/admin", name: "管理" });
-    } else {
-      items.push({ path: "/user", name: "个人" });
     }
   }
 
@@ -642,18 +654,30 @@ const handleRegister = async () => {
       );
 
       if (data.success) {
-        ElMessage.success("注册成功，请登录");
+        // 注册即登录（与轻量版一致）：服务端已签发 Cookie 会话，这里同步本地登录态
+        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username);
 
-        // 自动填充登录表单
-        loginForm.username = registerForm.username;
-        loginForm.password = "";
+        // 获取用户信息并保存 role
+        try {
+          const userData = await AuthApi.getUserInfo();
+          if (userData.success && userData.data) {
+            localStorage.setItem("userRole", userData.data.role || "user");
+          }
+        } catch (e) {
+          console.error("获取用户信息失败", e);
+        }
 
-        // 关闭注册弹框，打开登录弹框
+        ElMessage.success("注册成功，已自动登录");
         showRegisterModal.value = false;
         registerForm.username = "";
         registerForm.password = "";
         registerForm.confirmPassword = "";
-        showLoginModal.value = true;
+        updateAuthState();
+
+        // 管理员注册后同样检查未读风险事件
+        if (localStorage.getItem("userRole") === "admin") {
+          checkSecurityAlert();
+        }
       } else {
         ElMessage.error(data.message || "注册失败");
       }
@@ -665,10 +689,17 @@ const handleRegister = async () => {
   });
 };
 
-const handleLogout = () => {
+const handleLogout = async () => {
+  // 先清后端 HttpOnly Cookie（前端无法直接删除），再清本地状态
+  try {
+    await AuthApi.logout();
+  } catch (e) {
+    // 登出接口失败不阻断本地清理
+  }
   AuthApi.clearAuth();
   localStorage.removeItem("userRole");
   updateAuthState();
+  window.dispatchEvent(new CustomEvent("auth:changed"));
   // 强制登录模式下退出后必须停留在登录页，不能回到匿名可访问的首页
   if (store.state.config.requireLogin === true) {
     router.push({ name: "login" });
@@ -916,6 +947,11 @@ export default {
     color: #fff;
     text-decoration: underline;
   }
+}
+
+.auth-separator {
+  margin: 0 6px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .upload-status-btn {

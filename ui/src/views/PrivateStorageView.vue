@@ -13,10 +13,11 @@
 
       <div class="header-row">
         <div class="header-left">
+          <h2>私有存储</h2>
           <p class="description">上传个人文件，安全存储在你的账号下。</p>
         </div>
         <div class="header-right" v-if="quota > 0">
-          <span class="quota-info-text">配额: {{ formatSize(used) }} / {{ formatSize(quota) }}</span>
+          <span class="quota-badge">用量: {{ formatSize(used) }} / {{ formatSize(quota) }}</span>
         </div>
       </div>
       <div class="toolbar-row">
@@ -485,12 +486,19 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       gap: 16px;
-      padding: 8px 16px;
-      background: @bg-color-secondary;
-      border-radius: @border-radius-lg;
-      font-size: @font-size-sm;
-      color: @text-color-secondary;
       flex-shrink: 0;
+    }
+
+    .quota-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 8px;
+      height: 22px;
+      background: @bg-color-secondary;
+      border: 1px solid @border-color-light;
+      border-radius: @border-radius-sm;
+      font-size: @font-size-xs;
+      color: @text-color-secondary;
     }
 
     .toolbar-row {

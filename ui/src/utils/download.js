@@ -1,12 +1,12 @@
 // ============================================
 // 下载/预览跳转工具（一次性签名票据方案）
 //
-// 背景：登录凭证只允许放在浏览器（localStorage）+ 请求头（Authorization）中，
-// 不进 URL。但浏览器原生 <a>/<img>/<video>、新窗口 window.open、以及迅雷等外部
-// 下载工具发起的请求无法携带自定义请求头，也没有 cookie（本服务全程无 cookie）
-// 可自动带上凭证。因此采用「预签名短时效 URL」标准做法（AWS S3/OSS 同款）：
+// 背景：登录凭证统一由后端 HttpOnly Cookie（fuzhan_token）承载，同源请求自动携带；
+// 但浏览器原生 <a>/<img>/<video>、新窗口 window.open、以及迅雷等外部下载工具发起的
+// 请求虽会带上 Cookie（SameSite=Lax 顶级导航），仍存在 URL 直连场景与登录态耦合的
+// 复杂度，因此下载采用「预签名短时效 URL」标准做法（AWS S3/OSS 同款）：
 //
-//   认证（谁是你）  → Authorization 请求头携带登录 token，访问换票接口
+//   认证（谁是你）  → Cookie 放行换票接口（或 Authorization 请求头）
 //   授权（能下载什么）→ 换票接口签发一次性短时效签名票据 t=，放进 URL
 //
 // 换票接口：POST /api/v1/web/download/ticket，body { path, mode }，返回

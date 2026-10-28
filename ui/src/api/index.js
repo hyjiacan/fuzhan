@@ -9,7 +9,10 @@ const API_BASE = '/api/v1/web'
 // 创建 axios 实例
 const request = axios.create({
   baseURL: API_BASE,
-  timeout: 30000
+  timeout: 30000,
+  // 与后端同源请求自动携带 HttpOnly 登录 Cookie（Vue 与 lite 共享同一会话凭证）。
+  // 生产/开发代理均为同源，不依赖 CORS 凭证跨域；显式声明保证与后端 Cookie 会话链路正确。
+  withCredentials: true
 })
 
 // 写入类请求的 success 反馈。组件内已有显式提示的调用方通过 skipSuccessToast 跳过，
@@ -55,14 +58,12 @@ function getAnonymousId() {
   return id
 }
 
-// 请求拦截器：添加认证信息和匿名标识
+// 请求拦截器：添加匿名标识。
+// 认证凭证统一由后端 HttpOnly Cookie 承载（同源请求自动携带），不再手动附加 Bearer 头，
+// 使 Vue 与 lite 两端共享同一登录状态。
 request.interceptors.request.use(
   config => {
     beginRequest()
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
     // 所有请求都携带 AnonymousID
     config.headers['X-Anonymous-ID'] = getAnonymousId()
     return config
@@ -133,6 +134,26 @@ export const AuthApi = {
     localStorage.setItem('token', token)
     localStorage.setItem('uuid', uuid)
     localStorage.setItem('username', username)
+  },
+
+  // 用服务端用户信息恢复前端登录态（lite 端 Cookie 登录后打开 Vue 页的场景）。
+  // 后端 /auth/user 以 HttpOnly Cookie 通过认证，前端脚本读不到 Cookie，
+  // 由后端判定通过后，这里把用户信息写回 localStorage 使界面感知登录。
+  // 本地若没有 token，写入哨兵值以维持 isLoggedIn() 与既有 !!token 判断的一致性
+  //（凭证仍是 Cookie，哨兵 token 不会作为请求认证凭证使用）。
+  restoreSession(userData = {}) {
+    if (!localStorage.getItem('token')) {
+      localStorage.setItem('token', '__cookie__')
+    }
+    if (userData.uuid) localStorage.setItem('uuid', userData.uuid)
+    if (userData.username) localStorage.setItem('username', userData.username)
+  },
+
+  // 登出：清除后端 HttpOnly Cookie（前端无法直接删除，必须请求后端）。
+  // Cookie 清除后，响应拦截器收到 401 会自动清理本地状态；此处也返回成功由调用方清理。
+  logout() {
+    // Cookie 为 HttpOnly，脚本无法删除；请求后端清除，并静默处理失败
+    return request.post('/auth/logout', null, { skipSuccessToast: true })
   },
 
   clearAuth() {
@@ -835,6 +856,24 @@ export const ApiKeyApi = {
   }
 }
 
+// ========== 个人中心 API ==========
+export const PersonalApi = {
+  // 个人登录记录
+  getLoginLogs(page = 1, pageSize = 20) {
+    return request.get('/user/login-logs', { params: { page, pageSize } })
+  },
+
+  // 个人操作记录
+  getRecords(page = 1, pageSize = 20) {
+    return request.get('/user/records', { params: { page, pageSize } })
+  },
+
+  // 个人上传文件统计（公共文件）
+  getStats() {
+    return request.get('/user/stats')
+  }
+}
+
 // ========== 安全事件 API ==========
 export const SecurityApi = {
   // 分页查询安全事件（支持 severity/eventType/clientIP/identity/result/guard/unread/from/to/q 过滤）
@@ -877,5 +916,6 @@ export default {
   BehaviorAnalyticsApi,
   NotificationApi,
   ApiKeyApi,
-  SecurityApi
+  SecurityApi,
+  PersonalApi
 }

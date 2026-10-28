@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/icons/logo.svg">
 <title>{{.Title}}</title>
 <style type="text/css">
 /* 主色使用品牌可读橙 #B25A00（对白字对比度 4.8:1，达 WCAG AA），与全端一致 */
@@ -36,6 +37,44 @@ body {
 }
 .search {
   float: right;
+}
+/* 页头登录态入口 */
+.auth {
+  float: right;
+  line-height: 40px;
+  margin-left: 16px;
+  font-size: 13px;
+}
+.auth a {
+  color: #B25A00;
+  text-decoration: none;
+}
+.auth a:hover,
+.auth a:focus-visible {
+  text-decoration: underline;
+}
+.auth .sep {
+  margin: 0 2px;
+  color: #ccc;
+}
+.auth .who {
+  color: #666;
+}
+.auth .logout-form {
+  display: inline;
+  margin: 0;
+}
+.auth .logout-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #B25A00;
+  cursor: pointer;
+}
+.auth .logout-btn:hover,
+.auth .logout-btn:focus-visible {
+  text-decoration: underline;
 }
 .search-txt {
   width: 300px;
@@ -196,6 +235,15 @@ tr:hover td {
   <div class="brand">
     {{if .LogoPath}}<img class="logo" src="{{.LogoPath}}" alt="{{.AppName}}" width="40" height="40">{{end}}
     <span class="title">{{.AppName}}</span>
+  </div>
+  <div class="auth">
+    {{if .LoggedIn}}
+      <span class="who">{{.Username}}</span><span class="sep">|</span>
+      <form method="post" action="/lite/logout" class="logout-form"><button type="submit" class="logout-btn">退出</button></form>
+    {{else}}
+      <a href="/lite/login">登录</a>
+      {{if .ShowRegister}}<span class="sep">|</span><a href="/lite/register">注册</a>{{end}}
+    {{end}}
   </div>
   <form action="/lite" method="get" class="search">
     <input type="text" name="q" value="{{.SearchQuery}}" class="search-txt" placeholder="搜索（空格多词 / .ext 按类型）">

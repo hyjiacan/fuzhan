@@ -93,10 +93,14 @@ func NewAuthMiddleware(db *gorm.DB) *AuthMiddleware {
 // AuthRequired 是一个JWT认证中间件，检查用户是否被禁用（实时查库）
 func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 登录凭证只接受 Authorization 请求头（token 不允许出现在 URL 中）
+		// 登录凭证优先取 Authorization 请求头（token 不允许出现在 URL 中）
 		tokenString := c.GetHeader("Authorization")
 		if tokenString != "" {
 			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		}
+		// 无请求头时回退读取 HttpOnly Cookie（Vue 同源请求自动携带，统一两端会话）
+		if tokenString == "" {
+			tokenString = TokenFromCookie(c)
 		}
 		if tokenString == "" {
 			// 无 Authorization：若已被 LoginGate 通过下载票据（URL 上的 t=）鉴权，
@@ -200,11 +204,18 @@ func RequireAdmin() gin.HandlerFunc {
 func (am *AuthMiddleware) AuthOptional() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString := ""
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+		// 无请求头时回退读取 HttpOnly Cookie（统一两端会话）
+		if tokenString == "" {
+			tokenString = TokenFromCookie(c)
+		}
+		if tokenString == "" {
 			c.Next()
 			return
 		}
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := jwt.ParseJWT(tokenString)
 		if err != nil {
 			c.Next()
@@ -283,10 +294,13 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 			}
 		}
 
-		// 登录凭证只接受 Authorization 请求头（token 不允许出现在 URL 中）
+		// 登录凭证优先接受 Authorization 请求头（token 不允许出现在 URL 中）；
+		// 无该头（浏览器原生请求、轻量版 /lite 页面）时回退读取 HttpOnly 会话 Cookie。
 		tokenString := c.GetHeader("Authorization")
 		if tokenString != "" {
 			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		} else {
+			tokenString = TokenFromCookie(c)
 		}
 		if tokenString == "" {
 			am.handleUnauthenticated(c)
@@ -359,7 +373,9 @@ func normalizeTicketPath(p string) string {
 // handleUnauthenticated 未认证请求分流：
 //   - CLI（curl/wget）：返回 401 JSON（命令行避免被 302 重定向误导）
 //   - 浏览器主导航型（Sec-Fetch-Mode: navigate 或 Accept 期望 HTML）：
-//     302 重定向到登录页并携带 redirect=原请求地址，登录成功后自动回跳执行
+//     302 重定向到登录页并携带 redirect=原请求地址，登录成功后自动回跳执行；
+//     /lite 前缀的请求跳转到轻量版自带的服务器渲染登录页（低版本/低性能设备兼容），
+//     其余跳转到 Vue 前端登录页。
 //   - 其余（前端 XHR/fetch/API）：返回 401 JSON，由前端统一跳转登录页
 func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
 	if isCLINavigation(c) {
@@ -368,6 +384,10 @@ func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
 	}
 	if isBrowserNavigation(c) {
 		redirect := url.QueryEscape(c.Request.URL.RequestURI())
+		if strings.HasPrefix(c.Request.URL.Path, "/lite") {
+			c.Redirect(http.StatusFound, "/lite/login?redirect="+redirect)
+			return
+		}
 		c.Redirect(http.StatusFound, frontendBase(c)+"/#/login?redirect="+redirect)
 		return
 	}

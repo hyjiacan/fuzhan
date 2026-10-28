@@ -685,8 +685,8 @@ function onRangeChange() {
 }
 
 // ============ 实时通道：SSE（fetch 流式）优先，失败/不支持时降级为轮询 ============
-// EventSource 无法自定义请求头（登录凭证只走 Authorization，不进 URL），故改用
-// fetch 流式读取，按 "data: {json}\n\n" 帧解析；断流/连续失败 ≥2 次则降级轮询。
+// fetch 流式读取同源 URL，登录凭证由后端 HttpOnly Cookie 自动携带（与 vue/lite 统一会话），
+// 无需手动附加 Authorization 头；按 "data: {json}\n\n" 帧解析；断流/连续失败 ≥2 次则降级轮询。
 const SSE_URL = '/api/v1/web/admin/resource/stream'
 let sseCtrl = null       // AbortController，停止时中断 fetch 流
 let sseReader = null
@@ -699,9 +699,9 @@ function startSSE() {
   stopPolling()
   const ctrl = new AbortController()
   sseCtrl = ctrl
-  const token = localStorage.getItem('token') || ''
+  // 同源 fetch 默认携带 Cookie，作为登录凭证（HttpOnly 脚本不可读，无需手动附加）
   fetch(SSE_URL, {
-    headers: { Authorization: `Bearer ${token}` }
+    signal: ctrl.signal
   }).then(async (resp) => {
     if (ctrl.signal.aborted) return
     if (!resp.ok || !resp.body) {

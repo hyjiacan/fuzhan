@@ -41,23 +41,33 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, InfoFilled, Coin, Folder, Lock } from '@element-plus/icons-vue'
+import { User, InfoFilled, Coin, Folder, Clock, List } from '@element-plus/icons-vue'
+import store from '@/store'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
 
-const menuOptions = [
-  { label: '信息', key: '/user/info', icon: InfoFilled },
-  { label: '存储', key: '/user/storage', icon: Coin },
-  { label: '私有文件', key: '/user/files', icon: Folder },
-  { label: '修改密码', key: '/user/password', icon: Lock }
-]
+// 私有存储仅在启用时显示「私有文件」入口
+const privateStorageEnabled = computed(() => store.state.config.privateStorageEnabled !== false)
+
+const menuOptions = computed(() => {
+  const options = [
+    { label: '信息', key: '/user/info', icon: InfoFilled },
+    { label: '存储', key: '/user/storage', icon: Coin },
+    { label: '登录记录', key: '/user/login-logs', icon: Clock },
+    { label: '操作记录', key: '/user/records', icon: List }
+  ]
+  if (privateStorageEnabled.value) {
+    options.splice(2, 0, { label: '私有文件', key: '/user/files', icon: Folder })
+  }
+  return options
+})
 
 // Active key matches current route
 const activeKey = computed(() => {
   const path = route.path
-  for (const opt of menuOptions) {
+  for (const opt of menuOptions.value) {
     if (path.startsWith(opt.key)) {
       return opt.key
     }

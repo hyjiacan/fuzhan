@@ -19,3 +19,6 @@ var SystemdServiceTemplate string
 
 //go:embed lite_page.html
 var LitePageTpl string
+
+//go:embed auth_page.html
+var LiteAuthPageTpl string

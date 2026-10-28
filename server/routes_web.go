@@ -66,6 +66,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		// 登出：清除 HttpOnly Cookie（Cookie 为 HttpOnly，必须由后端清除）
+		auth.POST("/logout", authHandler.Logout)
 		// 外部 OAuth2/OIDC 认证：状态查询、发起授权、回调换取本地令牌
 		auth.GET("/oauth2/status", authHandler.OAuth2Status)
 		auth.GET("/oauth2/authorize", authHandler.OAuth2Authorize)
@@ -244,6 +246,11 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.POST("/auth/refresh", authHandler.Login) // 复用登录逻辑
 		protected.GET("/auth/user", authHandler.GetCurrentUser)
 		protected.PUT("/auth/password", authHandler.ChangePassword)
+
+		// 个人中心路由（登录记录 / 操作记录 / 存储统计）
+		protected.GET("/user/login-logs", rt.userHandler.GetLoginLogs)
+		protected.GET("/user/records", rt.userHandler.GetRecords)
+		protected.GET("/user/stats", rt.userHandler.GetStats)
 
 		// 文件管理路由已全部迁移至 admin 组（仅管理员可操作公开文件）
 		protected.GET("/get_file_info", func(c *gin.Context) {

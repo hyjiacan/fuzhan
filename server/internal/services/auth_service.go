@@ -64,13 +64,9 @@ type AuthResponse struct {
 
 // Register 用户注册
 func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
-	// 独立注册开关优先检查（与私有存储启用状态解耦）
+	// 注册功能仅由「允许注册」开关控制（与私有存储启用状态解耦）
 	if !appconfig.GlobalConfig.Account.AllowRegistration {
 		return nil, errors.New("注册功能已关闭")
-	}
-
-	if !appconfig.GlobalConfig.Storage.Private.Enabled {
-		return nil, errors.New("私有存储未启用，暂不支持注册")
 	}
 
 	for _, reserved := range appconfig.GetReservedUsernames() {
@@ -166,10 +162,6 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 		return nil, err
 	}
 
-	if !appconfig.GlobalConfig.Storage.Private.Enabled && user.Role != "admin" {
-		return nil, errors.New("私有存储未启用，仅管理员可登录")
-	}
-
 	role := user.Role
 	if role == "" {
 		role = "user"
@@ -194,9 +186,6 @@ func (s *AuthService) LoginByUser(user *models.User) (*AuthResponse, error) {
 	}
 	if user.Disabled {
 		return nil, errors.New("账户已被禁用")
-	}
-	if !appconfig.GlobalConfig.Storage.Private.Enabled && user.Role != "admin" {
-		return nil, errors.New("私有存储未启用，仅管理员可登录")
 	}
 
 	role := user.Role

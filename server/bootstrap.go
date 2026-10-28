@@ -31,6 +31,7 @@ import (
 	"fuzhan/internal/setup"
 	"fuzhan/internal/storage"
 	temph "fuzhan/internal/temp"
+	"fuzhan/internal/user"
 	"fuzhan/internal/utils"
 	"fuzhan/internal/webhook"
 	"fuzhan/pkg/jwt"
@@ -80,7 +81,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	})
 
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{})
+	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{})
 
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
@@ -252,7 +253,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	searchHandlers := file.NewSearchHandlers(searchService, recordRepo)
 	cliHandlers := cli.NewCLIHandlers(fileService, searchService)
 	bindingExampleHandler := configh.NewBindingExampleHandler()
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, db)
 	healthHandler := health.NewHealthHandler(db)
 	setupHandler := setup.NewSetupHandler()
 	configHandler := configh.NewHandler()
@@ -347,7 +348,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 文件名检索提示处理器（索引未打开时为 nil，搜索联想/纠错不可用）
 	suggestHandler := search.NewHandler(idxSearch)
 	// /lite 轻量版页面检索的推荐/纠错同样依赖检索索引
-	liteHandlers := lite.NewHandlers(searchService)
+	liteHandlers := lite.NewHandlers(searchService, authService, db)
 	liteHandlers.SearchIndex = idxSearch
 
 	// 临时文件处理器 (基于IP，无需认证)
@@ -405,6 +406,9 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 最近上传记录处理器 (无需认证)
 	recentHandler := file.NewRecentHandler(recordRepo, db)
 
+	// 个人中心处理器（登录/操作记录等，需认证）
+	userHandler := user.NewHandler(recordRepo, db)
+
 	// 系统监测处理器 (无需认证)
 	monitorService := services.NewMonitorService(recordRepo, db)
 	monitorHandler := monitor.NewHandler(monitorService)
@@ -458,6 +462,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		openAPIHandler:           openAPIHandler,
 		suggestHandler:           suggestHandler,
 		recentHandler:            recentHandler,
+		userHandler:              userHandler,
 		monitorHandler:           monitorHandler,
 		resourceHandler:          resourceHandler,
 		previewHandler:           previewHandler,

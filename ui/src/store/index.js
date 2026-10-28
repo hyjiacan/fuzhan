@@ -1,23 +1,10 @@
 import { reactive, readonly } from 'vue'
 import { useToast } from '@/composables/useToast'
-import { FileApi, AdminApi, SearchApi } from '@/api'
+import { FileApi, AdminApi, SearchApi, AuthApi } from '@/api'
 import { compareFileNames } from '@/utils'
 
-// 检查是否有保存的登录状态
-const savedToken = localStorage.getItem('token')
-const savedUsername = localStorage.getItem('username')
-
-// 解码 JWT payload（仅 base64 解码，不验证签名）
-function decodeJwtPayload(token) {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const decoded = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(decoded)
-  } catch {
-    return null
-  }
-}
+// 检查是否有保存的登录状态（登录凭证由后端 HttpOnly Cookie 承载，
+// 本地 token/uuid/username 仅作为界面登录态的标志，供 isLoggedIn 等判断）
 
 // Toast 实例
 const toast = useToast()
@@ -26,10 +13,10 @@ const toast = useToast()
 const state = reactive({
   // 用户信息
   user: {
-    authenticated: !!savedToken,
-    name: savedUsername || '',
+    authenticated: AuthApi.isLoggedIn(),
+    name: localStorage.getItem('username') || '',
     avatar: '',
-    token: savedToken || ''
+    token: localStorage.getItem('token') || ''
   },
 
   // 系统配置
@@ -255,29 +242,13 @@ const actions = {
     }
   },
 
-  // 验证登录状态（由 main.js 启动时请求服务器验证，此处仅做本地检查）
+  // 验证登录状态（由 main.js 启动时请求服务器以 Cookie 验证，此处仅做本地检查）。
+  // 登录凭证由后端 HttpOnly Cookie 承载，本地是否有 token 标志即代表前端登录态；
+  // 无需本地解析 JWT（Cookie 失效时后端会以 401 反馈并通过响应拦截器清理本地状态）。
   async validateAuth() {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      mutations.setAuthenticated(false)
-      return false
-    }
-
-    // 本地解析 JWT payload 检查 exp（快速路径，格式显然过期的不再请求后端）
-    const payload = decodeJwtPayload(token)
-    if (payload && payload.exp) {
-      if (Date.now() >= payload.exp * 1000) {
-        mutations.setAuthenticated(false)
-        localStorage.removeItem('token')
-        localStorage.removeItem('uuid')
-        localStorage.removeItem('username')
-        localStorage.removeItem('userRole')
-        return false
-      }
-    }
-
-    // main.js 启动时已验证服务器端 token 有效性
-    return true
+    const authenticated = AuthApi.isLoggedIn()
+    mutations.setAuthenticated(authenticated)
+    return authenticated
   },
 
   // 加载文件列表

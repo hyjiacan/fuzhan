@@ -16,6 +16,8 @@ type AuditStore interface {
 	GetByID(id uint) (*models.OperationRecord, error)
 	ListByUserID(userID string, page, pageSize int) ([]models.OperationRecord, int64, error)
 	ListByIP(clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error)
+	// ListByUserIDOrIP 获取用户ID或IP相关的所有记录（个人操作记录）
+	ListByUserIDOrIP(userID, clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error)
 	ListRecent(clientIP string, limit int) ([]models.OperationRecord, error)
 	ListRecentAll(limit int, action string) ([]models.OperationRecord, error)
 	ListRecentAllPaginated(page, pageSize int, action string) ([]models.OperationRecord, int64, error)

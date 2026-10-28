@@ -44,3 +44,34 @@ func LoadLitePageTpl() string {
 	content, _ := LitePageContent()
 	return content
 }
+
+// authPageDiskCandidates 返回磁盘上 auth_page.html 的候选路径（与 lite_page.html 一致）。
+func authPageDiskCandidates() []string {
+	var dirs []string
+	if exe, err := os.Executable(); err == nil {
+		if d, derr := filepath.Abs(filepath.Dir(exe)); derr == nil {
+			dirs = append(dirs, d)
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if a, aerr := filepath.Abs(cwd); aerr == nil {
+			dirs = append(dirs, a)
+		}
+	}
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		out = append(out, filepath.Join(d, "internal", "resources", "auth_page.html"))
+	}
+	return out
+}
+
+// LiteAuthPageContent 返回 /lite 认证页模板内容及来源：磁盘模板存在时 (内容, true)，
+// 否则回退到程序内嵌入的模板返回 (嵌入内容, false)。
+func LiteAuthPageContent() (content string, fromDisk bool) {
+	for _, p := range authPageDiskCandidates() {
+		if data, err := os.ReadFile(p); err == nil {
+			return string(data), true
+		}
+	}
+	return LiteAuthPageTpl, false
+}

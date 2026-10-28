@@ -33,6 +33,9 @@ func (noopAudit) ListByUserID(_ string, _, _ int) ([]models.OperationRecord, int
 func (noopAudit) ListByIP(_ string, _, _ int) ([]models.OperationRecord, int64, error) {
 	return nil, 0, nil
 }
+func (noopAudit) ListByUserIDOrIP(_, _ string, _, _ int) ([]models.OperationRecord, int64, error) {
+	return nil, 0, nil
+}
 func (noopAudit) ListRecent(_ string, _ int) ([]models.OperationRecord, error)    { return nil, nil }
 func (noopAudit) ListRecentAll(_ int, _ string) ([]models.OperationRecord, error) { return nil, nil }
 func (noopAudit) ListRecentAllPaginated(_, _ int, _ string) ([]models.OperationRecord, int64, error) {

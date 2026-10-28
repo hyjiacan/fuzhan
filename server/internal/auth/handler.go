@@ -15,6 +15,7 @@ import (
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // recordAuthEvent 将登录/注册相关风险写入安全事件库（供暴破分析与强提醒）。
@@ -38,11 +39,40 @@ func handleLoginBlocked(c *gin.Context) {
 type Handler struct {
 	authService   *services.AuthService
 	oauth2Service *OAuth2Service
+	db            *gorm.DB
 }
 
 // NewHandler 创建认证处理器实例
-func NewHandler(authService *services.AuthService) *Handler {
-	return &Handler{authService: authService}
+func NewHandler(authService *services.AuthService, db *gorm.DB) *Handler {
+	return &Handler{authService: authService, db: db}
+}
+
+// recordLoginLog 记录登录/注册事件到 login_logs（成功与失败均记录）。
+func (h *Handler) recordLoginLog(c *gin.Context, userID, username, method, status, failReason string) {
+	RecordLoginLog(h.db, c, userID, username, method, status, failReason)
+}
+
+// RecordLoginLog 将登录/注册事件写入 login_logs（成功与失败均记录）。
+// 供 web 与 lite 两端登录/注册共用，保持个人登录记录口径一致。
+func RecordLoginLog(db *gorm.DB, c *gin.Context, userID, username, method, status, failReason string) {
+	if db == nil {
+		return
+	}
+	log := &models.LoginLog{
+		UserID:     userID,
+		Username:   username,
+		Method:     method,
+		ClientIP:   utils.GetClientIP(c),
+		UserAgent:  c.Request.UserAgent(),
+		Status:     status,
+		FailReason: failReason,
+	}
+	if len(log.UserAgent) > 512 {
+		log.UserAgent = log.UserAgent[:512]
+	}
+	if err := db.Create(log).Error; err != nil {
+		utils.Warn("写入登录日志失败", utils.Err(err))
+	}
 }
 
 // SetOAuth2Service 注入 OAuth2 认证服务（无论初始是否启用都注入，便于配置保存后热启用）
@@ -78,11 +108,16 @@ func (h *Handler) Register(c *gin.Context) {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.register", req.Username, err)
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.register", req.Username, models.SeverityMedium, "注册失败: "+err.Error())
+		h.recordLoginLog(c, "", req.Username, "register", "failed", err.Error())
 		response.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	middleware.LogOperation(c, "auth.register", req.Username, nil)
+	h.recordLoginLog(c, resp.UUID, resp.Username, "register", "success", "")
+	// 注册即登录（与轻量版一致）：把 JWT 写入 HttpOnly Cookie，
+	// 使 Vue 与 lite 两端登录态统一，均由同源 Cookie 承载。
+	middleware.SetAuthCookie(c, resp.Token)
 	response.HandleSuccess(c, http.StatusCreated, "注册成功", resp)
 }
 
@@ -104,12 +139,23 @@ func (h *Handler) Login(c *gin.Context) {
 		registerLoginFailure(utils.GetClientIP(c))
 		middleware.LogOperation(c, "auth.login", req.Username, err)
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.login", req.Username, models.SeverityMedium, "登录失败: "+err.Error())
+		h.recordLoginLog(c, "", req.Username, "local", "failed", err.Error())
 		response.HandleUnauthorized(c, err.Error())
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	middleware.LogOperation(c, "auth.login", req.Username, nil)
+	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
+	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
+	middleware.SetAuthCookie(c, resp.Token)
 	response.HandleSuccess(c, http.StatusOK, "登录成功", resp)
+}
+
+// Logout 登出：清除 HttpOnly Cookie，同时清理前端由服务端维护的会话凭证。
+// Cookie 为 HttpOnly，前端脚本无法直接删除，必须由后端清除。
+func (h *Handler) Logout(c *gin.Context) {
+	middleware.ClearAuthCookie(c)
+	response.HandleSuccess(c, http.StatusOK, "已退出登录", nil)
 }
 
 // GetCurrentUser 获取当前用户信息
@@ -126,6 +172,8 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 	}
 	if newToken != "" {
 		data["refreshedToken"] = newToken
+		// 令牌被刷新时同步更新 HttpOnly Cookie，保持两端会话一致。
+		middleware.SetAuthCookie(c, newToken)
 	}
 	response.HandleSuccess(c, http.StatusOK, "", data)
 }
@@ -221,6 +269,10 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 		return
 	}
 	middleware.LogOperation(c, "auth.oauth2.login", user.Username, nil)
+	h.recordLoginLog(c, resp.UUID, resp.Username, "oauth2", "success", "")
+
+	// OAuth2 登录成功也写 HttpOnly Cookie，统一会话凭证（lite 端同样可用）。
+	middleware.SetAuthCookie(c, resp.Token)
 
 	q := url.Values{}
 	q.Set("token", resp.Token)

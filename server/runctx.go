@@ -27,6 +27,7 @@ import (
 	"fuzhan/internal/setup"
 	"fuzhan/internal/storage"
 	temph "fuzhan/internal/temp"
+	"fuzhan/internal/user"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -72,6 +73,7 @@ type runCtx struct {
 	openAPIHandler           *openapi.Handler
 	suggestHandler           *search.Handler
 	recentHandler            *file.RecentHandler
+	userHandler              *user.Handler
 	monitorHandler           *monitor.Handler
 	resourceHandler          *resource.Handler
 	previewHandler           *file.PreviewHandler

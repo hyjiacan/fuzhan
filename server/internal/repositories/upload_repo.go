@@ -322,6 +322,21 @@ func (r *RecordRepository) ListByIP(clientIP string, page, pageSize int) ([]mode
 	return records, total, err
 }
 
+// ListByUserIDOrIP 获取用户ID或IP相关的所有记录（个人操作记录）
+// 同时按 user_id 与 client_ip 匹配：私有上传记录 UserID=用户UUID，
+// 公开上传/下载记录仅带 ClientIP（UserID 为空），故需两者取并集。
+func (r *RecordRepository) ListByUserIDOrIP(userID, clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error) {
+	var records []models.OperationRecord
+	var total int64
+
+	query := r.db.Model(&models.OperationRecord{}).Where("user_id = ? OR client_ip = ?", userID, clientIP)
+	query.Count(&total)
+
+	offset := (page - 1) * pageSize
+	err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&records).Error
+	return records, total, err
+}
+
 // ListRecent 获取最近的记录
 func (r *RecordRepository) ListRecent(clientIP string, limit int) ([]models.OperationRecord, error) {
 	var records []models.OperationRecord

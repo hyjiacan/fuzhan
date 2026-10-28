@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/icons/logo.svg">
+<title>{{.Title}}</title>
+<style type="text/css">
+/* 主色使用品牌可读橙 #B25A00（对白字对比度 4.8:1，达 WCAG AA），与 /lite 全端一致 */
+body {
+  margin: 0;
+  background: #f7f7f7;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: #333;
+}
+
+.header {
+  background: #fff;
+  border-bottom: 2px solid #B25A00;
+  padding: 12px 24px;
+  overflow: hidden; /* 包含内部 float，避免 header 塌陷 */
+}
+.brand {
+  float: left;
+  line-height: 40px;
+}
+.logo {
+  vertical-align: middle;
+  border: 0;
+}
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #B25A00;
+  vertical-align: middle;
+}
+.back {
+  float: right;
+  line-height: 40px;
+  color: #B25A00;
+  text-decoration: none;
+  font-size: 13px;
+}
+.back:hover,
+.back:focus-visible {
+  text-decoration: underline;
+}
+
+.wrap {
+  padding: 32px 16px 24px;
+}
+
+/* 认证卡片：居中、窄宽，低版本/低性能设备也能流畅渲染 */
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 4px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.auth-card h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  color: #333;
+  text-align: center;
+}
+.auth-switch {
+  margin: 4px 0 20px;
+  text-align: center;
+  font-size: 13px;
+  color: #666;
+}
+.auth-switch a {
+  color: #B25A00;
+  text-decoration: none;
+}
+.auth-switch a:hover,
+.auth-switch a:focus-visible {
+  text-decoration: underline;
+}
+
+/* 错误提示 */
+.error {
+  margin: 0 0 16px;
+  padding: 8px 10px;
+  background: #fdecea;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  color: #b02a37;
+  font-size: 13px;
+}
+
+label {
+  display: block;
+  margin: 14px 0 4px;
+  color: #555;
+  font-size: 13px;
+}
+.input {
+  width: 100%;
+  height: 36px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #333;
+}
+.note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #999;
+}
+
+/* 无障碍：键盘焦点可见（与全端焦点环一致） */
+.input:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid #B25A00;
+  outline-offset: 2px;
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin-top: 24px;
+  background: #B25A00;
+  border: 1px solid #B25A00;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #9C4F00;
+  border-color: #9C4F00;
+}
+.btn:active {
+  background: #7A3C00;
+  border-color: #7A3C00;
+}
+.btn[disabled] {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* 简易页脚 */
+.footer {
+  margin-top: 32px;
+  padding: 16px 24px;
+  border-top: 1px solid #e3e6ea;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.footer a {
+  color: #B25A00;
+  text-decoration: none;
+}
+.footer a:hover {
+  text-decoration: underline;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="brand">
+    {{if .LogoPath}}<img class="logo" src="{{.LogoPath}}" alt="{{.AppName}}" width="40" height="40">{{end}}
+    <span class="title">{{.AppName}}</span>
+  </div>
+  <a class="back" href="/lite">返回轻量版首页</a>
+</div>
+
+<div class="wrap">
+  <div class="auth-card">
+    <h1>{{.Heading}}</h1>
+    <div class="auth-switch">
+      {{if eq .Heading "登录"}}
+          {{if AllowRegistration}}还没有账号？<a href="/lite/register{{if (ne .Redirect "")}}?redirect={{.Redirect}}{{end}}">去注册</a>{{end}}
+        {{else}}
+          已有账号？<a href="/lite/login{{if (ne .Redirect "")}}?redirect={{.Redirect}}{{end}}">去登录</a>
+        {{end}}
+    </div>
+
+    {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
+
+    {{if eq .Heading "登录"}}
+    <form method="post" action="/lite/login">
+    {{else}}
+    <form method="post" action="/lite/register">
+    {{end}}
+      <input type="hidden" name="redirect" value="{{.Redirect}}">
+      <label for="username">用户名</label>
+      <input class="input" type="text" id="username" name="username" value="{{.Username}}" required minlength="3" maxlength="32" autocomplete="username"{{if (ne .Username "")}} placeholder="请输入 3-32 位用户名"{{end}}>
+      <p class="note">3-32 位，不包含空白字符</p>
+      <label for="password">密码</label>
+      <input class="input" type="password" id="password" name="password" required minlength="6" maxlength="128" autocomplete="{{if eq .Heading "登录"}}current-password{{else}}new-password{{end}}" placeholder="请输入 6-128 位密码">
+      <p class="note">6-128 位</p>
+      <button type="submit" class="btn">{{if eq .Heading "登录"}}登 录{{else}}注 册{{end}}</button>
+    </form>
+  </div>
+</div>
+
+<div class="footer">
+  {{.AppName}} · 轻量版 | <a href="/">完整版</a>
+</div>
+</body>
+</html>

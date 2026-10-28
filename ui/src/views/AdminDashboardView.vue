@@ -97,7 +97,7 @@
               </div>
               <el-empty v-else description="暂无临时文件" />
             </el-card>
-            <el-card class="chart-card" shadow="never">
+            <el-card v-if="privateStorageEnabled" class="chart-card" shadow="never">
               <template #header>私有存储配额</template>
               <div v-if="Object.keys(storageStats.private?.usedByUser || {}).length > 0" class="quota-list">
                 <div class="quota-header cols-2">
@@ -165,13 +165,17 @@
 </template>
 
 <script setup>
-import { ref, h, onMounted } from 'vue'
+import { ref, h, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
 import { AdminApi, MonitorApi, IndexApi } from '@/api'
+import store from '@/store'
 
 const router = useRouter()
+
+// 私有存储未启用时隐藏「私有存储配额」卡片
+const privateStorageEnabled = computed(() => store.state.config.privateStorageEnabled !== false)
 
 // ============ 概览部分 ============
 

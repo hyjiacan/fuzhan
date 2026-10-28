@@ -53,6 +53,7 @@ declare module 'vue' {
     ElMenuItem: typeof import('element-plus/es')['ElMenuItem']
     ElMenuItemGroup: typeof import('element-plus/es')['ElMenuItemGroup']
     ElOption: typeof import('element-plus/es')['ElOption']
+    ElOptionGroup: typeof import('element-plus/es')['ElOptionGroup']
     ElPagination: typeof import('element-plus/es')['ElPagination']
     ElProgress: typeof import('element-plus/es')['ElProgress']
     ElRadio: typeof import('element-plus/es')['ElRadio']
@@ -88,7 +89,8 @@ declare module 'vue' {
     UploadStatusDialog: typeof import('./components/upload/UploadStatusDialog.vue')['default']
     UploadTaskTable: typeof import('./components/upload/UploadTaskTable.vue')['default']
     UserInfoSection: typeof import('./components/user/UserInfoSection.vue')['default']
-    UserPasswordSection: typeof import('./components/user/UserPasswordSection.vue')['default']
+    UserLoginLogsSection: typeof import('./components/user/UserLoginLogsSection.vue')['default']
+    UserRecordsSection: typeof import('./components/user/UserRecordsSection.vue')['default']
     UserStorageSection: typeof import('./components/user/UserStorageSection.vue')['default']
   }
   export interface GlobalDirectives {

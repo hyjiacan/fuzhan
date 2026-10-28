@@ -9,6 +9,8 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/search"
+
+	"github.com/gin-gonic/gin"
 )
 
 // TestBrowseRender 验证 /lite 根级与子目录浏览渲染。
@@ -78,7 +80,64 @@ func TestSecurity(t *testing.T) {
 	}
 }
 
-// TestSearchRel 验证检索完整路径还原为相对路径，避免 encodeRelPath 二次前置 rootName。
+// TestAuthPageRender 验证登录/注册认证页模板可解析渲染，
+// 且登录页含「去注册」链接、注册页含「去登录」链接。
+func TestAuthPageRender(t *testing.T) {
+	oldCfg := appconfig.GlobalConfig
+	defer func() { appconfig.GlobalConfig = oldCfg }()
+	appconfig.GlobalConfig.Account.AllowRegistration = true
+
+	gin.SetMode(gin.TestMode)
+
+	tmpl, err := authTmpl()
+	if err != nil {
+		t.Fatalf("解析认证页模板失败: %v", err)
+	}
+	v := authErrView{
+		Title:    "测试 - 登录 - 轻量版",
+		AppName:  "测试",
+		Heading:  "登录",
+		Redirect: "/lite/dir",
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, v); err != nil {
+		t.Fatalf("渲染登录页失败: %v", err)
+	}
+	body := buf.String()
+	// 页间跳转链接：Redirect 由 html/template 自动做 URL 上下文转义（/ 会随上下文编码），
+	// 只需断言链接携带 redirect 参数名且指向注册页即可；无 Redirect 时不应出现 ?redirect=
+	for _, want := range []string{"去注册", "/lite/login", "/lite/register"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("登录页缺少 %q\n%s", want, body)
+		}
+	}
+	if !strings.Contains(body, "?redirect=") {
+		t.Errorf("登录页应携带 redirect 查询参数\n%s", body)
+	}
+
+	// 「允许注册」关闭：登录页不应再出现「去注册」
+	appconfig.GlobalConfig.Account.AllowRegistration = false
+	buf.Reset()
+	if err := tmpl.Execute(&buf, v); err != nil {
+		t.Fatalf("渲染登录页失败: %v", err)
+	}
+	if strings.Contains(buf.String(), "去注册") {
+		t.Errorf("关闭「允许注册」后登录页不应出现「去注册」\n%s", buf.String())
+	}
+	appconfig.GlobalConfig.Account.AllowRegistration = true
+
+	v.Heading = "注册"
+	buf.Reset()
+	if err := tmpl.Execute(&buf, v); err != nil {
+		t.Fatalf("渲染注册页失败: %v", err)
+	}
+	body = buf.String()
+	if !strings.Contains(body, "去登录") || !strings.Contains(body, "/lite/register") {
+		t.Errorf("注册页应含「去登录」且表单 action 指向 /lite/register\n%s", body)
+	}
+}
+
+
 func TestSearchRel(t *testing.T) {
 	cases := []struct {
 		path, rootName, want string

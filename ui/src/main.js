@@ -4,6 +4,7 @@ import router, { setSetupRedirect } from './router'
 import { loadPreviewConfig } from '@/config/preview'
 import store from '@/store'
 import { SetupApi, SystemApi, AuthApi, NotificationApi } from '@/api'
+import { AppError, ErrorCategory } from '@/utils/error'
 
 // ElMessage / ElMessageBox 为 JS 函数式调用，不会被 unplugin-vue-components 的
 // ElementPlusResolver 自动注入样式，需在此按需导入，否则弹层无样式
@@ -28,19 +29,18 @@ let notificationPollTimer = null
 // 初始化 AnonymousID（首次访问页面时生成）
 initAnonymousId()
 
-// 启动时验证 token 服务器端有效性
-validateTokenOnServer()
-
 // 先加载公开配置与初始化状态（在 mount 之前完成，确保首屏路由守卫能读到 requireLogin 等配置），
-// 因此「强制登录」模式下可正确将未登录用户重定向到登录页
+// 因此「强制登录」模式下可正确将未登录用户重定向到登录页。
+// 登录态探测（HttpOnly Cookie）与配置并行，保证 mount 前恢复两端统一登录态。
 loadConfigAndCheckSetup()
 
 async function loadConfigAndCheckSetup() {
   try {
-    // 挂载前并行请求配置与初始化状态
+    // 挂载前并行请求配置、初始化状态与登录态探测
     const [optionsRes, statusRes] = await Promise.all([
       SystemApi.getOptions(),
-      SetupApi.getStatus()
+      SetupApi.getStatus(),
+      validateTokenOnServer()
     ])
 
     // 处理配置
@@ -155,24 +155,38 @@ async function pollNotifications() {
   }
 }
 
-// 启动时验证服务器端 token 有效性，无效则静默清除并刷新菜单，不弹出任何提示
+// 启动时验证服务器端登录态（HttpOnly Cookie 承载），并恢复前端登录状态。
+// 与 lite 共享同一 Cookie 会话：lite 端登录后打开 Vue 页也能感知登录。
 async function validateTokenOnServer() {
-  const token = localStorage.getItem('token')
-  if (!token) return
-
   try {
     const data = await AuthApi.getUserInfo()
-    if (!data.success || !data.data) {
+    if (data.success && data.data) {
+      // 后端以 Cookie 放行 → 恢复前端登录态（lite 端 Cookie 登录后打开 Vue 页的场景）
+      const userData = data.data
+      AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+      store.setAuthenticated(true)
+      if (userData.role) {
+        localStorage.setItem('userRole', userData.role)
+      }
+      window.dispatchEvent(new CustomEvent('auth:changed'))
+    } else {
       clearStaleAuth()
     }
-    // 若服务端刷新了 token，响应拦截器已自动保存新 token
+    // 若服务端刷新了 token，response_wrapper 中间件会同步更新 Cookie，
+    // 无需前端额外处理 local token
   } catch (e) {
-    // token 失效（401）由响应拦截器统一清除，此处仅做兜底并刷新界面状态；
-    // 网络错误（无响应）时保持当前状态，不打扰用户
-    if (e && e.response && (e.response.status === 401 || e.response.status === 403)) {
+    // 认证错误（401/403，无 Cookie 或失效）：清除本地残留的登录态。
+    // 拦截器拒绝的是 AppError（无 response 字段），按 category === 'auth' 判断。
+    if (e instanceof AppError && e.category === ErrorCategory.AUTH) {
       clearStaleAuth()
-    } else if (e && !e.response) {
-      console.error('验证token失败:', e)
+      return
+    }
+    // 网络错误（无响应）：后端不可用，保持当前状态，不打扰用户
+    if (e && e.response) {
+      // 后端已响应但既非认证错误也非 2xx：记录但不打扰用户
+      console.error('验证登录态失败:', e)
+    } else {
+      console.error('验证登录态失败（网络错误）:', e)
     }
   }
 }

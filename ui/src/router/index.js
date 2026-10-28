@@ -17,8 +17,9 @@ const AdminLayout = () => import('../layouts/AdminLayout.vue')
 // Personal sub-views
 const UserInfoSection = () => import(/* webpackChunkName: "views-user-info" */ '../components/user/UserInfoSection.vue')
 const UserStorageSection = () => import(/* webpackChunkName: "views-user-storage" */ '../components/user/UserStorageSection.vue')
-const UserPasswordSection = () => import('../components/user/UserPasswordSection.vue')
 const PrivateStorageView = () => import(/* webpackChunkName: "views-private" */ '../views/PrivateStorageView.vue')
+const UserLoginLogsSection = () => import(/* webpackChunkName: "views-user-login-logs" */ '../components/user/UserLoginLogsSection.vue')
+const UserRecordsSection = () => import(/* webpackChunkName: "views-user-records" */ '../components/user/UserRecordsSection.vue')
 
 // Admin sub-views
 const AdminDashboardView = () => import(/* webpackChunkName: "views-admin-dashboard" */ '../views/AdminDashboardView.vue')
@@ -117,9 +118,14 @@ const router = createRouter({
           component: PrivateStorageView
         },
         {
-          path: 'password',
-          name: 'user-password',
-          component: UserPasswordSection
+          path: 'login-logs',
+          name: 'user-login-logs',
+          component: UserLoginLogsSection
+        },
+        {
+          path: 'records',
+          name: 'user-records',
+          component: UserRecordsSection
         }
       ]
     },
@@ -263,8 +269,9 @@ router.beforeEach(async (to, from) => {
   const privateStorageEnabled = store?.state?.config?.privateStorageEnabled !== false
 
   if (!privateStorageEnabled) {
-    // 私有存储未启用时，禁止访问私有/用户路由，直接重定向
-    if (to.path.startsWith('/user/') || to.path === '/user') {
+    // 私有存储未启用时，仅禁止访问「私有文件」子页，个人中心其余功能
+    //（信息/存储配额/修改密码）不受私有存储开关影响，仍保持可用
+    if (to.path === '/user/files' || to.path.startsWith('/user/files/')) {
       return { name: 'files' }
     }
   }

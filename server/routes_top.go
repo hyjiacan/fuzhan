@@ -6,6 +6,7 @@ import (
 	"fuzhan/internal/access/webdav"
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
+	litepkg "fuzhan/internal/lite"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/openapi"
@@ -97,9 +98,15 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 
 	// 轻量版入口（开启「强制登录」时需认证）：服务器渲染的纯 HTML 列表，兼容老旧浏览器，
 	// 提供目录进入与文件下载链接，不含样式/上传/其它操作。
+	// 认证入口放了白名单（匿名可访问）：登录/注册 GET 渲染与 POST 提交，以及登出 POST。
+	// 注意：gin 不允许同一前缀下静态段与 catch-all 共存（/lite/login 与 /lite/*path 冲突），
+	// 因此登录/注册/登出与浏览检索统一经 /*path 接收，由 HandleAll 内部按 path+method 分发。
+	// 且必须同时注册 GET 与 POST 两个 catch-all：缺少 POST 时，登录/注册/登出的 POST 请求
+	// 会因无匹配路由掉进 NoRoute（SPA fallback）而错误返回 Vue 页面。
 	lite := r.Group("/lite")
-	lite.Use(rt.authMiddleware.LoginGate())
-	lite.GET("/*path", rt.liteHandlers.Handle)
+	lite.Use(rt.authMiddleware.LoginGate(litepkg.LiteAuthWhiteList()...))
+	lite.GET("/*path", rt.liteHandlers.HandleAll)
+	lite.POST("/*path", rt.liteHandlers.HandleAll)
 
 	// Open API 路由组（v3 Phase 3）
 	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 调用统计 → 路由分发 → Handler

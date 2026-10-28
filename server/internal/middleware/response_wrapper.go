@@ -15,6 +15,8 @@ func ResponseWrapperMiddleware() gin.HandlerFunc {
 			if tokenStr, ok := newToken.(string); ok && tokenStr != "" {
 				// 添加到响应头
 				c.Header("X-Refreshed-Token", tokenStr)
+				// 同步更新 HttpOnly Cookie，保证 Vue 与 lite 两端会话一致
+				SetAuthCookie(c, tokenStr)
 			}
 		}
 	}
