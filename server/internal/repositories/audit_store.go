@@ -1,6 +1,20 @@
 package repositories
 
-import "fuzhan/internal/models"
+import (
+	"time"
+
+	"fuzhan/internal/models"
+)
+
+// RecordFilter 个人操作记录查询过滤条件：字段为空/零值表示不限制
+type RecordFilter struct {
+	Action     string    // 操作类型：upload / download / download-by-hash / search / preview
+	SourceType string    // 来源：public / private / temp（public 兼容历史空值）
+	Status     string    // 结果：success / failed
+	Keyword    string    // 关键词：匹配文件名、路径或搜索词
+	StartTime  time.Time // 起始时间（含）
+	EndTime    time.Time // 结束时间（含）
+}
 
 // AuditStore 审计日志存储接口：承载 OperationRecord（上传/下载/搜索等操作记录）
 // 的持久化读写。
@@ -16,8 +30,8 @@ type AuditStore interface {
 	GetByID(id uint) (*models.OperationRecord, error)
 	ListByUserID(userID string, page, pageSize int) ([]models.OperationRecord, int64, error)
 	ListByIP(clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error)
-	// ListByUserIDOrIP 获取用户ID或IP相关的所有记录（个人操作记录）
-	ListByUserIDOrIP(userID, clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error)
+	// ListByUserIDOrIP 获取用户ID或IP相关的操作记录（个人操作记录，支持过滤条件）
+	ListByUserIDOrIP(userID, clientIP string, filter RecordFilter, page, pageSize int) ([]models.OperationRecord, int64, error)
 	ListRecent(clientIP string, limit int) ([]models.OperationRecord, error)
 	ListRecentAll(limit int, action string) ([]models.OperationRecord, error)
 	ListRecentAllPaginated(page, pageSize int, action string) ([]models.OperationRecord, int64, error)

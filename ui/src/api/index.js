@@ -858,14 +858,14 @@ export const ApiKeyApi = {
 
 // ========== 个人中心 API ==========
 export const PersonalApi = {
-  // 个人登录记录
-  getLoginLogs(page = 1, pageSize = 20) {
-    return request.get('/user/login-logs', { params: { page, pageSize } })
+  // 个人登录记录；filters 支持 method/status/keyword/from/to
+  getLoginLogs(page = 1, pageSize = 20, filters = {}) {
+    return request.get('/user/login-logs', { params: { page, pageSize, ...filters } })
   },
 
-  // 个人操作记录
-  getRecords(page = 1, pageSize = 20) {
-    return request.get('/user/records', { params: { page, pageSize } })
+  // 个人操作记录；filters 支持 action/sourceType/status/keyword/from/to
+  getRecords(page = 1, pageSize = 20, filters = {}) {
+    return request.get('/user/records', { params: { page, pageSize, ...filters } })
   },
 
   // 个人上传文件统计（公共文件）

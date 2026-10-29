@@ -7,12 +7,57 @@
       </div>
     </div>
 
+    <el-card shadow="never" class="filter-card">
+      <div class="filter-row">
+        <el-select
+          v-model="filterMethod"
+          placeholder="全部方式"
+          clearable
+          style="width: 130px"
+          @change="applyFilters"
+        >
+          <el-option label="账号密码" value="local" />
+          <el-option label="OAuth2" value="oauth2" />
+          <el-option label="注册" value="register" />
+        </el-select>
+        <el-select
+          v-model="filterStatus"
+          placeholder="全部结果"
+          clearable
+          style="width: 120px"
+          @change="applyFilters"
+        >
+          <el-option label="成功" value="success" />
+          <el-option label="失败" value="failed" />
+        </el-select>
+        <el-date-picker
+          v-model="dateRange"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          style="width: 360px"
+          @change="applyFilters"
+        />
+        <el-input
+          v-model="keyword"
+          placeholder="搜索 IP / 失败原因 / 浏览器 / 用户名"
+          clearable
+          style="width: 260px"
+          @keyup.enter="applyFilters"
+          @clear="applyFilters"
+        />
+        <el-button type="primary" @click="applyFilters">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+    </el-card>
+
     <el-card>
       <el-table
         v-loading="loading"
         :data="records"
         stripe
-        empty-text="暂无登录记录"
+        empty-text="没有符合条件的登录记录"
       >
         <el-table-column label="时间" width="180">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
@@ -58,6 +103,12 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+// 过滤条件：方式 / 结果 / 时间范围 / 关键词
+const filterMethod = ref('')
+const filterStatus = ref('')
+const keyword = ref('')
+const dateRange = ref([])
+
 const methodLabel = (m) => {
   const map = { local: '账号密码', oauth2: 'OAuth2', register: '注册' }
   return map[m] || m || '未知'
@@ -65,10 +116,19 @@ const methodLabel = (m) => {
 
 const formatTime = (t) => t ? TimeUtils.formatDateTime(t) : '—'
 
+// 依据当前过滤条件组装查询参数（空值不传，由后端忽略）
+const buildFilters = () => ({
+  method: filterMethod.value || undefined,
+  status: filterStatus.value || undefined,
+  keyword: keyword.value.trim() || undefined,
+  from: dateRange.value?.[0] ? new Date(dateRange.value[0]).toISOString() : undefined,
+  to: dateRange.value?.[1] ? new Date(dateRange.value[1]).toISOString() : undefined
+})
+
 const load = async () => {
   loading.value = true
   try {
-    const data = await PersonalApi.getLoginLogs(page.value, pageSize.value)
+    const data = await PersonalApi.getLoginLogs(page.value, pageSize.value, buildFilters())
     if (data.success && data.data) {
       records.value = data.data.records || []
       total.value = data.data.total || 0
@@ -78,6 +138,20 @@ const load = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 条件变更后从第一页重新查询
+const applyFilters = () => {
+  page.value = 1
+  load()
+}
+
+const resetFilters = () => {
+  filterMethod.value = ''
+  filterStatus.value = ''
+  keyword.value = ''
+  dateRange.value = []
+  applyFilters()
 }
 
 const handlePageChange = (p) => {
@@ -93,6 +167,17 @@ onMounted(load)
 
 .user-login-logs-section {
   padding: @container-padding;
+
+  .filter-card {
+    margin-bottom: 14px;
+  }
+
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
 
   .pagination {
     margin-top: 16px;

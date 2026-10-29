@@ -4,6 +4,7 @@ package user
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"fuzhan/internal/constants"
@@ -45,9 +46,26 @@ func pageParams(c *gin.Context) (int, int) {
 	return page, pageSize
 }
 
+// parseTimeParam 解析时间范围参数，兼容 RFC3339（前端 toISOString）与常见日期格式；
+// 无法解析时返回零值（表示该边界不参与过滤）。
+func parseTimeParam(v string) time.Time {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return time.Time{}
+	}
+	layouts := []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02"}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, v, time.Local); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
 // GetLoginLogs GET /user/login-logs 获取个人登录记录
 // 当前用户（local/oauth2/register 成功）按 user_id 查询；
 // 另以「当前请求 IP」兜底命中自己发出的失败尝试（失败记录无 UUID，仅带 IP）。
+// 支持过滤参数：method / status / keyword（IP、失败原因、UA、用户名）/ from / to。
 func (h *Handler) GetLoginLogs(c *gin.Context) {
 	if h.db == nil {
 		utils.HandleErrorCompat(c, http.StatusInternalServerError, "数据库未初始化", nil)
@@ -64,6 +82,22 @@ func (h *Handler) GetLoginLogs(c *gin.Context) {
 		q = q.Where("user_id = ?", userID)
 	} else {
 		q = q.Where("client_ip = ?", clientIP)
+	}
+	if method := strings.TrimSpace(c.Query("method")); method != "" {
+		q = q.Where("method = ?", method)
+	}
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if kw := strings.TrimSpace(c.Query("keyword")); kw != "" {
+		like := "%" + kw + "%"
+		q = q.Where("(client_ip LIKE ? OR fail_reason LIKE ? OR user_agent LIKE ? OR username LIKE ?)", like, like, like, like)
+	}
+	if st := parseTimeParam(c.Query("from")); !st.IsZero() {
+		q = q.Where("created_at >= ?", st)
+	}
+	if et := parseTimeParam(c.Query("to")); !et.IsZero() {
+		q = q.Where("created_at <= ?", et)
 	}
 	q.Count(&total)
 	err := q.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&logs).Error
@@ -82,12 +116,21 @@ func (h *Handler) GetLoginLogs(c *gin.Context) {
 // GetRecords GET /user/records 获取个人操作记录
 // 私有上传记录 user_id = 用户UUID 可命中；公开上传/下载记录仅带 client_ip，
 // 故取「user_id = UUID OR client_ip = 当前IP」的并集。
+// 支持过滤参数：action / sourceType / status / keyword（文件名、路径、搜索词）/ from / to。
 func (h *Handler) GetRecords(c *gin.Context) {
 	page, pageSize := pageParams(c)
 	userID := currentUser(c)
 	clientIP := utils.GetClientIP(c)
 
-	records, total, err := h.recordRepo.ListByUserIDOrIP(userID, clientIP, page, pageSize)
+	filter := repositories.RecordFilter{
+		Action:     strings.TrimSpace(c.Query("action")),
+		SourceType: strings.TrimSpace(c.Query("sourceType")),
+		Status:     strings.TrimSpace(c.Query("status")),
+		Keyword:    strings.TrimSpace(c.Query("keyword")),
+		StartTime:  parseTimeParam(c.Query("from")),
+		EndTime:    parseTimeParam(c.Query("to")),
+	}
+	records, total, err := h.recordRepo.ListByUserIDOrIP(userID, clientIP, filter, page, pageSize)
 	if err != nil {
 		utils.HandleErrorCompat(c, http.StatusInternalServerError, "查询操作记录失败: "+err.Error(), nil)
 		return

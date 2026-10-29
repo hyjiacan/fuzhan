@@ -322,14 +322,40 @@ func (r *RecordRepository) ListByIP(clientIP string, page, pageSize int) ([]mode
 	return records, total, err
 }
 
-// ListByUserIDOrIP 获取用户ID或IP相关的所有记录（个人操作记录）
+// ListByUserIDOrIP 获取用户ID或IP相关的操作记录（个人操作记录）
 // 同时按 user_id 与 client_ip 匹配：私有上传记录 UserID=用户UUID，
 // 公开上传/下载记录仅带 ClientIP（UserID 为空），故需两者取并集。
-func (r *RecordRepository) ListByUserIDOrIP(userID, clientIP string, page, pageSize int) ([]models.OperationRecord, int64, error) {
+// filter 中的空值/零值字段不参与过滤。
+func (r *RecordRepository) ListByUserIDOrIP(userID, clientIP string, filter RecordFilter, page, pageSize int) ([]models.OperationRecord, int64, error) {
 	var records []models.OperationRecord
 	var total int64
 
-	query := r.db.Model(&models.OperationRecord{}).Where("user_id = ? OR client_ip = ?", userID, clientIP)
+	// 括号包裹 OR 条件，避免与后续 AND 条件产生优先级歧义
+	query := r.db.Model(&models.OperationRecord{}).Where("(user_id = ? OR client_ip = ?)", userID, clientIP)
+	if filter.Action != "" {
+		query = query.Where("action = ?", filter.Action)
+	}
+	if filter.SourceType != "" {
+		// 历史记录 source_type 可能为空值，按公共来源处理（与统计口径一致）
+		if filter.SourceType == models.SourceTypePublic {
+			query = query.Where("(source_type = ? OR source_type = '')", filter.SourceType)
+		} else {
+			query = query.Where("source_type = ?", filter.SourceType)
+		}
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+	if filter.Keyword != "" {
+		kw := "%" + filter.Keyword + "%"
+		query = query.Where("(file_name LIKE ? OR file_path LIKE ? OR full_path LIKE ? OR search_query LIKE ?)", kw, kw, kw, kw)
+	}
+	if !filter.StartTime.IsZero() {
+		query = query.Where("created_at >= ?", filter.StartTime)
+	}
+	if !filter.EndTime.IsZero() {
+		query = query.Where("created_at <= ?", filter.EndTime)
+	}
 	query.Count(&total)
 
 	offset := (page - 1) * pageSize

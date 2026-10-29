@@ -154,13 +154,8 @@ const handleMenuSelect = (key) => {
     padding: 0;
 
     .layout-router {
-      height: 100%;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
 
       & > * {
-        flex: 1 1 auto;
         min-height: 0;
         display: flex;
         flex-direction: column;
