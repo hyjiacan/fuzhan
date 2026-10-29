@@ -7,72 +7,53 @@
       </div>
     </div>
 
-    <el-row :gutter="24">
-      <!-- 公共文件统计（该用户上传的公共文件） -->
-      <el-col :xs="24" :md="8">
-        <el-card class="quota-card">
-          <template #header><span>公共文件</span></template>
-          <div class="stat-body">
-            <div class="stat-row">
-              <span class="stat-label">已上传</span>
-              <span class="stat-value">{{ publicStats.files ?? '—' }} 个文件</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">占用空间</span>
-              <span class="stat-value">{{ formatSize(publicStats.bytes) }}</span>
-            </div>
-            <div class="stat-profile" v-if="publicProfileText">{{ publicProfileText }}</div>
-          </div>
-          <template #footer>
-            <div class="quota-hint">你在公共存储上传的文件</div>
-          </template>
-        </el-card>
-      </el-col>
+    <el-card class="quota-card">
+      <template #header><span>公共文件</span></template>
+      <div class="stat-body">
+        <div class="stat-row">
+          <span class="stat-label">已上传</span>
+          <span class="stat-value">{{ publicStats.files ?? '—' }} 个文件</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">占用空间</span>
+          <span class="stat-value">{{ formatSize(publicStats.bytes) }}</span>
+        </div>
+        <div class="stat-profile" v-if="publicProfileText">{{ publicProfileText }}</div>
+      </div>
+      <template #footer>
+        <div class="quota-hint">你在公共存储上传的文件</div>
+      </template>
+    </el-card>
 
-      <!-- 私有存储配额 -->
-      <el-col v-if="privateStorageEnabled" :xs="24" :md="8">
-        <el-card class="quota-card">
-          <template #header><span>私有存储</span></template>
-          <el-progress
-            type="line"
-            :percentage="quotaPercentage"
-            :stroke-width="20"
-            :status="quotaStatus === 'error' ? 'exception' : quotaStatus"
-          >
-            {{ formatSize(quotaInfo.used) }} / {{ formatSize(quotaInfo.quota) }}
-          </el-progress>
-          <template #footer>
-            <div class="quota-hint">
-              已存储 {{ fileCount }} 个文件
-              <template v-if="privateStats.files != null && privateStats.files !== fileCount">
-                （私有记录 {{ privateStats.files }}）
-              </template>
-            </div>
+    <el-card class="quota-card">
+      <template #header><span>私有存储</span></template>
+      <el-progress type="line" :percentage="quotaPercentage" :stroke-width="20"
+        :status="quotaStatus === 'error' ? 'exception' : quotaStatus">
+        {{ formatSize(quotaInfo.used) }} / {{ formatSize(quotaInfo.quota) }}
+      </el-progress>
+      <template #footer>
+        <div class="quota-hint">
+          已存储 {{ fileCount }} 个文件
+          <template v-if="privateStats.files != null && privateStats.files !== fileCount">
+            （私有记录 {{ privateStats.files }}）
           </template>
-        </el-card>
-      </el-col>
+        </div>
+      </template>
+    </el-card>
 
-      <!-- 临时文件配额 -->
-      <el-col :xs="24" :md="8">
-        <el-card class="quota-card">
-          <template #header><span>临时文件配额</span></template>
-          <el-progress
-            type="line"
-            :percentage="tempQuotaPercentage"
-            :stroke-width="20"
-            :status="tempQuotaStatus === 'error' ? 'exception' : tempQuotaStatus"
-          >
-            {{ formatSize(tempQuotaInfo.used) }} / {{ formatSize(tempQuotaInfo.limit) }}
-          </el-progress>
-          <template #footer>
-            <div class="quota-hint">
-              当前 {{ tempStats.files ?? '—' }} 个临时文件
-              <template v-if="clientIP">（IP：{{ clientIP }}）</template>
-            </div>
-          </template>
-        </el-card>
-      </el-col>
-    </el-row>
+    <el-card class="quota-card">
+      <template #header><span>临时文件配额</span></template>
+      <el-progress type="line" :percentage="tempQuotaPercentage" :stroke-width="20"
+        :status="tempQuotaStatus === 'error' ? 'exception' : tempQuotaStatus">
+        {{ formatSize(tempQuotaInfo.used) }} / {{ formatSize(tempQuotaInfo.limit) }}
+      </el-progress>
+      <template #footer>
+        <div class="quota-hint">
+          当前 {{ tempStats.files ?? '—' }} 个临时文件
+          <template v-if="clientIP">（IP：{{ clientIP }}）</template>
+        </div>
+      </template>
+    </el-card>
   </div>
 </template>
 
@@ -223,29 +204,15 @@ onMounted(() => {
 .user-storage-section {
   padding: @container-padding;
 
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
-
   .quota-card {
+    margin: 20px 0;
+
     .stat-body {
       padding: 8px 0;
 
       .stat-row {
         display: flex;
-        justify-content: space-between;
+        gap: 10px;
         align-items: center;
         padding: 6px 0;
         font-size: @font-size-base;

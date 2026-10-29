@@ -9,10 +9,13 @@
 
     <el-card class="info-card">
       <el-descriptions :column="1">
+        <el-descriptions-item label="用户类型">
+          <el-tag :type="userInfo.role === 'admin' ? 'info' : 'success'">
+            {{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}
+          </el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="用户名">
-          <el-badge :value="userInfo.role" type="success">
-            {{ userInfo.username }}
-          </el-badge>
+          {{ userInfo.username }}
         </el-descriptions-item>
         <el-descriptions-item label="用户ID">
           {{ userInfo.uuid }}
@@ -163,22 +166,6 @@ onMounted(() => {
 
 .user-info-section {
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .info-card,
   .password-card {

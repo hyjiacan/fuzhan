@@ -17,7 +17,7 @@
         <el-table-column label="时间" width="180">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="方式" width="110">
+        <el-table-column label="方式" width="120">
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ methodLabel(row.method) }}</el-tag>
           </template>
@@ -93,22 +93,6 @@ onMounted(load)
 
 .user-login-logs-section {
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .pagination {
     margin-top: 16px;

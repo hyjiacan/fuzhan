@@ -967,28 +967,6 @@ onMounted(() => {
 .settings-view {
   padding: @container-padding;
 
-  .page-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: @spacing-lg;
-
-    .title-wrap {
-      h2 {
-        margin: 0 0 8px 0;
-        font-size: @font-size-xxl;
-        font-weight: 600;
-      }
-
-      .description {
-        margin: 0;
-        color: @text-color-secondary;
-        font-size: @font-size-base;
-      }
-    }
-  }
-
   .dirty-tip {
     display: inline-flex;
     align-items: center;
@@ -1175,15 +1153,6 @@ onMounted(() => {
 @media @mobile {
   .settings-view {
     padding: 8px;
-
-    .page-head {
-      flex-direction: column;
-      gap: 8px;
-
-      .dirty-tip {
-        align-self: flex-start;
-      }
-    }
 
     .settings-body {
       flex-direction: column;

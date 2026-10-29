@@ -14,7 +14,7 @@
         stripe
         empty-text="暂无操作记录"
       >
-        <el-table-column label="时间" width="170">
+        <el-table-column label="时间" width="180">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="100">
@@ -28,7 +28,7 @@
         <el-table-column label="文件名 / 路径" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">{{ row.fileName }}{{ row.fullPath ? '（' + row.fullPath + '）' : '' }}</template>
         </el-table-column>
-        <el-table-column label="大小" width="110">
+        <el-table-column label="大小" width="120">
           <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
         </el-table-column>
         <el-table-column label="结果" width="90">
@@ -112,22 +112,6 @@ onMounted(load)
 
 .user-records-section {
   padding: @container-padding;
-
-  .header-section {
-    margin-bottom: 16px;
-
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .description {
-      margin: 0;
-      color: @text-color-secondary;
-      font-size: @font-size-base;
-    }
-  }
 
   .pagination {
     margin-top: 16px;

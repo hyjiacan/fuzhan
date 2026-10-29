@@ -1,66 +1,57 @@
 <template>
   <div class="private-storage">
     <div class="header-section">
-      <!-- Breadcrumb -->
-      <div class="breadcrumb-row">
-        <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
-          <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
-            <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
-          </el-breadcrumb-item>
-        </el-breadcrumb>
-        <span v-else class="breadcrumb-root">私有存储</span>
+      <div class="header-left">
+        <h2>私有存储</h2>
+        <p class="description">上传个人文件，安全存储在你的账号下。</p>
       </div>
-
-      <div class="header-row">
-        <div class="header-left">
-          <h2>私有存储</h2>
-          <p class="description">上传个人文件，安全存储在你的账号下。</p>
-        </div>
-        <div class="header-right" v-if="quota > 0">
-          <span class="quota-badge">用量: {{ formatSize(used) }} / {{ formatSize(quota) }}</span>
+      <div class="header-right" v-if="quota > 0">
+        <span class="quota-badge">用量: {{ formatSize(used) }} / {{ formatSize(quota) }}</span>
+      </div>
+    </div>
+    <div class="toolbar-row">
+      <div class="toolbar-left">
+        <!-- Breadcrumb -->
+        <div class="breadcrumb-row">
+          <el-breadcrumb v-if="breadcrumb.length > 1" separator="/">
+            <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="index">
+              <a href="#" class="breadcrumb-link" @click.prevent="navigateToDir(item.path)">{{ item.name }}</a>
+            </el-breadcrumb-item>
+          </el-breadcrumb>
+          <span v-else class="breadcrumb-root">私有存储</span>
         </div>
       </div>
-      <div class="toolbar-row">
-        <div class="toolbar-left">
-          <el-input
-            ref="searchInputRef"
-            v-model="searchQuery"
-            :maxlength="200"
-            placeholder="搜索文件..."
-            size="small"
-            class="search-input"
-            clearable
-          />
-        </div>
-        <div class="toolbar-right">
-          <el-button @click="loadFiles(currentDir)" :loading="loading">
-            <el-icon><RefreshIcon /></el-icon>
-            刷新
-          </el-button>
-          <el-button type="primary" @click="showUploadDialog = true">
-            <el-icon><UploadIcon /></el-icon>
-            上传文件
-          </el-button>
-        </div>
+      <el-input ref="searchInputRef" v-model="searchQuery" :maxlength="200" placeholder="搜索文件..."
+        class="search-input" clearable />
+      <div class="toolbar-right">
+        <el-button @click="loadFiles(currentDir)" :loading="loading">
+          <el-icon>
+            <RefreshIcon />
+          </el-icon>
+          刷新
+        </el-button>
+        <el-button type="primary" @click="showUploadDialog = true">
+          <el-icon>
+            <UploadIcon />
+          </el-icon>
+          上传文件
+        </el-button>
       </div>
     </div>
 
     <!-- 文件列表 -->
     <div class="content-table">
       <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
-        <el-table-v2
-          :columns="columns"
-          :data="pagedData"
-          :width="tableWidth"
-          :height="tableHeight"
-          row-key="_key"
-        :row-height="TableConst.ROW_HEIGHT">
+        <el-table-v2 :columns="columns" :data="pagedData" :width="tableWidth" :height="tableHeight" row-key="_key"
+          :row-height="TableConst.ROW_HEIGHT">
           <template #empty>
             <div class="empty-state">
               <el-empty description="私有存储暂无文件" :image-size="72">
                 <template #default>
                   <el-button type="primary" @click="showUploadDialog = true">
-                    <el-icon><component :is="UploadIcon" /></el-icon>
+                    <el-icon>
+                      <component :is="UploadIcon" />
+                    </el-icon>
                     上传第一个文件
                   </el-button>
                 </template>
@@ -70,14 +61,8 @@
         </el-table-v2>
       </div>
       <div v-if="tableData.length > pageSize" class="table-pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :total="tableData.length"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @size-change="currentPage = 1"
-        />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="tableData.length"
+          :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" @size-change="currentPage = 1" />
       </div>
     </div>
 
@@ -87,8 +72,7 @@
 
     <!-- 预览弹窗（dialog 集成在 FilePreview 组件内） -->
     <file-preview v-model="previewDialogVisible" :file="previewFileData"
-      :download-api="() => PrivateApi.download(previewFileData.code)"
-      :download="(file) => downloadFile(file.code)" />
+      :download-api="() => PrivateApi.download(previewFileData.code)" :download="(file) => downloadFile(file.code)" />
   </div>
 </template>
 
@@ -291,15 +275,15 @@ const columns = computed(() => [
         ]),
         isPreview
           ? h('span', {
-              class: 'file-link',
-              style: 'cursor: pointer; color: #2080f0;',
-              onClick: () => previewFile(row)
-            }, row.filename)
+            class: 'file-link',
+            style: 'cursor: pointer; color: #2080f0;',
+            onClick: () => previewFile(row)
+          }, row.filename)
           : h('a', {
-              href: fileHref,
-              class: 'file-link',
-              target: '_blank'
-            }, row.filename)
+            href: fileHref,
+            class: 'file-link',
+            target: '_blank'
+          }, row.filename)
       ])
     }
   },
@@ -440,55 +424,6 @@ onUnmounted(() => {
   padding: @container-padding;
 
   .header-section {
-    .breadcrumb-row {
-      margin-bottom: 8px;
-      font-size: 14px;
-
-      .breadcrumb-link {
-        text-decoration: none;
-        color: inherit;
-        transition: color @transition-fast;
-
-        &:hover {
-          color: @primary-color;
-        }
-      }
-    }
-
-    .breadcrumb-root {
-      font-size: 14px;
-      font-weight: 500;
-      color: @text-color;
-      margin-bottom: 8px;
-      display: block;
-    }
-
-    .header-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-
-    .header-left {
-      h2 {
-        font-size: @font-size-xxl;
-        font-weight: 600;
-      }
-
-      .description {
-        margin: 0;
-        color: @text-color-secondary;
-        font-size: @font-size-base;
-      }
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-shrink: 0;
-    }
-
     .quota-badge {
       display: inline-flex;
       align-items: center;
@@ -500,29 +435,52 @@ onUnmounted(() => {
       font-size: @font-size-xs;
       color: @text-color-secondary;
     }
+  }
 
-    .toolbar-row {
+  .toolbar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+
+    .toolbar-left {
+      flex: 1;
+    }
+
+    .toolbar-right {
       display: flex;
-      justify-content: space-between;
+      gap: 12px;
       align-items: center;
-      margin-top: 16px;
-      gap: 16px;
+    }
 
-      .toolbar-left {
-        flex: 1;
-      }
+    .search-input {
+      width: 200px;
+    }
+  }
 
-      .toolbar-right {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-      }
+  .breadcrumb-row {
+    margin-bottom: 8px;
+    font-size: 14px;
 
-      .search-input {
-        width: 200px;
+    .breadcrumb-link {
+      text-decoration: none;
+      color: inherit;
+      transition: color @transition-fast;
+
+      &:hover {
+        color: @primary-color;
       }
     }
   }
+
+  .breadcrumb-root {
+    font-size: 14px;
+    font-weight: 500;
+    color: @text-color;
+    margin-bottom: 8px;
+    display: block;
+  }
+
 
   .content-table {
     background: @bg-color;
@@ -549,6 +507,7 @@ onUnmounted(() => {
     :deep(.el-table-v2) {
       @media @mobile {
         overflow-x: auto;
+
         .el-table-v2__row-cell {
           white-space: nowrap;
         }
