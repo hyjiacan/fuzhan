@@ -92,6 +92,8 @@ type OpenApiConfigDTO struct {
 	DomainWhitelist   []string `json:"domainWhitelist"`
 	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
 	RequestsPerMinute int      `json:"requestsPerMinute"`
+	// AuthMode 鉴权方式：none（匿名）/ api_key（系统签发的 API Key + scope）
+	AuthMode string `json:"authMode"`
 }
 
 // WebhookEndpointDTO 单条 Webhook 回调地址 DTO（对应 yaml webhook.endpoints[]）
@@ -541,6 +543,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			DomainWhitelist:   c.OpenAPI.DomainWhitelist,
 			RateLimitEnabled:  c.OpenAPI.RateLimitEnabled,
 			RequestsPerMinute: c.OpenAPI.RequestsPerMinute,
+			AuthMode:          c.OpenAPI.AuthMode,
 		},
 		Index: IndexConfigDTO{
 			ScanStartDelaySeconds:         c.Index.ScanStartDelaySeconds,
@@ -735,6 +738,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 		cfg.OpenAPI.DomainWhitelist = dto.OpenApi.DomainWhitelist
 		cfg.OpenAPI.RateLimitEnabled = dto.OpenApi.RateLimitEnabled
 		cfg.OpenAPI.RequestsPerMinute = dto.OpenApi.RequestsPerMinute
+		cfg.OpenAPI.AuthMode = strings.TrimSpace(dto.OpenApi.AuthMode)
 	}
 
 	if dto.Webhook != nil {

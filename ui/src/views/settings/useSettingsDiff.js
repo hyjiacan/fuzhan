@@ -126,6 +126,7 @@ const FIELD_LABELS = {
   'openApi.domainWhitelist': '域名白名单',
   'openApi.rateLimitEnabled': '频率限制',
   'openApi.requestsPerMinute': '请求频率(次/分钟)',
+  'openApi.authMode': 'API 鉴权方式',
 
   scanStartDelaySeconds: '扫描启动延迟',
   scanCronExpression: '定时扫描间隔',

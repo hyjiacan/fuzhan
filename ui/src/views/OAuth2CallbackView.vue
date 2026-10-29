@@ -41,25 +41,22 @@ onMounted(async () => {
     return
   }
 
-  const token = route.query.token
-  const uuid = route.query.uuid
-  const username = route.query.username
-  if (!token || !uuid || !username) {
+  // 凭证由后端回调直接写入 HttpOnly Cookie，URL 中不再携带令牌；
+  // 以 /auth/user 能否通过来确认会话是否建立成功。
+  let userData
+  try {
+    const res = await AuthApi.getUserInfo()
+    if (!res.success || !res.data) throw new Error('登录状态无效')
+    userData = res.data
+  } catch (e) {
     status.value = 'error'
     title.value = '外部认证失败'
-    description.value = '回调参数缺失，无法完成登录'
+    description.value = '登录状态无效，请返回登录页重新认证'
     return
   }
 
-  AuthApi.setAuth(String(token), String(uuid), String(username))
-  try {
-    const userData = await AuthApi.getUserInfo()
-    if (userData.success && userData.data) {
-      localStorage.setItem('userRole', userData.data.role || 'user')
-    }
-  } catch (e) {
-    // 角色信息获取失败不阻断登录
-  }
+  AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+  localStorage.setItem('userRole', userData.role || 'user')
 
   try {
     NotificationApi.merge()
@@ -72,7 +69,7 @@ onMounted(async () => {
 
   status.value = 'success'
   title.value = '登录成功'
-  description.value = `欢迎回来，${username}`
+  description.value = `欢迎回来，${userData.username || ''}`
 
   ElMessage.success('登录成功')
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/files'

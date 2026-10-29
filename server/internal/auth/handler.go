@@ -90,6 +90,16 @@ func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 	return newToken
 }
 
+// authSessionResponse 构造登录/注册/刷新成功的响应体。
+// 凭证只由 HttpOnly Cookie 下发，响应体永远不回传 JWT。
+func authSessionResponse(resp *services.AuthResponse) gin.H {
+	return gin.H{
+		"uuid":      resp.UUID,
+		"username":  resp.Username,
+		"expiresIn": resp.ExpiresIn,
+	}
+}
+
 // Register 用户注册
 func (h *Handler) Register(c *gin.Context) {
 	var req services.RegisterRequest
@@ -118,7 +128,7 @@ func (h *Handler) Register(c *gin.Context) {
 	// 注册即登录（与轻量版一致）：把 JWT 写入 HttpOnly Cookie，
 	// 使 Vue 与 lite 两端登录态统一，均由同源 Cookie 承载。
 	middleware.SetAuthCookie(c, resp.Token)
-	response.HandleSuccess(c, http.StatusCreated, "注册成功", resp)
+	response.HandleSuccess(c, http.StatusCreated, "注册成功", authSessionResponse(resp))
 }
 
 // Login 用户登录
@@ -148,7 +158,7 @@ func (h *Handler) Login(c *gin.Context) {
 	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
 	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
 	middleware.SetAuthCookie(c, resp.Token)
-	response.HandleSuccess(c, http.StatusOK, "登录成功", resp)
+	response.HandleSuccess(c, http.StatusOK, "登录成功", authSessionResponse(resp))
 }
 
 // Logout 登出：清除 HttpOnly Cookie，同时清理前端由服务端维护的会话凭证。
@@ -171,8 +181,7 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 		"role": user.Role, "createdAt": user.CreatedAt,
 	}
 	if newToken != "" {
-		data["refreshedToken"] = newToken
-		// 令牌被刷新时同步更新 HttpOnly Cookie，保持两端会话一致。
+		// 令牌被刷新时只同步 HttpOnly Cookie，不回传响应体（凭证不对脚本暴露）。
 		middleware.SetAuthCookie(c, newToken)
 	}
 	response.HandleSuccess(c, http.StatusOK, "", data)
@@ -239,7 +248,7 @@ func (h *Handler) OAuth2Authorize(c *gin.Context) {
 	})
 }
 
-// OAuth2Callback 处理外部认证回调：校验 state → 换取用户信息 → 映射本地用户 → 跳回前端并携带令牌
+// OAuth2Callback 处理外部认证回调：校验 state → 换取用户信息 → 映射本地用户 → 写会话 Cookie 并跳回前端
 func (h *Handler) OAuth2Callback(c *gin.Context) {
 	if h.oauth2Service == nil || !h.oauth2Service.IsEnabled() {
 		h.redirectOAuth2Error(c, "OAuth2 认证未启用")
@@ -271,14 +280,11 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 	middleware.LogOperation(c, "auth.oauth2.login", user.Username, nil)
 	h.recordLoginLog(c, resp.UUID, resp.Username, "oauth2", "success", "")
 
-	// OAuth2 登录成功也写 HttpOnly Cookie，统一会话凭证（lite 端同样可用）。
+	// OAuth2 登录成功写 HttpOnly Cookie，凭证只经 Cookie 传递；
+	// 跳回前端时不再把令牌放进 URL（避免残留在浏览器历史/脚本可读的 location）。
 	middleware.SetAuthCookie(c, resp.Token)
-
-	q := url.Values{}
-	q.Set("token", resp.Token)
-	q.Set("uuid", resp.UUID)
-	q.Set("username", resp.Username)
-	c.Redirect(http.StatusFound, h.frontendBase(c)+"/#/oauth2/callback?"+q.Encode())
+	// 相对地址跳转，避免用请求 Host 拼绝对 URL（Host 头可被伪造）。
+	c.Redirect(http.StatusFound, "/#/oauth2/callback")
 }
 
 // oauth2CallbackURL 计算注册到外部系统的回调地址（未显式配置时按当前请求推断）
@@ -305,5 +311,6 @@ func (h *Handler) frontendBase(c *gin.Context) string {
 func (h *Handler) redirectOAuth2Error(c *gin.Context, msg string) {
 	q := url.Values{}
 	q.Set("error", msg)
-	c.Redirect(http.StatusFound, h.frontendBase(c)+"/#/oauth2/callback?"+q.Encode())
+	// 相对地址跳转，避免用请求 Host 拼绝对 URL（Host 头可被伪造）。
+	c.Redirect(http.StatusFound, "/#/oauth2/callback?"+q.Encode())
 }

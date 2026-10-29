@@ -38,7 +38,7 @@ func SetupRouter(rg *gin.RouterGroup, davHandler http.Handler) {
 // only public/ directories.
 // maxFileSize is the per-request body limit for write operations (0 = unlimited).
 func SetupUnifiedRouter(rg *gin.RouterGroup, davHandler http.Handler, authenticate UserAuthenticator, maxFileSize int64) {
-	middlewares := []gin.HandlerFunc{OptionalBasicAuthMiddleware(authenticate), webdavRateLimitMiddleware(), depthMiddleware()}
+	middlewares := []gin.HandlerFunc{OptionalBasicAuthMiddleware(authenticate), RequireLoginMiddleware(), webdavRateLimitMiddleware(), depthMiddleware()}
 	if maxFileSize > 0 {
 		middlewares = append(middlewares, bodyLimitMiddleware(maxFileSize))
 	}

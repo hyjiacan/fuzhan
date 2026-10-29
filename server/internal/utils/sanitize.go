@@ -27,9 +27,18 @@ var sensitiveKeyParts = []string{
 	"authorization",
 }
 
-// IsSensitiveKey 判断字段名是否属于敏感字段（按片段包含匹配，忽略大小写）。
+// sensitiveExactKeys 需要精确匹配的敏感字段名（短名不能用包含匹配，避免误伤）。
+// t 为下载票据在 URL 中的参数名（短时效预签名凭证），必须脱敏，避免落进访问日志。
+var sensitiveExactKeys = map[string]struct{}{
+	"t": {},
+}
+
+// IsSensitiveKey 判断字段名是否属于敏感字段（精确名单优先，其次按片段包含匹配，忽略大小写）。
 func IsSensitiveKey(k string) bool {
-	lk := strings.ToLower(k)
+	lk := strings.ToLower(strings.TrimSpace(k))
+	if _, ok := sensitiveExactKeys[lk]; ok {
+		return true
+	}
 	for _, p := range sensitiveKeyParts {
 		if strings.Contains(lk, p) {
 			return true

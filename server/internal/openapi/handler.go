@@ -239,6 +239,10 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	disposition := c.DefaultQuery("disposition", "attachment")
 	cleanPath := filepath.ToSlash(filePath)
+	if disposition != "attachment" && disposition != "inline" {
+		response.HandleBadRequest(c, "disposition 仅支持 attachment 或 inline", nil)
+		return
+	}
 	parts := splitPath(cleanPath)
 	if len(parts) < 2 {
 		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
@@ -268,6 +272,11 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	}
 
 	fullPath := filepath.Join(rootPath, record.FilePath)
+	// 危险类型（HTML/SVG/XML/JS 等可在同源执行脚本）即使请求 inline 也强制按附件下载，
+	// 避免 OpenAPI 成为存储型 XSS 的投放渠道。
+	if disposition == "inline" && utils.IsUnsafePreviewExtension(filepath.Ext(record.FileName)) {
+		disposition = "attachment"
+	}
 	// RFC 5987 文件名编码，兼容非 ASCII 字符
 	safeFilename := url.QueryEscape(record.FileName)
 	// 清洗 filename="..." 内的引号/反斜杠/控制字符，防 CRLF 注入或畸形响应头。

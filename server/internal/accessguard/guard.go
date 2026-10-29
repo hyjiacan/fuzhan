@@ -20,6 +20,8 @@ const (
 	SCOPE_FTP    = "ftp"    // 匿名 FTP 下载（RETR）
 	SCOPE_WEBDAV = "webdav" // WebDAV（GET 下载限流 与 Basic Auth 失败锁定）
 	SCOPE_UPLOAD = "upload" // 上传控制面（创建会话/完成上传/URL 上传提交）
+	SCOPE_DOWNLOAD = "download" // Web 下载（匿名请求限流，登录用户不受限）
+	SCOPE_TICKET   = "ticket"   // 下载票据签发（换票接口，按 IP 限流）
 )
 
 const (

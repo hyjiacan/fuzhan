@@ -315,7 +315,9 @@ func (s *OSSStorage) serveLarge(ctx context.Context, w http.ResponseWriter, r *h
 	}
 	defer reader.Close()
 	ct, body := sniffContentType(name, reader)
-	w.Header().Set("Content-Type", ct)
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	w.Header().Set("Content-Length", itoa(info.Size))
 	if name != "" {
 		w.Header().Set("Content-Disposition", contentDispositionAttachment(name))

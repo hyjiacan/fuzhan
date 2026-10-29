@@ -78,11 +78,7 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   response => {
     endRequest()
-    // 检查响应头中是否有刷新后的 token
-    const refreshedToken = response.headers['x-refreshed-token']
-    if (refreshedToken) {
-      localStorage.setItem('token', refreshedToken)
-    }
+    // 令牌刷新由后端直接写回 HttpOnly Cookie，响应体/响应头都不再回传令牌
     // 写入类操作成功时给出反馈
     notifyWriteSuccess(response.config?.method, response.config, response.data)
     return response.data
@@ -130,21 +126,11 @@ export const AuthApi = {
     return !!this.getToken()
   },
 
-  setAuth(token, uuid, username) {
-    localStorage.setItem('token', token)
-    localStorage.setItem('uuid', uuid)
-    localStorage.setItem('username', username)
-  },
-
-  // 用服务端用户信息恢复前端登录态（lite 端 Cookie 登录后打开 Vue 页的场景）。
-  // 后端 /auth/user 以 HttpOnly Cookie 通过认证，前端脚本读不到 Cookie，
-  // 由后端判定通过后，这里把用户信息写回 localStorage 使界面感知登录。
-  // 本地若没有 token，写入哨兵值以维持 isLoggedIn() 与既有 !!token 判断的一致性
-  //（凭证仍是 Cookie，哨兵 token 不会作为请求认证凭证使用）。
+  // 用服务端用户信息恢复前端登录态。凭证只存在于后端 HttpOnly Cookie，
+  // 前端脚本读不到令牌，登录成功与否以 /auth/user 是否通过为准。
+  // 本地 token 仅作为「已登录」界面标记的哨兵值，不会作为请求认证凭证使用。
   restoreSession(userData = {}) {
-    if (!localStorage.getItem('token')) {
-      localStorage.setItem('token', '__cookie__')
-    }
+    localStorage.setItem('token', '__cookie__')
     if (userData.uuid) localStorage.setItem('uuid', userData.uuid)
     if (userData.username) localStorage.setItem('username', userData.username)
   },

@@ -237,6 +237,13 @@ func (d *ftpDriver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftp
 		anonUser = "public"
 	}
 	if user == "anonymous" || user == anonUser {
+		// 强制登录开启时，FTP 匿名登录必须禁用，与 Web/WebDAV 行为一致
+		if cfg.Account.RequireLogin {
+			utils.FTPWarn("强制登录已开启，拒绝匿名FTP登录",
+				utils.String("user", user),
+				utils.String("ip", clientIP))
+			return nil, fmt.Errorf("强制登录已开启，匿名访问已禁用，请使用账号密码登录")
+		}
 		utils.FTPAccess("FTP匿名用户登录成功",
 			utils.String("user", user),
 			utils.String("ip", clientIP))

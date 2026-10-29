@@ -46,11 +46,10 @@ Content-Type: application/json
   "password": "string (6-128字符)"
 }
 
-// 响应
+// 响应（凭证由 HttpOnly Cookie 下发，响应体不回传 JWT）
 {
   "success": true,
   "data": {
-    "token": "JWT字符串",
     "uuid": "用户UUID",
     "username": "用户名",
     "expiresIn": 86400
@@ -69,11 +68,10 @@ Content-Type: application/json
   "password": "string"
 }
 
-// 响应
+// 响应（凭证由 HttpOnly Cookie 下发，响应体不回传 JWT）
 {
   "success": true,
   "data": {
-    "token": "JWT字符串",
     "uuid": "用户UUID",
     "username": "用户名",
     "expiresIn": 86400
@@ -98,7 +96,7 @@ Content-Type: application/json
 | POST | `/api/v1/web/files/move` | `file.FileHandlers.MoveFileHandler` | 移动文件 | JWT（上传者IP一致或管理员） |
 | DELETE | `/api/v1/web/files/delete` | `file.FileHandlers.DeleteFileHandler` | 删除文件 | JWT（上传者IP一致或管理员） |
 
-> **说明**：「受强制登录开关控制」的接口在 `account.require_login=false`（默认）时匿名可访问；开启后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。搜索联想（`/search-suggest`、`/search-spellcheck`、`/search-related`）为匿名例外。详见 docs/01「13. 强制登录（LoginGate）」。
+> **说明**：「受强制登录开关控制」的接口在 `account.require_login=false`（默认）时匿名可访问；开启后需携带登录令牌（`Authorization: Bearer <token>` 或 HttpOnly Cookie `fuzhan_token`，不支持 `?token=`），未认证返回 `401`。搜索联想、监控、扫描状态、临时文件 `/temp/**` 与私有分享 `/share/:code` 均不再匿名例外。详见 docs/01「13. 强制登录（LoginGate）」。
 
 ### 目录列表
 
@@ -527,7 +525,7 @@ GET /api/v1/web/monitor/storage
 
 ## CLI 接口
 
-默认匿名可访问；开启强制登录（`account.require_login`）后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外。
+默认匿名可访问；开启强制登录（`account.require_login`）后需携带登录凭证（HttpOnly Cookie `fuzhan_token` 或 `Authorization: Bearer <token>`，不支持 `?token=`），未认证返回 `401`。可使用 `fuzhan login <用户名> <密码>` 登录并把会话 Cookie 保存到 `~/.fuzhan_cookie`（可用环境变量 `FUZHAN_COOKIE_FILE` 覆盖）。安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外。
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|

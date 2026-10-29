@@ -464,6 +464,10 @@ type OpenAPIConfig struct {
 	RateLimitEnabled bool     `yaml:"rate_limit_enabled"`
 	RequestsPerMinute int     `yaml:"requests_per_minute"`
 	BurstSize         int     `yaml:"burst_size"`
+	// AuthMode 鉴权方式：none（匿名，默认）/ api_key（系统签发的 API Key + scope）。
+	// 与 Web 登录态完全隔离：本项只影响 Open API，不接受 Web 会话 token，也不会签发 Web 会话。
+	// 注意：开启「强制登录」后本项不能为 none，否则 Open API 会被直接拒绝（强制登录优先级最高）。
+	AuthMode string `yaml:"auth_mode"`
 }
 
 // LDAPClientConfig LDAP 客户端配置

@@ -138,10 +138,17 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 			// 音视频播放依赖下载接口的 Range/206 支持（http.ServeFile 原生提供）
 			fileUrl := "/download/" + filePath + "?preview=true"
 			// 开启「强制登录」时，内联预览由浏览器 <img>/<video> 等原生标签直接发起（无法携带请求头），
-			// 复用本次请求已鉴权的用户上下文签发一次性预览票据（URL 上 t= 参数），供 /download 闸门验签放行。
-			// 登录 token 不进入 URL；票据短时效、绑定单个预览路径、一次性消费。
+			// 复用本次请求已鉴权的用户上下文签发短时效预览票据（URL 上 t= 参数），供 /download 闸门验签放行。
+			// 登录 token 不进入 URL；票据按「端点种类 + 根目录 + 相对路径 + 大小 + 修改时间」绑定该文件。
 			if appconfig.GlobalConfig.Account.RequireLogin {
-				if ticket, err := signFileTicket(c, "/download/"+filePath, downloadticket.ModePreview); err == nil {
+				key := downloadticket.ResourceKey{
+					Kind:  downloadticket.KindPublic,
+					Root:  rootName,
+					Rel:   downloadticket.NormalizeRel(relPath),
+					Size:  info.Size,
+					Mtime: info.ModTime.Unix(),
+				}
+				if ticket, err := signFileTicket(c, key, downloadticket.ModePreview); err == nil {
 					fileUrl += "&" + downloadticket.TicketParamName + "=" + url.QueryEscape(ticket)
 				}
 			}
@@ -395,15 +402,15 @@ func resolveStoredFilePath(c *gin.Context, req *FileChecksumRequest) (string, bo
 	}
 }
 
-// signFileTicket 从当前请求上下文提取已鉴权的用户信息，为指定下载路径签发一枚
-// 一次性预览/下载票据（URL 上的 t= 参数）。仅用于 requireLogin 开启、需要浏览器
+// signFileTicket 从当前请求上下文提取已鉴权的用户信息，为指定文件身份签发一枚
+// 短时效预览/下载票据（URL 上的 t= 参数）。仅用于 requireLogin 开启、需要浏览器
 // 原生标签直连（无法携带请求头）的场景。取不到用户上下文时返回错误，由调用方
 // 回退到不含票据的 URL。
-func signFileTicket(c *gin.Context, path string, mode downloadticket.Mode) (string, error) {
+func signFileTicket(c *gin.Context, key downloadticket.ResourceKey, mode downloadticket.Mode) (string, error) {
 	username, _ := c.Get(string(constants.ContextKeyUsername))
 	role, _ := c.Get(string(constants.ContextKeyRole))
 	uuid, _ := c.Get(string(constants.ContextKeyUserUUID))
-	return downloadticket.Sign(path, mode, downloadticket.Signer{
+	return downloadticket.Sign(key, mode, downloadticket.Signer{
 		Username: fmt.Sprintf("%v", username),
 		Role:     fmt.Sprintf("%v", role),
 		UUID:     fmt.Sprintf("%v", uuid),

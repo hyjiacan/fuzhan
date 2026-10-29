@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fuzhan/internal/accessguard"
+	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
 	"fuzhan/internal/models"
 	xxh3pkg "fuzhan/pkg/xxh3"
@@ -176,6 +177,27 @@ func OptionalBasicAuthMiddleware(authenticate UserAuthenticator) gin.HandlerFunc
 		ctx = context.WithValue(ctx, ContextKeyUserUUID, userUUID)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
+	}
+}
+
+// RequireLoginMiddleware 在开启「强制登录」后拒绝匿名 WebDAV 请求，
+// 使 WebDAV 与 Web 侧行为一致：公开目录也必须先登录才能访问。
+// 必须置于 OptionalBasicAuthMiddleware 之后，以便读取已认证的用户 UUID。
+// 拒绝时按 RFC 7235 返回 401 + WWW-Authenticate，保证 Windows 资源管理器 / Finder /
+// rclone 等客户端能弹出认证框（而不是收到 302 或 JSON 后行为异常）。
+func RequireLoginMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !appconfig.GlobalConfig.Account.RequireLogin {
+			c.Next()
+			return
+		}
+		if uuid, _ := c.Request.Context().Value(ContextKeyUserUUID).(string); uuid != "" {
+			c.Next()
+			return
+		}
+		markWebDAVGuard(c)
+		c.Header("WWW-Authenticate", `Basic realm="WebDAV"`)
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "强制登录已开启，请使用账号密码访问 WebDAV"})
 	}
 }
 

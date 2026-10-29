@@ -327,6 +327,24 @@ func mimeTableLookup(ext string) string {
 	return userMimeTable[ext]
 }
 
+// unsafeInlinePreviewExts 内联预览时禁止按原 MIME 渲染的扩展名集合。
+// HTML/SVG/XML/JS 等类型可在同源上下文执行脚本（存储型 XSS），即使叠加了
+// CSP sandbox，也统一降级为 text/plain 展示源码，双重兜底。
+var unsafeInlinePreviewExts = map[string]struct{}{
+	"html": {}, "htm": {}, "xhtml": {}, "shtml": {},
+	"svg": {}, "svgz": {},
+	"xml": {}, "xsl": {}, "xslt": {},
+	"js": {}, "mjs": {}, "cjs": {},
+	"css": {}, "json": {}, "webmanifest": {},
+}
+
+// IsUnsafePreviewExtension 判断该扩展名在预览时是否必须强制 text/plain。
+func IsUnsafePreviewExtension(ext string) bool {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	_, unsafe := unsafeInlinePreviewExts[ext]
+	return unsafe
+}
+
 // GetDownloadContentType 获取下载时应返回的 Content-Type。
 // 仅查用户自定义 MIME 表：命中返回配置的 MIME，未配置返回 ""（由调用方回退原有行为，避免影响下载类型推断）。
 func GetDownloadContentType(ext string) string {

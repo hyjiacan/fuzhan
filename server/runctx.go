@@ -126,13 +126,16 @@ func cliScriptWhitelist() func(*gin.Context) bool {
 	}
 }
 
-// loginGateWhiteList 返回「强制登录」闸门的匿名例外汇总规则。
-// 命中规则（返回 true）的请求即使开启强制登录也保持匿名可访问：
+// loginGateWhiteList 返回强制登录开启时仍允许匿名访问的接口。
+//
+// 只保留「不登录也必须可用」的最小集合：
 //   - 认证入口：登录/注册/OAuth2（否则无人能登录）
 //   - 初始化引导：/setup/**（全新安装时的配置向导）
-//   - 公开系统信息：/options、/health、扫描状态展示
-//   - 临时文件分享：/temp/**（匿名分享链路，保持匿名例外）
-//   - 记录与搜索联想：匿名页仍然使用到的少量轻量只读接口
+//   - 公开系统信息：/options（登录页渲染站点品牌、认证方式等）、/health（探活）
+//
+// 其余接口（含临时分享 /temp/**、统计与搜索联想、扫描状态、记录备注）在强制登录
+// 开启时一律要求登录——强制登录优先级最高，不再保留匿名例外。
+// 注意：强制登录关闭时 LoginGate 直接放行全部请求，因此这里的收窄不影响匿名模式。
 func loginGateWhiteList() []func(*gin.Context) bool {
 	prefixOf := func(prefix string) func(*gin.Context) bool {
 		return func(c *gin.Context) bool {
@@ -141,20 +144,9 @@ func loginGateWhiteList() []func(*gin.Context) bool {
 	}
 	return []func(*gin.Context) bool{
 		prefixOf("/api/v1/web/auth/"),
-		prefixOf("/api/v1/web/temp/"),
 		prefixOf("/api/v1/web/setup/"),
 		prefixOf("/api/v1/web/health"),
 		prefixOf("/api/v1/web/options"),
-		prefixOf("/api/v1/web/monitor/keywords"),
-		prefixOf("/api/v1/web/monitor/recent"),
-		prefixOf("/api/v1/web/monitor/rankings"),
-		prefixOf("/api/v1/web/monitor/hot-downloads"),
-		prefixOf("/api/v1/web/admin/index/scan/"),
-		prefixOf("/api/v1/web/files/scan/status"),
-		prefixOf("/api/v1/web/search-suggest"),
-		prefixOf("/api/v1/web/search-spellcheck"),
-		prefixOf("/api/v1/web/search-related"),
-		prefixOf("/api/v1/web/files/records/"),
 	}
 }
 

@@ -196,8 +196,12 @@ func (s *WebDAVStorage) ServeContent(ctx context.Context, w http.ResponseWriter,
 			return err
 		}
 		defer rc.Close()
+		// 上层（下载/预览服务）已显式指定 Content-Type 时尊重其设置，
+		// 例如预览危险类型时强制 text/plain 的加固策略。
 		ct, body := sniffContentType(name, rc)
-		w.Header().Set("Content-Type", ct)
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", ct)
+		}
 		w.Header().Set("Content-Length", itoa(info.Size))
 		if name != "" {
 			w.Header().Set("Content-Disposition", contentDispositionAttachment(name))
@@ -219,8 +223,10 @@ func (s *WebDAVStorage) ServeContent(ctx context.Context, w http.ResponseWriter,
 		return err
 	}
 	defer rc.Close()
-	w.Header().Set("Content-Type", contentTypeFor(name))
 	w.Header().Set("Content-Range", contentRange(start, end, info.Size))
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", contentTypeFor(name))
+	}
 	w.Header().Set("Content-Length", itoa(length))
 	w.WriteHeader(http.StatusPartialContent)
 	_, err = io.Copy(w, rc)

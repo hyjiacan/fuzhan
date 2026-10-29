@@ -74,9 +74,10 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		auth.GET("/oauth2/callback", authHandler.OAuth2Callback)
 	}
 
-	// 分享下载路由（无需认证）
-	r.GET("/share/:code", privateStorageHandler.Download)
-	r.HEAD("/share/:code", privateStorageHandler.Download)
+	// 分享下载路由：开启强制登录后同样要求登录（强制登录优先级最高）。
+	// 收件人打开分享链接时会先被 302 到登录页，登录后自动回到该链接继续下载。
+	r.GET("/share/:code", rt.authMiddleware.LoginGate(), privateStorageHandler.Download)
+	r.HEAD("/share/:code", rt.authMiddleware.LoginGate(), privateStorageHandler.Download)
 
 	// 私有存储路由（需要认证）
 	private := web.Group("/private")
@@ -101,7 +102,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 换取一次性下载票据：登录凭证只走请求头，换得的票据（URL 上的 t=）供浏览器原生
 	// 标签/新窗口/外部下载工具直连下载与内联预览（它们无法携带请求头）。
 	// 随 web 组一并受 LoginGate 保护（require_login 开启时需先登录）。
-	web.POST("/download/ticket", downloadHandlers.IssueTicket)
+	web.POST("/download/ticket", middleware.TicketRateLimit(), downloadHandlers.IssueTicket)
 
 	// 管理页面搜索和下载（需管理员鉴权；下载返回文件流不套 ResponseWrapper）
 	web.GET("/admin/search/*query", authMiddleware.AuthRequired(), middleware.RequireAdmin(), searchHandlers.AdminSearchFiles)
@@ -211,8 +212,9 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	web.GET("/files/depends/:id", depHandler.GetDependencyTree)
 
 	// 下载路由（无需认证；/download/*path 根级别名指向同一 handler）
-	web.GET("/download/*path", downloadHandlers.DownloadFile)
-	web.HEAD("/download/*path", downloadHandlers.DownloadFile)
+	// 匿名请求按 IP 限流（登录用户与票据身份放行，不限制）。
+	web.GET("/download/*path", middleware.DownloadRateLimit(), downloadHandlers.DownloadFile)
+	web.HEAD("/download/*path", middleware.DownloadRateLimit(), downloadHandlers.DownloadFile)
 
 	// 最近上传路由（无需认证）
 	files := web.Group("/files")

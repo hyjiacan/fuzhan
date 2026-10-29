@@ -45,7 +45,7 @@ type DownloadTicketRequest struct {
 	Mode string `json:"mode"`
 }
 
-// IssueTicket 以当前登录会话签发一枚一次性下载票据，返回可直接打开的 URL。
+// IssueTicket 以当前登录会话签发一枚短时效下载票据，返回可直接打开的 URL。
 func (dh *DownloadHandlers) IssueTicket(c *gin.Context) {
 	var req DownloadTicketRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -53,7 +53,9 @@ func (dh *DownloadHandlers) IssueTicket(c *gin.Context) {
 		return
 	}
 	path := strings.TrimSpace(req.Path)
-	if !strings.HasPrefix(path, "/download/") && !strings.HasPrefix(path, "/api/v1/web/admin/download/") {
+	// 只允许已知下载端点，并要求目标文件真实存在；票据绑定的是解析后的文件身份，
+	// 而不是请求里的路径字符串（同名重传、跨端点复用都会被拒绝）。
+	if _, _, ok := downloadticket.SplitRequestPath(path); !ok {
 		response.HandleBadRequest(c, "无效的下载路径", nil)
 		return
 	}
@@ -63,7 +65,13 @@ func (dh *DownloadHandlers) IssueTicket(c *gin.Context) {
 		mode = downloadticket.ModePreview
 	}
 
-	ticket, err := signFileTicket(c, path, mode)
+	key, err := dh.DownloadService.ResolveResource(path)
+	if err != nil {
+		response.HandleBadRequest(c, "文件不存在或路径无效: "+err.Error(), nil)
+		return
+	}
+
+	ticket, err := signFileTicket(c, key, mode)
 	if err != nil {
 		utils.HandleInternalServerError(c, "签发下载票据失败")
 		return

@@ -76,7 +76,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// 前端先在脚本内用登录 token（Authorization 头）换取一次性下载票据（URL 上 t= 参数），
 	// 再以其打开原生下载链接；LoginGate 对携带 t= 的请求做票据验签并注入用户上下文。）
 	downloadAlias := r.Group("/download")
-	downloadAlias.Use(rt.authMiddleware.LoginGate())
+	downloadAlias.Use(rt.authMiddleware.LoginGate(), middleware.DownloadRateLimit())
 	{
 		downloadAlias.GET("/*path", rt.downloadHandlers.DownloadFile)
 		downloadAlias.HEAD("/*path", rt.downloadHandlers.DownloadFile)
@@ -109,23 +109,25 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	lite.POST("/*path", rt.liteHandlers.HandleAll)
 
 	// Open API 路由组（v3 Phase 3）
-	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 调用统计 → 路由分发 → Handler
-	// 见 architecture-v3.md
+	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 鉴权 → 调用统计 → 路由分发 → Handler
+	// 鉴权说明：auth_mode=none 时保持匿名（历史行为）；auth_mode=api_key 时校验系统签发的 API Key（携带 scope）。
+	// 强制登录（account.require_login）优先级最高：开启后 auth_mode 必须为 api_key，否则直接 403。
 	openAPI := r.Group("/api/open/v1")
 	openAPI.Use(
 		openapi.FeatureGateMiddleware(rt.openAPICfg.Enabled),
 		openapi.IPAccessMiddleware(rt.openAPIIPAccessCfg),
 		openapi.RateLimitMiddleware(rt.openAPIRateLimiter),
+		openapi.AuthGateMiddleware(rt.rbacService),
 		openapi.CallStatMiddleware(rt.openAPICallStat),
 		middleware.ResponseWrapperMiddleware(),
 	)
 	{
-		// FR-3.1: 文件列表 API（公开，无需认证）
-		openAPI.GET("/files/list", rt.openAPIHandler.ListFiles)
-		// FR-3.2: 文件搜索 API（公开）
-		openAPI.GET("/files/search", rt.openAPIHandler.SearchFiles)
-		// FR-3.3: 文件下载 API（公开）
-		openAPI.GET("/files/download/*path", rt.openAPIHandler.DownloadFile)
+		// FR-3.1: 文件列表 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		openAPI.GET("/files/list", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.ListFiles)
+		// FR-3.2: 文件搜索 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		openAPI.GET("/files/search", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.SearchFiles)
+		// FR-3.3: 文件下载 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		openAPI.GET("/files/download/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
 		// FR-3.5: 重复文件查询 API（需认证，需要重复文件查询权限）
 		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope(models.ScopeFilesDuplicates), rt.openAPIHandler.ListDuplicates)
 		// FR-3.6: 文件备注查询 API（需认证，需要文件备注查询权限）

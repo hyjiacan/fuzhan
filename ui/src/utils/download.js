@@ -7,7 +7,7 @@
 // 复杂度，因此下载采用「预签名短时效 URL」标准做法（AWS S3/OSS 同款）：
 //
 //   认证（谁是你）  → Cookie 放行换票接口（或 Authorization 请求头）
-//   授权（能下载什么）→ 换票接口签发一次性短时效签名票据 t=，放进 URL
+//   授权（能下载什么）→ 换票接口签发短时效签名票据 t=（按时限生效，可重复读取）
 //
 // 换票接口：POST /api/v1/web/download/ticket，body { path, mode }，返回
 // { data: { url, ticket } }，其中 url 为相对路径（已附 t=），可直接交给
@@ -19,7 +19,10 @@ import { formatErrorMessage } from './error.js'
 
 // 路径分类：用票据访问的下载 URL 前缀
 const DOWNLOAD_PREFIX = '/download/'
+const WEB_DOWNLOAD_PREFIX = '/api/v1/web/download/'
 const ADMIN_DOWNLOAD_PREFIX = '/api/v1/web/admin/download/'
+// 私有文件分享链接（强制登录开启时同样先登录，登录后直接整页跳转下载）
+const SHARE_PREFIX = '/share/'
 
 // 渠道枚举：download=下载（ForceAttachment）/ preview=内联预览（ForceInline）
 export const TicketMode = {
@@ -90,11 +93,12 @@ export function redirectToDownload(url) {
   window.location.href = url
 }
 
-// 换票接口只接受 /download 或 /admin/download 开头的路径，其它一律拒绝
+// 换票接口只接受 /download、/api/v1/web/download 或 /admin/download 开头的路径，其它一律拒绝
 function normalizeTicketRequestPath(path) {
   if (typeof path !== 'string') return ''
   const p = path.trim()
   if (p.startsWith(ADMIN_DOWNLOAD_PREFIX)) return p
+  if (p.startsWith(WEB_DOWNLOAD_PREFIX)) return p
   if (p.startsWith(DOWNLOAD_PREFIX)) return p
   return ''
 }
@@ -110,7 +114,7 @@ function isTicketUrl(url) {
 
 // 下载类 redirect 前缀（登录后被 302 到登录页带回的地址）
 const isDownloadRedirectPath = (p) =>
-  p.startsWith(DOWNLOAD_PREFIX) || p.startsWith(ADMIN_DOWNLOAD_PREFIX)
+  p.startsWith(DOWNLOAD_PREFIX) || p.startsWith(WEB_DOWNLOAD_PREFIX) || p.startsWith(ADMIN_DOWNLOAD_PREFIX)
 
 // redirect 是否为下载类路径（由后端 302 登录页携带，登录后应执行下载而非 SPA 跳转）
 export function isDownloadRedirect(redirect) {
@@ -120,15 +124,23 @@ export function isDownloadRedirect(redirect) {
 }
 
 /**
- * 登录成功后的下载回跳：对下载类 redirect 换一次性票据后整页跳转执行下载。
+ * 登录成功后的下载回跳：对下载类 redirect 换短时效票据后整页跳转执行下载。
  * hash 路由会吞掉非 hash 路径（catch-all → /files），因此必须整页跳转而非 router.replace。
  * 非下载类 redirect 返回 false，由调用方按 SPA 内部路径处理。
  * @returns {Promise<boolean>} 是否已发起整页下载
  */
 export async function executeLoginDownload(redirect) {
-  if (!isDownloadRedirect(redirect)) return false
+  if (typeof redirect !== 'string' || !redirect) return false
   const qi = redirect.indexOf('?')
   const path = qi >= 0 ? redirect.slice(0, qi) : redirect
+
+  // 私有文件分享链接：登录后直接整页跳转即可（无需换票）
+  if (path.startsWith(SHARE_PREFIX)) {
+    window.location.href = redirect
+    return true
+  }
+
+  if (!isDownloadRedirect(redirect)) return false
   try {
     const res = await request.post('/download/ticket', { path, mode: TicketMode.DOWNLOAD }, { skipSuccessToast: true })
     const url = res?.data?.url

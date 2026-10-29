@@ -123,28 +123,9 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// 检查用户是否被禁用（优先查缓存，未命中则查库，正反结果都写短 TTL 缓存）
-		if disabled, cached := userDisabledCache.isDisabled(claims.UUID); disabled {
-			utils.HandleForbidden(c, "账号已被禁用")
-			c.Abort()
+		// 检查用户是否被禁用（缓存 + 回源），被禁用则拒绝
+		if am.checkUserDisabled(c, claims.UUID) {
 			return
-		} else if !cached && am.db != nil {
-			var user models.User
-			err := am.db.Select("disabled").Where("uuid = ?", claims.UUID).First(&user).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				// 数据库错误（非记录不存在），认证服务暂时不可用
-				utils.Error("检查用户状态失败", utils.Err(err), utils.String("uuid", claims.UUID))
-				utils.HandleInternalServerError(c, "认证服务暂时不可用")
-				c.Abort()
-				return
-			}
-			// 记录不存在视为正常，统一写入缓存，避免正常用户重复回源
-			userDisabledCache.set(claims.UUID, user.Disabled)
-			if user.Disabled {
-				utils.HandleForbidden(c, "账号已被禁用")
-				c.Abort()
-				return
-			}
 		}
 
 		// 将用户信息存储到上下文中
@@ -162,6 +143,34 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 		// 继续处理请求
 		c.Next()
 	}
+}
+
+// checkUserDisabled 校验用户是否被禁用（优先查短 TTL 缓存，未命中回源并回写正反结果）。
+// 返回 true 表示请求已被拦截（响应已写入并 Abort），调用方应立即 return。
+func (am *AuthMiddleware) checkUserDisabled(c *gin.Context, uuid string) bool {
+	if disabled, cached := userDisabledCache.isDisabled(uuid); disabled {
+		utils.HandleForbidden(c, "账号已被禁用")
+		c.Abort()
+		return true
+	} else if !cached && am.db != nil {
+		var user models.User
+		err := am.db.Select("disabled").Where("uuid = ?", uuid).First(&user).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			// 数据库错误（非记录不存在），认证服务暂时不可用
+			utils.Error("检查用户状态失败", utils.Err(err), utils.String("uuid", uuid))
+			utils.HandleInternalServerError(c, "认证服务暂时不可用")
+			c.Abort()
+			return true
+		}
+		// 记录不存在视为正常，统一写入缓存，避免正常用户重复回源
+		userDisabledCache.set(uuid, user.Disabled)
+		if user.Disabled {
+			utils.HandleForbidden(c, "账号已被禁用")
+			c.Abort()
+			return true
+		}
+	}
+	return false
 }
 
 // GetUsername 从上下文中获取用户名
@@ -268,29 +277,33 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 			}
 		}
 
-		// 一次性下载票据短路：URL 携带 t= 时无需登录 token。
+		// 下载票据短路：URL 携带 t= 时无需登录 token。
 		// 覆盖浏览器原生标签 <a>/<img>/<video>、window.open、迅雷等外部工具
 		// （它们只能使用 URL、无法携带 custom header）。票据校验失败按未认证分流。
+		// 票据按时限生效（不做一次性消费），可重复读取以兼容 Range/断点续传。
 		if ticket := c.Query(downloadticket.TicketParamName); ticket != "" {
 			payload, err := downloadticket.Validate(ticket)
-			// 校验失败（含签名错误/过期/已消费复用）时 payload 为 nil，必须先判 err 再解引用
 			if err != nil {
 				utils.Warn("下载票据校验失败", utils.String("path", c.Request.URL.Path), utils.Err(err))
 			} else {
-				// 验签通过后校验票据绑定的路径与本次请求路径一致，防止票据在 TTL 内被
-				// 换到其他文件复用（路径归一化后比较，兼容 /download 与 /api/v1/web/... 两种前缀）
-				// 票据内 P 可能是编码态（前端换票传入）或解码态（服务端 preview 内联签发），
-				// 统一再解一次 URL 编码后与请求 PATH（gin 已解码）比较，保证中文/特殊字符文件名一致。
-				ticketPath, _ := url.QueryUnescape(payload.P)
-				if normalizeTicketPath(ticketPath) == normalizeTicketPath(c.Request.URL.Path) {
+				// 端点种类必须匹配（管理下载票不能用于普通下载，反之亦然）；
+				// 文件身份（路径/大小/修改时间/用途）由下载服务解析真实文件后比对。
+				kind, _, ok := downloadticket.SplitRequestPath(c.Request.URL.Path)
+				if ok && kind == payload.Kind {
+					// 票据有效期内同样校验用户禁用状态（与登录 token 路径保持一致）
+					if am.checkUserDisabled(c, payload.D) {
+						return
+					}
 					c.Set(string(constants.ContextKeyUsername), payload.U)
 					c.Set(string(constants.ContextKeyRole), payload.R)
 					c.Set(string(constants.ContextKeyUserUUID), payload.D)
 					c.Request.Header.Set("X-User-Identifier", payload.D)
+					// 将票据载荷挂到 request context，供下载服务做文件绑定校验
+					c.Request = c.Request.WithContext(downloadticket.WithPayload(c.Request.Context(), payload))
 					c.Next()
 					return
 				}
-				utils.Warn("下载票据路径不匹配", utils.String("ticket_path", payload.P), utils.String("request_path", c.Request.URL.Path))
+				utils.Warn("下载票据端点不匹配", utils.String("ticket_kind", payload.Kind), utils.String("request_path", c.Request.URL.Path))
 			}
 		}
 
@@ -316,28 +329,9 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 			return
 		}
 
-		// 检查用户是否被禁用（优先查缓存，未命中则查库，正反结果都写短 TTL 缓存）
-		if disabled, cached := userDisabledCache.isDisabled(claims.UUID); disabled {
-			utils.HandleForbidden(c, "账号已被禁用")
-			c.Abort()
+		// 检查用户是否被禁用（缓存 + 回源），被禁用则拒绝
+		if am.checkUserDisabled(c, claims.UUID) {
 			return
-		} else if !cached && am.db != nil {
-			var user models.User
-			err := am.db.Select("disabled").Where("uuid = ?", claims.UUID).First(&user).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				// 数据库错误（非记录不存在），认证服务暂时不可用
-				utils.Error("检查用户状态失败", utils.Err(err), utils.String("uuid", claims.UUID))
-				utils.HandleInternalServerError(c, "认证服务暂时不可用")
-				c.Abort()
-				return
-			}
-			// 记录不存在视为正常，统一写入缓存，避免正常用户重复回源
-			userDisabledCache.set(claims.UUID, user.Disabled)
-			if user.Disabled {
-				utils.HandleForbidden(c, "账号已被禁用")
-				c.Abort()
-				return
-			}
 		}
 
 		// 将用户信息存储到上下文中
@@ -359,17 +353,6 @@ func hasTicketContext(c *gin.Context) bool {
 	return ok
 }
 
-// normalizeTicketPath 归一化票据签发路径与本次请求路径，用于校验两者一致。
-// 下载票据可能以 /download/<路径> 或 /api/v1/web/admin/download/<路径> 形式签发，
-// 而实际请求 PATH 可能是 /download/<路径>（别名）或 /api/v1/web/download/<路径>
-// （web 组内路由）；本函数把两者统一为去掉固定前缀后的相对路径再比较。
-func normalizeTicketPath(p string) string {
-	p = strings.TrimPrefix(p, "/api/v1/web/admin/download/")
-	p = strings.TrimPrefix(p, "/api/v1/web/download/")
-	p = strings.TrimPrefix(p, "/download/")
-	return strings.Trim(p, "/")
-}
-
 // handleUnauthenticated 未认证请求分流：
 //   - CLI（curl/wget）：返回 401 JSON（命令行避免被 302 重定向误导）
 //   - 浏览器主导航型（Sec-Fetch-Mode: navigate 或 Accept 期望 HTML）：
@@ -388,7 +371,9 @@ func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
 			c.Redirect(http.StatusFound, "/lite/login?redirect="+redirect)
 			return
 		}
-		c.Redirect(http.StatusFound, frontendBase(c)+"/#/login?redirect="+redirect)
+		// 使用相对地址跳转：避免用请求 Host 拼绝对 URL（Host 头可被伪造，
+		// 可能把登录回跳指向攻击者域名）。
+		c.Redirect(http.StatusFound, "/#/login?redirect="+redirect)
 		return
 	}
 	utils.HandleUnauthorized(c, "缺少认证信息或登录已失效")
@@ -409,18 +394,6 @@ func isBrowserNavigation(c *gin.Context) bool {
 	}
 	accept := c.GetHeader("Accept")
 	return strings.Contains(accept, "text/html") || strings.Contains(accept, "application/xhtml+xml")
-}
-
-// frontendBase 返回当前请求对应的前端访问基址（scheme://host）
-func frontendBase(c *gin.Context) string {
-	scheme := "http"
-	if c.Request.TLS != nil {
-		scheme = "https"
-	}
-	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
-		scheme = proto
-	}
-	return scheme + "://" + c.Request.Host
 }
 
 // CORSMiddleware 处理跨域请求
@@ -481,6 +454,15 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		// 内容安全策略
 		// 'unsafe-eval' 用于 WASM 编译场景，删除前需确认无 WASM 相关功能
 		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:")
+		// 禁止 Referer 外泄：下载/预览 URL 上的票据（t=）是短时效凭证，
+		// 避免内联预览页面引用外链时把票据经 Referer 发给第三方
+		c.Header("Referrer-Policy", "no-referrer")
+
+		// 预览响应单独收紧 CSP：禁止脚本执行并在沙箱中渲染，
+		// 防止上传 .html/.svg 等可执行内容被内联渲染后形成同源存储型 XSS
+		if c.Query("preview") == "true" {
+			c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox")
+		}
 
 		// 严格传输安全（仅在HTTPS环境下使用）
 		// c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

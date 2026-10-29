@@ -600,7 +600,8 @@ const handleLogin = async () => {
       const data = await AuthApi.login(loginForm.username, loginForm.password);
 
       if (data.success) {
-        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username);
+        // 凭证由后端写入 HttpOnly Cookie，本地仅标记登录态
+        AuthApi.restoreSession(data.data);
 
         // 获取用户信息并保存 role
         try {
@@ -655,7 +656,7 @@ const handleRegister = async () => {
 
       if (data.success) {
         // 注册即登录（与轻量版一致）：服务端已签发 Cookie 会话，这里同步本地登录态
-        AuthApi.setAuth(data.data.token, data.data.uuid, data.data.username);
+        AuthApi.restoreSession(data.data);
 
         // 获取用户信息并保存 role
         try {

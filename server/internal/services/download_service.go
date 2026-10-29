@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/downloadticket"
 	"fuzhan/internal/models"
 	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
@@ -94,6 +95,84 @@ func (ds *DownloadService) attachFileID(rec *models.OperationRecord, rootName, f
 		return
 	}
 	rec.FileRecordID = fid
+}
+
+// ResolveResource 解析下载 URL 路径对应的文件身份（端点种类 + 根目录 + 相对路径 + 大小 + 修改时间）。
+// 供票据签发与下载校验共用，保证「签发的绑定对象」与「实际读取的文件」用同一套规则计算。
+// 支持普通下载、管理页下载、hash 形式路径；文件不存在或路径非法时返回错误。
+func (ds *DownloadService) ResolveResource(rawPath string) (downloadticket.ResourceKey, error) {
+	var key downloadticket.ResourceKey
+
+	kind, rest, ok := downloadticket.SplitRequestPath(rawPath)
+	if !ok {
+		return key, fmt.Errorf("无效的下载路径")
+	}
+	// 前端传入的可能是编码态路径；PathUnescape 保留字面 "+"（不像 QueryUnescape 会转空格）
+	if decoded, err := url.PathUnescape(rest); err == nil {
+		rest = decoded
+	}
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return key, fmt.Errorf("下载路径为空")
+	}
+
+	var rootName, relPath string
+	if isHashPath(rest) {
+		if ds.searchService == nil {
+			return key, fmt.Errorf("哈希解析服务不可用")
+		}
+		fullPath, root, err := ds.searchService.FindFilePathByHash(rest)
+		if err != nil {
+			return key, err
+		}
+		rootName = root
+		relPath = strings.TrimPrefix(fullPath, "/"+rootName)
+	} else {
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) < 2 {
+			return key, fmt.Errorf("路径格式错误")
+		}
+		rootName = parts[0]
+		relPath = parts[1]
+	}
+
+	relPath = downloadticket.NormalizeRel(relPath)
+	if relPath == "" || relPath == ".." || strings.HasPrefix(relPath, "../") {
+		return key, fmt.Errorf("路径越权")
+	}
+	st, _, ok := ds.storageFor(rootName)
+	if !ok {
+		return key, fmt.Errorf("根目录不存在")
+	}
+	info, err := st.Stat(storageContext, relPath)
+	if err != nil || info.IsDir {
+		return key, fmt.Errorf("文件不存在")
+	}
+
+	return downloadticket.ResourceKey{
+		Kind:  kind,
+		Root:  rootName,
+		Rel:   relPath,
+		Size:  info.Size,
+		Mtime: info.ModTime.Unix(),
+	}, nil
+}
+
+// matchTicket 若请求携带下载票据，则校验票据绑定的文件身份与本次实际读取的文件一致。
+// 不一致（换文件、换端点、同名重传、用途不符）直接 403，并跳过后续记录/输出。
+func matchTicket(r *http.Request, kind, rootName, relPath string, info storage.StatInfo, isPreview bool) bool {
+	payload := downloadticket.FromContext(r.Context())
+	if payload == nil {
+		return true
+	}
+	key := downloadticket.ResourceKey{
+		Kind:  kind,
+		Root:  rootName,
+		Rel:   downloadticket.NormalizeRel(relPath),
+		Size:  info.Size,
+		Mtime: info.ModTime.Unix(),
+	}
+	return payload.Match(key, isPreview)
 }
 
 // truncate 截断字符串到 maxLen 个字符（默认按 rune 截，避免拆散中文），用于防止越界列长度。
@@ -209,6 +288,15 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 
 	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
 	isPreview := r.URL.Query().Get("preview") == "true"
+
+	// 票据绑定校验：携带票据时必须与本次实际读取的文件完全一致（端点/根目录/路径/大小/修改时间/用途）
+	kind, _, _ := downloadticket.SplitRequestPath(r.URL.Path)
+	if !matchTicket(r, kind, rootName, relPath, info, isPreview) {
+		utils.Warn("下载票据与文件不匹配", utils.String("path", relPath))
+		utils.EncodeResponse(w, nil, "下载票据无效或与文件不匹配", http.StatusForbidden)
+		return
+	}
+
 	// counted 表示这次请求是否计入下载次数：非预览且为新下载（排除断点续传/分段延续）。
 	// 记录与计数必须使用同一判定，否则记录集无法唯一推导计数值（删除记录后重算会失真）。
 	counted := !isPreview && IsNewDownloadRequest(r)
@@ -265,6 +353,11 @@ func (ds *DownloadService) DownloadByHash(w http.ResponseWriter, r *http.Request
 	} else {
 		// 预览请求的缓存策略：可缓存 1 小时
 		w.Header().Set("Cache-Control", "public, max-age=3600")
+		// 危险类型（HTML/SVG/XML/JS 等可在同源执行脚本）强制按纯文本内联，
+		// 与 SecurityHeadersMiddleware 的 sandbox CSP 形成双重兜底。
+		if utils.IsUnsafePreviewExtension(filepath.Ext(fileName)) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		}
 	}
 
 	// 由存储后端流式输出文件（本地经 http.ServeContent，对象存储流式 + Range 支持）
@@ -354,6 +447,15 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 
 	// 判定是否为预览请求（图片/PDF 内联预览走同一接口并带 preview=true）
 	isPreview := r.URL.Query().Get("preview") == "true"
+
+	// 票据绑定校验（与普通下载共用同一套规则）
+	kind, _, _ := downloadticket.SplitRequestPath(r.URL.Path)
+	if !matchTicket(r, kind, rootName, relPath, info, isPreview) {
+		utils.Warn("下载票据与文件不匹配", utils.String("path", relPath))
+		utils.EncodeResponse(w, nil, "下载票据无效或与文件不匹配", http.StatusForbidden)
+		return
+	}
+
 	// 下载次数的完整路径键：与索引表 file_records_public.full_path 一致
 	fullPath := "/" + rootName + "/" + strings.TrimPrefix(subPath, "/")
 	// counted 表示这次请求是否计入下载次数：管理页下载不计入、预览不计入、续传/分段延续不计入。
@@ -408,6 +510,11 @@ func (ds *DownloadService) downloadFile(w http.ResponseWriter, r *http.Request, 
 	} else {
 		// 预览请求的缓存策略：可缓存 1 小时
 		w.Header().Set("Cache-Control", "public, max-age=3600")
+		// 危险类型（HTML/SVG/XML/JS 等可在同源执行脚本）强制按纯文本内联，
+		// 与 SecurityHeadersMiddleware 的 sandbox CSP 形成双重兜底。
+		if utils.IsUnsafePreviewExtension(filepath.Ext(fileName)) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		}
 	}
 
 	// 由存储后端流式输出文件（本地经 http.ServeContent，对象存储流式 + Range 支持）

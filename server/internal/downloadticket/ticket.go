@@ -1,29 +1,32 @@
-// Package downloadticket 提供下载票据（Download Ticket）的签发、验签与一次性消费。
+// Package downloadticket 提供下载票据（Download Ticket）的签发与验签。
 //
 // 背景：登录 token 只应通过请求头（Authorization）传递、绝不能出现在 URL 中，
 // 而浏览器原生 <a href>/<img>/<video> 与外部下载工具（迅雷等）只能使用 URL。
 // 因此对「需要鉴权 + 原生流式下载」的资源，采用业界通用的预签名短时效 URL：
-// 服务端携带登录用户上下文签发一个「一次性、短时效、绑定单个文件」的签名串放进 URL，
+// 服务端携带登录用户上下文签发一个「短时效、绑定单个文件」的签名串放进 URL，
 // 下载端点只校验该签名而不校验登录 token。签名放 URL 的是票据而非登录凭证，
-// 泄露影响收敛为「单个文件 + 短时间窗」，且消费后即失效。
+// 泄露影响收敛为「单个文件 + 短时间窗」。
 //
-// 票据内嵌签发时的用户上下文（用户名/角色/UUID），经 HMAC 签名防篡改。
-// LoginGate 验签通过后据此注入上下文，因此下游 AuthRequired / RequireAdmin
-// 能识别该请求已通过「票据鉴权」，正常放行（含管理页下载）。
+// 票据按「时限」生效（不做一次性消费）：同一票据在有效期内可重复读取，
+// 以兼容断点续传、多段 Range、HEAD 探测与音视频拖动。
+//
+// 票据绑定的是文件身份（端点种类 + 根目录 + 规范相对路径 + 大小 + 修改时间），
+// 而不是可被前缀归一化混淆的 URL：同一票据不能跨端点（管理下载 vs 普通下载）、
+// 不能下载其它文件，也不能命中同名重传后的新文件。
+// 校验比对必须由下载服务在解析出真实文件后执行（见服务层 matchTicket）。
 //
 // 票据格式：BASE64URL(JSON payload) + "." + BASE64URL(HMAC-SHA256(payload, JWTSecret))。
-// 签名密钥复用 JWT 密钥（HS256），不新增密钥配置；重启后因密钥已持久化，旧票据仍可验签。
 package downloadticket
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"strconv"
+	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"fuzhan/pkg/jwt"
@@ -39,23 +42,43 @@ const (
 	ModePreview Mode = "preview"
 )
 
+// 端点种类
 const (
-	// downloadTicketTTL 下载票据有效期（秒）
-	downloadTicketTTL = 15 * 60
-	// previewTicketTTL 预览票据有效期（秒）
+	// KindPublic 普通下载（/download/*、/api/v1/web/download/*）
+	KindPublic = "public"
+	// KindAdmin 管理页下载（/api/v1/web/admin/download/*）
+	KindAdmin = "admin"
+)
+
+const (
+	// downloadTicketTTL 下载票据有效期（秒）：按泄露面收敛，取较短时间窗
+	downloadTicketTTL = 5 * 60
+	// previewTicketTTL 预览票据有效期（秒）：音视频拖动/Range 需要更长时间窗
 	previewTicketTTL = 10 * 60
-	// consumedCacheCap 一次性消费缓存上限（条）；超出后自动清除已过期条目，仍超限则允许少量重放
-	consumedCacheCap = 20000
 )
 
 // Payload 票据内嵌载荷（会被编码进 URL，字段名保持简短）
 type Payload struct {
-	P string `json:"p"` // 目标路径（根目录名/子路径 或 16 位哈希）
-	M Mode   `json:"m"` // 用途：download / preview
-	E int64  `json:"e"` // 过期 Unix 秒
-	U string `json:"u"` // 签发时的用户名
-	R string `json:"r"` // 签发时的角色（admin / user）
-	D string `json:"d"` // 签发时的用户 UUID
+	V     int    `json:"v"`  // 版本
+	Kind  string `json:"k"`  // 端点种类：public / admin
+	Root  string `json:"r"`  // 存储根目录名
+	Rel   string `json:"p"`  // 规范相对路径（不含根目录前缀）
+	Size  int64  `json:"s"`  // 文件大小（字节）
+	Mtime int64  `json:"mt"` // 文件修改时间（Unix 秒）
+	M     Mode   `json:"m"`  // 用途：download / preview
+	E     int64  `json:"e"`  // 过期 Unix 秒
+	U     string `json:"u"`  // 签发时的用户名
+	R     string `json:"ro"` // 签发时的角色（admin / user）
+	D     string `json:"d"`  // 签发时的用户 UUID
+}
+
+// ResourceKey 文件身份（由下载服务解析真实文件后计算）
+type ResourceKey struct {
+	Kind  string
+	Root  string
+	Rel   string
+	Size  int64
+	Mtime int64
 }
 
 // Signer 签发票据所需的用户上下文
@@ -65,51 +88,67 @@ type Signer struct {
 	UUID     string
 }
 
-// ErrInvalid 票据非法（签名错误/格式错误）
+// ErrInvalid 票据非法（签名错误/格式错误/字段缺失）
 var ErrInvalid = errors.New("invalid download ticket")
 
 // ErrExpired 票据已过期
 var ErrExpired = errors.New("download ticket expired")
 
-// consumedCache 一次性票据消费缓存（简单内存去重，进程内有效）
-type consumedCache struct {
-	mu      sync.Mutex
-	keys    map[string]int64 // 已消费票据的消费 key -> 消费时 Unix 秒
-	overCap bool             // 上次清理后仍超出上限，放宽一次性约束
+// TicketParamName 票据在 URL 中的查询参数名
+const TicketParamName = "t"
+
+// 票据载荷在 request context 中的键（供服务层读取并做文件绑定比对）
+type payloadCtxKey struct{}
+
+// WithPayload 将票据载荷写入 request context
+func WithPayload(ctx context.Context, p *Payload) context.Context {
+	return context.WithValue(ctx, payloadCtxKey{}, p)
 }
 
-var consumed = &consumedCache{keys: make(map[string]int64)}
-
-// consume 标记指定票据已消费；返回 false 表示该票据此前已被消费过（重复使用）。
-func (cc *consumedCache) consume(key string) bool {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	now := time.Now().Unix()
-	if _, seen := cc.keys[key]; seen {
-		return false
+// FromContext 从 request context 读取票据载荷；无票据时返回 nil
+func FromContext(ctx context.Context) *Payload {
+	if ctx == nil {
+		return nil
 	}
-	if len(cc.keys) >= consumedCacheCap {
-		// 超出容量上限：先清除已过期的消费记录（保留 1 天窗口），仍不够则标记超限、放弃去重
-		cc.pruneLocked(now - 24*3600)
-		if len(cc.keys) >= consumedCacheCap {
-			cc.overCap = true
-		}
+	if p, ok := ctx.Value(payloadCtxKey{}).(*Payload); ok {
+		return p
 	}
-	if cc.overCap {
-		// 内存防御：超限后停止累积，允许票据重复使用（不影响签名/时效校验）
-		return true
-	}
-	cc.keys[key] = now
-	return true
+	return nil
 }
 
-// pruneLocked 删除早于 cutoff 的消费记录（调用方须持有锁）
-func (cc *consumedCache) pruneLocked(cutoff int64) {
-	for k, ts := range cc.keys {
-		if ts < cutoff {
-			delete(cc.keys, k)
-		}
+// NormalizeRel 归一化相对路径：统一分隔符、清理 . / ..、去掉首尾斜杠。
+// 签发侧与服务侧必须共用本函数，保证比对一致。
+func NormalizeRel(rel string) string {
+	rel = strings.ReplaceAll(rel, "\\", "/")
+	rel = strings.TrimPrefix(rel, "/")
+	cleaned := filepath.ToSlash(filepath.Clean(rel))
+	if cleaned == "." {
+		return ""
 	}
+	return strings.Trim(cleaned, "/")
+}
+
+// SplitRequestPath 从下载 URL 路径中拆出端点种类与剩余部分（根目录/子路径或哈希）。
+// 顺序很重要：先匹配更长的管理下载前缀，避免被普通下载前缀误判。
+func SplitRequestPath(p string) (kind string, rest string, ok bool) {
+	switch {
+	case strings.HasPrefix(p, "/api/v1/web/admin/download/"):
+		return KindAdmin, strings.TrimPrefix(p, "/api/v1/web/admin/download/"), true
+	case strings.HasPrefix(p, "/api/v1/web/download/"):
+		return KindPublic, strings.TrimPrefix(p, "/api/v1/web/download/"), true
+	case strings.HasPrefix(p, "/download/"):
+		return KindPublic, strings.TrimPrefix(p, "/download/"), true
+	default:
+		return "", "", false
+	}
+}
+
+// ModeForPreview 返回预览开关对应的票据用途
+func ModeForPreview(preview bool) Mode {
+	if preview {
+		return ModePreview
+	}
+	return ModeDownload
 }
 
 // expire 计算票据过期时间（按用途区分有效期）
@@ -120,16 +159,21 @@ func expire(m Mode) time.Time {
 	return time.Now().Add(downloadTicketTTL * time.Second)
 }
 
-// Sign 为指定路径签发一枚票据字符串（不包含路径本身，路径以请求路径形式附在 URL 上）。
+// Sign 为指定文件身份签发一枚票据字符串（不包含路径本身，路径以请求路径形式附在 URL 上）。
 // 返回可直接拼接到 URL 的 t 参数值。
-func Sign(path string, mode Mode, user Signer) (string, error) {
+func Sign(key ResourceKey, mode Mode, user Signer) (string, error) {
 	payload := &Payload{
-		P: path,
-		M: mode,
-		E: expire(mode).Unix(),
-		U: user.Username,
-		R: user.Role,
-		D: user.UUID,
+		V:     1,
+		Kind:  key.Kind,
+		Root:  key.Root,
+		Rel:   NormalizeRel(key.Rel),
+		Size:  key.Size,
+		Mtime: key.Mtime,
+		M:     mode,
+		E:     expire(mode).Unix(),
+		U:     user.Username,
+		R:     user.Role,
+		D:     user.UUID,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -149,7 +193,7 @@ func hmacSHA256(data string) string {
 }
 
 // Validate 校验票据并返回其载荷。校验失败时返回 ErrInvalid/ErrExpired。
-// 校验通过后随即标记一次性消费：同票据第二次使用返回 ErrInvalid。
+// 注意：本函数只做签名/格式/时限校验；文件绑定由下载服务解析真实文件后比对。
 func Validate(ticket string) (*Payload, error) {
 	if ticket == "" {
 		return nil, ErrInvalid
@@ -174,19 +218,39 @@ func Validate(ticket string) (*Payload, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, ErrInvalid
 	}
-	if p.P == "" || p.M == "" {
+	// 旧版本票据（无文件绑定字段）一律拒绝，避免退化为“路径级”弱绑定
+	if p.V != 1 || p.Kind == "" || p.Root == "" || p.Rel == "" || p.M == "" || p.Size < 0 {
+		return nil, ErrInvalid
+	}
+	if p.M != ModeDownload && p.M != ModePreview {
 		return nil, ErrInvalid
 	}
 	if p.E < time.Now().Unix() {
 		return nil, ErrExpired
 	}
-
-	// 一次性消费（去重 key 绑定 路径+用途+过期时刻）
-	if !consumed.consume(p.P + "|" + string(p.M) + "|" + strconv.FormatInt(p.E, 10)) {
-		return nil, ErrInvalid // 已消费/重放
-	}
 	return &p, nil
 }
 
-// TicketParamName 票据在 URL 中的查询参数名
-const TicketParamName = "t"
+// Match 判断本次请求的真实文件身份与用途是否与票据一致。
+// preview 为本次请求是否按内联预览处理（来自 preview=true 查询参数）。
+func (p *Payload) Match(key ResourceKey, preview bool) bool {
+	if p == nil {
+		return false
+	}
+	if p.M != ModeForPreview(preview) {
+		return false
+	}
+	if p.Kind != key.Kind {
+		return false
+	}
+	if p.Root != key.Root {
+		return false
+	}
+	if NormalizeRel(p.Rel) != NormalizeRel(key.Rel) {
+		return false
+	}
+	if p.Size != key.Size || p.Mtime != key.Mtime {
+		return false
+	}
+	return true
+}

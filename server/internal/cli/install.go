@@ -146,11 +146,62 @@ func generateScript(serverURL string) string {
 
 fuzhan_SERVER="%[1]s"
 
+# 会话 Cookie 文件：fuzhan login 写入（HttpOnly 会话 Cookie），所有请求自动携带。
+# 开启「强制登录」的服务端必须登录后才能搜索/浏览/下载。
+fuzhan_COOKIE_FILE="${FUZHAN_COOKIE_FILE:-$HOME/.fuzhan_cookie}"
+
 # 颜色定义
 fuzhan_COLOR_GREEN="\033[32m"
 fuzhan_COLOR_YELLOW="\033[33m"
 fuzhan_COLOR_CYAN="\033[36m"
 fuzhan_COLOR_RESET="\033[0m"
+
+# 统一 curl 包装：自动携带会话 Cookie，避免每个接口重复判断。
+# -c 与 -b 同时使用：服务端在令牌临近过期时会下发新的 Set-Cookie，写回 jar 实现会话续期。
+fuzhan_curl() {
+    if [ -f "${fuzhan_COOKIE_FILE}" ]; then
+        curl -b "${fuzhan_COOKIE_FILE}" -c "${fuzhan_COOKIE_FILE}" "$@"
+    else
+        curl "$@"
+    fi
+}
+
+# 登录并保存会话 Cookie（强制登录开启时必需）
+fuzhan_login() {
+    local username="${1:-}"
+    local password="${2:-}"
+    if [ -z "${username}" ] || [ -z "${password}" ]; then
+        echo "用法: fuzhan login <用户名> <密码>" >&2
+        return 1
+    fi
+    # 简单 JSON 转义（反斜杠与双引号）
+    local user_esc="${username//\\/\\\\}"
+    user_esc="${user_esc//\"/\\\"}"
+    local pass_esc="${password//\\/\\\\}"
+    pass_esc="${pass_esc//\"/\\\"}"
+    local body
+    body="$(printf '{"username":"%%s","password":"%%s"}' "${user_esc}" "${pass_esc}")"
+    # 登录接口只在 Set-Cookie 中下发凭证，用 cookie jar 保存即可
+    umask 077
+    local status
+    status="$(curl -s -o /dev/null -w '%%{http_code}' -c "${fuzhan_COOKIE_FILE}" \
+        -X POST "${fuzhan_SERVER}/api/v1/web/auth/login" \
+        -H "Content-Type: application/json" --data "${body}")"
+    if [ "${status}" != "200" ]; then
+        rm -f "${fuzhan_COOKIE_FILE}"
+        echo "登录失败：请检查用户名/密码是否正确" >&2
+        return 1
+    fi
+    chmod 600 "${fuzhan_COOKIE_FILE}" 2>/dev/null || true
+    echo "登录成功，会话已保存到 ${fuzhan_COOKIE_FILE}"
+}
+
+# 清除本地会话
+fuzhan_logout() {
+    curl -s -o /dev/null -b "${fuzhan_COOKIE_FILE}" -X POST "${fuzhan_SERVER}/api/v1/web/auth/logout"
+    rm -f "${fuzhan_COOKIE_FILE}"
+    echo "已退出登录"
+}
 
 # 使用说明
 fuzhan_help() {
@@ -163,6 +214,8 @@ fuzhan CLI - 文件管理命令行工具
   search, s <关键词...>   搜索文件（空格分隔多个关键词，AND 逻辑）
   list, l [路径]          浏览目录
   download, dl <路径或哈希值>  下载文件到当前目录（自动识别路径或哈希）
+  login <用户名> <密码>   登录并保存会话（强制登录的服务端必需）
+  logout                  退出登录并清除本地会话
   help, h                 显示此帮助
 
 选项:
@@ -301,7 +354,7 @@ fuzhan_search() {
 
     # 获取原始输出并解析每一行
     local raw_output
-    raw_output=$(curl -s "$fuzhan_SERVER/cli/search/$encoded")
+    raw_output=$(fuzhan_curl -s "$fuzhan_SERVER/cli/search/$encoded")
     echo "$raw_output" | while IFS= read -r line; do
         # 跳过空行和提示信息行
         if [[ -z "$line" || "$line" == "---"* || "$line" == *"检索"* || "$line" == *"搜索完成"* || "$line" == *"中止"* ]]; then
@@ -342,9 +395,9 @@ fuzhan_list() {
 
     local raw_output
     if [ -z "$path" ]; then
-        raw_output=$(curl -s "$fuzhan_SERVER/cli/list/")
+        raw_output=$(fuzhan_curl -s "$fuzhan_SERVER/cli/list/")
     else
-        raw_output=$(curl -s "$fuzhan_SERVER/cli/list/$encoded")
+        raw_output=$(fuzhan_curl -s "$fuzhan_SERVER/cli/list/$encoded")
     fi
 
     echo "$raw_output" | while IFS= read -r line; do
@@ -381,7 +434,7 @@ fuzhan_download() {
     local encoded
     encoded="$(printf '%%s' "$target" | sed 's/ /%%20/g; s/#/%%23/g; s/&/%%26/g; s/?/%%3F/g')"
     # -OJ 采用服务端 Content-Disposition 提供的真实文件名（哈希下载时也生效）
-    curl -OJ "$fuzhan_SERVER/download/$encoded"
+    fuzhan_curl -OJ "$fuzhan_SERVER/download/$encoded"
 }
 
 # 主函数
@@ -403,6 +456,12 @@ fuzhan() {
             ;;
         download|dl)
             fuzhan_download "$@"
+            ;;
+        login)
+            fuzhan_login "$@"
+            ;;
+        logout)
+            fuzhan_logout
             ;;
         help|h|--help|-h)
             fuzhan_help

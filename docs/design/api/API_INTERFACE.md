@@ -16,7 +16,7 @@
   - API Key（外部集成）
   - LDAP（企业目录）
   - OAuth2 / OIDC（外部统一认证，授权码模式）
-  - **强制登录（LoginGate）**：开启 `account.require_login` 后，`/api/v1/web`、`/api/v1/cli`、`/download`、`/lite` 等接口需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数）；未开启时保持匿名。临时文件 `/temp/`、私有分享 `/share/:code` 直接下载、登录/注册、初始化 `/setup/`、健康检查、`/options`、搜索联想等为匿名例外
+  - **强制登录（LoginGate）**：开启 `account.require_login` 后，`/api/v1/web`（含 `/temp/**`）、`/api/v1/cli`、`/download`、`/lite`、`/share/:code` 等接口需携带登录令牌（`Authorization: Bearer <token>` 或 HttpOnly Cookie `fuzhan_token`，不支持 `?token=`）；下载/预览使用短时效签名票据（URL 上 `t=`，与文件绑定、按时限生效）。未开启时保持匿名。登录/注册、初始化 `/setup/`、健康检查、`/options`、CLI 安装脚本为匿名例外
 - **响应格式**：
   ```json
   {
@@ -45,13 +45,14 @@
     "success": true,
     "message": "注册成功",
     "data": {
-      "token": "JWT令牌",
       "uuid": "用户UUID",
       "username": "用户名",
       "expiresIn": 86400
     }
   }
   ```
+- **说明**：登录凭证只通过 HttpOnly Cookie（`fuzhan_token`）下发，响应体不回传 JWT；
+  CLI 等客户端同样使用 Cookie 会话（见「命令行接口」章节）。
 
 ### 2. 用户登录
 
@@ -69,13 +70,14 @@
   {
     "success": true,
     "data": {
-      "token": "JWT令牌",
       "uuid": "用户UUID",
       "username": "用户名",
       "expiresIn": 86400
     }
   }
   ```
+- **说明**：凭证只通过 HttpOnly Cookie（`fuzhan_token`）下发，响应体不回传 JWT；
+  CLI 等客户端同样使用 Cookie 会话，不再从响应体取令牌。
 
 ### 3. 获取用户信息
 
@@ -97,17 +99,19 @@
 ### 4. 刷新 Token
 
 - **URL**：`POST /api/v1/web/auth/refresh`
-- **认证**：需要（Bearer Token）
+- **认证**：需要（HttpOnly Cookie 或 Bearer Token）
 - **响应**：
   ```json
   {
     "success": true,
     "data": {
-      "token": "新JWT令牌",
+      "uuid": "用户UUID",
+      "username": "用户名",
       "expiresIn": 86400
     }
   }
   ```
+- **说明**：刷新后的令牌直接写回 HttpOnly Cookie，不经响应体或响应头回传。
 
 ### 5. 修改密码
 
@@ -139,7 +143,7 @@
 
 - **回调处理**：`GET /api/v1/web/auth/oauth2/callback`
   - 由外部系统回调，后端校验 state、换取令牌、映射本地用户并签发 JWT，
-    最终 302 重定向到前端 `/#/oauth2/callback?token=...&uuid=...&username=...`；
+    令牌直接写入 HttpOnly Cookie，随后 302 跳转到 `/#/oauth2/callback`（URL 不携带令牌）；
     失败时重定向为 `/#/oauth2/callback?error=...`。
 
 ## 文件浏览接口
@@ -218,7 +222,7 @@
 ### 1. 下载文件
 
 - **URL**：`GET /download/*path`（等价 API 路径：`GET /api/v1/web/download/*path`）
-- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌，可通过 `?token=` 查询参数携带）
+- **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌或短时效下载票据 `t=`，不支持 `?token=`）。匿名下载按 IP 限流
 - **参数**：
   - `preview`（可选）：预览模式
 - **说明**：直接返回文件内容
@@ -806,7 +810,7 @@
 
 ## CLI 接口（受强制登录开关控制）
 
-CLI 接口的认证行为与配置文件 `account.require_login` 关联：未开启时匿名可访问；开启后需携带登录令牌（`Authorization: Bearer <token>` 或 `?token=` 查询参数），未认证返回 `401`。CLI 安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外（保持公开，便于新机器拉取脚本）。
+CLI 接口的认证行为与配置文件 `account.require_login` 关联：未开启时匿名可访问；开启后需携带登录凭证（HttpOnly Cookie `fuzhan_token` 或 `Authorization: Bearer <token>`，不支持 `?token=`），未认证返回 `401`。CLI 可用 `fuzhan login <用户名> <密码>` 登录并把会话 Cookie 保存到 `~/.fuzhan_cookie`（可用环境变量 `FUZHAN_COOKIE_FILE` 覆盖），后续请求自动携带。CLI 安装/升级脚本 `install.sh`、`fuzhan.sh` 为匿名例外（保持公开，便于新机器拉取脚本）。
 
 ### 1. CLI 帮助
 
