@@ -134,10 +134,6 @@
                 <span class="info-value">{{ aboutInfo.version || '—' }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">运行环境</span>
-                <span class="info-value">{{ aboutInfo.goVersion || '—' }}</span>
-              </div>
-              <div class="info-row">
                 <span class="info-label">服务状态</span>
                 <span class="info-value about-status">
                   <span class="status-dot" :class="statusClass"></span>{{ statusText }}
