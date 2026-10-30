@@ -6,8 +6,10 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
+	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
+	"fuzhan/pkg/jwt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -91,6 +93,67 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 			}
 			utils.Warn("Open API 鉴权方式配置无效", utils.String("auth_mode", mode))
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": msg})
+		}
+	}
+}
+
+// LoginRequiredWhenForced OpenAPI 文档（/openapi.json）专用守卫。
+//
+// 与 AuthGateMiddleware 的差异只在「强制登录 + auth_mode=none」这一格：
+// AuthGate 会直接 403（并要求启用 api_key），因为它守护的是 Open API 数据端点，
+// 不接受 Web 登录态。文档是给人看的，已登录的 Web 用户（Cookie JWT）本应能读，
+// 因此这里不放宽数据端点，只对文档单开一条窄口子（同一矩阵）：
+//
+//	requireLogin | auth_mode | openapi.json
+//	-------------+-----------+----------------------------------------
+//	false        | none      | 匿名 200（历史行为）
+//	false        | api_key   | 需 API Key（AuthGate 语义），无 Key 401
+//	true         | none      | Cookie JWT 或 Bearer JWT/API Key，否则 401
+//	true         | api_key   | 需 API Key（AuthGate 语义），无 Key 401
+//
+// 之所以不复用「none+requireLogin→403」：强制登录后匿名被拒仍是目标，
+// 但登录用户不该被登录态本身挡在文档外；同时 api_key 模式完全沿用 AuthGate，
+// 不因文档路由打开新的匿名通道。
+func LoginRequiredWhenForced(rbac *auth.RBACService) gin.HandlerFunc {
+	apiKeyGate := AuthGateMiddleware(rbac)
+	return func(c *gin.Context) {
+		switch CurrentAuthMode() {
+		case AuthModeAPIKey:
+			// api_key 模式：完全沿用 AuthGate（必须带有效 API Key），不因文档路由开新洞
+			apiKeyGate(c)
+			return
+		case AuthModeNone:
+			// 非强制登录：保持历史匿名行为
+			if !appconfig.GetConfig().Account.RequireLogin {
+				c.Next()
+				return
+			}
+			// 强制登录 + none：接受 Web 会话 Cookie 或 Bearer JWT/API Key
+			if token := middleware.TokenFromCookie(c); token != "" {
+				if _, err := jwt.ParseJWT(token); err == nil {
+					c.Next()
+					return
+				}
+			}
+			if token := bearerToken(c); token != "" {
+				if _, err := jwt.ParseJWT(token); err == nil {
+					c.Next()
+					return
+				}
+				if rbac != nil {
+					if _, _, err := rbac.ValidateAPIKey(token); err == nil {
+						c.Next()
+						return
+					}
+				}
+			}
+			utils.Warn("强制登录已开启，OpenAPI 文档拒绝匿名访问",
+				utils.String("path", c.Request.URL.Path))
+			c.Header("Cache-Control", "no-store")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "强制登录已开启，需要有效凭证"})
+		default:
+			// 未知模式交回 AuthGate 统一给出明确错误（500）
+			apiKeyGate(c)
 		}
 	}
 }

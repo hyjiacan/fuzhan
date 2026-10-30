@@ -134,8 +134,20 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openAPI.GET("/files/notes", rt.rbacService.RequireScope(models.ScopeFilesNotes), rt.openAPIHandler.GetNotes)
 		// FR-4.1: 文件依赖树查询 API（需认证，需要文件依赖树查询权限）
 		openAPI.GET("/files/:id/depends", rt.rbacService.RequireScope(models.ScopeFilesDepends), rt.openAPIHandler.GetDependencyTree)
-		// FR-3.10: OpenAPI 文档（公开）
-		openAPI.GET("/openapi.json", rt.openAPIHandler.GetOpenAPISpec)
 		openAPI.GET("/docs", rt.openAPIHandler.GetDocsPage)
 	}
+
+	// OpenAPI 文档：从组级 AuthGate 中单独抽出，改走 LoginRequiredWhenForced。
+	// 强制登录开启时：Web 会话 Cookie 或有效 API Key 可读（修复已登录用户读不到文档的割裂），
+	// 匿名 401；api_key 模式下仍要求 API Key（与非强制登录时一致，不开新洞）。
+	openapiDoc := r.Group("/api/open/v1")
+	openapiDoc.Use(
+		openapi.FeatureGateMiddleware(rt.openAPICfg.Enabled),
+		openapi.IPAccessMiddleware(rt.openAPIIPAccessCfg),
+		openapi.RateLimitMiddleware(rt.openAPIRateLimiter),
+		openapi.LoginRequiredWhenForced(rt.rbacService),
+		openapi.CallStatMiddleware(rt.openAPICallStat),
+		middleware.ResponseWrapperMiddleware(),
+	)
+	openapiDoc.GET("/openapi.json", rt.openAPIHandler.GetOpenAPISpec)
 }
