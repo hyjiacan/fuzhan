@@ -40,10 +40,9 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	bindingExampleHandler := rt.bindingExampleHandler
 	validator := rt.validator
 
-	// 健康检查路由（无需认证）
+	// 健康检查路由（/health 走登录白名单保持匿名；/ready 受强制登录约束，经 LoginGate）
 	web.GET("/health", healthHandler.Health)
-	// 就绪探针挂在 web 组（经 LoginGate）：强制登录开启后就绪状态也需登录可见，
-	// 避免未登录请求探测服务就绪状态与内部拓扑。
+	// 就绪探针统一收敛到 LoginGate，强制登录开启后不再匿名可访问
 	web.GET("/ready", healthHandler.Ready)
 	// 监控指标路由（需要认证，防止信息泄露）
 	api.GET("/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())

@@ -20,7 +20,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	api := r.Group("/api/v1")
 	web := api.Group("/web")
 	web.GET("/health", dummy)
-	api.GET("/ready", dummy)
+	web.GET("/ready", dummy)
 	api.GET("/metrics", dummy)
 	web.GET("/monitor/storage", dummy)
 	web.GET("/monitor/access", dummy)
