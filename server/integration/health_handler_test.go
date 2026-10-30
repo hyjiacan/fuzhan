@@ -41,9 +41,10 @@ func TestHealthCheck(t *testing.T) {
 func TestReadyCheck(t *testing.T) {
 	router := gin.New()
 	handler := health.NewHealthHandler()
-	router.GET("/api/v1/ready", handler.Ready)
+	// /ready 已移入 web 组（经 LoginGate），注册路径为 /api/v1/web/ready
+	router.GET("/api/v1/web/ready", handler.Ready)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/web/ready", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

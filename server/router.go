@@ -193,7 +193,7 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 	//   /api/v1/web     —— Web 界面（含管理后台）直接调用
 	//   /api/v1/cli     —— 命令行工具
 	//   /api/v1/webdav  —— WebDAV 端点
-	//   /api/v1/ready   —— 就绪探针（基础设施）
+	//   /api/v1/web/ready —— 就绪探针（经 LoginGate，强制登录后需登录可见）
 	api := r.Group("/api/v1")
 	web := api.Group("/web")
 	// 「强制登录」闸门：开启（account.require_login）后仅登录用户可访问 Web 接口，

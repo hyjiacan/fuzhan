@@ -16,7 +16,7 @@ import (
 
 // registerApiRoutes 注册 /api/v1 下的全部业务路由。
 // web 为 /api/v1/web 组，承载 Web 界面（含管理后台）直接调用的接口；
-// api 为 /api/v1 组，仅承载非界面渠道（CLI、WebDAV、就绪探针）。
+// api 为 /api/v1 组，仅承载非界面渠道（CLI、WebDAV）。
 func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	authMiddleware := rt.authMiddleware
 	configHandler := rt.configHandler
@@ -42,8 +42,9 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 
 	// 健康检查路由（无需认证）
 	web.GET("/health", healthHandler.Health)
-	// 就绪探针（基础设施，非界面调用）
-	api.GET("/ready", healthHandler.Ready)
+	// 就绪探针挂在 web 组（经 LoginGate）：强制登录开启后就绪状态也需登录可见，
+	// 避免未登录请求探测服务就绪状态与内部拓扑。
+	web.GET("/ready", healthHandler.Ready)
 	// 监控指标路由（需要认证，防止信息泄露）
 	api.GET("/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())
 
