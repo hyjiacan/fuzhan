@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"fuzhan/internal/appconfig"
@@ -17,7 +20,19 @@ func init() {
 }
 
 // TestHealthCheck 测试健康检查
+// 回归：/health 为匿名白名单端点，响应不得包含 goVersion/goroutines 与存储绝对路径。
 func TestHealthCheck(t *testing.T) {
+	// 准备一个可辨认的存储目录，确保存储检查走"目录正常"分支
+	marker := "health-leak-marker"
+	rootDir := filepath.Join(t.TempDir(), marker)
+	if err := os.MkdirAll(rootDir, 0755); err != nil {
+		t.Fatalf("创建测试存储目录失败: %v", err)
+	}
+
+	prevRootDirs := appconfig.GlobalConfig.Storage.Public.RootDirs
+	appconfig.GlobalConfig.Storage.Public.RootDirs = []appconfig.DirectoryConfig{{Path: rootDir}}
+	defer func() { appconfig.GlobalConfig.Storage.Public.RootDirs = prevRootDirs }()
+
 	router := gin.New()
 	handler := health.NewHealthHandler()
 	router.GET("/api/v1/web/health", handler.Health)
@@ -32,10 +47,29 @@ func TestHealthCheck(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
 
 	if response["success"] != true {
 		t.Error("期望 success 为 true")
+	}
+
+	data, ok := response["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("期望 data 为对象，实际 %T", response["data"])
+	}
+
+	if _, exists := data["goVersion"]; exists {
+		t.Error("响应不应包含 goVersion 字段")
+	}
+	if _, exists := data["goroutines"]; exists {
+		t.Error("响应不应包含 goroutines 字段")
+	}
+
+	// 存储绝对路径不得出现在响应中
+	if body := w.Body.String(); strings.Contains(body, marker) {
+		t.Errorf("响应不应包含存储绝对路径，实际响应: %s", body)
 	}
 }
 

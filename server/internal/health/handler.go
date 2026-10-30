@@ -3,7 +3,6 @@ package health
 import (
 	"net/http"
 	"os"
-	"runtime"
 	"time"
 
 	"fuzhan/internal/appconfig"
@@ -36,12 +35,10 @@ type CheckResult struct {
 
 // HealthCheckResponse 健康检查响应结构体
 type HealthCheckResponse struct {
-	Status     string                 `json:"status"`
-	Version    string                 `json:"version"`
-	GoVersion  string                 `json:"goVersion"`
-	Goroutines int                    `json:"goroutines"`
-	Checks     map[string]CheckResult `json:"checks"`
-	Timestamp  string                 `json:"timestamp"`
+	Status    string                 `json:"status"`
+	Version   string                 `json:"version"`
+	Checks    map[string]CheckResult `json:"checks"`
+	Timestamp string                 `json:"timestamp"`
 }
 
 // Health 健康检查端点
@@ -77,7 +74,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 			if os.IsNotExist(err) {
 				storageChecks = append(storageChecks, CheckResult{
 					Status:  "error",
-					Message: "目录不存在: " + dirPath,
+					Message: "目录不存在",
 				})
 				utils.AppLogger().Error("健康检查: 存储目录不存在",
 					zap.String("path", dirPath),
@@ -85,7 +82,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 			} else {
 				storageChecks = append(storageChecks, CheckResult{
 					Status:  "error",
-					Message: "无权限访问: " + dirPath,
+					Message: "无权限访问",
 				})
 				utils.AppLogger().Error("健康检查: 存储目录无权限访问",
 					zap.String("path", dirPath),
@@ -98,7 +95,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 		} else if !info.IsDir() {
 			storageChecks = append(storageChecks, CheckResult{
 				Status:  "error",
-				Message: "不是目录: " + dirPath,
+				Message: "不是目录",
 			})
 			utils.AppLogger().Error("健康检查: 存储路径不是目录",
 				zap.String("path", dirPath),
@@ -109,7 +106,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 		} else {
 			storageChecks = append(storageChecks, CheckResult{
 				Status:  "ok",
-				Message: dirPath,
+				Message: "目录正常",
 			})
 			// 正常目录不再逐条打印日志：健康检查会被前端高频调用，
 			// 成功路径的逐目录日志只会刷屏而无助于排查（异常路径仍会记录）。
@@ -130,12 +127,10 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 	}
 
 	resp := HealthCheckResponse{
-		Status:     overallStatus,
-		Version:    "1.0.0",
-		GoVersion:  runtime.Version(),
-		Goroutines: runtime.NumGoroutine(),
-		Checks:     checks,
-		Timestamp:  utils.Now().Format(time.RFC3339),
+		Status:    overallStatus,
+		Version:   "1.0.0",
+		Checks:    checks,
+		Timestamp: utils.Now().Format(time.RFC3339),
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "服务运行正常", resp)
