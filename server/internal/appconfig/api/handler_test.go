@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -292,6 +293,107 @@ func TestSaveConfig_PersistsCaptcha(t *testing.T) {
 		if !strings.Contains(yamlText, want) {
 			t.Errorf("持久化 YAML 缺少 %q 节点: %s", want, yamlText)
 		}
+	}
+}
+
+// TestSaveConfig_CaptchaTriggerAfterOnlyPositive 验证 trigger_after 仅在 >0 时写入：
+// 0/负数保留原值且不产生 account.captcha.trigger_after 更新（持久化 YAML 中无该键）。
+func TestSaveConfig_CaptchaTriggerAfterOnlyPositive(t *testing.T) {
+	cases := []struct {
+		name       string
+		trigger    int
+		wantAfter  int
+		wantHasKey bool
+	}{
+		{"零值保留原值", 0, 4, false},
+		{"负值保留原值", -1, 4, false},
+		{"正值写入", 3, 3, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prevPath := appconfig.ConfigPath
+			prevCfg := appconfig.GlobalConfig
+			prevCaptcha := appconfig.GlobalConfig.Account.Captcha
+			appconfig.ConfigPath = minimalTestConfigPath(t)
+			t.Cleanup(func() {
+				appconfig.ConfigPath = prevPath
+				appconfig.GlobalConfig = prevCfg
+				appconfig.GlobalConfig.Account.Captcha = prevCaptcha
+			})
+			appconfig.GlobalConfig = appconfig.Config{
+				Account: appconfig.AccountConfig{
+					Captcha: appconfig.CaptchaConfig{Mode: "disabled", TriggerAfter: 4},
+				},
+				Storage: appconfig.StorageConfig{
+					Temp: appconfig.TempConfig{Enabled: false},
+				},
+			}
+
+			body := `{"account":{"captcha":{"mode":"after_n","triggerAfter":` + strconv.Itoa(tc.trigger) + `}}}`
+			postConfig(t, "/api/v1/web/config", body, &Handler{})
+
+			got := appconfig.GlobalConfig.Account.Captcha
+			if got.Mode != "after_n" {
+				t.Errorf("Captcha.Mode = %q, want after_n", got.Mode)
+			}
+			if got.TriggerAfter != tc.wantAfter {
+				t.Errorf("Captcha.TriggerAfter = %d, want %d", got.TriggerAfter, tc.wantAfter)
+			}
+
+			out, err := os.ReadFile(appconfig.ConfigPath)
+			if err != nil {
+				t.Fatalf("读取持久化配置失败: %v", err)
+			}
+			yamlText := string(out)
+			if tc.wantHasKey {
+				if !strings.Contains(yamlText, "trigger_after: 3") {
+					t.Errorf("持久化 YAML 缺少 trigger_after: 3: %s", yamlText)
+				}
+			} else if strings.Contains(yamlText, "trigger_after") {
+				t.Errorf("triggerAfter=%d 时不应写入 account.captcha.trigger_after: %s", tc.trigger, yamlText)
+			}
+		})
+	}
+}
+
+// TestGetOptions_CaptchaRequiredDisabled 验证 mode=disabled 时公开 options 的
+// captcha.required 为 false，与 always 用例互补，避免只测 true 的假阳性。
+func TestGetOptions_CaptchaRequiredDisabled(t *testing.T) {
+	prevCfg := appconfig.GlobalConfig
+	t.Cleanup(func() { appconfig.GlobalConfig = prevCfg })
+	appconfig.GlobalConfig = appconfig.Config{
+		Account: appconfig.AccountConfig{
+			Captcha: appconfig.CaptchaConfig{Mode: "disabled", TriggerAfter: 3},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/api/v1/web/options", nil)
+	(&Handler{}).GetOptions(c)
+
+	var resp struct {
+		Data struct {
+			Account struct {
+				Captcha struct {
+					Mode         string `json:"mode"`
+					TriggerAfter int    `json:"triggerAfter"`
+					Required     bool   `json:"required"`
+				} `json:"captcha"`
+			} `json:"account"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析 options 响应失败: %v", err)
+	}
+	if resp.Data.Account.Captcha.Mode != "disabled" {
+		t.Errorf("options.account.captcha.mode = %q, want disabled", resp.Data.Account.Captcha.Mode)
+	}
+	if resp.Data.Account.Captcha.TriggerAfter != 3 {
+		t.Errorf("options.account.captcha.triggerAfter = %d, want 3", resp.Data.Account.Captcha.TriggerAfter)
+	}
+	if resp.Data.Account.Captcha.Required {
+		t.Error("mode=disabled: options.account.captcha.required = true, want false")
 	}
 }
 

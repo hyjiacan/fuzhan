@@ -246,11 +246,14 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// 强制登录开关：开启后 Web 界面仅登录用户可交互
 		appconfig.GlobalConfig.Account.RequireLogin = req.Account.RequireLogin
 		updates.Add("account.require_login", req.Account.RequireLogin)
-		// 图形验证码：mode 非空才写入，避免前端未提交 captcha 时误清空已有配置
+		// 图形验证码：mode 非空才写入，避免前端未提交 captcha 时误清空已有配置；
+		// trigger_after 仅接受正值，避免把阈值重置为 0/负数（<=0 运行时按默认值处理）
 		if req.Account.Captcha.Mode != "" {
 			appconfig.GlobalConfig.Account.Captcha.Mode = req.Account.Captcha.Mode
-			appconfig.GlobalConfig.Account.Captcha.TriggerAfter = req.Account.Captcha.TriggerAfter
 			updates.Add("account.captcha.mode", req.Account.Captcha.Mode)
+		}
+		if req.Account.Captcha.TriggerAfter > 0 {
+			appconfig.GlobalConfig.Account.Captcha.TriggerAfter = req.Account.Captcha.TriggerAfter
 			updates.Add("account.captcha.trigger_after", req.Account.Captcha.TriggerAfter)
 		}
 	}
