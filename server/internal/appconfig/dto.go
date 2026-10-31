@@ -308,6 +308,13 @@ type AccountResponse struct {
 	ReservedUsernames []string          `json:"reservedUsernames"`
 	AllowRegistration bool              `json:"allowRegistration"` // 是否允许用户自行注册
 	RequireLogin      bool              `json:"requireLogin"`      // 是否强制登录：开启后 Web 界面仅登录用户可交互
+	Captcha           CaptchaResponse   `json:"captcha"`           // 登录/注册图形验证码
+}
+
+// CaptchaResponse 验证码配置响应
+type CaptchaResponse struct {
+	Mode         string `json:"mode"`
+	TriggerAfter int    `json:"triggerAfter"`
 }
 
 // AnonymousResponse 匿名用户 DTO
@@ -407,6 +414,10 @@ func (c *Config) ToDTO() ConfigDTO {
 			ReservedUsernames: c.Account.ReservedUsernames,
 			AllowRegistration: c.Account.AllowRegistration,
 			RequireLogin:      c.Account.RequireLogin,
+			Captcha: CaptchaResponse{
+				Mode:         c.Account.Captcha.Mode,
+				TriggerAfter: c.Account.Captcha.TriggerAfter,
+			},
 		},
 		Server: ServerResponse{
 			Host: c.Server.Host,
@@ -639,6 +650,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Account.ReservedUsernames = dto.Account.ReservedUsernames
 	cfg.Account.AllowRegistration = dto.Account.AllowRegistration
 	cfg.Account.RequireLogin = dto.Account.RequireLogin
+	cfg.Account.Captcha.Mode = dto.Account.Captcha.Mode
+	cfg.Account.Captcha.TriggerAfter = dto.Account.Captcha.TriggerAfter
 
 	cfg.Database.Driver = dto.Database.Driver
 	cfg.Database.DSN = dto.Database.DSN

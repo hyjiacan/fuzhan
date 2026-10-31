@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -206,6 +207,88 @@ func TestSaveConfig_PreviewGroups(t *testing.T) {
 	}
 	yamlText := string(out)
 	for _, want := range []string{"mimes: image/png", "max_inline_size: 2M", "text_chunk_size: 200K"} {
+		if !strings.Contains(yamlText, want) {
+			t.Errorf("持久化 YAML 缺少 %q 节点: %s", want, yamlText)
+		}
+	}
+}
+
+// TestGetOptions_CaptchaAndNoAllowedIPRanges 验证公开 options 的 account.captcha
+// 含 mode/triggerAfter/required，且 upload.urlUpload 不再暴露 allowedIPRanges。
+func TestGetOptions_CaptchaAndNoAllowedIPRanges(t *testing.T) {
+	prevCfg := appconfig.GlobalConfig
+	defer func() { appconfig.GlobalConfig = prevCfg }()
+	appconfig.GlobalConfig = appconfig.Config{
+		Account: appconfig.AccountConfig{
+			Captcha: appconfig.CaptchaConfig{Mode: "always", TriggerAfter: 4},
+		},
+		Upload: appconfig.UploadConfig{
+			URLUpload: appconfig.URLUploadConfig{AllowedIPRanges: []string{"1.2.3.4/24"}},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/api/v1/web/options", nil)
+	(&Handler{}).GetOptions(c)
+
+	var resp struct {
+		Data struct {
+			Account map[string]interface{} `json:"account"`
+			Upload  struct {
+				URLUpload map[string]interface{} `json:"urlUpload"`
+			} `json:"upload"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析 options 响应失败: %v", err)
+	}
+
+	captcha, ok := resp.Data.Account["captcha"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("options.account.captcha 缺失或类型错误: %v", resp.Data.Account["captcha"])
+	}
+	if captcha["mode"] != "always" {
+		t.Errorf("options.account.captcha.mode = %v, want always", captcha["mode"])
+	}
+	if captcha["triggerAfter"] != float64(4) {
+		t.Errorf("options.account.captcha.triggerAfter = %v, want 4", captcha["triggerAfter"])
+	}
+	// mode=always 时 required 恒为 true（与本 IP 失败次数无关）
+	if captcha["required"] != true {
+		t.Errorf("options.account.captcha.required = %v, want true", captcha["required"])
+	}
+	if _, exists := resp.Data.Upload.URLUpload["allowedIPRanges"]; exists {
+		t.Error("options.upload.urlUpload 不应再包含 allowedIPRanges")
+	}
+}
+
+// TestSaveConfig_PersistsCaptcha 验证 account.captcha 经 SaveConfig 写入 GlobalConfig
+// 并通过 account.captcha.mode / account.captcha.trigger_after 持久化到配置文件。
+func TestSaveConfig_PersistsCaptcha(t *testing.T) {
+	prevPath := appconfig.ConfigPath
+	prevCfg := appconfig.GlobalConfig
+	appconfig.ConfigPath = minimalTestConfigPath(t)
+	defer func() {
+		appconfig.ConfigPath = prevPath
+		appconfig.GlobalConfig = prevCfg
+	}()
+	appconfig.GlobalConfig = appconfig.Config{}
+
+	body := `{"account":{"captcha":{"mode":"after_n","triggerAfter":3}}}`
+	postConfig(t, "/api/v1/web/config", body, &Handler{})
+
+	got := appconfig.GlobalConfig.Account.Captcha
+	if got.Mode != "after_n" || got.TriggerAfter != 3 {
+		t.Errorf("SaveConfig 后 Captcha = %+v, want mode=after_n triggerAfter=3", got)
+	}
+
+	out, err := os.ReadFile(appconfig.ConfigPath)
+	if err != nil {
+		t.Fatalf("读取持久化配置失败: %v", err)
+	}
+	yamlText := string(out)
+	for _, want := range []string{"captcha:", "mode: after_n", "trigger_after: 3"} {
 		if !strings.Contains(yamlText, want) {
 			t.Errorf("持久化 YAML 缺少 %q 节点: %s", want, yamlText)
 		}

@@ -38,6 +38,12 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			"allowRegistration": currentConfig.Account.AllowRegistration,
 			// 强制登录开关：前端据此决定首次加载前移登录页、路由守卫与下载链接是否附带 token
 			"requireLogin": currentConfig.Account.RequireLogin,
+			// 登录/注册图形验证码：mode/triggerAfter 为配置；required 按当前请求 IP 的失败次数动态计算
+			"captcha": gin.H{
+				"mode":         currentConfig.Account.Captcha.Mode,
+				"triggerAfter": currentConfig.Account.Captcha.TriggerAfter,
+				"required":     auth.CaptchaRequired(utils.GetClientIP(c)),
+			},
 		},
 		"privateStorage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
@@ -62,7 +68,6 @@ func (h *Handler) GetOptions(c *gin.Context) {
 			"maxFileSize": currentConfig.Upload.MaxFileSize,
 			"urlUpload": gin.H{
 				"enabled":            currentConfig.Upload.URLUpload.Enabled,
-				"allowedIPRanges":    currentConfig.Upload.URLUpload.AllowedIPRanges,
 				"insecureSkipVerify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
 				"maxConcurrent":      currentConfig.Upload.URLUpload.MaxConcurrent,
 				"maxRetries":         currentConfig.Upload.URLUpload.MaxRetries,
@@ -241,6 +246,13 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// 强制登录开关：开启后 Web 界面仅登录用户可交互
 		appconfig.GlobalConfig.Account.RequireLogin = req.Account.RequireLogin
 		updates.Add("account.require_login", req.Account.RequireLogin)
+		// 图形验证码：mode 非空才写入，避免前端未提交 captcha 时误清空已有配置
+		if req.Account.Captcha.Mode != "" {
+			appconfig.GlobalConfig.Account.Captcha.Mode = req.Account.Captcha.Mode
+			appconfig.GlobalConfig.Account.Captcha.TriggerAfter = req.Account.Captcha.TriggerAfter
+			updates.Add("account.captcha.mode", req.Account.Captcha.Mode)
+			updates.Add("account.captcha.trigger_after", req.Account.Captcha.TriggerAfter)
+		}
 	}
 
 	// —— 服务器配置 ——

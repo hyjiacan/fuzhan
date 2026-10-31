@@ -3,6 +3,8 @@ package auth
 import (
 	"testing"
 	"time"
+
+	"fuzhan/internal/appconfig"
 )
 
 func TestLoginFailureCountForIP(t *testing.T) {
@@ -65,6 +67,56 @@ func TestLoginFailureCountForIPReset(t *testing.T) {
 func TestLoginFailureCountForIPEmpty(t *testing.T) {
 	if got := LoginFailureCountForIP(""); got != 0 {
 		t.Fatalf("expected 0 for empty ip, got %d", got)
+	}
+}
+
+// TestCaptchaRequired 覆盖验证码三态判定：disabled 不要求、always 始终要求、
+// after_n 在失败次数达到阈值（<=0 时按默认 3）后才要求。
+func TestCaptchaRequired(t *testing.T) {
+	prevCfg := appconfig.GlobalConfig
+	defer func() { appconfig.GlobalConfig = prevCfg }()
+
+	const ip = "10.0.0.9"
+	resetLoginFailures(ip)
+	t.Cleanup(func() { resetLoginFailures(ip) })
+
+	// disabled / 空值 / 未知值均不要求
+	for _, mode := range []string{"", "disabled", "unknown"} {
+		appconfig.GlobalConfig = appconfig.Config{Account: appconfig.AccountConfig{Captcha: appconfig.CaptchaConfig{Mode: mode}}}
+		if CaptchaRequired(ip) {
+			t.Errorf("mode=%q: CaptchaRequired = true, want false", mode)
+		}
+	}
+
+	// always 始终要求（失败 0 次也要求）
+	appconfig.GlobalConfig = appconfig.Config{Account: appconfig.AccountConfig{Captcha: appconfig.CaptchaConfig{Mode: "always"}}}
+	if !CaptchaRequired(ip) {
+		t.Error("mode=always: CaptchaRequired = false, want true")
+	}
+
+	// after_n：失败次数 < 阈值不要求，达到阈值后要求
+	appconfig.GlobalConfig = appconfig.Config{Account: appconfig.AccountConfig{Captcha: appconfig.CaptchaConfig{Mode: "after_n", TriggerAfter: 3}}}
+	registerLoginFailure(ip)
+	registerLoginFailure(ip)
+	if CaptchaRequired(ip) {
+		t.Fatal("after_n: 2 failures, CaptchaRequired = true, want false")
+	}
+	registerLoginFailure(ip)
+	if !CaptchaRequired(ip) {
+		t.Fatal("after_n: 3 failures, CaptchaRequired = false, want true")
+	}
+
+	// after_n 且阈值为 0：按默认 3 计算
+	resetLoginFailures(ip)
+	appconfig.GlobalConfig = appconfig.Config{Account: appconfig.AccountConfig{Captcha: appconfig.CaptchaConfig{Mode: "after_n", TriggerAfter: 0}}}
+	registerLoginFailure(ip)
+	registerLoginFailure(ip)
+	if CaptchaRequired(ip) {
+		t.Fatal("after_n default: 2 failures, CaptchaRequired = true, want false")
+	}
+	registerLoginFailure(ip)
+	if !CaptchaRequired(ip) {
+		t.Fatal("after_n default: 3 failures, CaptchaRequired = false, want true")
 	}
 }
 

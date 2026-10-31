@@ -281,6 +281,12 @@ account:
   #   否则返回「私有存储未启用，暂不支持注册」（注册用户必须落在私有存储中）
   # 可在「系统设置 -> 身份认证 -> 账户」页面修改，保存即热生效，无需重启
   allow_registration: false
+  # 登录/注册图形验证码
+  captcha:
+    # 模式：disabled 关闭 / always 始终开启 / after_n 失败 N 次后开启
+    mode: disabled
+    # after_n 模式下的失败次数阈值
+    trigger_after: 3
 
 # ----------------------------------------
 # 日志配置

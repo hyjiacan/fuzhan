@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"strings"
 	"sync"
 	"time"
+
+	"fuzhan/internal/appconfig"
 )
 
 // 登录/注册爆破防护：基于客户端 IP 的滑动窗口失败计数 + 锁定
@@ -118,4 +121,23 @@ func LoginFailureCountForIP(ip string) int {
 		return 0
 	}
 	return rec.displayFailures
+}
+
+// CaptchaRequired 判定指定 IP 当前是否需要图形验证码。
+// 三态语义：disabled 不需要；always 始终需要；after_n 在当前窗口累计失败达到
+// TriggerAfter（<=0 时按默认 3）后需要。供 options 展示与 Web 登录/注册前置校验共用。
+func CaptchaRequired(ip string) bool {
+	cfg := appconfig.GetConfig()
+	switch strings.ToLower(strings.TrimSpace(cfg.Account.Captcha.Mode)) {
+	case "always":
+		return true
+	case "after_n":
+		threshold := cfg.Account.Captcha.TriggerAfter
+		if threshold <= 0 {
+			threshold = 3
+		}
+		return LoginFailureCountForIP(ip) >= threshold
+	default: // disabled / 空值 / 未知值一律不要求，保证默认零行为影响
+		return false
+	}
 }

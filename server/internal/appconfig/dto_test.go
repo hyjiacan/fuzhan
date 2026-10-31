@@ -326,6 +326,26 @@ func TestSecurityConfigDTODefaults(t *testing.T) {
 	}
 }
 
+// TestCaptchaConfigDTORoundTrip 验证验证码配置（mode/triggerAfter）在
+// ToDTO -> ConfigFromDTO 链路上无损往返，覆盖设置页读取与保存的序列化路径。
+func TestCaptchaConfigDTORoundTrip(t *testing.T) {
+	cfg := Config{
+		Account: AccountConfig{
+			Captcha: CaptchaConfig{Mode: "after_n", TriggerAfter: 3},
+		},
+	}
+
+	dto := cfg.ToDTO()
+	if dto.Account.Captcha.Mode != "after_n" || dto.Account.Captcha.TriggerAfter != 3 {
+		t.Errorf("ToDTO: Captcha = %+v, want mode=after_n triggerAfter=3", dto.Account.Captcha)
+	}
+
+	restored := ConfigFromDTO(dto)
+	if restored.Account.Captcha.Mode != "after_n" || restored.Account.Captcha.TriggerAfter != 3 {
+		t.Errorf("ConfigFromDTO: Captcha = %+v, want mode=after_n triggerAfter=3", restored.Account.Captcha)
+	}
+}
+
 // equalStrings 按顺序比较两个字符串切片。
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

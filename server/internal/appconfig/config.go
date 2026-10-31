@@ -65,6 +65,16 @@ type AccountConfig struct {
 	// 上传/下载/预览均需登录；临时文件分享（/temp/**）、私有分享（/share/:code）、
 	// 初始化引导与登录接口保持匿名例外。默认 false（允许匿名访问）。
 	RequireLogin bool `yaml:"require_login"`
+	// Captcha 登录/注册图形验证码
+	Captcha CaptchaConfig `yaml:"captcha"`
+}
+
+// CaptchaConfig 图形验证码配置
+type CaptchaConfig struct {
+	// Mode: disabled | always | after_n（禁用/始终开启/失败 N 次后开启）
+	Mode string `yaml:"mode"`
+	// TriggerAfter after_n 模式下触发验证码的失败次数阈值（<=0 时按默认 3）
+	TriggerAfter int `yaml:"trigger_after"`
 }
 
 // FTPConfig FTP 服务器配置
@@ -184,14 +194,14 @@ const (
 // StorageConfig 存储配置结构体（storage 父节点）
 type StorageConfig struct {
 	// Backend 存储后端类型：local / s3 / minio / oss / webdav，默认 local
-	Backend           string                    `yaml:"backend"`
-	Public            PublicStorageConfig       `yaml:"public"`
-	Temp              TempConfig                `yaml:"temp"`
-	Private           PrivateStorageConfig      `yaml:"private"`
-	AllowedExtensions []string                  `yaml:"allowed_extensions"`
-	S3                S3StorageConfig           `yaml:"s3,omitempty"`    // S3/MinIO 后端连接配置
-	OSS               OSSStorageConfig          `yaml:"oss,omitempty"`   // 阿里云 OSS 后端连接配置
-	WebDAV            WebDAVStorageConfig       `yaml:"webdav,omitempty"` // WebDAV 后端连接配置
+	Backend           string               `yaml:"backend"`
+	Public            PublicStorageConfig  `yaml:"public"`
+	Temp              TempConfig           `yaml:"temp"`
+	Private           PrivateStorageConfig `yaml:"private"`
+	AllowedExtensions []string             `yaml:"allowed_extensions"`
+	S3                S3StorageConfig      `yaml:"s3,omitempty"`     // S3/MinIO 后端连接配置
+	OSS               OSSStorageConfig     `yaml:"oss,omitempty"`    // 阿里云 OSS 后端连接配置
+	WebDAV            WebDAVStorageConfig  `yaml:"webdav,omitempty"` // WebDAV 后端连接配置
 }
 
 // S3StorageConfig S3/MinIO 后端连接配置（storage.backend=s3/minio 时使用）
@@ -214,9 +224,9 @@ type OSSStorageConfig struct {
 
 // WebDAVStorageConfig WebDAV 后端连接配置（storage.backend=webdav 时使用）
 type WebDAVStorageConfig struct {
-	URL      string `yaml:"url"`                 // WebDAV 服务地址，如 https://example.com/dav
-	Username string `yaml:"username,omitempty"`  // 用户名
-	Password string `yaml:"password,omitempty"`  // 密码
+	URL      string `yaml:"url"`                // WebDAV 服务地址，如 https://example.com/dav
+	Username string `yaml:"username,omitempty"` // 用户名
+	Password string `yaml:"password,omitempty"` // 密码
 }
 
 // StorageBackendIsRemote 判断存储后端是否为远端存储（非本地磁盘）。
@@ -340,13 +350,13 @@ func (e WebhookEndpoint) MatchesEvent(name string) bool {
 // Enabled=false 时派发器不发送；TimeoutSeconds/MaxRetries/QueueSize <=0 时使用默认值。
 // URLs 为旧版字段，仅用于兼容读取（写入时统一使用 endpoints），不再写入。
 type WebhookConfig struct {
-	Enabled        bool              `yaml:"enabled,omitempty"`        // 是否启用 Webhook 推送（默认 false）
-	URLs           []string          `yaml:"urls,omitempty"`           // 旧版回调地址列表（仅兼容读取）
-	Endpoints      []WebhookEndpoint `yaml:"endpoints,omitempty"`      // 回调地址记录列表（每地址独立配置）
-	Secret         string            `yaml:"secret,omitempty"`         // 默认签名密钥，用于生成 X-Fuzhan-Signature 报头
+	Enabled        bool              `yaml:"enabled,omitempty"`         // 是否启用 Webhook 推送（默认 false）
+	URLs           []string          `yaml:"urls,omitempty"`            // 旧版回调地址列表（仅兼容读取）
+	Endpoints      []WebhookEndpoint `yaml:"endpoints,omitempty"`       // 回调地址记录列表（每地址独立配置）
+	Secret         string            `yaml:"secret,omitempty"`          // 默认签名密钥，用于生成 X-Fuzhan-Signature 报头
 	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty"` // 默认单次请求超时（秒），默认 10
-	MaxRetries     int               `yaml:"max_retries,omitempty"`    // 默认失败重试次数，默认 3（指数退避）
-	QueueSize      int               `yaml:"queue_size,omitempty"`     // 进程内事件队列容量，默认 1024，满载丢弃并告警
+	MaxRetries     int               `yaml:"max_retries,omitempty"`     // 默认失败重试次数，默认 3（指数退避）
+	QueueSize      int               `yaml:"queue_size,omitempty"`      // 进程内事件队列容量，默认 1024，满载丢弃并告警
 }
 
 // EffectiveEndpoints 返回参与派发的端点列表：
@@ -456,14 +466,14 @@ type OAuth2Config struct {
 
 // OpenAPIConfig Open API 配置
 type OpenAPIConfig struct {
-	Enabled          bool     `yaml:"enabled"`
-	IPAccessMode     string   `yaml:"ip_access_mode"` // disable / whitelist / blacklist
-	IPWhitelist      []string `yaml:"ip_whitelist"`   // CIDR 白名单
-	IPBlacklist      []string `yaml:"ip_blacklist"`   // CIDR 黑名单
-	DomainWhitelist  []string `yaml:"domain_whitelist"` // 域名白名单（白名单模式下生效）
-	RateLimitEnabled bool     `yaml:"rate_limit_enabled"`
-	RequestsPerMinute int     `yaml:"requests_per_minute"`
-	BurstSize         int     `yaml:"burst_size"`
+	Enabled           bool     `yaml:"enabled"`
+	IPAccessMode      string   `yaml:"ip_access_mode"`   // disable / whitelist / blacklist
+	IPWhitelist       []string `yaml:"ip_whitelist"`     // CIDR 白名单
+	IPBlacklist       []string `yaml:"ip_blacklist"`     // CIDR 黑名单
+	DomainWhitelist   []string `yaml:"domain_whitelist"` // 域名白名单（白名单模式下生效）
+	RateLimitEnabled  bool     `yaml:"rate_limit_enabled"`
+	RequestsPerMinute int      `yaml:"requests_per_minute"`
+	BurstSize         int      `yaml:"burst_size"`
 	// AuthMode 鉴权方式：none（匿名，默认）/ api_key（系统签发的 API Key + scope）。
 	// 与 Web 登录态完全隔离：本项只影响 Open API，不接受 Web 会话 token，也不会签发 Web 会话。
 	// 注意：开启「强制登录」后本项不能为 none，否则 Open API 会被直接拒绝（强制登录优先级最高）。
