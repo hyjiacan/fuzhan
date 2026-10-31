@@ -212,8 +212,11 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	openAPI.GET("/files/duplicates", dummy)
 	openAPI.GET("/files/notes", dummy)
 	openAPI.GET("/files/:id/depends", dummy)
-	openAPI.GET("/openapi.json", dummy)
 	openAPI.GET("/docs", dummy)
+
+	// 文档路由单独成组，与 registerTopLevelRoutes 中 openapiDoc 的独立注册方式保持一致
+	openapiDoc := r.Group("/api/open/v1")
+	openapiDoc.GET("/openapi.json", dummy)
 
 	// 触发路由树最终化；若存在任何同类冲突，这里会 panic
 	_ = r.Routes()

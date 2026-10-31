@@ -173,6 +173,12 @@ func (am *AuthMiddleware) checkUserDisabled(c *gin.Context, uuid string) bool {
 	return false
 }
 
+// CheckUserDisabled 校验用户是否被禁用；已禁用时写入 403 响应并 Abort，返回 true。
+// 供 Web 会话凭证复用登录闸门的实时禁用检查（缓存 + 回源）。
+func (am *AuthMiddleware) CheckUserDisabled(c *gin.Context, uuid string) bool {
+	return am.checkUserDisabled(c, uuid)
+}
+
 // GetUsername 从上下文中获取用户名
 func GetUsername(c *gin.Context) (string, error) {
 	usernameInterface, exists := c.Get(string(constants.ContextKeyUsername))

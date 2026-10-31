@@ -29,6 +29,9 @@ const (
 	userIDContextKey   = "userID"
 )
 
+// cacheControlNoStore 鉴权失败/拒绝响应统一使用的禁缓存头，避免凭证态响应被中间层缓存。
+const cacheControlNoStore = "no-store"
+
 // AuthGateMiddleware Open API 鉴权闸门（基于系统签发的 API Key + scope）。
 //
 // 优先级规则：强制登录（account.require_login）最高。
@@ -48,7 +51,7 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 			if requireLogin {
 				utils.Warn("强制登录已开启，拒绝匿名 Open API 访问",
 					utils.String("path", c.Request.URL.Path))
-				c.Header("Cache-Control", "no-store")
+				c.Header("Cache-Control", cacheControlNoStore)
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 					"error": "强制登录已开启，Open API 必须启用 API Key 鉴权（open_api.auth_mode=api_key）",
 				})
@@ -60,13 +63,14 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 			if rbac == nil {
 				// 服务未装配：fail-closed，绝不降级为匿名
 				utils.Error("Open API 鉴权服务未初始化")
+				c.Header("Cache-Control", cacheControlNoStore)
 				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Open API 鉴权服务不可用"})
 				return
 			}
 			token := bearerToken(c)
 			if token == "" {
 				c.Header("WWW-Authenticate", `Bearer realm="Open API"`)
-				c.Header("Cache-Control", "no-store")
+				c.Header("Cache-Control", cacheControlNoStore)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "缺少 API Key"})
 				return
 			}
@@ -76,12 +80,12 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 					utils.String("path", c.Request.URL.Path),
 					utils.Err(err))
 				c.Header("WWW-Authenticate", `Bearer realm="Open API"`)
-				c.Header("Cache-Control", "no-store")
+				c.Header("Cache-Control", cacheControlNoStore)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API Key 无效或已禁用"})
 				return
 			}
 			c.Set(userIDContextKey, userID)
-			c.Set(authTypeContextKey, "api_key")
+			c.Set(authTypeContextKey, AuthModeAPIKey)
 			c.Set(scopesContextKey, splitScopes(scopes))
 			c.Next()
 
@@ -92,6 +96,7 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 				msg = "open_api.auth_mode=oauth2 已废弃，请改为 api_key（使用系统签发的 API Key + scope）"
 			}
 			utils.Warn("Open API 鉴权方式配置无效", utils.String("auth_mode", mode))
+			c.Header("Cache-Control", cacheControlNoStore)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": msg})
 		}
 	}
@@ -114,7 +119,12 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 // 之所以不复用「none+requireLogin→403」：强制登录后匿名被拒仍是目标，
 // 但登录用户不该被登录态本身挡在文档外；同时 api_key 模式完全沿用 AuthGate，
 // 不因文档路由打开新的匿名通道。
-func LoginRequiredWhenForced(rbac *auth.RBACService) gin.HandlerFunc {
+//
+// authMW 用于「强制登录 + none」分支复用 Web 会话的禁用态校验：
+// 验签通过后调用 AuthMiddleware.CheckUserDisabled() 实时查库（缓存 + 回源），
+// 被禁用用户直接写入 403 并 Abort，避免只验签就放行导致已禁用用户仍能读文档。
+// authMW 为 nil（测试场景）时退化为仅验签放行。
+func LoginRequiredWhenForced(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) gin.HandlerFunc {
 	apiKeyGate := AuthGateMiddleware(rbac)
 	return func(c *gin.Context) {
 		switch CurrentAuthMode() {
@@ -130,17 +140,27 @@ func LoginRequiredWhenForced(rbac *auth.RBACService) gin.HandlerFunc {
 			}
 			// 强制登录 + none：接受 Web 会话 Cookie 或 Bearer JWT/API Key
 			if token := middleware.TokenFromCookie(c); token != "" {
-				if _, err := jwt.ParseJWT(token); err == nil {
+				if claims, err := jwt.ParseJWT(token); err == nil {
+					if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
+						// 响应已写入并 Abort
+						return
+					}
 					c.Next()
 					return
 				}
 			}
 			if token := bearerToken(c); token != "" {
-				if _, err := jwt.ParseJWT(token); err == nil {
+				if claims, err := jwt.ParseJWT(token); err == nil {
+					if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
+						// 响应已写入并 Abort
+						return
+					}
 					c.Next()
 					return
 				}
-				if rbac != nil {
+				// 仅在形如 keyID:secret 的凭证上尝试 API Key 校验，
+				// 避免无效 JWT 进入 ValidateAPIKey 触发误导性格式告警
+				if rbac != nil && strings.Contains(token, ":") {
 					if _, _, err := rbac.ValidateAPIKey(token); err == nil {
 						c.Next()
 						return
@@ -149,7 +169,8 @@ func LoginRequiredWhenForced(rbac *auth.RBACService) gin.HandlerFunc {
 			}
 			utils.Warn("强制登录已开启，OpenAPI 文档拒绝匿名访问",
 				utils.String("path", c.Request.URL.Path))
-			c.Header("Cache-Control", "no-store")
+			c.Header("WWW-Authenticate", `Bearer realm="Open API"`)
+			c.Header("Cache-Control", cacheControlNoStore)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "强制登录已开启，需要有效凭证"})
 		default:
 			// 未知模式交回 AuthGate 统一给出明确错误（500）
@@ -177,7 +198,7 @@ func RequireReaderScope(rbac *auth.RBACService) gin.HandlerFunc {
 			return
 		}
 		if rbac == nil || !rbac.HasContextScope(c, models.ScopeOpenAPIReader) {
-			c.Header("Cache-Control", "no-store")
+			c.Header("Cache-Control", cacheControlNoStore)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": "权限不足，需要 scope: " + models.ScopeOpenAPIReader,
 			})

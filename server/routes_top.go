@@ -112,11 +112,16 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 鉴权 → 调用统计 → 路由分发 → Handler
 	// 鉴权说明：auth_mode=none 时保持匿名（历史行为）；auth_mode=api_key 时校验系统签发的 API Key（携带 scope）。
 	// 强制登录（account.require_login）优先级最高：开启后 auth_mode 必须为 api_key，否则直接 403。
-	openAPI := r.Group("/api/open/v1")
-	openAPI.Use(
+	// 两个同前缀组（数据端点 / 文档）共用基础链：功能开关 → IP 白名单 → 频率限制。
+	openAPICommonMW := []gin.HandlerFunc{
 		openapi.FeatureGateMiddleware(rt.openAPICfg.Enabled),
 		openapi.IPAccessMiddleware(rt.openAPIIPAccessCfg),
 		openapi.RateLimitMiddleware(rt.openAPIRateLimiter),
+	}
+
+	openAPI := r.Group("/api/open/v1")
+	openAPI.Use(openAPICommonMW...)
+	openAPI.Use(
 		openapi.AuthGateMiddleware(rt.rbacService),
 		openapi.CallStatMiddleware(rt.openAPICallStat),
 		middleware.ResponseWrapperMiddleware(),
@@ -141,11 +146,9 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// 强制登录开启时：Web 会话 Cookie 或有效 API Key 可读（修复已登录用户读不到文档的割裂），
 	// 匿名 401；api_key 模式下仍要求 API Key（与非强制登录时一致，不开新洞）。
 	openapiDoc := r.Group("/api/open/v1")
+	openapiDoc.Use(openAPICommonMW...)
 	openapiDoc.Use(
-		openapi.FeatureGateMiddleware(rt.openAPICfg.Enabled),
-		openapi.IPAccessMiddleware(rt.openAPIIPAccessCfg),
-		openapi.RateLimitMiddleware(rt.openAPIRateLimiter),
-		openapi.LoginRequiredWhenForced(rt.rbacService),
+		openapi.LoginRequiredWhenForced(rt.authMiddleware, rt.rbacService),
 		openapi.CallStatMiddleware(rt.openAPICallStat),
 		middleware.ResponseWrapperMiddleware(),
 	)
