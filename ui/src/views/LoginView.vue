@@ -45,8 +45,8 @@
         <!-- 图形验证码：required 时展示（服务端按 IP 判定或验证码校验失败后强制） -->
         <CaptchaInput
           :visible="loginCaptchaRequired"
+          :refresh-nonce="loginRefreshNonce"
           @change="setLoginCaptcha"
-          @enter="handleLogin"
         />
       </el-form>
 
@@ -99,8 +99,8 @@
         <!-- 注册侧验证码，与登录侧独立维护，切换模式时不串值 -->
         <CaptchaInput
           :visible="registerCaptchaRequired"
+          :refresh-nonce="registerRefreshNonce"
           @change="setRegisterCaptcha"
-          @enter="handleRegister"
         />
       </el-form>
 
@@ -186,6 +186,9 @@ const loginCaptchaRequired = ref(captchaRequiredByServer.value)
 const loginCaptcha = reactive({ id: '', answer: '' })
 const registerCaptchaRequired = ref(captchaRequiredByServer.value)
 const registerCaptcha = reactive({ id: '', answer: '' })
+// 强制刷新信号：验证码被服务端销毁（captcha_invalid）后递增，让 CaptchaInput 重新拉图
+const loginRefreshNonce = ref(0)
+const registerRefreshNonce = ref(0)
 
 const setLoginCaptcha = (cid, answer) => {
   loginCaptcha.id = cid
@@ -269,9 +272,16 @@ const isCaptchaError = (error) => {
 }
 
 const handleLogin = async () => {
+  // 去重守卫：回车/点击可能连续触发，验证码一次性，重复提交必要失败
+  if (submitting.value) return
   if (!loginFormRef.value) return
   loginFormRef.value.validate(async (valid) => {
     if (!valid) return
+    // 验证码已要求但尚未就绪（首次展示拉图未完成）时不发起提交
+    if (loginCaptchaRequired.value && (!loginCaptcha.id || !loginCaptcha.answer)) {
+      ElMessage.warning('请先输入验证码')
+      return
+    }
     submitting.value = true
     try {
       const data = await AuthApi.login(loginForm.username, loginForm.password, loginCaptcha.id, loginCaptcha.answer)
@@ -297,8 +307,9 @@ const handleLogin = async () => {
       }
     } catch (error) {
       if (isCaptchaError(error)) {
-        // 服务端要求验证码：展示并刷新验证码，输入内容等待重试
+        // 服务端要求验证码：展示并强制刷新验证码（旧 id 已被服务端销毁），输入内容等待重试
         loginCaptchaRequired.value = true
+        loginRefreshNonce.value += 1
         ElMessage.warning('请输入验证码后重试')
         loginCaptcha.answer = ''
       } else {
@@ -311,9 +322,16 @@ const handleLogin = async () => {
 }
 
 const handleRegister = async () => {
+  // 去重守卫：回车/点击可能连续触发，验证码一次性，重复提交必要失败
+  if (submitting.value) return
   if (!registerFormRef.value) return
   registerFormRef.value.validate(async (valid) => {
     if (!valid) return
+    // 验证码已要求但尚未就绪（首次展示拉图未完成）时不发起提交
+    if (registerCaptchaRequired.value && (!registerCaptcha.id || !registerCaptcha.answer)) {
+      ElMessage.warning('请先输入验证码')
+      return
+    }
     submitting.value = true
     try {
       const data = await AuthApi.register(registerForm.username, registerForm.password, registerCaptcha.id, registerCaptcha.answer)
@@ -335,8 +353,9 @@ const handleRegister = async () => {
       }
     } catch (error) {
       if (isCaptchaError(error)) {
-        // 服务端要求验证码：展示并刷新验证码，输入内容等待重试
+        // 服务端要求验证码：展示并强制刷新验证码（旧 id 已被服务端销毁），输入内容等待重试
         registerCaptchaRequired.value = true
+        registerRefreshNonce.value += 1
         ElMessage.warning('请输入验证码后重试')
         registerCaptcha.answer = ''
       } else {

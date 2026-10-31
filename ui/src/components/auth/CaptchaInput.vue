@@ -7,11 +7,11 @@
           placeholder="请输入验证码"
           :maxlength="4"
           clearable
-          @keyup.enter="onEnter"
         >
           <template #prefix><el-icon><Key /></el-icon></template>
         </el-input>
         <img v-if="image" :src="image" alt="验证码" title="点击刷新" class="captcha-image" @click="refresh" />
+        <div v-else class="captcha-image captcha-placeholder" @click="refresh">点击刷新</div>
       </div>
     </el-form-item>
   </div>
@@ -23,9 +23,12 @@ import { Key } from '@element-plus/icons-vue'
 import { AuthApi } from '@/api'
 
 const props = defineProps({
-  visible: { type: Boolean, default: false }
+  visible: { type: Boolean, default: false },
+  // 外部强制刷新信号：父组件在验证码被服务端销毁（如输入错误后重试）时递增此值，
+  // 组件 watch 到变化即重新拉取，避免旧图残留导致用户无法重试
+  refreshNonce: { type: Number, default: 0 }
 })
-const emit = defineEmits(['change', 'enter'])
+const emit = defineEmits(['change'])
 
 const image = ref('')
 const text = ref('')
@@ -43,7 +46,11 @@ async function refresh() {
     text.value = ''
     emit('change', id.value, text.value)
   } catch (e) {
-    // 拉取失败静默处理，保留上一张图；用户可点击重试
+    // 拉取失败：清空图片与 id，显示「点击刷新」占位，避免旧图误导（旧 id 已被服务端销毁）
+    id.value = ''
+    image.value = ''
+    text.value = ''
+    emit('change', id.value, text.value)
   } finally {
     refreshing.value = false
   }
@@ -54,11 +61,10 @@ watch(() => props.visible, (v) => {
   if (v) refresh()
 }, { immediate: true })
 
-function onEnter() {
-  emit('enter')
-}
-
-watch(text, () => emit('change', id.value, text.value))
+// 外部强制刷新：父组件校验失败（captcha_invalid）后递增 refreshNonce 触发重拉
+watch(() => props.refreshNonce, (v) => {
+  if (v > 0) refresh()
+})
 </script>
 
 <style lang="less" scoped>
@@ -81,6 +87,16 @@ watch(text, () => emit('change', id.value, text.value))
     border-radius: @border-radius-sm;
     cursor: pointer;
     user-select: none;
+  }
+
+  .captcha-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    color: @text-color-secondary;
+    font-size: 12px;
+    background: var(--el-fill-color-light);
   }
 }
 </style>
