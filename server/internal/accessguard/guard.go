@@ -15,13 +15,14 @@ import (
 
 // scope 常量
 const (
-	SCOPE_SHARE  = "share"  // 私有分享下载 /share/:code
-	SCOPE_TEMP   = "temp"   // 临时文件下载 /temp/:code/download
-	SCOPE_FTP    = "ftp"    // 匿名 FTP 下载（RETR）
-	SCOPE_WEBDAV = "webdav" // WebDAV（GET 下载限流 与 Basic Auth 失败锁定）
-	SCOPE_UPLOAD = "upload" // 上传控制面（创建会话/完成上传/URL 上传提交）
+	SCOPE_SHARE    = "share"    // 私有分享下载 /share/:code
+	SCOPE_TEMP     = "temp"     // 临时文件下载 /temp/:code/download
+	SCOPE_FTP      = "ftp"      // 匿名 FTP 下载（RETR）
+	SCOPE_WEBDAV   = "webdav"   // WebDAV（GET 下载限流 与 Basic Auth 失败锁定）
+	SCOPE_UPLOAD   = "upload"   // 上传控制面（创建会话/完成上传/URL 上传提交）
 	SCOPE_DOWNLOAD = "download" // Web 下载（匿名请求限流，登录用户不受限）
 	SCOPE_TICKET   = "ticket"   // 下载票据签发（换票接口，按 IP 限流）
+	SCOPE_CAPTCHA  = "captcha"  // 图形验证码生成（固定每 IP 每分钟 30 张）
 )
 
 const (
@@ -106,6 +107,14 @@ func AcquireUpload(ip string) bool {
 		return true
 	}
 	return acquireWithinWindow(SCOPE_UPLOAD, ip, cfg.MaxRequests, uploadWindow(cfg))
+}
+
+// captchaMaxPerMinute 验证码生成接口的固定限流阈值（不随下载配置变化）。
+const captchaMaxPerMinute = 30
+
+// AcquireCaptcha 验证码生成入口限流：固定每 IP 每分钟 30 次，防止刷图占内存。
+func AcquireCaptcha(ip string) bool {
+	return acquireWithinWindow(SCOPE_CAPTCHA, ip, captchaMaxPerMinute, time.Minute)
 }
 
 // acquireWithinWindow 在 (scope, ip) 的滑动窗口内累计一次请求并判断是否超频。

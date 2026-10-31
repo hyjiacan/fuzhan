@@ -64,6 +64,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 认证路由（无需认证）
 	auth := web.Group("/auth")
 	{
+		// 图形验证码（匿名可拉取；按 IP 限流）
+		auth.GET("/captcha", middleware.CaptchaRateLimit(), authHandler.GetCaptcha)
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		// 登出：清除 HttpOnly Cookie（Cookie 为 HttpOnly，必须由后端清除）

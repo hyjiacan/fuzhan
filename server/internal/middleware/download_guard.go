@@ -29,6 +29,18 @@ func DownloadRateLimit() gin.HandlerFunc {
 	}
 }
 
+// CaptchaRateLimit 验证码获取接口限流：按 IP 固定 30 次/分钟。
+func CaptchaRateLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !accessguard.AcquireCaptcha(utils.GetClientIP(c)) {
+			response.HandleError(c, http.StatusTooManyRequests, response.CodeBadRequest, "验证码获取过于频繁，请稍后再试", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // TicketRateLimit 换票接口限流：按 IP 限制票据签发频率，缓解凭证批量签发滥用。
 // 换票本身是轻量请求，但每次都会签发短时效票据，需要独立计数。
 func TicketRateLimit() gin.HandlerFunc {

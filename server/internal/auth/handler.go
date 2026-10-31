@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/captcha"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/security"
@@ -100,11 +101,43 @@ func authSessionResponse(resp *services.AuthResponse) gin.H {
 	}
 }
 
+// verifyCaptcha 验证码门禁：无需验证码或校验通过返回 true；
+// 需要但缺失/错误时写入 400 响应并返回 false。
+func verifyCaptcha(c *gin.Context, id, answer string) bool {
+	if !CaptchaRequired(utils.GetClientIP(c)) {
+		return true
+	}
+	if !captcha.Verify(id, answer) {
+		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
+		response.HandleBadRequest(c, "验证码错误或已过期，请重试", gin.H{"code": "captcha_invalid"})
+		return false
+	}
+	return true
+}
+
+// GetCaptcha 生成图形验证码（匿名可拉取，路由层按 IP 限流）。
+// 返回 captchaId 与可直接用于 <img src> 的 PNG data URI。
+func (h *Handler) GetCaptcha(c *gin.Context) {
+	id, dataURI, err := captcha.Generate()
+	if err != nil {
+		utils.Warn("生成图形验证码失败", utils.Err(err))
+		response.HandleInternalServerError(c, "验证码生成失败")
+		return
+	}
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{
+		"captchaId": id,
+		"image":     dataURI,
+	})
+}
+
 // Register 用户注册
 func (h *Handler) Register(c *gin.Context) {
 	var req services.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
+		return
+	}
+	if !verifyCaptcha(c, req.CaptchaID, req.CaptchaAnswer) {
 		return
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {
@@ -136,6 +169,9 @@ func (h *Handler) Login(c *gin.Context) {
 	var req services.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
+		return
+	}
+	if !verifyCaptcha(c, req.CaptchaID, req.CaptchaAnswer) {
 		return
 	}
 	if isLoginLocked(utils.GetClientIP(c)) {

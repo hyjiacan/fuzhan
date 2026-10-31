@@ -41,14 +41,18 @@ func (s *AuthService) SetLDAPService(ldap LDAPAuthenticator) {
 
 // RegisterRequest 注册请求
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required,min=6,max=128"`
+	Username      string `json:"username" binding:"required,min=3,max=32"`
+	Password      string `json:"password" binding:"required,min=6,max=128"`
+	CaptchaID     string `json:"captchaId"`
+	CaptchaAnswer string `json:"captchaAnswer"`
 }
 
 // LoginRequest 登录请求
 type LoginRequest struct {
-	Username string `json:"username" binding:"required,max=64"`
-	Password string `json:"password" binding:"required,max=128"`
+	Username      string `json:"username" binding:"required,max=64"`
+	Password      string `json:"password" binding:"required,max=128"`
+	CaptchaID     string `json:"captchaId"`
+	CaptchaAnswer string `json:"captchaAnswer"`
 }
 
 // authTokenTTLSeconds JWT 令牌有效期（秒），与 Register/Login 生成令牌的 Duration 保持一致
