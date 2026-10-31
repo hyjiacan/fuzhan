@@ -16,9 +16,10 @@ const (
 )
 
 type liteIPRecord struct {
-	count       int
-	windowStart time.Time
-	lockUntil   time.Time
+	count           int
+	displayFailures int
+	windowStart     time.Time
+	lockUntil       time.Time
 }
 
 var (
@@ -72,6 +73,7 @@ func liteRegisterFailure(ip string) bool {
 		liteLimitCache[ip] = rec
 	}
 	rec.count++
+	rec.displayFailures++
 	if now.Before(rec.lockUntil) {
 		return true
 	}
@@ -91,4 +93,18 @@ func liteResetFailures(ip string) {
 	liteLimitMu.Lock()
 	delete(liteLimitCache, ip)
 	liteLimitMu.Unlock()
+}
+
+// LiteLoginFailureCountForIP 返回指定 IP 当前窗口内的累计失败次数（lite 验证码触发用）。
+func LiteLoginFailureCountForIP(ip string) int {
+	if ip == "" {
+		return 0
+	}
+	liteLimitMu.Lock()
+	defer liteLimitMu.Unlock()
+	rec, ok := liteLimitCache[ip]
+	if !ok {
+		return 0
+	}
+	return rec.displayFailures
 }

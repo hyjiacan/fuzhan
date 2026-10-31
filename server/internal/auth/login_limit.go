@@ -16,9 +16,10 @@ const (
 )
 
 type ipLoginRecord struct {
-	count       int
-	windowStart time.Time
-	lockUntil   time.Time
+	count           int
+	displayFailures int
+	windowStart     time.Time
+	lockUntil       time.Time
 }
 
 var (
@@ -76,6 +77,7 @@ func registerLoginFailure(ip string) bool {
 		loginLimitCache[ip] = rec
 	}
 	rec.count++
+	rec.displayFailures++
 	if now.Before(rec.lockUntil) {
 		// 仍在锁定期内，继续失败延长锁定
 		return true
@@ -96,4 +98,20 @@ func resetLoginFailures(ip string) {
 	loginLimitMu.Lock()
 	delete(loginLimitCache, ip)
 	loginLimitMu.Unlock()
+}
+
+// LoginFailureCountForIP 返回指定 IP 当前窗口内的累计失败次数。
+// 与锁定计数 count 不同：count 在触发锁定时会归零，本字段保留累计值，
+// 供图形验证码「失败 N 次后开启」判定与前端展示使用。
+func LoginFailureCountForIP(ip string) int {
+	if ip == "" {
+		return 0
+	}
+	loginLimitMu.Lock()
+	defer loginLimitMu.Unlock()
+	rec, ok := loginLimitCache[ip]
+	if !ok {
+		return 0
+	}
+	return rec.displayFailures
 }
