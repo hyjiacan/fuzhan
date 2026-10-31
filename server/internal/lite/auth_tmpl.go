@@ -13,11 +13,10 @@ import (
 // authTemplateFuncs 认证页模板的自定义函数。
 // AllowRegistration 供模板在登录页控制「注册入口」显隐：
 // （是否启用私有存储、是否启用强制登录都不影响注册入口是否开放）。
-// CaptchaImage 供模板内嵌渲染图形验证码区块（零 JS，SSR），返回整段 HTML。
+// 验证码区块不在此注册：由 renderAuthPage 通过 .Captcha 字段注入渲染。
 func authTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"AllowRegistration": AllowRegistration,
-		"CaptchaImage":      CaptchaImage, // 条件渲染验证码块（零 JS），空串表示无需
 	}
 }
 

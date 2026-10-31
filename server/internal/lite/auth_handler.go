@@ -201,6 +201,7 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 		challenge := c.PostForm("captcha_challenge")
 		text := c.PostForm("captcha_text")
 		if !captcha.Verify(challenge, text) {
+			recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
 			renderAuthPage(c, "登录", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
 			return
 		}
@@ -268,6 +269,7 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 		challenge := c.PostForm("captcha_challenge")
 		text := c.PostForm("captcha_text")
 		if !captcha.Verify(challenge, text) {
+			recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
 			renderAuthPage(c, "注册", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
 			return
 		}

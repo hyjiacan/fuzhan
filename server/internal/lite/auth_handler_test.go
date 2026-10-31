@@ -211,7 +211,9 @@ func TestLoginSubmitAllowsCorrectAnswer(t *testing.T) {
 
 	body := "username=abc&password=abc123&captcha_challenge=" + id + "&captcha_text=" + answer
 	w := postLiteLogin(ip, body, db)
-	if w.Code == http.StatusBadRequest && strings.Contains(w.Body.String(), "验证码错误") {
-		t.Fatalf("正确答案不应触发验证码 400，实际 %d\n%s", w.Code, w.Body.String())
+	// 正确验证码放行门禁后走真实登录：账户不存在（密码错误/用户不存在）应返回 401
+	// （而非验证码 400），证明门禁已通过并进入真实登录流程。
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("正确答案应放行验证码门禁并返回 401，实际 %d\n%s", w.Code, w.Body.String())
 	}
 }
