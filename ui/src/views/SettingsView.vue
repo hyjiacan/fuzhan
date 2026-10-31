@@ -75,7 +75,7 @@
 import { ref, reactive, shallowRef, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave } from 'vue-router'
-import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Grid, Coin, Lock, Key, Odometer, Bell, Expand, Fold } from '@element-plus/icons-vue'
+import { Setting, FolderOpened, Files, UploadFilled, Cpu, PictureRounded, Coin, Lock, Key, Expand, Fold } from '@element-plus/icons-vue'
 import { NumberUtils } from '@/utils'
 import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
@@ -85,12 +85,9 @@ import SettingsUploadConfig from './settings/SettingsUploadConfig.vue'
 import SettingsService from './settings/SettingsService.vue'
 import SettingsStorage from './settings/SettingsStorage.vue'
 import SettingsPreview from './settings/SettingsPreview.vue'
-import SettingsMime from './settings/SettingsMime.vue'
 import SettingsDatabase from './settings/SettingsDatabase.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsAuth from './settings/SettingsAuth.vue'
-import SettingsResource from './settings/SettingsResource.vue'
-import SettingsWebhook from './settings/SettingsWebhook.vue'
 import SettingsChangesDrawer from './settings/SettingsChangesDrawer.vue'
 import { diffSettings } from './settings/useSettingsDiff'
 import { formatToUnit } from './settings/useSettingsUtils'
@@ -142,7 +139,7 @@ const showChanges = ref(false)
 const settingsLoaded = ref(false)
 const settingsLoadError = ref(false)
 
-// 侧栏分节分组：基础 / 服务存储 / 预览类型 / 数据安全 / 资源
+// 侧栏分节分组：基础 / 服务存储 / 预览类型 / 数据安全（webhook/mime/resource 已迁至「系统管理」独立页）
 const navGroups = [
   {
     title: '基础信息',
@@ -162,8 +159,7 @@ const navGroups = [
   {
     title: '预览与类型',
     items: [
-      { key: 'preview', label: '预览配置', icon: PictureRounded },
-      { key: 'mime', label: 'MIME 表', icon: Grid }
+      { key: 'preview', label: '预览配置', icon: PictureRounded }
     ]
   },
   {
@@ -171,14 +167,7 @@ const navGroups = [
     items: [
       { key: 'database', label: '数据库', icon: Coin },
       { key: 'access', label: '访问控制', icon: Lock },
-      { key: 'auth', label: '身份认证', icon: Key },
-      { key: 'webhook', label: 'Webhook 推送', icon: Bell }
-    ]
-  },
-  {
-    title: '资源',
-    items: [
-      { key: 'resource', label: '资源监控', icon: Odometer }
+      { key: 'auth', label: '身份认证', icon: Key }
     ]
   }
 ]
@@ -190,12 +179,9 @@ const panelMap = {
   service: SettingsService,
   storage: SettingsStorage,
   preview: SettingsPreview,
-  mime: SettingsMime,
   database: SettingsDatabase,
   access: SettingsAccess,
-  auth: SettingsAuth,
-  resource: SettingsResource,
-  webhook: SettingsWebhook
+  auth: SettingsAuth
 }
 
 const currentComponent = computed(() => panelMap[activePanel.value])
@@ -292,7 +278,6 @@ const settings = reactive({
     enabled: true,
     groups: normalizePreviewGroups(null)
   },
-  mimeTable: {},
   openApi: {
     enabled: false,
     ipAccessMode: 'none',
@@ -302,27 +287,12 @@ const settings = reactive({
     rateLimitEnabled: true,
     requestsPerMinute: 60
   },
-  webhook: {
-    enabled: false,
-    urls: [],
-    endpoints: [],
-    secret: '',
-    timeoutSeconds: 10,
-    maxRetries: 3,
-    queueSize: 1024
-  },
   scanStartDelaySeconds: 10,
   scanCronExpression: '0 1 * * *',
   searchReconcileCronExpression: '0 5 * * *',
   security: {
     trustProxy: false,
     allowedOrigins: []
-  },
-  resource: {
-    enabled: false,
-    samplingInterval: 5,
-    collectInterval: 60,
-    retentionDays: 7
   },
   auth: {
     ldap: {
@@ -519,8 +489,6 @@ const loadSettings = async () => {
         groups: normalizePreviewGroups(cfg.preview?.groups)
       }
 
-      settings.mimeTable = { ...(cfg.mimeTable || {}) }
-
       settings.openApi = {
         enabled: cfg.openApi?.enabled ?? false,
         ipAccessMode: cfg.openApi?.ipAccessMode || 'none',
@@ -531,24 +499,6 @@ const loadSettings = async () => {
         requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
       }
 
-      settings.webhook = {
-        enabled: cfg.webhook?.enabled ?? false,
-        urls: cfg.webhook?.urls || [],
-        // 端点字段归一化：后端 enabled 缺省为 null（视为启用）、headers/query 缺省为 null，
-        // 统一为确定值，避免设置面板初始化写回时被误判为未保存更改
-        endpoints: (cfg.webhook?.endpoints || []).map((ep) => ({
-          ...ep,
-          enabled: ep.enabled !== false,
-          events: Array.isArray(ep.events) ? ep.events : [],
-          headers: ep.headers || {},
-          query: ep.query || {}
-        })),
-        secret: cfg.webhook?.secret || '',
-        timeoutSeconds: cfg.webhook?.timeoutSeconds || 10,
-        maxRetries: cfg.webhook?.maxRetries ?? 3,
-        queueSize: cfg.webhook?.queueSize ?? 1024
-      }
-
       settings.scanStartDelaySeconds = cfg.index?.scanStartDelaySeconds || 10
       settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
       settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
@@ -556,13 +506,6 @@ const loadSettings = async () => {
       settings.security = {
         trustProxy: cfg.security?.trustProxy ?? false,
         allowedOrigins: cfg.security?.allowedOrigins || []
-      }
-
-      settings.resource = {
-        enabled: cfg.resource?.enabled ?? false,
-        samplingInterval: cfg.resource?.samplingInterval || 5,
-        collectInterval: cfg.resource?.collectInterval || 60,
-        retentionDays: cfg.resource?.retentionDays || 7
       }
 
       settings.auth = {
@@ -639,11 +582,8 @@ const SECTION_SOURCES = {
   upload: ['upload'],
   download: ['download'],
   preview: ['preview'],
-  mimeTable: ['mimeTable'],
   openApi: ['openApi'],
-  webhook: ['webhook'],
   index: ['scanStartDelaySeconds', 'scanCronExpression', 'searchReconcileCronExpression'],
-  resource: ['resource'],
   security: ['security'],
   auth: ['auth']
 }
@@ -703,33 +643,8 @@ const confirmCriticalChange = async () => {
   return true
 }
 
-// 构建 Webhook 端点提交数据：仅保留正式字段，剔除 _authPreset/_headersRows 等 UI 临时字段
-const webhookEndpointPayload = (ep) => ({
-  name: ep.name,
-  url: ep.url,
-  enabled: ep.enabled,
-  events: Array.isArray(ep.events) ? ep.events : [],
-  secret: ep.secret,
-  timeoutSeconds: ep.timeoutSeconds,
-  maxRetries: ep.maxRetries,
-  headers: ep.headers || {},
-  query: ep.query || {}
-})
-
-// Webhook 事件权限校验：启用 Webhook 且该节有改动时，启用中的端点必须显式指定事件
-// （事件列表为空表示不接收任何事件，属默认拒绝，故要求至少勾选一个事件或开启「接收全部事件」）
-const validateWebhookPermissions = () => {
-  if (!settings.webhook.enabled) return true
-  const bad = settings.webhook.endpoints.find((ep) => ep.enabled !== false && !(ep.events && ep.events.length))
-  if (!bad) return true
-  message.error(`回调地址「${bad.name || bad.url || '未命名'}」未选择任何事件，请在「事件权限」中勾选事件或开启「接收全部事件」`)
-  return false
-}
-
 // 执行保存配置
 const doSaveSettings = async () => {
-  if (sectionChanged(SECTION_SOURCES.webhook) && !validateWebhookPermissions()) return
-
   // 危险操作二次确认
   const proceed = await confirmCriticalChange()
   if (!proceed) return
@@ -795,7 +710,6 @@ const doSaveSettings = async () => {
         rateLimit: settings.download.rateLimit
       },
       preview: buildPreviewPayload(),
-      mimeTable: settings.mimeTable,
       openApi: {
         enabled: settings.openApi.enabled,
         ipAccessMode: settings.openApi.ipAccessMode,
@@ -805,25 +719,10 @@ const doSaveSettings = async () => {
         rateLimitEnabled: settings.openApi.rateLimitEnabled,
         requestsPerMinute: settings.openApi.requestsPerMinute
       },
-      webhook: {
-        enabled: settings.webhook.enabled,
-        urls: settings.webhook.urls,
-        endpoints: settings.webhook.endpoints.map(webhookEndpointPayload),
-        secret: settings.webhook.secret,
-        timeoutSeconds: settings.webhook.timeoutSeconds,
-        maxRetries: settings.webhook.maxRetries,
-        queueSize: settings.webhook.queueSize
-      },
       index: {
         scanStartDelaySeconds: settings.scanStartDelaySeconds,
         scanCronExpression: settings.scanCronExpression,
         searchReconcileCronExpression: settings.searchReconcileCronExpression,
-      },
-      resource: {
-        enabled: settings.resource.enabled,
-        samplingInterval: settings.resource.samplingInterval,
-        collectInterval: settings.resource.collectInterval,
-        retentionDays: settings.resource.retentionDays
       },
       security: {
         trustProxy: settings.security.trustProxy,

@@ -119,8 +119,6 @@ const FIELD_LABELS = {
   'preview.groups.document': '文档分组',
   'preview.groups.custom': '自定义分组',
 
-  mimeTable: 'MIME 映射',
-
   openApi: '访问控制',
   'openApi.enabled': '启用 OpenAPI',
   'openApi.ipAccessMode': '访问模式',
@@ -138,12 +136,6 @@ const FIELD_LABELS = {
   security: '安全配置',
   'security.trustProxy': '信任代理头',
   'security.allowedOrigins': 'CORS 来源白名单',
-
-  resource: '资源监控',
-  'resource.enabled': '启用监控',
-  'resource.samplingInterval': '实时采样间隔',
-  'resource.collectInterval': '历史采集间隔',
-  'resource.retentionDays': '历史保留天数',
 
   auth: '身份认证',
   'auth.ldap': 'LDAP',
@@ -194,13 +186,11 @@ const SECTION_NAMES = {
   upload: '上传配置',
   download: '下载限制',
   preview: '预览配置',
-  mimeTable: 'MIME 表',
   openApi: '访问控制',
   scanStartDelaySeconds: '存储索引',
   scanCronExpression: '存储索引',
   searchReconcileCronExpression: '存储索引',
   security: '安全配置',
-  resource: '资源监控',
   auth: '身份认证'
 }
 
@@ -222,13 +212,11 @@ const SECTION_PANELS = {
   upload: 'upload',
   download: 'access',
   preview: 'preview',
-  mimeTable: 'mime',
   openApi: 'access',
   scanStartDelaySeconds: 'storage',
   scanCronExpression: 'storage',
   searchReconcileCronExpression: 'storage',
   security: 'access',
-  resource: 'resource',
   auth: 'auth'
 }
 
@@ -287,10 +275,7 @@ const labelFor = (path) => {
     const idx = m && m[2] !== undefined ? Number(m[2]) : null
     lookup = lookup ? `${lookup}.${key}` : key
     let label = FIELD_LABELS[lookup]
-    if (!label) {
-      if (lookup.startsWith('mimeTable.')) label = `.${key}`
-      else label = LEAF_LABELS[key] || key
-    }
+    if (!label) label = LEAF_LABELS[key] || key
     if (idx !== null) label = `${label} #${idx + 1}`
     parts.push(label)
   }

@@ -21,13 +21,48 @@
       </div>
     </div>
 
-    <el-alert
-      v-if="enabled === false"
-      type="warning"
-      :closable="false"
-      class="enable-tip"
-      title="资源监控未启用，当前展示的是实时快照与历史曲线的最新可用数据。请在「设置」→「服务器资源监控」中开启 resource.enabled。"
-    />
+    <!-- ============ 资源配置（本页维护） ============ -->
+    <section class="config-section">
+      <el-card shadow="never" class="config-card">
+        <div class="config-head">
+          <span class="config-title">资源配置</span>
+          <span class="config-sub">监控采集参数在此直接维护，保存后立即生效</span>
+          <div class="config-actions">
+            <el-button size="small" :disabled="!cfgDirty" @click="loadResourceConfig">重置</el-button>
+            <el-button type="primary" size="small" :loading="cfgSaving" :disabled="!cfgDirty" @click="saveResourceConfig">
+              保存
+            </el-button>
+          </div>
+        </div>
+        <el-form autocomplete="off" label-width="140px" class="resource-form">
+          <el-form-item label="启用监控">
+            <el-switch v-model="resourceCfg.enabled" />
+            <div class="field-hint">开启后本页采集并展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量</div>
+          </el-form-item>
+          <el-form-item label="实时采样间隔">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <el-input-number v-model="resourceCfg.samplingInterval" :min="1" :max="60" />
+              <span>秒</span>
+            </div>
+            <div class="field-hint">实时曲线按此频率在内存采样刷新（不落库）</div>
+          </el-form-item>
+          <el-form-item label="历史采集间隔">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <el-input-number v-model="resourceCfg.collectInterval" :min="10" :max="3600" />
+              <span>秒</span>
+            </div>
+            <div class="field-hint">历史数据按此间隔落库，默认 60 秒（每分钟一条）</div>
+          </el-form-item>
+          <el-form-item label="历史保留天数">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <el-input-number v-model="resourceCfg.retentionDays" :min="1" :max="365" />
+              <span>天</span>
+            </div>
+            <div class="field-hint">超出保留期的历史数据将被定期清理，默认 7 天</div>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </section>
 
     <!-- ============ 服务器配置 ============ -->
     <section class="hardware-section">
@@ -202,6 +237,7 @@ import 'echarts/lib/component/legend'
 import { Refresh } from '@element-plus/icons-vue'
 import { ConfigApi, ResourceApi } from '@/api'
 import { useTheme } from '@/composables/useTheme'
+import { ElMessage } from 'element-plus'
 
 // ============ 状态 ============
 const loading = ref(false)
@@ -213,6 +249,67 @@ const hiRange = ref('1h')
 // 实时数据来源：sse（服务端推送）/ polling（轮询兜底），未启用资源监控时为空
 const realtimeMode = ref('')
 const netNICs = ref([])
+
+// ============ 资源配置（原位可编辑，随本页保存） ============
+// 从 settings 迁移：本页展示监控数据，配置直接在本页维护。四项配置：
+// enabled / samplingInterval / collectInterval / retentionDays
+const resourceCfg = reactive({
+  enabled: false,
+  samplingInterval: 5,
+  collectInterval: 60,
+  retentionDays: 7
+})
+const cfgBaseline = ref('')
+const cfgDirty = computed(() => cfgBaseline.value !== '' && JSON.stringify(resourceCfg) !== cfgBaseline.value)
+const cfgSaving = ref(false)
+const markCfgClean = () => { cfgBaseline.value = JSON.stringify(resourceCfg) }
+
+// 读取资源配置切片（增量合并的独立顶层 key）
+const loadResourceConfig = async () => {
+  try {
+    const res = await ConfigApi.get()
+    if (!res.success || !res.data) throw new Error('配置数据为空')
+    const rc = res.data.resource || {}
+    resourceCfg.enabled = rc.enabled ?? false
+    resourceCfg.samplingInterval = rc.samplingInterval ?? 5
+    resourceCfg.collectInterval = rc.collectInterval ?? 60
+    resourceCfg.retentionDays = rc.retentionDays ?? 7
+    markCfgClean()
+    return res.data
+  } catch (e) {
+    console.error('读取资源监控配置失败', e)
+    ElMessage.error('加载配置失败')
+    return null
+  }
+}
+
+// 保存资源配置：只提交 resource 顶层切片，后端按节点增量合并，不影响其它配置
+const saveResourceConfig = async () => {
+  cfgSaving.value = true
+  try {
+    const res = await ConfigApi.save({ resource: { ...resourceCfg } })
+    if (res.success) {
+      markCfgClean()
+      ElMessage.success(res.message || '配置已保存并生效')
+      // 启用状态可能变化，重新校准实时采集
+      enabled.value = resourceCfg.enabled
+      if (resourceCfg.enabled) {
+        startRealtime()
+      } else {
+        stopRealtime()
+      }
+      // 立即拉一帧快照，同步显示最新采集状态
+      await loadSnapshot()
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    console.error('保存资源监控配置失败', e)
+    ElMessage.error('保存失败')
+  } finally {
+    cfgSaving.value = false
+  }
+}
 
 const emptyPoint = {
   cpu: 0, memory: 0, memoryTotal: 0,
@@ -797,13 +894,10 @@ onMounted(async () => {
   chNet.value = echarts.init(netChartEl.value)
   renderGauges()
 
-  try {
-    const cfg = await ConfigApi.get()
-    enabled.value = cfg.data?.resource?.enabled !== false
-  } catch {
-    // 配置读取失败：启用状态保持 unknown（null），不擅自回退为「已启用」，
-    // 也不启动实时采集（后端可能不可用）
-  }
+  // 读取配置（含 resource 切片）；失败时内部已提示并返回 null，启用状态保持 unknown（null），
+  // 不擅自回退为「已启用」，也不启动实时采集（后端可能不可用）
+  const cfg = await loadResourceConfig()
+  enabled.value = cfg?.resource?.enabled !== false
 
   await loadSnapshot()
   await loadHistory()
@@ -836,7 +930,33 @@ onUnmounted(() => {
 .admin-resource {
   padding: @spacing-md @spacing-lg;
 
-  .enable-tip { margin-bottom: 16px; }
+  .config-section {
+    margin-bottom: 16px;
+
+    .config-card {
+      :deep(.el-card__body) { padding: 14px 18px; }
+
+      .config-head {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 6px;
+
+        .config-title { font-size: 15px; font-weight: 600; color: @text-color; }
+        .config-sub { font-size: 12px; color: @text-color-secondary; }
+        .config-actions { margin-left: auto; display: flex; gap: 8px; }
+      }
+
+      .resource-form { margin-top: 10px; }
+
+      .field-hint {
+        margin-left: 12px;
+        color: @text-color-secondary;
+        font-size: 12px;
+      }
+    }
+  }
 
   .hardware-section {
     margin-bottom: 16px;

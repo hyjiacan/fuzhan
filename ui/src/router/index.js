@@ -35,6 +35,8 @@ const AdminResourceView = () => import(/* webpackChunkName: "views-admin-resourc
 const AdminBehaviorAnalyticsView = () => import(/* webpackChunkName: "views-admin-behavior-analytics" */ '../views/AdminBehaviorAnalyticsView.vue')
 const AdminSecurityView = () => import(/* webpackChunkName: "views-admin-security" */ '../views/AdminSecurityView.vue')
 const AdminLogsView = () => import(/* webpackChunkName: "views-admin-logs" */ '../views/AdminLogsView.vue')
+const AdminWebhookView = () => import(/* webpackChunkName: "views-admin-webhook" */ '../views/AdminWebhookView.vue')
+const AdminMimeView = () => import(/* webpackChunkName: "views-admin-mime" */ '../views/AdminMimeView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const OAuth2CallbackView = () => import('../views/OAuth2CallbackView.vue')
 
@@ -216,6 +218,18 @@ const router = createRouter({
           path: 'api-keys',
           name: 'admin-api-keys',
           component: AdminApiKeyView
+        },
+        {
+          path: 'webhook',
+          name: 'admin-webhook',
+          component: AdminWebhookView,
+          meta: { title: 'Webhook 推送' }
+        },
+        {
+          path: 'mime',
+          name: 'admin-mime',
+          component: AdminMimeView,
+          meta: { title: 'MIME 映射' }
         },
         {
           path: 'settings',
