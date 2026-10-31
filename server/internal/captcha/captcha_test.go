@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// minPNGDataURILength data URI 最小长度，仅 sanity check，防止空图。
+const minPNGDataURILength = 500
+
 // TestGenerate 校验生成结果：id 非空、PNG data URI、长度合理。
 func TestGenerate(t *testing.T) {
 	id, uri, err := Generate()
@@ -20,23 +23,36 @@ func TestGenerate(t *testing.T) {
 	if strings.HasPrefix(strings.ToLower(uri), "data:image/svg") {
 		t.Fatal("Generate() 返回了 SVG，必须为 PNG")
 	}
-	if len(uri) <= 500 {
+	if len(uri) <= minPNGDataURILength {
 		t.Fatalf("Generate() data URI 长度异常: %d", len(uri))
 	}
 }
 
-// TestVerifyWrongAnswerIsOneShot 错误答案返回 false，且同一 id 再次校验仍为 false（已销毁）。
-func TestVerifyWrongAnswerIsOneShot(t *testing.T) {
-	id, _, err := Generate()
-	if err != nil {
-		t.Fatalf("Generate() 返回错误: %v", err)
+// TestVerifyCorrectAnswerIsOneShot 正确答案通过，且通过后记录即被销毁，不可重放。
+func TestVerifyCorrectAnswerIsOneShot(t *testing.T) {
+	const id, answer = "test-id-1", "abcd"
+	engine.Store.Set(id, answer)
+
+	if !Verify(id, answer) {
+		t.Fatal("正确答案应通过")
 	}
-	// 字符集不含 '0'，故 "0000" 必为错误答案
-	if Verify(id, "0000") {
-		t.Fatal("Verify() 对错误答案返回 true")
+	// 一次性：通过后记录被销毁，再次提交同一答案必须失败
+	if Verify(id, answer) {
+		t.Fatal("验证通过后同一 id 不应可重放")
 	}
-	if Verify(id, "0000") {
-		t.Fatal("Verify() 一次性语义失效：同一 id 第二次校验仍返回 true")
+}
+
+// TestVerifyWrongAnswerDestroysRecord 错误答案不通过，且记录同样被销毁。
+func TestVerifyWrongAnswerDestroysRecord(t *testing.T) {
+	const id, answer = "test-id-2", "abcd"
+	engine.Store.Set(id, answer)
+
+	if Verify(id, "zzzz") {
+		t.Fatal("错误答案不应通过")
+	}
+	// clear=true 对错误答案同样销毁记录，随后正确答案也必须失败
+	if Verify(id, answer) {
+		t.Fatal("答错后记录应被销毁，正确答案不应再通过")
 	}
 }
 

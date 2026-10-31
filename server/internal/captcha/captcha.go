@@ -25,9 +25,12 @@ const (
 	pngDataURIPrefix = "data:image/png;base64,"
 	// codeLength 验证码字符数
 	codeLength = 4
-	// codeSource 随机字符集：剔除易混淆的 0/O/1/l/I
-	codeSource = "23456789ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz"
-	// storeCollectNum 触发内存回收的计数阈值
+	// codeSource 验证码字符集：数字 2-9 + 小写字母（剔除 0/O/1/l/i 等易混淆字符）。
+	// 库校验大小写不敏感（EqualFold），故只保留一套大小写，避免重复字符虚增熵；
+	// 实际字符集 31 个，熵约为 31^4 ≈ 9.2×10^5。
+	codeSource = "23456789abcdefghjkmnpqrstuvwxyz"
+	// storeCollectNum 内存回收阈值（非容量上限）：累计写入超过该值时触发库内置清理，
+	// 过期 5 分钟的记录由库的清理逻辑删除。
 	storeCollectNum = 80
 	// storeExpiration 验证码有效期
 	storeExpiration = 5 * time.Minute
