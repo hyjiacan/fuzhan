@@ -31,7 +31,12 @@ const state = reactive({
     openApiEnabled: false,
     allowRegistration: false,
     requireLogin: false,
-    anonymousUsername: ''
+    anonymousUsername: '',
+    // 登录/注册图形验证码：mode 为服务端配置（disabled/always/after_n），
+    // triggerAfter 为「失败 n 次后开启」阈值，required 为当前 IP 是否必须输入验证码
+    captchaMode: 'disabled',
+    captchaTriggerAfter: 3,
+    captchaRequired: false
   },
 
   // 配置是否已从后端成功加载（成功后为 true；失败时后端被视为异常，配置不可信）

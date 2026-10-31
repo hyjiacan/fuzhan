@@ -15,6 +15,23 @@
             关闭后登录页不再显示「立即注册」入口，服务端同时拒绝注册请求；保存后立即生效，无需重启。
           </div>
         </el-form-item>
+        <el-form-item label="登录验证码">
+          <el-radio-group v-model="settings.account.captcha.mode">
+            <el-radio label="disabled">关闭</el-radio>
+            <el-radio label="always">始终开启</el-radio>
+            <el-radio label="after_n">失败后开启</el-radio>
+          </el-radio-group>
+          <div class="field-hint">
+            开启后登录/注册需输入图形验证码，防止暴力尝试；验证码由服务端按 IP 判定并一次性校验。
+          </div>
+        </el-form-item>
+        <el-form-item v-if="settings.account.captcha.mode === 'after_n'" label="触发阈值">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <el-input-number v-model="settings.account.captcha.triggerAfter" :min="1" :max="20" />
+            <span>次</span>
+          </div>
+          <div class="field-hint">同一 IP 登录/注册失败达到该次数后，即要求输入验证码</div>
+        </el-form-item>
       </el-form>
     </el-card>
 

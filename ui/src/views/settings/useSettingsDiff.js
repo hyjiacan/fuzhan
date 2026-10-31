@@ -9,6 +9,9 @@ const FIELD_LABELS = {
   'account.anonymous.username': '公开用户名',
   'account.reservedUsernames': '保留用户名',
   'account.allowRegistration': '允许自行注册',
+  'account.captcha': '登录验证码',
+  'account.captcha.mode': '验证码模式',
+  'account.captcha.triggerAfter': '失败触发阈值',
 
   server: '服务配置',
   'server.host': '监听地址',
@@ -256,7 +259,8 @@ const SECRET_FIELDS = new Set([
 const VALUE_LABELS = {
   'database.driver': { sqlite: 'SQLite', mysql: 'MySQL', postgres: 'PostgreSQL' },
   'openApi.ipAccessMode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' },
-  'storageBackend.backend': { local: '本地磁盘', s3: 'S3', minio: 'MinIO', oss: '阿里云 OSS', webdav: 'WebDAV' }
+  'storageBackend.backend': { local: '本地磁盘', s3: 'S3', minio: 'MinIO', oss: '阿里云 OSS', webdav: 'WebDAV' },
+  'account.captcha.mode': { disabled: '关闭', always: '始终开启', after_n: '失败后开启' }
 }
 
 // 未单独登记的叶子字段通用中文名（如预览分组内的 enabled/mimes/exts）

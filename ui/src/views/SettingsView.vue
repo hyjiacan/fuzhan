@@ -231,7 +231,8 @@ const settings = reactive({
     anonymous: { username: 'public' },
     reservedUsernames: [],
     allowRegistration: false,
-    requireLogin: false
+    requireLogin: false,
+    captcha: { mode: 'disabled', triggerAfter: 3 }
   },
   server: {
     host: '0.0.0.0',
@@ -434,7 +435,11 @@ const loadSettings = async () => {
         anonymous: { username: cfg.account?.anonymous?.username || 'public' },
         reservedUsernames: cfg.account?.reservedUsernames || [],
         allowRegistration: cfg.account?.allowRegistration ?? false,
-        requireLogin: cfg.account?.requireLogin ?? false
+        requireLogin: cfg.account?.requireLogin ?? false,
+        captcha: {
+          mode: cfg.account?.captcha?.mode || 'disabled',
+          triggerAfter: cfg.account?.captcha?.triggerAfter ?? 3
+        }
       }
       settings.server.webdav = {
         enabled: cfg.server?.webdav?.enabled ?? false
@@ -744,7 +749,11 @@ const doSaveSettings = async () => {
         anonymous: { username: settings.account.anonymous.username },
         reservedUsernames: settings.account.reservedUsernames,
         allowRegistration: settings.account.allowRegistration,
-        requireLogin: settings.account.requireLogin
+        requireLogin: settings.account.requireLogin,
+        captcha: {
+          mode: settings.account.captcha.mode,
+          triggerAfter: settings.account.captcha.triggerAfter
+        }
       },
       server: {
         host: settings.server.host,
@@ -877,6 +886,8 @@ const doSaveSettings = async () => {
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
             allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
             requireLogin: optionsRes.data.account?.requireLogin ?? false,
+            captchaMode: optionsRes.data.account?.captcha?.mode ?? 'disabled',
+            captchaTriggerAfter: optionsRes.data.account?.captcha?.triggerAfter ?? 3,
             anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || ''
           })
         }

@@ -153,14 +153,21 @@ export const AuthApi = {
     return request.get('/auth/user')
   },
 
-  register(username, password) {
-    // 注册反馈由组件内显式提示（含后续引导文案），跳过拦截器自动 toast 避免重复
-    return request.post('/auth/register', { username, password }, { skipSuccessToast: true })
+  // 获取图形验证码：返回 { captchaId, image }，image 为 data:image/png;base64,... data URI
+  getCaptcha() {
+    return request.get('/auth/captcha')
   },
 
-  login(username, password) {
+  // 注册/登录：验证码为可选字段（缺省空串，向后兼容不展示验证码的旧流程）。
+  // 一次性验证码校验失败后必须重新 getCaptcha 刷新
+  register(username, password, captchaId = '', captchaAnswer = '') {
+    // 注册反馈由组件内显式提示（含后续引导文案），跳过拦截器自动 toast 避免重复
+    return request.post('/auth/register', { username, password, captchaId, captchaAnswer }, { skipSuccessToast: true })
+  },
+
+  login(username, password, captchaId = '', captchaAnswer = '') {
     // 登录成功的反馈由组件内显式提示，跳过拦截器自动 toast 避免重复
-    return request.post('/auth/login', { username, password }, { skipSuccessToast: true })
+    return request.post('/auth/login', { username, password, captchaId, captchaAnswer }, { skipSuccessToast: true })
   },
 
   changePassword(oldPassword, newPassword) {

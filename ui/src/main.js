@@ -58,7 +58,11 @@ async function loadConfigAndCheckSetup() {
         openApiEnabled: d.openApi?.enabled ?? false,
         allowRegistration: d.account?.allowRegistration ?? false,
         requireLogin: d.account?.requireLogin ?? false,
-        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || ''
+        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || '',
+        captchaMode: d.account?.captcha?.mode ?? 'disabled',
+        captchaTriggerAfter: d.account?.captcha?.triggerAfter ?? 3,
+        // 服务端按当前 IP 判定的是否需要验证码，用作登录页初始值；验证码错误时再动态置位
+        captchaRequired: d.account?.captcha?.required ?? false
       })
       store.setConfigLoaded(true)
       // 更新页面标题

@@ -42,6 +42,12 @@
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
+        <!-- 图形验证码：required 时展示（服务端按 IP 判定或验证码校验失败后强制） -->
+        <CaptchaInput
+          :visible="loginCaptchaRequired"
+          @change="setLoginCaptcha"
+          @enter="handleLogin"
+        />
       </el-form>
 
       <!-- 注册表单 -->
@@ -90,6 +96,12 @@
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
+        <!-- 注册侧验证码，与登录侧独立维护，切换模式时不串值 -->
+        <CaptchaInput
+          :visible="registerCaptchaRequired"
+          @change="setRegisterCaptcha"
+          @enter="handleRegister"
+        />
       </el-form>
 
       <!-- 外部统一认证入口（OAuth2/OIDC，由后端配置决定是否展示） -->
@@ -148,6 +160,7 @@ import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
 import { executeLoginDownload } from '@/utils/download'
+import CaptchaInput from '@/components/auth/CaptchaInput.vue'
 import store from '@/store'
 
 const route = useRoute()
@@ -157,12 +170,31 @@ const appName = computed(() => store.state.config.appName || '浮栈')
 const allowRegistration = computed(() => store.state.config.allowRegistration === true)
 const requireLogin = computed(() => store.state.config.requireLogin === true)
 
+// 服务端按当前 IP 判定的初始「是否需要验证码」
+const captchaRequiredByServer = computed(() => store.state.config.captchaRequired === true)
+
 const isRegisterMode = ref(false)
 const submitting = ref(false)
 const loginFormRef = ref(null)
 const registerFormRef = ref(null)
 const loginForm = reactive({ username: '', password: '' })
 const registerForm = reactive({ username: '', password: '', confirmPassword: '' })
+
+// 登录/注册侧验证码各自独立维护：是否需要展示、当前 captchaId 与答案。
+// 初始值取服务端 required 判定；账号切换（登录<->注册）互不干扰
+const loginCaptchaRequired = ref(captchaRequiredByServer.value)
+const loginCaptcha = reactive({ id: '', answer: '' })
+const registerCaptchaRequired = ref(captchaRequiredByServer.value)
+const registerCaptcha = reactive({ id: '', answer: '' })
+
+const setLoginCaptcha = (cid, answer) => {
+  loginCaptcha.id = cid
+  loginCaptcha.answer = answer
+}
+const setRegisterCaptcha = (cid, answer) => {
+  registerCaptcha.id = cid
+  registerCaptcha.answer = answer
+}
 const loginRules = {
   username: { required: true, message: '请输入用户名', trigger: 'blur' },
   password: { required: true, message: '请输入密码', trigger: 'blur' }
@@ -226,13 +258,23 @@ const finishAuth = async () => {
   router.replace(redirect)
 }
 
+// 判断错误是否为「验证码缺失/错误」：响应体 errors.code === 'captcha_invalid'，
+// 或顶层错误消息包含「验证码」。此时需展示并刷新验证码，让用户重新输入后重试
+const isCaptchaError = (error) => {
+  if (!error) return false
+  const codes = error.details?.errors
+  if (codes?.code === 'captcha_invalid') return true
+  const msg = String(error.message || '')
+  return msg.includes('验证码') && (msg.includes('错误') || msg.includes('无效') || msg.includes('正确') || msg.includes('请输入'))
+}
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
   loginFormRef.value.validate(async (valid) => {
     if (!valid) return
     submitting.value = true
     try {
-      const data = await AuthApi.login(loginForm.username, loginForm.password)
+      const data = await AuthApi.login(loginForm.username, loginForm.password, loginCaptcha.id, loginCaptcha.answer)
       if (data.success) {
         // 凭证由后端写入 HttpOnly Cookie，本地仅标记登录态
         AuthApi.restoreSession(data.data)
@@ -254,7 +296,14 @@ const handleLogin = async () => {
         ElMessage.error(data.message || '登录失败')
       }
     } catch (error) {
-      ElMessage.error('登录失败：' + error.message)
+      if (isCaptchaError(error)) {
+        // 服务端要求验证码：展示并刷新验证码，输入内容等待重试
+        loginCaptchaRequired.value = true
+        ElMessage.warning('请输入验证码后重试')
+        loginCaptcha.answer = ''
+      } else {
+        ElMessage.error('登录失败：' + error.message)
+      }
     } finally {
       submitting.value = false
     }
@@ -267,7 +316,7 @@ const handleRegister = async () => {
     if (!valid) return
     submitting.value = true
     try {
-      const data = await AuthApi.register(registerForm.username, registerForm.password)
+      const data = await AuthApi.register(registerForm.username, registerForm.password, registerCaptcha.id, registerCaptcha.answer)
       if (data.success) {
         // 注册即登录（与轻量版一致）：服务端已签发 Cookie 会话，这里同步本地登录态
         AuthApi.restoreSession(data.data)
@@ -285,7 +334,14 @@ const handleRegister = async () => {
         ElMessage.error(data.message || '注册失败')
       }
     } catch (error) {
-      ElMessage.error('注册失败：' + error.message)
+      if (isCaptchaError(error)) {
+        // 服务端要求验证码：展示并刷新验证码，输入内容等待重试
+        registerCaptchaRequired.value = true
+        ElMessage.warning('请输入验证码后重试')
+        registerCaptcha.answer = ''
+      } else {
+        ElMessage.error('注册失败：' + error.message)
+      }
     } finally {
       submitting.value = false
     }
