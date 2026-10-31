@@ -103,6 +103,16 @@ func Verify(id, answer string) bool {
 	return engine.Verify(id, answer, true)
 }
 
+// SetTestAnswer 注入指定 id 的已知答案，仅供测试使用（如 handler+门禁联动的
+// "正确答案放行"用例）。真实答案由 Generate 写入库内存存储，本包不对外暴露明文，
+// 生产代码不应调用本函数。
+func SetTestAnswer(id, answer string) {
+	if id == "" {
+		return
+	}
+	_ = engine.Store.Set(id, answer)
+}
+
 // normalizeDataURI 将库返回的 base64 图像规范化为 PNG data URI。
 // 裸 base64 自动补前缀；已带 PNG 前缀直接返回；
 // 其余 data URI（含 SVG 或其它 MIME）一律拒绝，保证不会输出 SVG。

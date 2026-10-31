@@ -247,7 +247,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	protected.Use(authMiddleware.AuthRequired(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	{
 		// 认证相关路由
-		protected.POST("/auth/refresh", authHandler.Login) // 复用登录逻辑
+		protected.POST("/auth/refresh", authHandler.Refresh) // 仅刷新令牌，不校验密码与验证码
 		protected.GET("/auth/user", authHandler.GetCurrentUser)
 		protected.PUT("/auth/password", authHandler.ChangePassword)
 

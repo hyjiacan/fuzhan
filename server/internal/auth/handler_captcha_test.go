@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/captcha"
 	"fuzhan/internal/middleware"
+	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -163,8 +168,11 @@ func trimPrefix(s string) string {
 }
 
 // TestCaptchaRateLimitBlocksAfterThirty 验证获取验证码接口固定每 IP 每分钟 30 次。
+// 使用随每次测试运行而变化的唯一 IP（时间戳），避免 accessguard 全局缓存
+// 在 -count=2 或多次运行间残留计数（前一次已把该 IP 打到 30，第二次会误判 429）。
 func TestCaptchaRateLimitBlocksAfterThirty(t *testing.T) {
-	const ip = "203.0.113.7"
+	uniq := time.Now().UnixNano()
+	ip := "203.0.113." + strconv.FormatInt((uniq%250)+1, 10) // 1..250，避免与文档保留示例段混淆
 	r := gin.New()
 	r.GET("/captcha", middleware.CaptchaRateLimit(), NewHandler(nil, nil).GetCaptcha)
 
@@ -175,5 +183,68 @@ func TestCaptchaRateLimitBlocksAfterThirty(t *testing.T) {
 	}
 	if w := serveWithIP(r, http.MethodGet, "/captcha", ip); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("第 31 次请求应被限流（429），实际状态 %d", w.Code)
+	}
+}
+
+// TestVerifyCaptchaAlwaysAllowsCorrectAnswer 验证 always 模式下注入已知答案的
+// 验证码可正常放行：verifyCaptcha 返回 true 且不写错误响应。
+// captcha.Verify 为一次性（clear=true），每个 id 只能验证一次，故每次用新 id。
+func TestVerifyCaptchaAlwaysAllowsCorrectAnswer(t *testing.T) {
+	setCaptchaConfig(t, appconfig.CaptchaModeAlways, 0)
+
+	const id, answer = "auth-test-correct-answer", "k3m9"
+	captcha.SetTestAnswer(id, answer)
+
+	allowed, w := probeVerifyCaptcha(t, "198.51.100.5", id, answer)
+	if !allowed {
+		t.Fatal("always 模式下正确答案应放行")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("正确答案放行时不应写入错误响应，实际状态 %d", w.Code)
+	}
+
+	var body struct {
+		Success bool `json:"success"`
+		Errors  any  `json:"errors"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Errors != nil {
+		t.Fatalf("正确答案放行时响应不应携带 errors，实际 body = %s", w.Body.String())
+	}
+}
+
+// TestRefreshReturnsCurrentUserWithoutCaptcha 验证 /auth/refresh 在 always 验证码模式下
+// 仍可返回当前用户信息（不校验密码/验证码）。通过注入 userUUID 上下文模拟 AuthRequired 登录态，
+// 不传 Authorization 头，故 refreshTokenIfNeeded 不产生新令牌，仅返回用户信息。
+func TestRefreshReturnsCurrentUserWithoutCaptcha(t *testing.T) {
+	setCaptchaConfig(t, appconfig.CaptchaModeAlways, 0)
+	db := setupTestDB(t)
+	uuid := "11111111-2222-3333-4444-555555555555"
+	db.Create(&models.User{UUID: uuid, Username: "refresh-user", PasswordHash: "hash", Role: "user"})
+
+	h := NewHandler(services.NewAuthService(db), db)
+	r := gin.New()
+	r.POST("/refresh", func(c *gin.Context) {
+		c.Set("userUUID", uuid)
+	}, h.Refresh)
+
+	w := serveWithIP(r, http.MethodPost, "/refresh", "198.51.100.6")
+	if w.Code != http.StatusOK {
+		t.Fatalf("已登录刷新应返回 200，实际状态 %d, body = %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Data    struct {
+			UUID      string `json:"uuid"`
+			Username  string `json:"username"`
+			Role      string `json:"role"`
+			CreatedAt string `json:"createdAt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("解析刷新响应失败: %v", err)
+	}
+	if !body.Success || body.Data.UUID != uuid || body.Data.Username != "refresh-user" || body.Data.Role != "user" {
+		t.Fatalf("响应体与 GetCurrentUser 结构不一致，body = %s", w.Body.String())
 	}
 }

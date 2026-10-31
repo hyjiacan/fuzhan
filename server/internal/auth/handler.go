@@ -204,6 +204,26 @@ func (h *Handler) Logout(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "已退出登录", nil)
 }
 
+// Refresh 令牌刷新：仅供已认证用户调用（路由受 AuthRequired 保护），
+// 不校验密码与验证码。令牌接近过期时换取新令牌并同步 HttpOnly Cookie；
+// 未到刷新点时不改动凭证。响应体结构与 GetCurrentUser 一致（uuid/username/role/createdAt）。
+func (h *Handler) Refresh(c *gin.Context) {
+	user, err := h.authService.GetCurrentUser(c)
+	if err != nil {
+		response.HandleUnauthorized(c, err.Error())
+		return
+	}
+	data := gin.H{
+		"uuid": user.UUID, "username": user.Username,
+		"role": user.Role, "createdAt": user.CreatedAt,
+	}
+	if newToken := h.refreshTokenIfNeeded(c); newToken != "" {
+		// 令牌被刷新时只同步 HttpOnly Cookie，凭证不回传响应体（不暴露给脚本）。
+		middleware.SetAuthCookie(c, newToken)
+	}
+	response.HandleSuccess(c, http.StatusOK, "", data)
+}
+
 // GetCurrentUser 获取当前用户信息
 func (h *Handler) GetCurrentUser(c *gin.Context) {
 	user, err := h.authService.GetCurrentUser(c)
