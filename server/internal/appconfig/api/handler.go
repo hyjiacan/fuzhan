@@ -207,6 +207,21 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 	}
 
+	// 验证码模式白名单校验：非法值会导致安全功能静默失效，保存前拦截并归一化。
+	// 必须在加写锁前 return，避免锁未释放。
+	if present("account") && req.Account.Captcha.Mode != "" {
+		mode := strings.ToLower(strings.TrimSpace(req.Account.Captcha.Mode))
+		switch mode {
+		case appconfig.CaptchaModeDisabled, appconfig.CaptchaModeAlways:
+		case appconfig.CaptchaModeAfterN, "aftern":
+			mode = appconfig.CaptchaModeAfterN
+		default:
+			utils.HandleBadRequest(c, "验证码模式无效，仅支持 disabled / always / after_n", nil)
+			return
+		}
+		req.Account.Captcha.Mode = mode
+	}
+
 	// 加写锁保护配置并发修改。
 	// 注意：RunOnSaveHooks 内部的钩子会通过 GetConfig 申请读锁，
 	// 绝不能持写锁跨钩子执行，否则同 goroutine RWMutex 自死锁。

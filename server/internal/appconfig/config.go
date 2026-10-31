@@ -69,6 +69,17 @@ type AccountConfig struct {
 	Captcha CaptchaConfig `yaml:"captcha"`
 }
 
+const (
+	// CaptchaModeDisabled 验证码始终关闭
+	CaptchaModeDisabled = "disabled"
+	// CaptchaModeAlways 验证码始终开启
+	CaptchaModeAlways = "always"
+	// CaptchaModeAfterN 失败 N 次后开启验证码
+	CaptchaModeAfterN = "after_n"
+	// DefaultCaptchaTriggerAfter after_n 模式的默认失败阈值
+	DefaultCaptchaTriggerAfter = 3
+)
+
 // CaptchaConfig 图形验证码配置
 type CaptchaConfig struct {
 	// Mode: disabled | always | after_n（禁用/始终开启/失败 N 次后开启）

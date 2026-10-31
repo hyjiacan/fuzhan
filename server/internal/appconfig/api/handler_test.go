@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -27,13 +28,14 @@ func minimalTestConfigPath(t *testing.T) string {
 }
 
 // postConfig 构造一个带 body 的 gin 上下文并调用 SaveConfig。
-func postConfig(t *testing.T, path, body string, h *Handler) {
+func postConfig(t *testing.T, path, body string, h *Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", path, strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h.SaveConfig(c)
+	return w
 }
 
 // TestValidateLDAPConfig 覆盖 LDAP 启用条件与端口范围的保存前校验。
@@ -394,6 +396,58 @@ func TestGetOptions_CaptchaRequiredDisabled(t *testing.T) {
 	}
 	if resp.Data.Account.Captcha.Required {
 		t.Error("mode=disabled: options.account.captcha.required = true, want false")
+	}
+}
+
+// TestSaveConfig_CaptchaModeNormalized 验证 captcha.mode 大小写变体（afterN / AFTER_N / 带空白）
+// 保存后被归一化为规范值 after_n。
+func TestSaveConfig_CaptchaModeNormalized(t *testing.T) {
+	cases := []string{"afterN", "AFTER_N", " After_N "}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			prevPath := appconfig.ConfigPath
+			prevCfg := appconfig.GlobalConfig
+			appconfig.ConfigPath = minimalTestConfigPath(t)
+			t.Cleanup(func() {
+				appconfig.ConfigPath = prevPath
+				appconfig.GlobalConfig = prevCfg
+			})
+			appconfig.GlobalConfig = appconfig.Config{}
+
+			body := `{"account":{"captcha":{"mode":"` + raw + `"}}}`
+			postConfig(t, "/api/v1/web/config", body, &Handler{})
+
+			if got := appconfig.GlobalConfig.Account.Captcha.Mode; got != appconfig.CaptchaModeAfterN {
+				t.Errorf("Captcha.Mode = %q, want %q", got, appconfig.CaptchaModeAfterN)
+			}
+		})
+	}
+}
+
+// TestSaveConfig_CaptchaModeInvalid 验证非法 captcha.mode 返回 400，
+// 且 GlobalConfig 中的验证码配置保持原值（不加锁、不写入）。
+func TestSaveConfig_CaptchaModeInvalid(t *testing.T) {
+	prevPath := appconfig.ConfigPath
+	prevCfg := appconfig.GlobalConfig
+	appconfig.ConfigPath = minimalTestConfigPath(t)
+	t.Cleanup(func() {
+		appconfig.ConfigPath = prevPath
+		appconfig.GlobalConfig = prevCfg
+	})
+	appconfig.GlobalConfig = appconfig.Config{
+		Account: appconfig.AccountConfig{
+			Captcha: appconfig.CaptchaConfig{Mode: appconfig.CaptchaModeDisabled, TriggerAfter: 4},
+		},
+	}
+
+	w := postConfig(t, "/api/v1/web/config", `{"account":{"captcha":{"mode":"bogus","triggerAfter":9}}}`, &Handler{})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法 mode 返回状态码 = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	got := appconfig.GlobalConfig.Account.Captcha
+	if got.Mode != appconfig.CaptchaModeDisabled || got.TriggerAfter != 4 {
+		t.Errorf("非法 mode 保存后 Captcha = %+v, want 保持 mode=disabled triggerAfter=4", got)
 	}
 }
 

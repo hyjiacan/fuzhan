@@ -134,7 +134,7 @@ func CaptchaRequired(ip string) bool {
 	case "after_n":
 		threshold := cfg.Account.Captcha.TriggerAfter
 		if threshold <= 0 {
-			threshold = 3
+			threshold = appconfig.DefaultCaptchaTriggerAfter
 		}
 		return LoginFailureCountForIP(ip) >= threshold
 	default: // disabled / 空值 / 未知值一律不要求，保证默认零行为影响
