@@ -33,8 +33,17 @@ func TestLoginFailureCountForIPNotResetByLock(t *testing.T) {
 	if !isLoginLocked(ip) {
 		t.Fatal("expected ip to be locked")
 	}
-	if got := LoginFailureCountForIP(ip); got < 5 {
-		t.Fatalf("expected displayFailures >= 5, got %d", got)
+	if got := LoginFailureCountForIP(ip); got != 6 {
+		t.Fatalf("expected displayFailures == 6, got %d", got)
+	}
+
+	// 锁定期内再失败一次，累计值应递增且仍处于锁定状态
+	registerLoginFailure(ip)
+	if got := LoginFailureCountForIP(ip); got != 7 {
+		t.Fatalf("expected displayFailures == 7 after extra failure, got %d", got)
+	}
+	if !isLoginLocked(ip) {
+		t.Fatal("expected ip to remain locked after extra failure")
 	}
 }
 

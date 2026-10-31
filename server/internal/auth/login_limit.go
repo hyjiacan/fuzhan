@@ -79,7 +79,7 @@ func registerLoginFailure(ip string) bool {
 	rec.count++
 	rec.displayFailures++
 	if now.Before(rec.lockUntil) {
-		// 仍在锁定期内，继续失败延长锁定
+		// 仍在锁定期内，继续失败计数并保持锁定状态
 		return true
 	}
 	if rec.count >= loginMaxFailures {
@@ -103,6 +103,7 @@ func resetLoginFailures(ip string) {
 // LoginFailureCountForIP 返回指定 IP 当前窗口内的累计失败次数。
 // 与锁定计数 count 不同：count 在触发锁定时会归零，本字段保留累计值，
 // 供图形验证码「失败 N 次后开启」判定与前端展示使用。
+// 窗口过期视为 0（清理 ticker 之前也不返回旧值）。
 func LoginFailureCountForIP(ip string) int {
 	if ip == "" {
 		return 0
@@ -111,6 +112,9 @@ func LoginFailureCountForIP(ip string) int {
 	defer loginLimitMu.Unlock()
 	rec, ok := loginLimitCache[ip]
 	if !ok {
+		return 0
+	}
+	if time.Now().Sub(rec.windowStart) > loginLimitWindow {
 		return 0
 	}
 	return rec.displayFailures

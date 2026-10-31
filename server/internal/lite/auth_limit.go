@@ -75,6 +75,7 @@ func liteRegisterFailure(ip string) bool {
 	rec.count++
 	rec.displayFailures++
 	if now.Before(rec.lockUntil) {
+		// 仍在锁定期内，继续失败计数并保持锁定状态
 		return true
 	}
 	if rec.count >= liteMaxFailures {
@@ -96,6 +97,7 @@ func liteResetFailures(ip string) {
 }
 
 // LiteLoginFailureCountForIP 返回指定 IP 当前窗口内的累计失败次数（lite 验证码触发用）。
+// 窗口过期视为 0（清理 ticker 之前也不返回旧值）。
 func LiteLoginFailureCountForIP(ip string) int {
 	if ip == "" {
 		return 0
@@ -104,6 +106,9 @@ func LiteLoginFailureCountForIP(ip string) int {
 	defer liteLimitMu.Unlock()
 	rec, ok := liteLimitCache[ip]
 	if !ok {
+		return 0
+	}
+	if time.Now().Sub(rec.windowStart) > liteLimitWindow {
 		return 0
 	}
 	return rec.displayFailures
