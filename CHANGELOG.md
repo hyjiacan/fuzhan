@@ -9,6 +9,7 @@
 
 ### 新增
 
+- **图形验证码**：新增配置 `account.captcha.mode`/`trigger_after`，三态 `disabled`（默认，关闭）/ `always`（始终要求）/ `after_n`（IP 在窗口内登录失败达到 `trigger_after` 次后要求，默认 3）。覆盖 Web 端登录/注册与轻量版（lite，SSR 零 JS 内嵌）登录/注册；Web 与 lite 各自独立的 IP 失败计数触发。验证码由 `base64Captcha` 生成 PNG data URI，一次性校验（失败自动换新图），无验证码提交返回 400 `errors.code=captcha_invalid`。新增 `GET /api/v1/web/auth/captcha`（按 IP 限流）。(hyjiacan, 2026-10-31)
 - **自行注册开关**：新增配置 `account.allow_registration`（默认关闭），设置页「身份认证 → 账户」标签提供开关，保存即热生效；关闭时登录弹框隐藏「立即注册」入口，注册接口直接拒绝。(hyjiacan, 2026-10-19)
 - **上传频率限制**：新增配置 `upload.rate_limit.window_minutes` / `max_requests`（`max_requests=0` 表示不限制），按客户端 IP 在滑动窗口内限制上传控制面请求（创建会话 / 完成上传 / URL 上传提交），超出返回 429；分片数据传输不受限，阈值实时读取、保存即热生效。设置页「访问控制」新增「上传频率限制」卡片。(hyjiacan, 2026-10-19)
 - **磁盘分区列表接口**：新增 `GET /api/v1/web/config/partitions`（管理员），实时返回各分区挂载点、文件系统类型、总容量与剩余容量；设置页「应用信息 → 共享目录配置」每个目录条目新增「存储分区」下拉，选中后自动将挂载点填入目录路径。(hyjiacan, 2026-10-19)
@@ -20,6 +21,8 @@
 
 ### 更改
 
+- **就绪检查移入受保护范围**：`GET /api/v1/ready` 迁移为 `GET /api/v1/web/ready`，改由登录守卫（LoginGate）保护；强制登录开启后未登录访问返回 401，避免就绪探测绕过登录边界。前端页脚健康状态、健康检查 `/api/v1/web/health` 仍保持匿名。(hyjiacan, 2026-10-31)
+- **公开选项移除 URL 上传内网放行网段**：公开接口 `GET /api/v1/web/options` 不再返回 `upload.urlUpload.allowedIPRanges`（仅管理员经 `GET/POST /api/v1/web/config` 查看与维护，后端 URL 上传 SSRF 白名单仍按该配置生效），避免把敏感内网网段泄露给匿名调用方。(hyjiacan, 2026-10-31)
 - **设置页防浏览器密码自动填充**：LDAP 绑定密码、OAuth2 Client Secret、MySQL/PostgreSQL 密码等输入框统一设置 `autocomplete="new-password"`，相邻用户名/绑定 DN 字段设置 `autocomplete="off"`，从源头阻断密码管理器自动填充误触发「配置变更」提示。(hyjiacan, 2026-10-19)
 - **登录与注册日志分离**：认证事件按类型分文件落盘，`auth.login` / `auth.oauth2.login` 写入 `login.log`，`auth.register` 写入 `register.log`，两者不再混入 `app.log`（`access_log: false` 时仍回退写入 `app.log`）。(hyjiacan, 2026-10-16)
 - **API 路径按作用域重组**：所有由界面（含管理后台）直接调用的接口统一迁移到 `/api/v1/web/` 前缀下，`/api/v1` 仅保留 `/ready`、`/metrics`、`/cli`、`/webdav` 等非界面渠道；根级 `/download/*path`、`/share/:code`、`/cli`、`/lite` 别名保持不变。前端 API 基址、后端路径解析与 URL 生成、测试与文档已同步更新。(hyjiacan, 2026-10-15)
@@ -29,6 +32,8 @@
 
 ### 修复
 
+- 修复健康检查 `GET /api/v1/web/health` 匿名泄露运行细节的问题：响应移除 `goVersion`、`goroutines` 与存储目录绝对路径等字段，仅保留 `healthy`/`version`/`checks`/`timestamp`，避免向外暴露 Go 运行时信息与服务器目录结构。(hyjiacan, 2026-10-31)
+- 修复 `GET /api/v1/open/v1/openapi.json` 与数据接口安全边界割裂的问题：原先走 `LoginRequiredWhenForced` 守卫但受 OpenAPI 文档功能开关（`open_api.enabled`）整体控制，开启文档时接口匿名可达、与强制登录策略不一致；现文档路由改用独立守卫，强制登录开启且认证模式要求 API Key/JWT 时未认证访问返回 401。(hyjiacan, 2026-10-31)
 - 修复保存配置时同 goroutine 自死锁：`SaveConfig` 持有配置写锁期间执行热更新钩子，而钩子内部经 `GetConfig` 再次申请读锁，导致保存请求永久挂起、后续所有读取配置的请求被阻塞；现配置落盘后先释放写锁再执行钩子。(hyjiacan, 2026-10-19)
 - 修复 URL 上传开始后左下角仍停留在「正在准备下载...」、状态提示不更新的问题。(hyjiacan, 2026-10-09)
 - 修复上传弹窗底部提示区在超长错误信息（如多次超时后含完整 URL 的网络错误）下撑破弹窗底部的问题：错误文本改为自动换行并限高滚动。(hyjiacan, 2026-10-09)

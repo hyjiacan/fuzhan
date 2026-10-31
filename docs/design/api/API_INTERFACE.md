@@ -800,8 +800,8 @@
 
 ### 2. 就绪检查
 
-- **URL**：`GET /api/v1/ready`
-- **认证**：无需认证
+- **URL**：`GET /api/v1/web/ready`
+- **认证**：强制登录开启后需登录（否则 401）
 
 ### 3. Prometheus 指标
 

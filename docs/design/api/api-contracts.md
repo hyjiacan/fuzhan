@@ -458,7 +458,7 @@ Content-Type: application/json
 | HTTP方法 | 路由 | Handler | 功能描述 | 认证 |
 |----------|------|---------|----------|------|
 | GET | `/api/v1/web/health` | `health.Handler.Health` | 健康检查 | 无 |
-| GET | `/api/v1/ready` | `health.Handler.Ready` | 就绪检查 | 无 |
+| GET | `/api/v1/web/ready` | `health.Handler.Ready` | 就绪检查 | 强制登录开启后需认证 |
 | GET | `/api/v1/metrics` | `PrometheusHandler()` | Prometheus指标 | 无 |
 | GET | `/api/v1/web/monitor/storage` | `monitor.Handler.Storage` | 存储统计 | 无 |
 | GET | `/api/v1/web/monitor/access` | `monitor.Handler.Access` | 访问统计 | 无 |
