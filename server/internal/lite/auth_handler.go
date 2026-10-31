@@ -2,12 +2,15 @@ package lite
 
 import (
 	"errors"
+	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/captcha"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/security"
@@ -27,10 +30,47 @@ type authErrView struct {
 	Title    string // 页面 <title>
 	AppName  string
 	LogoPath string
-	Heading  string // 表单区标题（登录/注册）
-	Error    string // 错误提示（空串则不显示）
-	Redirect string // 登录成功后回跳地址（隐藏域 / 页间跳转链接，模板自动转义）
-	Username string // 用户名回填（失败后保留用户输入，密码不回显）
+	Heading  string        // 表单区标题（登录/注册）
+	Error    string        // 错误提示（空串则不显示）
+	Redirect string        // 登录成功后回跳地址（隐藏域 / 页间跳转链接，模板自动转义）
+	Username string        // 用户名回填（失败后保留用户输入，密码不回显）
+	Captcha  template.HTML // 验证码区块（已内嵌完整 HTML，空串表示无需验证码）
+}
+
+// CaptchaImage 渲染验证码区块（零 JS，SSR 内嵌）：需要验证码时输出
+// 隐藏域（验证码 id）+ PNG 图片（data URI）+ 文本输入框，无需时返回空串。
+// 每次调用都重新 Generate 新图，天然支持重试（旧验证码随提交被一次性销毁）。
+func CaptchaImage(ip string) template.HTML {
+	if !liteCaptchaRequired(ip) {
+		return template.HTML("")
+	}
+	id, dataURI, err := captcha.Generate()
+	if err != nil {
+		utils.Error("生成图形验证码失败", utils.Err(err))
+		return template.HTML("")
+	}
+	return template.HTML(fmt.Sprintf(
+		`<div class="captcha-row"><img src="%s" alt="验证码"><input type="hidden" name="captcha_challenge" value="%s"><input type="text" name="captcha_text" placeholder="验证码" required></div>`,
+		template.HTMLEscapeString(dataURI), template.HTMLEscapeString(id)))
+}
+
+// liteCaptchaRequired lite 端验证码三态判定，复用 lite 独立失败计数：
+// disabled 不要求；always 始终要求；after_n 当前窗口失败达到阈值后要求。
+// mode 归一化（去空白 + 转小写）与 Web 端 CaptchaRequired 保持一致，未知值一律不要求。
+func liteCaptchaRequired(ip string) bool {
+	cfg := appconfig.GetConfig().Account.Captcha
+	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
+	case appconfig.CaptchaModeAlways:
+		return true
+	case appconfig.CaptchaModeAfterN:
+		threshold := cfg.TriggerAfter
+		if threshold <= 0 {
+			threshold = appconfig.DefaultCaptchaTriggerAfter
+		}
+		return LiteLoginFailureCountForIP(ip) >= threshold
+	default: // disabled / 空值 / 未知值一律不要求，保证默认零行为影响
+		return false
+	}
 }
 
 // recordAuthEvent 将 lite 登录/注册相关风险写入安全事件库（供暴破分析与强提醒）
@@ -116,6 +156,7 @@ func renderAuthPage(c *gin.Context, heading, errMsg string, data authFormData, s
 		Error:    errMsg,
 		Redirect: data.Redirect,
 		Username: data.Username,
+		Captcha:  CaptchaImage(utils.GetClientIP(c)),
 	}
 	c.Status(status)
 	if err := tmpl.Execute(c.Writer, v); err != nil {
@@ -152,6 +193,17 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 	if verr != "" {
 		renderAuthPage(c, "登录", verr, data, http.StatusBadRequest)
 		return
+	}
+
+	// 图形验证码门禁（SSR 内嵌，零 JS）：lite 端需要验证码时校验表单的
+	// captcha_challenge/captcha_text，失败重渲染登录页（新图），不计数、不进锁定。
+	if liteCaptchaRequired(utils.GetClientIP(c)) {
+		challenge := c.PostForm("captcha_challenge")
+		text := c.PostForm("captcha_text")
+		if !captcha.Verify(challenge, text) {
+			renderAuthPage(c, "登录", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
+			return
+		}
 	}
 
 	ip := utils.GetClientIP(c)
@@ -208,6 +260,17 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 	if verr != "" {
 		renderAuthPage(c, "注册", verr, data, http.StatusBadRequest)
 		return
+	}
+
+	// 图形验证码门禁（SSR 内嵌，零 JS）：lite 端需要验证码时校验表单的
+	// captcha_challenge/captcha_text，失败重渲染注册页（新图），不计数、不进锁定。
+	if liteCaptchaRequired(utils.GetClientIP(c)) {
+		challenge := c.PostForm("captcha_challenge")
+		text := c.PostForm("captcha_text")
+		if !captcha.Verify(challenge, text) {
+			renderAuthPage(c, "注册", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
+			return
+		}
 	}
 
 	ip := utils.GetClientIP(c)
