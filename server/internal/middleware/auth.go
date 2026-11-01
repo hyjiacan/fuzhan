@@ -29,7 +29,8 @@ type userStatusEntry struct {
 }
 
 // userStatusCache 缓存用户禁用状态（正反两面），避免正常用户每个请求都回源查库。
-// 禁用与正常结果统一走短 TTL：命中即免查库，管理员禁用/恢复在 TTL(30s) 内生效。
+// 禁用与正常结果统一走短 TTL：命中即免查库，管理员禁用/恢复在 TTL(5s) 内生效。
+// 管理员在用户管理路径（禁用/启用/删除）会主动清除对应条目，做到即时生效。
 type userStatusCache struct {
 	mu      sync.RWMutex
 	entries map[string]userStatusEntry // uuid -> 禁用状态 + 过期时间
@@ -37,7 +38,9 @@ type userStatusCache struct {
 
 var userDisabledCache = &userStatusCache{entries: make(map[string]userStatusEntry)}
 
-const disabledCacheTTL = 30 * time.Second
+// disabledCacheTTL 用户禁用状态缓存 TTL。
+// 已尽可能缩短（5s）；配合管理员禁用/删除路径的主动清除，理论上可即时生效。
+const disabledCacheTTL = 5 * time.Second
 
 // init 启动缓存后台清理协程
 func init() {
@@ -78,6 +81,20 @@ func (sc *userStatusCache) cleanExpired() {
 			delete(sc.entries, uuid)
 		}
 	}
+}
+
+// invalidate 删除指定用户的缓存条目，使禁用/启用/删除即时生效。
+func (sc *userStatusCache) invalidate(uuid string) {
+	sc.mu.Lock()
+	delete(sc.entries, uuid)
+	sc.mu.Unlock()
+}
+
+// InvalidateUserDisabledCache 清除指定用户的禁用状态缓存条目。
+// 由用户管理 handler（禁用/启用/删除用户）在服务端状态变更成功后调用，
+// 使新状态立即对认证中间件生效，避免等待 TTL 过期。
+func InvalidateUserDisabledCache(uuid string) {
+	userDisabledCache.invalidate(uuid)
 }
 
 // AuthMiddleware JWT认证中间件配置

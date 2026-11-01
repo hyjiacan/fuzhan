@@ -57,8 +57,8 @@ func SaveConfigWithComments(configPath string, updates map[string]interface{}) e
 		return fmt.Errorf("序列化 YAML 失败: %w", err)
 	}
 
-	// 写回文件
-	if err := os.WriteFile(configPath, output, 0644); err != nil {
+	// 配置文件可能含 JWT 密钥等敏感字段，写权限收紧为仅属主可读写（0600）
+	if err := os.WriteFile(configPath, output, 0600); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 

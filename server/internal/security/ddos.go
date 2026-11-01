@@ -10,8 +10,8 @@ import (
 	"fuzhan/internal/utils"
 )
 
-// 高频/DDoS 检测器：按 IP 固定窗口计数，超阈值记 ddos.suspected 事件（仅告警不阻断）。
-// 配置实时读取 appconfig.GetDDoSConfig，支持配置保存后热启停（SyncDDoSDetector）。
+// 高频/DDoS 检测器：按 IP 固定窗口计数，超阈值后对该 IP 限流拦截（调用方返回 429）
+// 并记 ddos.suspected 高危事件。配置实时读取 appconfig.GetDDoSConfig，支持配置保存后热启停（SyncDDoSDetector）。
 
 // DDoS 检测默认参数（配置项 <=0 时使用）
 const (
@@ -100,7 +100,7 @@ func startDDoSDetector() {
 	ddosMu.Unlock()
 
 	p := resolveDDoSParams()
-	utils.Info("DDoS 高频检测已启动（仅告警不阻断）",
+	utils.Info("DDoS 高频检测已启动（超阈值自动限流拦截）",
 		utils.Int("window_seconds", int(p.window.Seconds())),
 		utils.Int("max_requests", p.maxReqs),
 		utils.Int("cooldown_minutes", int(p.cooldown.Minutes())))
@@ -140,12 +140,13 @@ func ddosCleanupLoop(stopCh chan struct{}) {
 	}
 }
 
-// DDoSObserve 观测一条请求（监控中间件全量调用）。
-// 检测器未启用时零开销直接返回；超阈值且过冷却时记一条 ddos.suspected 高危事件，
-// 仅告警不阻断请求。
-func DDoSObserve(ip string) {
+// DDoSObserve 观测一条请求（监控中间件全量调用），返回该请求是否应被限流拦截。
+// 检测器未启用时零开销直接返回 false（放行）；超阈值且过冷却时记一条
+// ddos.suspected 高危事件并返回 true，由调用方对该 IP 下发 429 限流响应。
+// 冷却期内的重复超阈值请求同样返回 true（持续拦截），但事件仅冷却到期后记一次。
+func DDoSObserve(ip string) bool {
 	if ip == "" || !appconfig.GetDDoSConfig().Enabled {
-		return
+		return false
 	}
 	p := resolveDDoSParams()
 	now := utils.Now()
@@ -166,7 +167,7 @@ func DDoSObserve(ip string) {
 			}
 			if len(ddosEntries) >= ddosMaxEntries {
 				ddosMu.Unlock()
-				return
+				return false
 			}
 		}
 		e = &ddosEntry{windowStart: now}
@@ -177,9 +178,10 @@ func DDoSObserve(ip string) {
 		e.count = 0
 	}
 	e.count++
+	blocked := e.count > p.maxReqs
 	alert := false
 	count := e.count
-	if e.count > p.maxReqs && now.Sub(e.lastAlert) >= p.cooldown {
+	if blocked && now.Sub(e.lastAlert) >= p.cooldown {
 		e.lastAlert = now
 		alert = true
 	}
@@ -194,8 +196,9 @@ func DDoSObserve(ip string) {
 			Operation: "http.flood",
 			Target:    ip,
 			Guard:     models.GuardDDoS,
-			Reason: fmt.Sprintf("%d 秒窗口内检测到该 IP 请求 %d 次（阈值 %d），疑似高频/DDoS 攻击（仅告警不阻断）",
+			Reason: fmt.Sprintf("%d 秒窗口内检测到该 IP 请求 %d 次（阈值 %d），疑似高频/DDoS 攻击，已对该 IP 限流拦截",
 				int(p.window.Seconds()), count, p.maxReqs),
 		})
 	}
+	return blocked
 }

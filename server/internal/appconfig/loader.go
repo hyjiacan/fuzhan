@@ -140,7 +140,8 @@ func createConfigFile() {
 		utils.Fatal("读取嵌入的默认配置文件失败", utils.Err(err))
 	}
 
-	if err := os.WriteFile(configFile, defaultConfig, 0644); err != nil {
+	// 生成的默认配置可能含敏感字段（后续可能写入 JWT 密钥），权限收紧为仅属主可读写（0600）
+	if err := os.WriteFile(configFile, defaultConfig, 0600); err != nil {
 		utils.Fatal("创建默认配置文件时出错", utils.Err(err))
 	}
 	utils.Info("默认配置文件创建成功")

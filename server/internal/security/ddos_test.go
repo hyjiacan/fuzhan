@@ -61,12 +61,41 @@ func TestDDoS_Disabled_NoEvents(t *testing.T) {
 	store, stop := newTestWriter()
 
 	for i := 0; i < 50; i++ {
-		DDoSObserve("10.0.0.1")
+		if DDoSObserve("10.0.0.1") {
+			t.Fatalf("未启用时不应返回限流拦截（应为 false）")
+		}
 	}
 	stop()
 
 	if got := store.all(); len(got) != 0 {
 		t.Fatalf("未启用时不应产生任何安全事件，got %d 条", len(got))
+	}
+}
+
+// TestDDoS_OverThreshold_BlocksAndAlerts 验证超阈值后 DDoSObserve 返回 true（调用方限流拦截），
+// 且冷却去重后恰好记 1 条高危安全事件。
+func TestDDoS_OverThreshold_BlocksAndAlerts(t *testing.T) {
+	restore := setDDoSConfig(true, 3600, 3, 10)
+	defer restore()
+	store, stop := newTestWriter()
+
+	// 阈值 3：前 3 次放行，第 4 次起（含冷却期内）应持续返回 true
+	wantBlocked := []bool{false, false, false, true, true, true, true, true, true, true}
+	for i, want := range wantBlocked {
+		if got := DDoSObserve("10.0.0.7"); got != want {
+			t.Fatalf("第 %d 次观测：限流结果应为 %v，实际 %v", i+1, want, got)
+		}
+	}
+	stop()
+
+	events := store.all()
+	if len(events) != 1 {
+		t.Fatalf("超阈值且冷却去重后应恰好 1 条告警，got %d 条", len(events))
+	}
+	ev := events[0]
+	if ev.EventType != models.EventDDoSSuspected || ev.Severity != models.SeverityHigh ||
+		ev.Guard != models.GuardDDoS || ev.Operation != "http.flood" || ev.ClientIP != "10.0.0.7" {
+		t.Fatalf("告警事件维度异常：%+v", ev)
 	}
 }
 

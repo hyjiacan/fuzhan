@@ -10,6 +10,7 @@ import (
 	"fuzhan/internal/online"
 	"fuzhan/internal/security"
 	"fuzhan/internal/utils"
+	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -56,8 +57,16 @@ func MonitoringMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := utils.Now()
 		clientIP := utils.GetClientIP(c)
-		// 高频/DDoS 观测：计全量请求（仅告警不阻断，未启用时零开销）
-		security.DDoSObserve(clientIP)
+		// 高频/DDoS 防护：检测器启用时按 IP 计数，超阈值（含冷却期内持续超限）返回 true 即限流，
+		// 对触发 IP 直接下发 429 并终止后续处理（未启用时零开销放行）。
+		if security.DDoSObserve(clientIP) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"success": false,
+				"code":    response.CodeBadRequest,
+				"message": "请求过于频繁，已被限流拦截",
+			})
+			return
+		}
 		path := c.Request.URL.Path
 		// WebDAV 挂载于 /api/v1/webdav，开放 API 挂载于 /api/open，均需先于 API 前缀排除，
 		// 归入各自独立渠道。
