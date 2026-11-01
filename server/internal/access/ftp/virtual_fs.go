@@ -42,7 +42,7 @@ type MultiRootFs struct {
 	allowedExtensions []string          // from appconfig.Storage.AllowedExtensions
 	maxFileSize       int64             // from appconfig.Upload.MaxFileSize (0 = unlimited)
 	recordFn          OperationRecordFunc
-	backend           FtpBackend // 服务层注入：权限/索引/配额（nil 时权限校验保守拒绝管理操作）
+	backend           FtpBackend                 // 服务层注入：权限/索引/配额（nil 时权限校验保守拒绝管理操作）
 	storages          map[string]storage.Storage // 公开多根目录的存储后端映射（rootName → Storage）
 	ctx               context.Context            // 远端存储操作使用的上下文（存储实现内部使用）
 }
@@ -363,6 +363,12 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 			return nil, err
 		}
 	}
+	if isPrivate {
+		// 与公共分支一致：私有上传同样校验扩展名白名单（大小由 wrapWriteFile 兜底）
+		if err := fs.validateExtension(filepath.Base(name)); err != nil {
+			return nil, err
+		}
+	}
 	if err := fs.checkDiskSpace(realPath, isPrivate); err != nil {
 		return nil, err
 	}
@@ -665,6 +671,10 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 			}
 		}
 		if isPrivate {
+			// 与公共分支一致：私有上传同样校验扩展名白名单（大小由 wrapWriteFile 兜底）
+			if err := fs.validateExtension(filepath.Base(name)); err != nil {
+				return nil, err
+			}
 			// 与 Web 私有上传一致：不允许覆盖已有文件（每次上传生成独立分享码）
 			if existsOnDisk(realPath) {
 				return nil, os.ErrPermission
@@ -1282,10 +1292,10 @@ func (f *recordingFile) Close() error {
 // （支持完整 Seek/WriteAt/追加/续传语义），Close 时经 remoteUpload 一次性写入远端
 // 后端，再清理本地缓存。返回值错误（如配额超限/远端写入失败）回传 FTP 客户端。
 type remoteRecordingFile struct {
-	afero.File            // 缓存文件（*os.File 链 sizeLimitedFile），继承全部读写方法
-	cached    *os.File    // 本地缓存真实句柄：Close 前 Seek 回开头 + 清理用
-	onClose   func(size int64) error
-	closed    bool
+	afero.File          // 缓存文件（*os.File 链 sizeLimitedFile），继承全部读写方法
+	cached     *os.File // 本地缓存真实句柄：Close 前 Seek 回开头 + 清理用
+	onClose    func(size int64) error
+	closed     bool
 }
 
 func (f *remoteRecordingFile) Close() error {

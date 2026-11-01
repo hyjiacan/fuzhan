@@ -2,11 +2,14 @@ package webdav
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"golang.org/x/net/webdav"
+
+	"fuzhan/internal/appconfig"
 )
 
 // PrivateFileSystem implements webdav.FileSystem scoped to the authenticated
@@ -94,7 +97,11 @@ func (fs *PrivateFileSystem) OpenFile(ctx context.Context, name string, flag int
 
 	isCreate := flag&os.O_CREATE != 0 && flag&(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_TRUNC) != 0
 	if isCreate && fs.backend != nil {
-		// 私有写入口：磁盘空间预检 + 配额预检（真实大小最终在写完后校验，见 AddPrivateFile）
+		// 私有写入口校验：扩展名白名单 + 磁盘空间预检 + 配额预检
+		//（真实大小最终在写完后校验，见 AddPrivateFile；大小上限由限流包装器兜底）
+		if err := fs.backend.ValidateExtension(filepath.Base(name)); err != nil {
+			return nil, err
+		}
 		if err := fs.backend.CheckDiskSpace(filepath.Dir(fullPath), 1); err != nil {
 			return nil, os.ErrPermission
 		}
@@ -111,9 +118,10 @@ func (fs *PrivateFileSystem) OpenFile(ctx context.Context, name string, flag int
 		return nil, err
 	}
 	if isCreate && fs.backend != nil {
-		// 写完成后同步私有文件记录（含分享码）并触发哈希（H2），真实大小在此刻校验
+		// 写完成后同步私有文件记录（含分享码）并触发哈希（H2），真实大小在此刻校验；
+		// PrivateFileSystem 无 maxFileSize 字段，大小上限直接读全局上传配置（0=不限）
 		return &syncedPrivateFile{
-			File:     f,
+			File:     &sizeLimitedWriteFile{File: f, maxSize: appconfig.GlobalConfig.Upload.MaxFileSize},
 			backend:  fs.backend,
 			userUUID: getUserUUID(ctx),
 			relPath:  name,
@@ -157,10 +165,46 @@ func (fs *PrivateFileSystem) Stat(ctx context.Context, name string) (os.FileInfo
 	return os.Stat(fullPath)
 }
 
+// sizeLimitedWriteFile 包装私有写文件句柄：在写入过程中按偏移拦截超过大小上限的文件
+// （与 FTP 的 sizeLimitedFile 语义一致）。maxSize<=0 表示不限制。
+type sizeLimitedWriteFile struct {
+	*os.File
+	maxSize int64
+	offset  int64 // 当前写入偏移（Write/WriteAt/Seek 同步维护）
+}
+
+func (f *sizeLimitedWriteFile) Write(p []byte) (int, error) {
+	if f.maxSize > 0 && f.offset+int64(len(p)) > f.maxSize {
+		return 0, fmt.Errorf("文件大小超过最大限制 (%d bytes)", f.maxSize)
+	}
+	n, err := f.File.Write(p)
+	f.offset += int64(n)
+	return n, err
+}
+
+func (f *sizeLimitedWriteFile) WriteAt(p []byte, off int64) (int, error) {
+	if f.maxSize > 0 && off+int64(len(p)) > f.maxSize {
+		return 0, fmt.Errorf("文件大小超过最大限制 (%d bytes)", f.maxSize)
+	}
+	n, err := f.File.WriteAt(p, off)
+	if off+int64(n) > f.offset {
+		f.offset = off + int64(n)
+	}
+	return n, err
+}
+
+func (f *sizeLimitedWriteFile) Seek(offset int64, whence int) (int64, error) {
+	n, err := f.File.Seek(offset, whence)
+	if err == nil {
+		f.offset = n
+	}
+	return n, err
+}
+
 // syncedPrivateFile 包装新建的私有文件句柄：写完后（Close）写入私有文件记录
 // （含分享码）并触发哈希（H2），并对真实大小做最终配额校验。backend 为 nil 时透传。
 type syncedPrivateFile struct {
-	*os.File
+	webdav.File
 	backend  Backend
 	userUUID string
 	relPath  string
