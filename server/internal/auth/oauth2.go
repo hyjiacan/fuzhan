@@ -79,7 +79,25 @@ type jwksKey struct {
 	Kid     string                     `json:"kid"`
 	Use     string                     `json:"use"`
 	Alg     string                     `json:"alg"`
-	RawJSON map[string]json.RawMessage `json:"-"` // 原始字段表，验签时按名取值
+	RawJSON map[string]json.RawMessage `json:"-"` // 原始字段表，验签时按名取值（n/e/x/y/crv 等）
+}
+
+// UnmarshalJSON 反序列化单个 JWK：
+// 常规字段（kty/kid/use/alg）走标准字段填充，其余原始字段（n/e/x/y/crv 等）原样
+// 保留进 RawJSON 供验签时读取。注意：RawJSON 带 json:"-" 标签，若不在此自定义
+// Unmarshal 中手动填充，标准库反序列化会将其忽略，验签将永远拿不到公钥参数。
+func (k *jwksKey) UnmarshalJSON(data []byte) error {
+	type alias jwksKey // 避免递归调用本方法
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*k = jwksKey(a)
+	if err := json.Unmarshal(data, &k.RawJSON); err != nil {
+		return err
+	}
+	// RawJSON 中已含 kty/kid/use/alg，保留重复键不影响取值；无需额外处理
+	return nil
 }
 
 // jwksSet 内存中的 JWKS 缓存（含拉取状态，用于失效/回退决策）。
