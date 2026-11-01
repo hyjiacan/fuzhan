@@ -3,14 +3,16 @@ package appconfig
 import "testing"
 
 func TestGetSecurityConfig_EmptyOriginsMeansUnrestricted(t *testing.T) {
+	// H4：未配置任何来源（nil 或空列表）时默认仅同源，不注入 "*"，不再放行任意跨站。
+	// 如需跨站必须显式配置 allowed_origins。
 	cases := []struct {
 		name    string
 		origins []string
 		wantAll bool
 		wantLen int
 	}{
-		{name: "nil origins allows all", origins: nil, wantAll: true, wantLen: 1},
-		{name: "empty origins allows all", origins: []string{}, wantAll: true, wantLen: 1},
+		{name: "nil origins same-origin only", origins: nil, wantAll: false, wantLen: 0},
+		{name: "empty origins same-origin only", origins: []string{}, wantAll: false, wantLen: 0},
 		{name: "configured whitelist kept", origins: []string{"https://a.example"}, wantAll: false, wantLen: 1},
 	}
 	for _, tc := range cases {
@@ -23,6 +25,12 @@ func TestGetSecurityConfig_EmptyOriginsMeansUnrestricted(t *testing.T) {
 			if tc.wantAll {
 				if len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "*" {
 					t.Fatalf("AllowedOrigins = %v, want [*]", got.AllowedOrigins)
+				}
+				return
+			}
+			if len(tc.origins) == 0 {
+				if len(got.AllowedOrigins) != 0 {
+					t.Fatalf("AllowedOrigins = %v, want empty (same-origin only)", got.AllowedOrigins)
 				}
 				return
 			}

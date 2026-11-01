@@ -254,7 +254,7 @@ Content-Type: application/json
 | POST | `/api/v1/web/uploads/url-tasks/:taskId/checksum` | `file.UploadSessionHandler.ComputeURLTaskChecksum` | 计算已完成任务的校验值 |
 | DELETE | `/api/v1/web/uploads/url-tasks/:taskId` | `file.UploadSessionHandler.DeleteURLTask` | 删除任务 |
 
-**说明：** URL 上传任务以后台全局队列执行，并行上限由 `upload.url_upload.max_concurrent` 控制（所有用户共享，默认 2）；失败自动重试由 `upload.url_upload.max_retries` 控制（默认 3，仅超时/5xx/408/429 等可重试错误，重试任务排到队尾）；任务持久化于 `url_download_tasks`，进程重启后自动恢复。
+**说明：** URL 上传任务以后台全局队列执行，并行上限由 `upload.url_upload.max_concurrent` 控制（所有用户共享，默认 2）；失败自动重试由 `upload.url_upload.max_retries` 控制（默认 3，仅超时/5xx/408/429 等可重试错误，重试任务排到队尾）；服务器侧大小硬上限由 `upload.url_upload.max_size` 控制（字节，0=不限，下载实际累计写入超过即中断并清理）；任务持久化于 `url_download_tasks`，进程重启后自动恢复。
 
 **计算校验值：** `POST /api/v1/web/uploads/url-tasks/:taskId/checksum`，请求体 `{ "algorithms": ["md5", "sha1", "sha256"] }`（`md5`/`sha1`/`sha256` 的任意非空子集），仅对 `completed` 状态任务有效，服务端单次流式读取按所选算法并行计算，返回 `{ "checksums": { "md5": "...", "sha256": "..." } }`，结果仅返回前端供完整性校验、不落库。
 

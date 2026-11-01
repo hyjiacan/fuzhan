@@ -299,7 +299,7 @@
 | `access.forbidden` | 越权 / 禁止访问（403） |
 | `rate.limited` | 触发频率限制（429） |
 | `code.bruteforce` | 无效分享 / 临时码 / 口令枚举达阈值被锁定 |
-| `ddos.suspected` | 疑似 DDoS / 高频请求（固定窗口计数超阈值，仅检测告警、不阻断；guard 恒为 `ddos`） |
+| `ddos.suspected` | 疑似 DDoS / 高频请求（固定窗口计数超阈值，默认启用并下发 429 限流拦截；guard 恒为 `ddos`） |
 
 ### 索引
 

@@ -431,7 +431,7 @@
 
 - **URL**：`POST /api/v1/web/uploads/url`
 - **认证**：可选（AuthOptional）
-- **说明**：仅做校验与入队，返回 `taskId`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。
+- **说明**：仅做校验与入队，返回 `taskId`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。服务器侧大小硬上限由 `upload.url_upload.max_size` 控制（字节，0=不限，下载实际累计写入超过即中断并清理）。
 - **请求体**：
   ```json
   {

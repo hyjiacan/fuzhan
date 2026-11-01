@@ -230,9 +230,9 @@ WebDAV / FTP 渠道的认证失败与越权拒绝行为会自动写入 `security
 
 > 注：FTP 事件中的源 IP 已去除端口号归一化，便于与 Web 渠道事件按 IP 聚合分析。
 
-### DDoS 高频检测（guard=`ddos`）
+### DDoS 高频防护（guard=`ddos`）
 
-启用 `ddos.enabled` 后，全量 HTTP 请求按 IP 固定窗口计数，超阈值写入一条 `ddos.suspected`（high）。**仅检测告警、不阻断请求**，冷却期内同一 IP 不重复告警；配置详见《系统配置与选项模块》ddos 节。
+`ddos.enabled` 默认开启：全量 HTTP 请求按 IP 固定窗口计数，窗口内单 IP 请求数超过阈值时对来源 IP 下发 429 限流拦截并写入一条 `ddos.suspected`（high），冷却期内同一 IP 重复超阈继续拦截但不重复告警；设为 `false` 可整体关闭。配置详见《系统配置与选项模块》ddos 节。
 
 ---
 

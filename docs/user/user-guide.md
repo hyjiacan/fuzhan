@@ -246,6 +246,7 @@ upload:
     allowed_ip_ranges: []      # URL 源地址白名单（留空时拒绝内网/回环/保留地址）
     max_concurrent: 2          # 全局同时进行的 URL 上传任务数
     max_retries: 3             # 失败重试次数（4xx 不重试）
+    max_size: 0                # 服务器侧大小硬上限（字节），0 表示不限制；超过即中断并清理
   rate_limit:
     window_minutes: 1          # 上传频率统计窗口（分钟）
     max_requests: 0            # 窗口内单 IP 最大上传操作数，0 表示不限制
