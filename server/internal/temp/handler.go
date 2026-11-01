@@ -249,7 +249,11 @@ func (h *Handler) DownloadHandler(c *gin.Context) {
 	// 不触发下载即删、不计入下载次数、不写下载记录
 	if c.Query("preview") == "true" {
 		c.Header("Cache-Control", "private, max-age=3600")
-		// 不显式设置 Content-Type，交由 ServeContent 按文件名扩展名推断，保证图片/PDF 可内联渲染
+		// 危险类型（HTML/SVG/XML/JS 等）强制降级为附件下载 + text/plain，
+		// 防存储型 XSS 借临时分享的预览渠道投放（与公开下载侧语义一致）
+		utils.ApplyUnsafePreviewFallback(c.Writer.Header(), tempFile.Filename)
+		// 不显式设置 Content-Type，交由 ServeContent 按文件名扩展名推断，保证图片/PDF 可内联渲染；
+		// 不安全扩展名已被上方兜底强制为 text/plain（ServeContent 不会覆盖已设置的 Content-Type）
 		http.ServeContent(c.Writer, c.Request, tempFile.Filename, fi.ModTime(), file)
 		return
 	}

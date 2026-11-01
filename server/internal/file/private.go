@@ -237,9 +237,14 @@ func (h *PrivateStorageHandlers) Download(c *gin.Context) {
 	// 预览请求（preview=true）：内联返回供图片/PDF/文本预览，不写下载记录
 	if c.Query("preview") == "true" {
 		c.Header("Cache-Control", "private, max-age=3600")
+		// 危险类型（HTML/SVG/XML/JS 等）强制降级为附件下载 + text/plain，
+		// 防存储型 XSS 借私有分享的预览渠道投放（与公开下载侧语义一致）
+		unsafePreview := utils.ApplyUnsafePreviewFallback(c.Writer.Header(), rec.FileName)
 		// 按扩展名推断 Content-Type 以便浏览器内联渲染（未识别时交由浏览器处理）
-		if ct := mime.TypeByExtension(filepath.Ext(rec.FileName)); ct != "" {
-			c.Header("Content-Type", ct)
+		if !unsafePreview {
+			if ct := mime.TypeByExtension(filepath.Ext(rec.FileName)); ct != "" {
+				c.Header("Content-Type", ct)
+			}
 		}
 		// 使用 http.ServeContent 发送文件：自动支持 Range/206 断点续传，
 		// 输出 Accept-Ranges/Content-Range 头，非法区间返回 416。

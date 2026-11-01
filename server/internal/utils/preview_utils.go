@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"fmt"
+	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -343,6 +346,31 @@ func IsUnsafePreviewExtension(ext string) bool {
 	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
 	_, unsafe := unsafeInlinePreviewExts[ext]
 	return unsafe
+}
+
+// ApplyUnsafePreviewFallback 内联预览（preview=true）对不安全扩展名的兜底处理：
+// HTML/SVG/XML/JS/JSON 等可在同源上下文执行脚本的类型，即使请求内联预览也强制
+// 降级为 attachment 附件下载，且 Content-Type 强制 text/plain 展示源码，
+// 与公开下载侧（download_service.go）的强制纯文本语义保持一致，
+// 防存储型 XSS 借私有/临时分享的预览渠道投放。
+// 返回 true 表示该扩展名已被降级处理，调用方应跳过原内联 MIME 推断。
+func ApplyUnsafePreviewFallback(h http.Header, fileName string) bool {
+	if !IsUnsafePreviewExtension(filepath.Ext(fileName)) {
+		return false
+	}
+	// RFC 5987/RFC 6266 安全编码文件名，并强制纯文本 Content-Type。
+	// filename="..." 内的引号/反斜杠/CR/LF 一律清洗为下划线，防响应头注入；
+	// 现代浏览器优先使用已编码的 filename*（此值仅作降级）。
+	cleanName := strings.Map(func(r rune) rune {
+		if r == '"' || r == '\\' || r == '\r' || r == '\n' {
+			return '_'
+		}
+		return r
+	}, fileName)
+	safeFilename := url.PathEscape(fileName)
+	h.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, cleanName, safeFilename))
+	h.Set("Content-Type", "text/plain; charset=utf-8")
+	return true
 }
 
 // GetDownloadContentType 获取下载时应返回的 Content-Type。

@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"fuzhan/internal/appconfig"
-	"fuzhan/internal/downloadticket"
 	"fuzhan/internal/constants"
+	"fuzhan/internal/downloadticket"
 	"fuzhan/internal/models"
 	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
@@ -51,9 +51,9 @@ func NewPreviewHandler(baseHandler *BaseHandler) *PreviewHandler {
 
 // PreviewFile 预览文件
 func (h *PreviewHandler) PreviewFile(c *gin.Context) {
-	filePath := c.Param("path")
-	filePath, _ = url.QueryUnescape(filePath)
-	filePath = strings.TrimPrefix(filePath, "/")
+	// 说明：net/http 与 gin 已对 r.URL.Path 完成百分号解码（%2B→+、%25→%、UTF-8→中文），
+	// c.Param("path") 返回的即已解码路径，因此不再二次解码，与 download_service.go 语义保持一致
+	filePath := strings.TrimPrefix(c.Param("path"), "/")
 
 	parts := strings.SplitN(filePath, "/", 2)
 	rootName := parts[0]
@@ -94,12 +94,12 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 	isPreviewable := utils.IsPreviewable(info.Name, mimeType)
 
 	result := gin.H{
-			"name":        filepath.Base(info.Name),
-			"path":        filePath,
-			"size":        info.Size,
-			"mimeType":    mimeType,
-			"previewable": isPreviewable,
-		}
+		"name":        filepath.Base(info.Name),
+		"path":        filePath,
+		"size":        info.Size,
+		"mimeType":    mimeType,
+		"previewable": isPreviewable,
+	}
 
 	if isPreviewable {
 		// 按内置分组分发预览方式：文本组走内容/分块返回，其余组（图片/音频/视频/文档）走内联 URL；
@@ -161,9 +161,8 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 
 // GetChunk 读取文件指定分块
 func (h *PreviewHandler) GetChunk(c *gin.Context) {
-	filePath := c.Param("path")
-	filePath, _ = url.QueryUnescape(filePath)
-	filePath = strings.TrimPrefix(filePath, "/")
+	// 说明：c.Param("path") 已由 net/http/gin 完成百分号解码，不再二次解码（与 PreviewFile 一致）
+	filePath := strings.TrimPrefix(c.Param("path"), "/")
 
 	// 解析分块索引
 	chunkStr := c.Query("chunk")
