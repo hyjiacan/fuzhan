@@ -1,6 +1,10 @@
 package utils
 
-import "testing"
+import (
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestIsPreviewable_CustomEmptyMatchesNothing(t *testing.T) {
 	// custom 组与内置分组同语义：仅已配置条目参与匹配，两组留空不命中任何文件
@@ -215,5 +219,68 @@ func TestMimeTable_DownloadContentType(t *testing.T) {
 	InitMimeTable(map[string]string{".EPUB": "application/x-rar-compressed"})
 	if got := GetDownloadContentType("epub"); got != "application/x-rar-compressed" {
 		t.Errorf("冲突 key 重新加载后 GetDownloadContentType(\"epub\") = %q, want application/x-rar-compressed", got)
+	}
+}
+
+func TestApplyUnsafePreviewFallback(t *testing.T) {
+	cases := []struct {
+		name     string
+		fileName string
+		wantHit  bool
+	}{
+		{name: "html triggers fallback", fileName: "evil.html", wantHit: true},
+		{name: "svg triggers fallback", fileName: "logo.svg", wantHit: true},
+		{name: "js triggers fallback", fileName: "app.js", wantHit: true},
+		{name: "mjs triggers fallback", fileName: "app.mjs", wantHit: true},
+		{name: "json triggers fallback", fileName: "data.json", wantHit: true},
+		{name: "xml triggers fallback", fileName: "a.xml", wantHit: true},
+		{name: "uppercase extension triggers fallback", fileName: "A.HTML", wantHit: true},
+		{name: "safe txt does not", fileName: "notes.txt", wantHit: false},
+		{name: "safe pdf does not", fileName: "doc.pdf", wantHit: false},
+		{name: "no extension does not", fileName: "README", wantHit: false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := http.Header{}
+			got := ApplyUnsafePreviewFallback(h, c.fileName)
+			if got != c.wantHit {
+				t.Fatalf("ApplyUnsafePreviewFallback(%q) = %v, want %v", c.fileName, got, c.wantHit)
+			}
+			if !c.wantHit {
+				return
+			}
+			if ct := h.Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+				t.Fatalf("Content-Type = %q, want text/plain; charset=utf-8", ct)
+			}
+			if cd := h.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment;") {
+				t.Fatalf("Content-Disposition = %q, want attachment", cd)
+			}
+		})
+	}
+}
+
+func TestApplyUnsafePreviewFallback_HeaderInjectionSanitized(t *testing.T) {
+	// 文件名含 CR/LF/引号时：filename="..." 段必须清洗为下划线，整体不得出现裸 CR/LF
+	// （filename* 为 RFC5987 的 %-encode 形式 "\r\n"->"%0D%0A"，是安全的 ASCII 序列，不产生真实换行）。
+	h := http.Header{}
+	ApplyUnsafePreviewFallback(h, "evil\r\nX-Injected: 1.html")
+	cd := h.Get("Content-Disposition")
+	if strings.ContainsAny(cd, "\r\n") {
+		t.Fatalf("Content-Disposition 含裸 CR/LF（响应头注入）: %q", cd)
+	}
+	// 只检查 filename="..." 段（filename* 的 %-encode 是安全 ASCII，不产生真实换行/注入）
+	filenameSegment := cd[:strings.Index(cd, "; filename*")]
+	if !strings.HasPrefix(filenameSegment, "attachment; filename=\"evil__X-Injected: 1.html\"") {
+		t.Fatalf("filename 段应把 CR/LF 清洗为下划线且无注入: %q", filenameSegment)
+	}
+
+	h2 := http.Header{}
+	ApplyUnsafePreviewFallback(h2, `a"b\c.html`)
+	cd2 := h2.Get("Content-Disposition")
+	if strings.ContainsAny(cd2, "\r\n") {
+		t.Fatalf("Content-Disposition 含裸 CR/LF: %q", cd2)
+	}
+	if !strings.Contains(cd2, "filename=\"a_b_c.html\"") {
+		t.Fatalf("filename 段应把引号/反斜杠清洗为下划线: %q", cd2)
 	}
 }
