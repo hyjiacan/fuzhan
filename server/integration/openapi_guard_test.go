@@ -152,16 +152,59 @@ func doOpenAPIDocRequest(router *gin.Engine, cookieToken, bearerToken string) *h
 	return w
 }
 
-// TestOpenAPIDocGuard_AnonymousWhenNotForced 非强制登录 + none：保持历史匿名 200。
-func TestOpenAPIDocGuard_AnonymousWhenNotForced(t *testing.T) {
+// TestOpenAPIDocGuard_AnonymousRejectedWhenNotForced 非强制登录 + none：L6 加固后匿名一律 401。
+func TestOpenAPIDocGuard_AnonymousRejectedWhenNotForced(t *testing.T) {
 	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
 
 	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("非强制登录匿名访问期望 200，实际 %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("非强制登录匿名访问期望 401，实际 %d", w.Code)
 	}
-	if body := w.Body.String(); !strings.Contains(body, `"openapi"`) {
-		t.Fatalf("响应应包含 openapi 内容，实际: %s", body)
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("拒绝匿名时应返回 Cache-Control: no-store，实际 %q", cc)
+	}
+}
+
+// TestOpenAPIDocGuard_NotForcedNoneAcceptsCookieJWT 非强制登录 + none：有效 Cookie JWT 可读文档。
+func TestOpenAPIDocGuard_NotForcedNoneAcceptsCookieJWT(t *testing.T) {
+	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
+	token := openAPIGuardJWT(t)
+
+	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), token, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("携带有效 Cookie JWT 期望 200，实际 %d", w.Code)
+	}
+}
+
+// TestOpenAPIDocGuard_NotForcedNoneAcceptsBearerJWT 非强制登录 + none：有效 Bearer JWT 可读文档。
+func TestOpenAPIDocGuard_NotForcedNoneAcceptsBearerJWT(t *testing.T) {
+	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
+	token := openAPIGuardJWT(t)
+
+	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "", token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("携带有效 Bearer JWT 期望 200，实际 %d", w.Code)
+	}
+}
+
+// TestOpenAPIDocGuard_NotForcedNoneAcceptsBearerAPIKey 非强制登录 + none：有效 Bearer API Key 可读文档。
+func TestOpenAPIDocGuard_NotForcedNoneAcceptsBearerAPIKey(t *testing.T) {
+	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
+	rbac, rawKey := openAPIGuardRBAC(t)
+
+	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, rbac), "", rawKey)
+	if w.Code != http.StatusOK {
+		t.Fatalf("非强制登录 + none 携带有效 API Key 期望 200，实际 %d", w.Code)
+	}
+}
+
+// TestOpenAPIDocGuard_NotForcedNoneRejectsInvalidJWT 非强制登录 + none：无效 JWT 仍 401。
+func TestOpenAPIDocGuard_NotForcedNoneRejectsInvalidJWT(t *testing.T) {
+	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
+
+	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "invalid-jwt", "invalid-jwt")
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("携带无效 JWT 期望 401，实际 %d", w.Code)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/auth"
+	"fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
@@ -16,7 +17,8 @@ import (
 
 // Open API 鉴权方式
 const (
-	// AuthModeNone 匿名模式（历史行为）；强制登录开启时会被直接拒绝
+	// AuthModeNone 凭证模式（L6 加固后不再匿名）：需要有效 Web 会话 JWT（Cookie 或 Bearer）或有效 API Key，
+	// 否则一律 401/403；是否开启强制登录均不放行匿名。
 	AuthModeNone = "none"
 	// AuthModeAPIKey 使用系统签发的 API Key（携带 scope），与 Web 登录态完全隔离
 	AuthModeAPIKey = "api_key"
@@ -32,34 +34,35 @@ const (
 // cacheControlNoStore 鉴权失败/拒绝响应统一使用的禁缓存头，避免凭证态响应被中间层缓存。
 const cacheControlNoStore = "no-store"
 
-// AuthGateMiddleware Open API 鉴权闸门（基于系统签发的 API Key + scope）。
+// AuthGateMiddleware Open API 鉴权闸门。
 //
 // 优先级规则：强制登录（account.require_login）最高。
-//   - 未开启强制登录：auth_mode=none 保持匿名（历史行为）；auth_mode=api_key 校验 API Key。
-//   - 开启强制登录：auth_mode 必须为 api_key，否则直接 403（不允许匿名绕过强制登录）。
+//   - 未开启强制登录：auth_mode=none 也要求有效凭证（Web 会话 JWT 或 API Key），匿名一律 401；
+//     auth_mode=api_key 校验 API Key。
+//   - 开启强制登录：none 与 api_key 语义一致——none 表现为「至少需要 Web 会话 JWT」。
 //
-// 与 Web 登录态完全隔离：本中间件只接受 API Key，不接受 Web 会话 JWT，也不会签发任何 Web 凭证。
+// 与 Web 登录态隔离：未开启强制登录时只接受 Web 会话 JWT（Cookie/Bearer）或 API Key；
 // 鉴权通过后把 scope 列表写入上下文，供 auth.RBACService.RequireScope / RequireReaderScope 复用。
-func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
+func AuthGateMiddleware(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cfg := appconfig.GetConfig()
-		requireLogin := cfg.Account.RequireLogin
 		mode := CurrentAuthMode()
 
 		switch mode {
-		case AuthModeNone:
-			if requireLogin {
-				utils.Warn("强制登录已开启，拒绝匿名 Open API 访问",
+		case AuthModeNone, AuthModeAPIKey:
+			if mode == AuthModeNone {
+				// none 模式（L6 加固）：要求携带有效凭证——JWT 的禁用态校验优先复用
+				// authMW（非空时），未装配时退化为纯验签。强制登录与否都不再匿名放行。
+				if requireWebSession(c, authMW, rbac) {
+					return
+				}
+				utils.Warn("Open API 拒绝匿名访问：需要有效凭证",
 					utils.String("path", c.Request.URL.Path))
+				c.Header("WWW-Authenticate", `Bearer realm="Open API"`)
 				c.Header("Cache-Control", cacheControlNoStore)
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-					"error": "强制登录已开启，Open API 必须启用 API Key 鉴权（open_api.auth_mode=api_key）",
-				})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "需要有效凭证（Web 会话 JWT 或 API Key）"})
 				return
 			}
-			c.Next()
-
-		case AuthModeAPIKey:
+			// api_key 模式：只接受 API Key
 			if rbac == nil {
 				// 服务未装配：fail-closed，绝不降级为匿名
 				utils.Error("Open API 鉴权服务未初始化")
@@ -102,80 +105,72 @@ func AuthGateMiddleware(rbac *auth.RBACService) gin.HandlerFunc {
 	}
 }
 
-// LoginRequiredWhenForced OpenAPI 文档（/openapi.json）专用守卫。
+// requireWebSession none 模式的凭证校验：接受有效 Web 会话 JWT（Cookie 或 Bearer，JWT 优先）
+// 或有效 API Key（仅形如 keyID:secret 的凭证才尝试，避免无效 JWT 触发误导性格式告警）。
+// 校验通过后向上下文写入身份信息供 RequireReaderScope / RequireScope 复用，返回 true。
+// authMW 非空时复用其实时禁用态校验（缓存 + 回源；被禁用直接 403 并 Abort，同样返回 true）。
+// 返回 false 表示凭证无效/缺失，调用方负责写 401。
+func requireWebSession(c *gin.Context, authMW *middleware.AuthMiddleware, rbac *auth.RBACService) bool {
+	if token := middleware.TokenFromCookie(c); token != "" {
+		if claims, err := jwt.ParseJWT(token); err == nil {
+			if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
+				return true
+			}
+			injectWebSession(c, claims)
+			return true
+		}
+	}
+	if token := bearerToken(c); token != "" {
+		if claims, err := jwt.ParseJWT(token); err == nil {
+			if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
+				return true
+			}
+			injectWebSession(c, claims)
+			return true
+		}
+		// 仅在形如 keyID:secret 的凭证上尝试 API Key 校验
+		if rbac != nil && strings.Contains(token, ":") {
+			if userID, scopes, err := rbac.ValidateAPIKey(token); err == nil {
+				c.Set(userIDContextKey, userID)
+				c.Set(authTypeContextKey, AuthModeAPIKey)
+				c.Set(scopesContextKey, splitScopes(scopes))
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// injectWebSession 把已验签的 Web 会话 JWT 身份写入上下文（供下游 scope/身份校验复用）。
+func injectWebSession(c *gin.Context, claims *jwt.Claims) {
+	c.Set(string(constants.ContextKeyUsername), claims.Username)
+	c.Set(string(constants.ContextKeyRole), claims.Role)
+	c.Set(string(constants.ContextKeyUserUUID), claims.UUID)
+	c.Set(userIDContextKey, 0)
+	c.Set(authTypeContextKey, AuthModeNone)
+	c.Set(scopesContextKey, []string{})
+}
+
+// LoginRequiredWhenForced OpenAPI 文档（/openapi.json、/docs）专用守卫。
 //
-// 与 AuthGateMiddleware 的差异只在「强制登录 + auth_mode=none」这一格：
-// AuthGate 会直接 403（并要求启用 api_key），因为它守护的是 Open API 数据端点，
-// 不接受 Web 登录态。文档是给人看的，已登录的 Web 用户（Cookie JWT）本应能读，
-// 因此这里不放宽数据端点，只对文档单开一条窄口子（同一矩阵）：
+// L6 加固后与 AuthGateMiddleware 语义完全一致：任何 auth_mode 都不再匿名放行。
+// 数据端点走 AuthGateMiddleware，文档端点走本守卫；两者共享同一套 requireWebSession
+// 校验逻辑，保证矩阵 case 全覆盖、无匿名漏网：
 //
-//	requireLogin | auth_mode | openapi.json
-//	-------------+-----------+----------------------------------------
-//	false        | none      | 匿名 200（历史行为）
-//	false        | api_key   | 需 API Key（AuthGate 语义），无 Key 401
-//	true         | none      | Cookie JWT 或 Bearer JWT/API Key，否则 401
-//	true         | api_key   | 需 API Key（AuthGate 语义），无 Key 401
+//	requireLogin | auth_mode | openapi.json（与数据端点一致）
+//	-------------+-----------+---------------------------------------------------
+//	false        | none      | 需有效凭证（Web 会话 JWT 或 API Key），否则 401
+//	false        | api_key   | 需有效 API Key，否则 401
+//	true         | none      | 需有效凭证（Web 会话 JWT 或 API Key），否则 401
+//	true         | api_key   | 需有效 API Key，否则 401
 //
-// 之所以不复用「none+requireLogin→403」：强制登录后匿名被拒仍是目标，
-// 但登录用户不该被登录态本身挡在文档外；同时 api_key 模式完全沿用 AuthGate，
-// 不因文档路由打开新的匿名通道。
-//
-// authMW 用于「强制登录 + none」分支复用 Web 会话的禁用态校验：
-// 验签通过后调用 AuthMiddleware.CheckUserDisabled() 实时查库（缓存 + 回源），
-// 被禁用用户直接写入 403 并 Abort，避免只验签就放行导致已禁用用户仍能读文档。
+// authMW 用于 JWT 会话的禁用态校验：验签通过后调用 AuthMiddleware.CheckUserDisabled()
+// 实时查库（缓存 + 回源），被禁用用户直接写入 403 并 Abort，避免只验签就放行。
 // authMW 为 nil（测试场景）时退化为仅验签放行。
 func LoginRequiredWhenForced(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) gin.HandlerFunc {
-	apiKeyGate := AuthGateMiddleware(rbac)
+	gate := AuthGateMiddleware(authMW, rbac)
 	return func(c *gin.Context) {
-		switch CurrentAuthMode() {
-		case AuthModeAPIKey:
-			// api_key 模式：完全沿用 AuthGate（必须带有效 API Key），不因文档路由开新洞
-			apiKeyGate(c)
-			return
-		case AuthModeNone:
-			// 非强制登录：保持历史匿名行为
-			if !appconfig.GetConfig().Account.RequireLogin {
-				c.Next()
-				return
-			}
-			// 强制登录 + none：接受 Web 会话 Cookie 或 Bearer JWT/API Key
-			if token := middleware.TokenFromCookie(c); token != "" {
-				if claims, err := jwt.ParseJWT(token); err == nil {
-					if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
-						// 响应已写入并 Abort
-						return
-					}
-					c.Next()
-					return
-				}
-			}
-			if token := bearerToken(c); token != "" {
-				if claims, err := jwt.ParseJWT(token); err == nil {
-					if authMW != nil && authMW.CheckUserDisabled(c, claims.UUID) {
-						// 响应已写入并 Abort
-						return
-					}
-					c.Next()
-					return
-				}
-				// 仅在形如 keyID:secret 的凭证上尝试 API Key 校验，
-				// 避免无效 JWT 进入 ValidateAPIKey 触发误导性格式告警
-				if rbac != nil && strings.Contains(token, ":") {
-					if _, _, err := rbac.ValidateAPIKey(token); err == nil {
-						c.Next()
-						return
-					}
-				}
-			}
-			utils.Warn("强制登录已开启，OpenAPI 文档拒绝匿名访问",
-				utils.String("path", c.Request.URL.Path))
-			c.Header("WWW-Authenticate", `Bearer realm="Open API"`)
-			c.Header("Cache-Control", cacheControlNoStore)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "强制登录已开启，需要有效凭证"})
-		default:
-			// 未知模式交回 AuthGate 统一给出明确错误（500）
-			apiKeyGate(c)
-		}
+		gate(c)
 	}
 }
 
@@ -188,15 +183,11 @@ func CurrentAuthMode() string {
 	return mode
 }
 
-// RequireReaderScope 在非匿名模式下要求 open_api:reader（或更高）scope。
-// 匿名模式（auth_mode=none）下保持历史公开行为，不做 scope 校验。
-// 用于原本公开的列表/搜索/下载接口：一旦启用 API Key 模式，必须携带具备 reader 权限的 Key。
+// RequireReaderScope 要求具备 open_api:reader（或更高）scope，用于原本公开的列表/搜索/下载接口。
+// L6 加固后 auth_mode=none 也已注入 scope 上下文（Web 会话 JWT 注入空 scope，API Key 注入其 scope）：
+// 因此统一按「上下文是否带 reader scope」判定——Web 会话 / 匿名一律 403，API Key 无 reader 也 403。
 func RequireReaderScope(rbac *auth.RBACService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if CurrentAuthMode() == AuthModeNone {
-			c.Next()
-			return
-		}
 		if rbac == nil || !rbac.HasContextScope(c, models.ScopeOpenAPIReader) {
 			c.Header("Cache-Control", cacheControlNoStore)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{

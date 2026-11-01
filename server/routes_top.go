@@ -110,8 +110,10 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 
 	// Open API 路由组（v3 Phase 3）
 	// 架构要求中间件链: IP白名单 → 功能开关 → 频率限制 → 鉴权 → 调用统计 → 路由分发 → Handler
-	// 鉴权说明：auth_mode=none 时保持匿名（历史行为）；auth_mode=api_key 时校验系统签发的 API Key（携带 scope）。
-	// 强制登录（account.require_login）优先级最高：开启后 auth_mode 必须为 api_key，否则直接 403。
+	// 鉴权说明（L6 加固）：任何 auth_mode 都要求身份校验，不再匿名放行。
+	//   - auth_mode=api_key：校验系统签发的 API Key（携带 scope），无 Key/无效一律 401。
+	//   - auth_mode=none：要求有效凭证（Web 会话 JWT——Cookie 或 Bearer——或 API Key），匿名 401。
+	// 强制登录（account.require_login）最高：none 模式下 JWT 会话复用 AuthMiddleware 的实时禁用态校验。
 	// 两个同前缀组（数据端点 / 文档）共用基础链：功能开关 → IP 白名单 → 频率限制。
 	openAPICommonMW := []gin.HandlerFunc{
 		openapi.FeatureGateMiddleware(rt.openAPICfg.Enabled),
@@ -122,16 +124,16 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	openAPI := r.Group("/api/open/v1")
 	openAPI.Use(openAPICommonMW...)
 	openAPI.Use(
-		openapi.AuthGateMiddleware(rt.rbacService),
+		openapi.AuthGateMiddleware(rt.authMiddleware, rt.rbacService),
 		openapi.CallStatMiddleware(rt.openAPICallStat),
 		middleware.ResponseWrapperMiddleware(),
 	)
 	{
-		// FR-3.1: 文件列表 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		// FR-3.1: 文件列表 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/list", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.ListFiles)
-		// FR-3.2: 文件搜索 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		// FR-3.2: 文件搜索 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/search", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.SearchFiles)
-		// FR-3.3: 文件下载 API（匿名模式下公开；api_key 模式下需 open_api:reader）
+		// FR-3.3: 文件下载 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/download/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
 		// FR-3.5: 重复文件查询 API（需认证，需要重复文件查询权限）
 		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope(models.ScopeFilesDuplicates), rt.openAPIHandler.ListDuplicates)
@@ -143,8 +145,8 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	}
 
 	// OpenAPI 文档：从组级 AuthGate 中单独抽出，改走 LoginRequiredWhenForced。
-	// 强制登录开启时：Web 会话 Cookie 或有效 API Key 可读（修复已登录用户读不到文档的割裂），
-	// 匿名 401；api_key 模式下仍要求 API Key（与非强制登录时一致，不开新洞）。
+	// L6 加固后与 AuthGate 语义一致：none 模式需有效 Web 会话 JWT 或 API Key，匿名 401；
+	// api_key 模式下要求 API Key（不开新洞）。
 	openapiDoc := r.Group("/api/open/v1")
 	openapiDoc.Use(openAPICommonMW...)
 	openapiDoc.Use(
