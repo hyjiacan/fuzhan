@@ -114,8 +114,10 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 文件记录搜索（用于 autocomplete，无需 admin）
 	web.GET("/files/search-records", authMiddleware.AuthOptional(), middleware.ResponseWrapperMiddleware(), indexHandler.SearchFileRecords)
 
-	// 扫描状态路由（无需认证，footer 与页面用于展示扫描状态）
+	// 扫描状态路由（可选认证：已登录用户看完整扫描信息；匿名访问经 handler 脱敏，
+	// 仅保留低敏字段。footer 匿名轮询走 /files/scan/status，不受此处影响）
 	scanRoutes := web.Group("/admin/index")
+	scanRoutes.Use(authMiddleware.AuthOptional())
 	{
 		scanRoutes.GET("/scan/progress", indexHandler.GetScanProgress)
 		scanRoutes.GET("/scan/status", indexHandler.GetScanStatus)

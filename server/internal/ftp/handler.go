@@ -340,6 +340,15 @@ func (h *FTPHandler) Start() error {
 		host = "0.0.0.0"
 	}
 
+	// H5 安全加固：与 HTTP 同源逻辑——系统未初始化时仅监听本机（FTP/FTPS），
+	// 防止 setup 首启窗口期被公网/内网抢先完成初始化；初始化保存后热重启自动放开。
+	effectiveHost, restricted := appconfig.LocalhostWhenSetup(host)
+	if restricted {
+		utils.Warn("系统未初始化，已限制 FTP/FTPS 仅监听本机 127.0.0.1，请在本地完成管理员初始化后自动放开对外访问",
+			utils.String("configured_host", serverCfg.Host))
+	}
+	host = effectiveHost
+
 	// FTPS 必须配置 TLS 证书，否则拒绝启动
 	var tlsCfg *tls.Config
 	if ftpsEnabled {

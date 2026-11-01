@@ -71,6 +71,7 @@ func (h *Handler) GetOptions(c *gin.Context) {
 				"insecureSkipVerify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
 				"maxConcurrent":      currentConfig.Upload.URLUpload.MaxConcurrent,
 				"maxRetries":         currentConfig.Upload.URLUpload.MaxRetries,
+				"maxSize":            currentConfig.Upload.URLUpload.MaxSize,
 			},
 		},
 		"download": gin.H{
@@ -480,6 +481,13 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 		appconfig.GlobalConfig.Upload.URLUpload.MaxRetries = maxRetries
 		updates.Add("upload.url_upload.max_retries", maxRetries)
+		// 服务器侧大小硬上限（字节），0 表示不限制；负数按 0 处理
+		maxSize := req.Upload.URLUpload.MaxSize
+		if maxSize < 0 {
+			maxSize = 0
+		}
+		appconfig.GlobalConfig.Upload.URLUpload.MaxSize = maxSize
+		updates.Add("upload.url_upload.max_size", maxSize)
 		// 上传频率限制（max_requests=0 表示不限制）
 		appconfig.GlobalConfig.Upload.RateLimit.WindowMinutes = req.Upload.RateLimit.WindowMinutes
 		appconfig.GlobalConfig.Upload.RateLimit.MaxRequests = req.Upload.RateLimit.MaxRequests

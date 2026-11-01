@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"fuzhan/internal/constants"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -95,10 +96,17 @@ func (h *Handler) TriggerScan(c *gin.Context) {
 
 // GetScanProgress 获取扫描进度
 // GET /api/v1/web/admin/index/scan/progress?scope=public
+// M3 安全加固：可选认证路由下对匿名请求脱敏——仅保留状态与计数，
+// 隐藏当前扫描文件相对路径与错误详情，避免向外泄露内部目录结构。
 func (h *Handler) GetScanProgress(c *gin.Context) {
 	scope := ScanScope(c.DefaultQuery("scope", "public"))
 	progress := h.svc.GetScanProgressByScope(scope)
-	response.HandleSuccess(c, http.StatusOK, "", progress.View())
+	view := progress.View()
+	if _, exists := c.Get(string(constants.ContextKeyUsername)); !exists {
+		view.CurrentFile = ""
+		view.ErrorMessage = ""
+	}
+	response.HandleSuccess(c, http.StatusOK, "", view)
 }
 
 // GetScanStatus 获取扫描状态（供 Footer 状态栏轮询）

@@ -300,6 +300,10 @@ type URLUploadConfig struct {
 	// URL 上传任务失败后的自动重试次数上限（<=0 时使用默认值 3）。
 	// 仅在错误可重试（非 4xx 客户端错误）时自动重试，重试任务重新排到队尾。
 	MaxRetries int `yaml:"max_retries"`
+	// 服务器侧大小硬上限（字节），0 表示不限制。
+	// 下载过程中实际累计写入的字节数超过该值时立即中断并清理已写内容，
+	// 防止可伪造的 fileSize 与超大响应导致磁盘写满。
+	MaxSize int64 `yaml:"max_size"`
 }
 
 // DefaultURLUploadMaxConcurrent URL 上传默认全局并行数
@@ -308,14 +312,14 @@ const DefaultURLUploadMaxConcurrent = 2
 // DefaultURLUploadMaxRetries URL 上传默认自动重试次数
 const DefaultURLUploadMaxRetries = 3
 
-// DDosConfig 高频/DDoS 检测配置（仅检测告警，不阻断请求）。
+// DDosConfig 高频/DDoS 防护配置（默认开启，超阈值对该 IP 限流拦截并记安全事件）。
 // 独立顶层节（不放 security 下），避免配置 UI 增量保存整节覆盖丢字段。
 // Enabled=false 时检测器不启动；WindowSeconds/MaxRequests/CooldownMinutes <=0 时使用默认值。
 type DDosConfig struct {
-	Enabled         bool `yaml:"enabled,omitempty"`          // 是否启用高频检测（默认 false）
+	Enabled         bool `yaml:"enabled,omitempty"`          // 是否启用高频检测（默认 true）
 	WindowSeconds   int  `yaml:"window_seconds,omitempty"`   // 统计窗口（秒），默认 10
 	MaxRequests     int  `yaml:"max_requests,omitempty"`     // 窗口内单 IP 请求数阈值，默认 200
-	CooldownMinutes int  `yaml:"cooldown_minutes,omitempty"` // 告警冷却（分钟），默认 10
+	CooldownMinutes int  `yaml:"cooldown_minutes,omitempty"` // 拦截/告警冷却（分钟），默认 10
 }
 
 // WebhookEndpoint 单条 Webhook 回调地址记录。
@@ -519,10 +523,8 @@ func GetSecurityConfig() SecurityConfig {
 	configMu.RLock()
 	sec := GlobalConfig.Security
 	configMu.RUnlock()
-	// 未配置任何来源（nil 或空列表）时表示不限制，允许所有来源
-	if len(sec.AllowedOrigins) == 0 {
-		sec.AllowedOrigins = []string{"*"}
-	}
+	// 未配置任何来源（nil 或空列表）时仅允许同源访问，
+	// 不默认放行跨站（不再注入 "*"）。如需跨站需显式配置 allowed_origins。
 	return sec
 }
 

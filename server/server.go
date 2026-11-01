@@ -174,7 +174,16 @@ func (rt *runCtx) run() {
 		// 每次循环重新创建 Gin Engine 和 FTP Handler，确保配置变更后使用最新值
 		r, ftpHandler := rt.newRouter()
 		loopCfg := appconfig.GetConfig()
-		address := fmt.Sprintf("%s:%d", loopCfg.Server.Host, loopCfg.Server.HTTP.Port)
+
+		// H5 安全加固：系统未初始化（App.Initialized=false）时仅监听本机，
+		// 防止 setup 首启窗口期被公网/内网抢先完成初始化（抢注管理员接管系统）。
+		// 已初始化或显式配置具体 IP 时不受影响；初始化保存后热重启自动放开对外监听。
+		effectiveHost, restricted := appconfig.LocalhostWhenSetup(loopCfg.Server.Host)
+		if restricted {
+			utils.Warn("系统未初始化，已限制 HTTP 仅监听本机 127.0.0.1，请在本地完成管理员初始化后自动放开对外访问",
+				utils.String("configured_host", loopCfg.Server.Host))
+		}
+		address := fmt.Sprintf("%s:%d", effectiveHost, loopCfg.Server.HTTP.Port)
 
 		// HTTP 服务器 worker（需要捕获循环内的 r 和 address）
 		runHTTPServer := func(workerCtx context.Context) {

@@ -451,6 +451,85 @@ func TestSaveConfig_CaptchaModeInvalid(t *testing.T) {
 	}
 }
 
+// TestSaveConfig_PersistsURLUploadMaxSize 验证 URL 上传服务器侧大小硬上限（maxSize）
+// 经 SaveConfig 写入 GlobalConfig 并通过 upload.url_upload.max_size 持久化到配置文件，
+// 且 0=不限、负数归一为 0。
+func TestSaveConfig_PersistsURLUploadMaxSize(t *testing.T) {
+	cases := []struct {
+		name     string
+		maxSize  int64
+		wantSize int64
+	}{
+		{"正数写入", 1 << 30, 1 << 30},
+		{"零值表示不限制", 0, 0},
+		{"负数归一为 0", -5, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prevPath := appconfig.ConfigPath
+			prevCfg := appconfig.GlobalConfig
+			appconfig.ConfigPath = minimalTestConfigPath(t)
+			t.Cleanup(func() {
+				appconfig.ConfigPath = prevPath
+				appconfig.GlobalConfig = prevCfg
+			})
+			appconfig.GlobalConfig = appconfig.Config{
+				Storage: appconfig.StorageConfig{
+					Temp: appconfig.TempConfig{Enabled: false},
+				},
+			}
+
+			body := `{"upload":{"urlUpload":{"maxSize":` + strconv.FormatInt(tc.maxSize, 10) + `}}}`
+			postConfig(t, "/api/v1/web/config", body, &Handler{})
+
+			got := appconfig.GlobalConfig.Upload.URLUpload.MaxSize
+			if got != tc.wantSize {
+				t.Errorf("SaveConfig 后 MaxSize = %d, want %d", got, tc.wantSize)
+			}
+
+			out, err := os.ReadFile(appconfig.ConfigPath)
+			if err != nil {
+				t.Fatalf("读取持久化配置失败: %v", err)
+			}
+			yamlText := string(out)
+			if !strings.Contains(yamlText, "max_size: "+strconv.FormatInt(tc.wantSize, 10)) {
+				t.Errorf("持久化 YAML 缺少 upload.url_upload.max_size: %s", yamlText)
+			}
+		})
+	}
+}
+
+// TestGetOptions_URLUploadExposesMaxSize 验证公开 options 的 upload.urlUpload.maxSize
+// 透出当前生效的服务器侧大小硬上限。
+func TestGetOptions_URLUploadExposesMaxSize(t *testing.T) {
+	prevCfg := appconfig.GlobalConfig
+	t.Cleanup(func() { appconfig.GlobalConfig = prevCfg })
+	appconfig.GlobalConfig = appconfig.Config{
+		Upload: appconfig.UploadConfig{
+			URLUpload: appconfig.URLUploadConfig{MaxSize: 2 << 30},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/api/v1/web/options", nil)
+	(&Handler{}).GetOptions(c)
+
+	var resp struct {
+		Data struct {
+			Upload struct {
+				URLUpload map[string]interface{} `json:"urlUpload"`
+			} `json:"upload"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析 options 响应失败: %v", err)
+	}
+	if got, ok := resp.Data.Upload.URLUpload["maxSize"].(float64); !ok || int64(got) != 2<<30 {
+		t.Errorf("options.upload.urlUpload.maxSize = %v, want %d", resp.Data.Upload.URLUpload["maxSize"], 2<<30)
+	}
+}
+
 // equalStrings 按顺序比较两个字符串切片。
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

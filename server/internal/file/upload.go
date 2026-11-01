@@ -1,6 +1,7 @@
 package file
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -68,6 +69,11 @@ func createSSRFProtectedHTTPClient(timeout time.Duration, urlCfg utils.URLUpload
 		Timeout: timeout,
 		Transport: &http.Transport{
 			DialContext: dialer.DialContext,
+			// 按配置控制 TLS 证书校验：InsecureSkipVerify 仅当配置显式开启时跳过，
+			// 默认（false）强制校验证书。仅影响 HTTPS 传输层，不改变上方 SSRF 防护回调。
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: appconfig.GlobalConfig.Upload.URLUpload.InsecureSkipVerify,
+			},
 		},
 	}
 }

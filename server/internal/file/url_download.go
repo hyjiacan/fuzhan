@@ -409,6 +409,16 @@ func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID
 		}
 		downloaded = fi.Size()
 
+		// 服务器侧大小硬上限（字节），0 表示不限制：超过即中断并清理已写内容，
+		// 防止可伪造的 fileSize 与超大 FTP 响应导致磁盘写满
+		if maxSize := appconfig.GlobalConfig.Upload.URLUpload.MaxSize; maxSize > 0 && downloaded > maxSize {
+			utils.Warn("FTP下载超过服务器大小上限", utils.Int64("maxSize", maxSize), utils.Int64("actual", downloaded))
+			os.Remove(uploadingPath)
+			urlTaskUpdated = true
+			h.failURLTask(taskID, "FTP 下载超过服务器大小上限", false)
+			return
+		}
+
 		if fileSize > 0 && downloaded != fileSize {
 			utils.Warn("FTP下载大小不一致", utils.Int64("expected", fileSize), utils.Int64("actual", downloaded))
 			os.Remove(uploadingPath)
@@ -508,6 +518,8 @@ func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID
 
 		buf := make([]byte, 32*1024)
 		var lastProgressUpdate int64
+		maxSize := appconfig.GlobalConfig.Upload.URLUpload.MaxSize
+		sizeExceeded := false
 		for {
 			n, readErr := getResp.Body.Read(buf)
 			if n > 0 {
@@ -519,6 +531,13 @@ func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID
 					return
 				}
 				downloaded += int64(n)
+				// 服务器侧大小硬上限（字节），0 表示不限制：超过即中断并清理已写内容，
+				// 防止可伪造的 fileSize 与超大响应导致磁盘写满
+				if maxSize > 0 && downloaded > maxSize {
+					utils.Warn("URL下载超过服务器大小上限", utils.Int64("maxSize", maxSize), utils.Int64("actual", downloaded))
+					sizeExceeded = true
+					break
+				}
 				if downloaded-lastProgressUpdate >= 1*1024*1024 {
 					lastProgressUpdate = downloaded
 					_ = h.urlTaskRepo.UpdateProgress(taskID, downloaded)
@@ -537,6 +556,12 @@ func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID
 		}
 		getResp.Body.Close()
 		outFile.Close()
+
+		// 超过服务器大小硬上限：任务不可重试，清理已写内容（完整文件无法保证），直接置失败
+		if sizeExceeded {
+			failTask("下载文件超过服务器大小上限", false)
+			return
+		}
 
 		if fileSize > 0 && downloaded != fileSize {
 			utils.Warn("URL下载大小不一致", utils.Int64("expected", fileSize), utils.Int64("actual", downloaded))

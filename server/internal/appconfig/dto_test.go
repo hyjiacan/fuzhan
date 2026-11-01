@@ -346,6 +346,55 @@ func TestCaptchaConfigDTORoundTrip(t *testing.T) {
 	}
 }
 
+// TestURLUploadMaxSizeDTORoundTrip 验证 URL 上传服务器侧大小硬上限（maxSize）在
+// ToDTO -> ConfigFromDTO 链路上无损往返，覆盖设置页读取与保存的序列化路径。
+func TestURLUploadMaxSizeDTORoundTrip(t *testing.T) {
+	cfg := Config{
+		Upload: UploadConfig{
+			URLUpload: URLUploadConfig{
+				Enabled:            true,
+				AllowedIPRanges:    []string{"10.0.0.0/8"},
+				InsecureSkipVerify: true,
+				MaxConcurrent:      4,
+				MaxRetries:         5,
+				MaxSize:            1 << 30, // 1G
+			},
+		},
+	}
+
+	dto := cfg.ToDTO()
+	if dto.Upload.URLUpload.MaxSize != 1<<30 {
+		t.Errorf("ToDTO: MaxSize = %d, want %d", dto.Upload.URLUpload.MaxSize, 1<<30)
+	}
+	if dto.Upload.URLUpload.MaxConcurrent != 4 || dto.Upload.URLUpload.MaxRetries != 5 {
+		t.Errorf("ToDTO: MaxConcurrent/MaxRetries = %d/%d", dto.Upload.URLUpload.MaxConcurrent, dto.Upload.URLUpload.MaxRetries)
+	}
+
+	restored := ConfigFromDTO(dto)
+	if restored.Upload.URLUpload.MaxSize != 1<<30 {
+		t.Errorf("ConfigFromDTO: MaxSize = %d, want %d", restored.Upload.URLUpload.MaxSize, 1<<30)
+	}
+	if restored.Upload.URLUpload.MaxConcurrent != 4 || restored.Upload.URLUpload.MaxRetries != 5 {
+		t.Errorf("ConfigFromDTO: MaxConcurrent/MaxRetries = %d/%d", restored.Upload.URLUpload.MaxConcurrent, restored.Upload.URLUpload.MaxRetries)
+	}
+	if restored.Upload.URLUpload.InsecureSkipVerify != true {
+		t.Error("ConfigFromDTO: InsecureSkipVerify = false, want true")
+	}
+}
+
+// TestURLUploadMaxSizeDTODefaults 验证零值（0=不限）在 DTO 往返时保持稳定。
+func TestURLUploadMaxSizeDTODefaults(t *testing.T) {
+	cfg := Config{} // 零值
+	dto := cfg.ToDTO()
+	if dto.Upload.URLUpload.MaxSize != 0 {
+		t.Errorf("ToDTO(零值): MaxSize = %d, want 0", dto.Upload.URLUpload.MaxSize)
+	}
+	restored := ConfigFromDTO(dto)
+	if restored.Upload.URLUpload.MaxSize != 0 {
+		t.Errorf("ConfigFromDTO(零值): MaxSize = %d, want 0", restored.Upload.URLUpload.MaxSize)
+	}
+}
+
 // equalStrings 按顺序比较两个字符串切片。
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

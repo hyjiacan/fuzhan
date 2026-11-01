@@ -13,6 +13,23 @@ func GetConfig() Config {
 	return GlobalConfig
 }
 
+// LocalhostWhenSetup H5 安全加固：
+// 系统未初始化（App.Initialized=false）时，若配置的监听地址是任意接口
+// （空 / 0.0.0.0 / ::），强制回退为仅本机回环地址 127.0.0.1，避免 setup
+// 首启窗口期被公网/内网抢先完成初始化（抢注管理员导致完全接管）。
+// 已初始化或已显式配置具体监听 IP 时原样返回，不破坏「管理员预先写好配置
+// 跳过初始化」场景——初始化完成（SaveConfig 写盘热重启）后自动放开对外监听。
+// 返回值：effectiveHost 实际应监听的主机地址；restricted 是否因未初始化被限制。
+func LocalhostWhenSetup(host string) (effectiveHost string, restricted bool) {
+	switch host {
+	case "", "0.0.0.0", "::":
+		if !GlobalConfig.App.Initialized {
+			return "127.0.0.1", true
+		}
+	}
+	return host, false
+}
+
 // IsPortInUse 检查端口是否被占用
 func IsPortInUse(port int) bool {
 	addr := fmt.Sprintf(":%d", port)

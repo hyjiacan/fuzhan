@@ -243,6 +243,7 @@ type URLUploadDTO struct {
 	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
 	MaxConcurrent      int      `json:"maxConcurrent"`
 	MaxRetries         int      `json:"maxRetries"`
+	MaxSize            int64    `json:"maxSize"` // 服务器侧大小硬上限（字节），0=不限
 }
 
 // DownloadConfigDTO 下载配置 DTO
@@ -494,6 +495,7 @@ func (c *Config) ToDTO() ConfigDTO {
 				InsecureSkipVerify: c.Upload.URLUpload.InsecureSkipVerify,
 				MaxConcurrent:      c.Upload.URLUpload.MaxConcurrent,
 				MaxRetries:         c.Upload.URLUpload.MaxRetries,
+				MaxSize:            c.Upload.URLUpload.MaxSize,
 			},
 			RateLimit: UploadRateLimitDTO{
 				WindowMinutes: c.Upload.RateLimit.WindowMinutes,
@@ -720,6 +722,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Upload.URLUpload.InsecureSkipVerify = dto.Upload.URLUpload.InsecureSkipVerify
 	cfg.Upload.URLUpload.MaxConcurrent = dto.Upload.URLUpload.MaxConcurrent
 	cfg.Upload.URLUpload.MaxRetries = dto.Upload.URLUpload.MaxRetries
+	cfg.Upload.URLUpload.MaxSize = dto.Upload.URLUpload.MaxSize
 	cfg.Upload.RateLimit.WindowMinutes = dto.Upload.RateLimit.WindowMinutes
 	cfg.Upload.RateLimit.MaxRequests = dto.Upload.RateLimit.MaxRequests
 
