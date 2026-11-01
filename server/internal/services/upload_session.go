@@ -164,6 +164,11 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
 	if req.FileSize <= 0 {
 		return nil, fmt.Errorf("文件大小必须大于 0")
 	}
+	// 全局单文件大小上限（0 = 不限）。公开/私有/临时共用本流程，
+	// 在此统一拦截，避免各入口只校验磁盘/配额而漏掉 max_file_size。
+	if maxSize := appconfig.GlobalConfig.Upload.MaxFileSize; maxSize > 0 && req.FileSize > maxSize {
+		return nil, fmt.Errorf("文件大小 %d 超过最大限制 %d", req.FileSize, maxSize)
+	}
 	// 远端存储后端不检查本地磁盘空间（空间属于对象存储侧，本地检查无意义）
 	if !appconfig.StorageBackendIsRemote() {
 		if err := s.checkDiskSpace(req.FileSize, req.RootName); err != nil {
@@ -464,15 +469,10 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		return nil, err
 	}
 
+	// 判断目标是否已存在：存在时按策略判定是否允许覆盖（仅当允许覆盖时才可替换目标）
 	if _, err := os.Stat(targetPath); err == nil {
-		// 目标已存在：按策略判定是否允许覆盖
 		if !s.finalizer.AllowsOverwrite(session, allowOverwrite) {
 			return nil, ErrFileExists
-		}
-		// 覆盖：先删除目标文件，再重命名临时文件
-		if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
-			utils.Error("覆盖文件时删除失败", utils.String("path", targetPath), utils.Err(err))
-			return nil, fmt.Errorf("无法覆盖已有文件: %w", err)
 		}
 		utils.Info("覆盖文件", utils.String("path", targetPath))
 	}
@@ -481,7 +481,10 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		return nil, fmt.Errorf("上传文件不存在，可能上传未完成")
 	}
 
-	// 重命名上传中的文件为正式文件名
+	// 用 os.Rename 原子替换目标：目标已存在时在 Windows/Linux 上均会直接覆盖为临时文件内容，
+	// 不再「先删除再重命名」——那样在 Remove 到 Rename 之间存在窗口，期间进程崩溃或重命名失败
+	// 会导致原文件短暂消失甚至永久丢失。改为单次重命名后：原文件在替换完成前始终在场，
+	// 失败路径（如跨设备 EXDEV）下目标也未被触碰，仅回退为复制，不会因移除而丢失原文件。
 	if err := os.Rename(uploadingPath, targetPath); err != nil {
 		if copyErr := utils.CopyFile(uploadingPath, targetPath); copyErr != nil {
 			utils.Error("完成上传失败", utils.String("src", uploadingPath), utils.String("dst", targetPath), utils.Err(copyErr))
