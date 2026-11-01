@@ -176,7 +176,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 			Reason:    security.FailLockReason(scope),
 		})
 	})
-	// 初始化 DDoS 高频检测器（仅告警不阻断；未启用仅日志提示），配置保存后热启停
+	// 初始化 DDoS 高频防护检测器（默认开启，超阈值自动限流拦截；未启用仅日志提示），配置保存后热启停
 	security.InitDDoSDetector()
 	appconfig.AddOnSaveHook(security.SyncDDoSDetector)
 	// 初始化下载计数批量记录器：下载热路径只入队（非阻塞），后台周期攒批批量落库，
@@ -527,6 +527,11 @@ func buildPublicStorages(cfg *appconfig.Config) (map[string]storage.Storage, err
 func createAdminUser(db *gorm.DB, spec string) {
 	parts := splitAdminSpec(spec)
 	username, password := parts[0], parts[1]
+
+	// 命令行设密属于「设密」场景：非空口令需遵循最少 8 位的新策略
+	if password != "" && (len(password) < 8 || len(password) > 128) {
+		utils.Fatal("密码长度需在8到128个字符之间")
+	}
 
 	// 检查是否已存在
 	var existing models.User

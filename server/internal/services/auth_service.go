@@ -42,7 +42,7 @@ func (s *AuthService) SetLDAPService(ldap LDAPAuthenticator) {
 // RegisterRequest 注册请求
 type RegisterRequest struct {
 	Username      string `json:"username" binding:"required,min=3,max=32"`
-	Password      string `json:"password" binding:"required,min=6,max=128"`
+	Password      string `json:"password" binding:"required,min=8,max=128"`
 	CaptchaID     string `json:"captchaId"`
 	CaptchaAnswer string `json:"captchaAnswer"`
 }
@@ -249,8 +249,8 @@ func (s *AuthService) ChangePassword(uuid, oldPassword, newPassword string) erro
 	}
 
 	// 验证新密码长度
-	if len(newPassword) < 6 {
-		return errors.New("新密码至少需要6位")
+	if len(newPassword) < 8 {
+		return errors.New("新密码至少需要8位")
 	}
 
 	// 更新密码

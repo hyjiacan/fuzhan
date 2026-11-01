@@ -8,8 +8,12 @@ import (
 	"fuzhan/internal/appconfig"
 )
 
-// 登录/注册爆破防护：基于客户端 IP 的滑动窗口失败计数 + 锁定
-// 同一 IP 在窗口内失败达到上限后，锁定一段时间，缓解暴力破解风险
+// 登录/注册爆破防护：基于客户端 IP 与账号（用户名）的滑动窗口失败计数 + 锁定
+// 支持两套维度：独立 IP 与 IP+用户名 组合。
+// 任一维度在窗口内失败达到上限后，锁定一段时间，缓解暴力破解风险；
+// 不存在的账号名也会按 IP+用户名 组合维度入缓存并被锁定（无需预先建号）。
+// 缓存用 map 即可，key 约定：独立 IP 直接用 ip 字符串（保持旧版 key，兼容既有行为），
+// 组合维度用 ip + "|" + 用户名。
 
 const (
 	loginLimitWindow   = 15 * time.Minute // 统计窗口
@@ -65,19 +69,43 @@ func isLoginLocked(ip string) bool {
 	return false
 }
 
-// registerLoginFailure 记录一次失败，返回该 IP 是否因此进入锁定
-func registerLoginFailure(ip string) bool {
-	if ip == "" {
+// isLoginLockedByUsername 返回指定 (IP, 用户名) 当前是否处于锁定状态。
+// 锁定判定顺序：先查 IP 锁，再查 IP+用户名 组合锁；任一命中即视为锁定。
+func isLoginLockedByUsername(ip, username string) bool {
+	if isLoginLocked(ip) {
+		return true
+	}
+	username = strings.TrimSpace(username)
+	if ip == "" || username == "" {
+		return false
+	}
+	loginLimitMu.Lock()
+	defer loginLimitMu.Unlock()
+	if rec, ok := loginLimitCache[ipUsernameLoginKey(ip, username)]; ok && time.Now().Before(rec.lockUntil) {
+		return true
+	}
+	return false
+}
+
+// ipUsernameLoginKey 组装 IP+用户名 组合维度的缓存 key
+func ipUsernameLoginKey(ip, username string) string {
+	return ip + "|" + strings.TrimSpace(username)
+}
+
+// recordLoginFailureByKey 在指定 key 上记录一次失败，返回该 key 是否因此进入锁定。
+// IP 与 IP+用户名 两套维度共用同一滑动窗口与锁定逻辑。
+func recordLoginFailureByKey(key string) bool {
+	if key == "" {
 		return false
 	}
 	loginLimitMu.Lock()
 	defer loginLimitMu.Unlock()
 
 	now := time.Now()
-	rec, ok := loginLimitCache[ip]
+	rec, ok := loginLimitCache[key]
 	if !ok || now.Sub(rec.windowStart) > loginLimitWindow {
 		rec = &ipLoginRecord{windowStart: now}
-		loginLimitCache[ip] = rec
+		loginLimitCache[key] = rec
 	}
 	rec.count++
 	rec.displayFailures++
@@ -93,6 +121,25 @@ func registerLoginFailure(ip string) bool {
 	return false
 }
 
+// registerLoginFailure 记录一次失败（IP 维度），返回该 IP 是否因此进入锁定
+func registerLoginFailure(ip string) bool {
+	if ip == "" {
+		return false
+	}
+	return recordLoginFailureByKey(ip)
+}
+
+// registerLoginFailureByUsername 记录一次失败（IP+用户名 组合维度），
+// 返回该组合是否因此进入锁定。不存在的账号名同样会入缓存并被锁定，
+// 从而拦截针对未知账号的暴力破解尝试（无需预先建号）。
+func registerLoginFailureByUsername(ip, username string) bool {
+	username = strings.TrimSpace(username)
+	if ip == "" || username == "" {
+		return false
+	}
+	return recordLoginFailureByKey(ipUsernameLoginKey(ip, username))
+}
+
 // resetLoginFailures 登录成功后清除该 IP 的失败记录
 func resetLoginFailures(ip string) {
 	if ip == "" {
@@ -100,6 +147,18 @@ func resetLoginFailures(ip string) {
 	}
 	loginLimitMu.Lock()
 	delete(loginLimitCache, ip)
+	loginLimitMu.Unlock()
+}
+
+// resetLoginFailuresByUsername 登录/注册成功后清除 (IP, 用户名) 组合维度的失败记录，
+// 避免合法用户被之前该账号的失败误锁。
+func resetLoginFailuresByUsername(ip, username string) {
+	username = strings.TrimSpace(username)
+	if ip == "" || username == "" {
+		return
+	}
+	loginLimitMu.Lock()
+	delete(loginLimitCache, ipUsernameLoginKey(ip, username))
 	loginLimitMu.Unlock()
 }
 

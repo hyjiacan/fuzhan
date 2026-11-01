@@ -109,8 +109,10 @@ func sanitizeRedirect(raw string) string {
 }
 
 // parseAuthForm 解析并校验登录/注册表单（POST urlencoded）。
-// 校验与本服务 JSON 接口一致：用户名 3-32（不含空白）、密码 6-128；返回校验错误信息（空串表示通过）。
-func parseAuthForm(c *gin.Context) (authFormData, string) {
+// 校验与本服务 JSON 接口一致：用户名 3-32（不含空白）、密码长度由调用方按场景传入
+// （登录沿用 >=6 兼容既有账号，注册/设置新密码按新策略要求 >=8）；
+// 返回校验错误信息（空串表示通过）。
+func parseAuthForm(c *gin.Context, minPasswordLen int) (authFormData, string) {
 	data := authFormData{
 		Username: strings.TrimSpace(c.PostForm("username")),
 		Password: c.PostForm("password"),
@@ -119,8 +121,8 @@ func parseAuthForm(c *gin.Context) (authFormData, string) {
 	if len(data.Username) < 3 || len(data.Username) > 32 || strings.ContainsAny(data.Username, " \t\r\n") {
 		return data, "用户名长度需在 3-32 位之间"
 	}
-	if len(data.Password) < 6 || len(data.Password) > 128 {
-		return data, "密码长度需在 6-128 位之间"
+	if len(data.Password) < minPasswordLen || len(data.Password) > 128 {
+		return data, fmt.Sprintf("密码长度需在 %d-128 位之间", minPasswordLen)
 	}
 	return data, ""
 }
@@ -189,7 +191,8 @@ func (h *Handlers) HandleLoginPage(c *gin.Context) {
 // HandleLoginSubmit POST /lite/login：校验 → 登录 → 写会话 Cookie → 302 回跳 /lite。
 // 失败时重新渲染登录页并携带错误提示；命中爆破锁定（429）时也渲染登录页提示稍后再试。
 func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
-	data, verr := parseAuthForm(c)
+	// 登录沿用最低 6 位：既有弱密码用户不受影响（不迁移哈希，仅要求已知密码正确）
+	data, verr := parseAuthForm(c, 6)
 	if verr != "" {
 		renderAuthPage(c, "登录", verr, data, http.StatusBadRequest)
 		return
@@ -257,7 +260,8 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 		return
 	}
 
-	data, verr := parseAuthForm(c)
+	// 注册是新设密码场景：按新策略强制最短 8 位
+	data, verr := parseAuthForm(c, 8)
 	if verr != "" {
 		renderAuthPage(c, "注册", verr, data, http.StatusBadRequest)
 		return

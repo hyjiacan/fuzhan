@@ -140,7 +140,7 @@ func (h *Handler) Register(c *gin.Context) {
 	if !verifyCaptcha(c, req.CaptchaID, req.CaptchaAnswer) {
 		return
 	}
-	if isLoginLocked(utils.GetClientIP(c)) {
+	if isLoginLockedByUsername(utils.GetClientIP(c), req.Username) {
 		middleware.LogOperation(c, "auth.register", req.Username, fmt.Errorf("注册被频率限制锁定"))
 		recordAuthEvent(c, models.EventAuthLocked, "auth.register", req.Username, models.SeverityHigh, "尝试过于频繁，注册被频率限制锁定")
 		handleLoginBlocked(c)
@@ -149,6 +149,7 @@ func (h *Handler) Register(c *gin.Context) {
 	resp, err := h.authService.Register(&req)
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
+		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
 		middleware.LogOperation(c, "auth.register", req.Username, err)
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.register", req.Username, models.SeverityMedium, "注册失败: "+err.Error())
 		h.recordLoginLog(c, "", req.Username, "register", "failed", err.Error())
@@ -156,6 +157,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
+	resetLoginFailuresByUsername(utils.GetClientIP(c), req.Username)
 	middleware.LogOperation(c, "auth.register", req.Username, nil)
 	h.recordLoginLog(c, resp.UUID, resp.Username, "register", "success", "")
 	// 注册即登录（与轻量版一致）：把 JWT 写入 HttpOnly Cookie，
@@ -174,7 +176,7 @@ func (h *Handler) Login(c *gin.Context) {
 	if !verifyCaptcha(c, req.CaptchaID, req.CaptchaAnswer) {
 		return
 	}
-	if isLoginLocked(utils.GetClientIP(c)) {
+	if isLoginLockedByUsername(utils.GetClientIP(c), req.Username) {
 		middleware.LogOperation(c, "auth.login", req.Username, fmt.Errorf("登录被频率限制锁定"))
 		recordAuthEvent(c, models.EventAuthLocked, "auth.login", req.Username, models.SeverityHigh, "尝试过于频繁，登录被频率限制锁定")
 		handleLoginBlocked(c)
@@ -183,6 +185,7 @@ func (h *Handler) Login(c *gin.Context) {
 	resp, err := h.authService.Login(&req)
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
+		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
 		middleware.LogOperation(c, "auth.login", req.Username, err)
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.login", req.Username, models.SeverityMedium, "登录失败: "+err.Error())
 		h.recordLoginLog(c, "", req.Username, "local", "failed", err.Error())
@@ -190,6 +193,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
+	resetLoginFailuresByUsername(utils.GetClientIP(c), req.Username)
 	middleware.LogOperation(c, "auth.login", req.Username, nil)
 	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
 	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
@@ -246,7 +250,7 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
 	OldPassword string `json:"oldPassword" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required,min=6"`
+	NewPassword string `json:"newPassword" binding:"required,min=8"`
 }
 
 // ChangePassword 修改用户密码

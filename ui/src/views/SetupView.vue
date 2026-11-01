@@ -285,6 +285,21 @@
             </el-form>
           </div>
 
+          <!-- Account Config Section -->
+          <div class="setup-section">
+            <h3 class="section-title">账户与安全</h3>
+            <el-form label-position="top">
+              <el-form-item label="强制登录">
+                <el-switch v-model="form.requireLogin" />
+                <div class="field-hint">开启后整个 Web 界面（含管理后台）仅登录用户可交互，上传/下载/预览均需登录；默认关闭</div>
+              </el-form-item>
+              <el-form-item label="允许自行注册">
+                <el-switch v-model="form.allowRegistration" />
+                <div class="field-hint">开启后用户可自行注册新账户；需同时启用私有存储，注册才会放行；默认关闭</div>
+              </el-form-item>
+            </el-form>
+          </div>
+
           <!-- Error Alert -->
           <el-alert v-if="errorMessage" type="error" :title="errorMessage" :closable="false" class="error-alert" />
 
@@ -434,7 +449,10 @@ const form = reactive({
   tls: {
     certFile: '',
     keyFile: ''
-  }
+  },
+  // 账户与安全
+  requireLogin: false,
+  allowRegistration: false
 })
 
 // Validation rules
@@ -547,6 +565,8 @@ const submitConfig = async () => {
       tlsKeyFile: form.tls.keyFile,
       adminUsername: form.adminUsername,
       adminPassword: form.adminPassword,
+      requireLogin: form.requireLogin,
+      allowRegistration: form.allowRegistration,
       rootDirs: form.rootDirs.filter(d => d.path).map(d => ({
         name: d.name || '共享文件',
         path: d.path,

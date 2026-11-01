@@ -153,8 +153,8 @@ func (s *AdminService) CreateUser(callerUUID, username, password, role string) (
 	if len(username) < 3 || len(username) > 32 {
 		return nil, fmt.Errorf("用户名长度需在3到32个字符之间")
 	}
-	if len(password) < 6 || len(password) > 128 {
-		return nil, fmt.Errorf("密码长度需在6到128个字符之间")
+	if len(password) < 8 || len(password) > 128 {
+		return nil, fmt.Errorf("密码长度需在8到128个字符之间")
 	}
 	switch role {
 	case "", "user":
@@ -232,6 +232,11 @@ func (s *AdminService) ResetPassword(callerUUID, targetUUID, newPassword string)
 		}
 		utils.Error("重置密码失败: 查询用户错误", utils.String("target_uuid", targetUUID), utils.Err(err))
 		return fmt.Errorf("查找用户失败: %w", err)
+	}
+
+	// 管理员设密也需遵循最少 8 位的新密码强度要求
+	if len(newPassword) < 8 || len(newPassword) > 128 {
+		return fmt.Errorf("新密码长度需在8到128个字符之间")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)

@@ -111,12 +111,12 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 func (h *Handler) CreateUserHandler(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required,min=3,max=32"`
-		Password string `json:"password" binding:"required,min=6,max=128"`
+		Password string `json:"password" binding:"required,min=8,max=128"`
 		Role     string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.user.create", req.Username, err)
-		response.HandleBadRequest(c, "用户名需3-32个字符且密码至少6位", nil)
+		response.HandleBadRequest(c, "用户名需3-32个字符且密码至少8位", nil)
 		return
 	}
 
@@ -151,11 +151,11 @@ func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 	}
 
 	var req struct {
-		NewPassword string `json:"newPassword" binding:"required,min=6"`
+		NewPassword string `json:"newPassword" binding:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.user.reset_password", uuid, err)
-		response.HandleBadRequest(c, "新密码至少6位", nil)
+		response.HandleBadRequest(c, "新密码至少8位", nil)
 		return
 	}
 
@@ -212,6 +212,8 @@ func (h *Handler) SetUserDisabledHandler(c *gin.Context) {
 		msg = "用户已启用"
 		op = "admin.user.enable"
 	}
+	// 用户状态变更成功：清除禁用状态缓存，使新状态对认证中间件即时生效
+	middleware.InvalidateUserDisabledCache(uuid)
 	middleware.LogOperation(c, op, uuid, nil)
 	response.HandleSuccess(c, http.StatusOK, msg, nil)
 }
@@ -237,6 +239,8 @@ func (h *Handler) DeleteUserHandler(c *gin.Context) {
 		return
 	}
 
+	// 用户删除成功：清除禁用状态缓存，避免已被删除的用户在 TTL 内仍被放行
+	middleware.InvalidateUserDisabledCache(uuid)
 	middleware.LogOperation(c, "admin.user.delete", uuid, nil)
 	response.HandleSuccess(c, http.StatusOK, "用户已删除", nil)
 }

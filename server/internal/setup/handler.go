@@ -51,18 +51,20 @@ func (h *SetupHandler) IsInitialized(c *gin.Context) {
 
 // SetupConfigRequest 配置保存请求
 type SetupConfigRequest struct {
-	AppName       string                      `json:"appName" binding:"max=64"`
-	Host          string                      `json:"host" binding:"max=255"`
-	Port          int                         `json:"port"`
-	HTTPSEnabled  bool                        `json:"httpsEnabled"`
-	HTTPSPort     int                         `json:"httpsPort"`
-	TLSCertFile   string                      `json:"tlsCertFile"`
-	TLSKeyFile    string                      `json:"tlsKeyFile"`
-	AdminUsername string                      `json:"adminUsername" binding:"max=64"`
-	AdminPassword string                      `json:"adminPassword" binding:"max=128"`
-	Database      appconfig.DatabaseConfig    `json:"database"`
-	RootDirs      []appconfig.DirectoryConfig `json:"rootDirs"`
-	Initialized   bool                        `json:"initialized"`
+	AppName           string                      `json:"appName" binding:"max=64"`
+	Host              string                      `json:"host" binding:"max=255"`
+	Port              int                         `json:"port"`
+	HTTPSEnabled      bool                        `json:"httpsEnabled"`
+	HTTPSPort         int                         `json:"httpsPort"`
+	TLSCertFile       string                      `json:"tlsCertFile"`
+	TLSKeyFile        string                      `json:"tlsKeyFile"`
+	AdminUsername     string                      `json:"adminUsername" binding:"max=64"`
+	AdminPassword     string                      `json:"adminPassword" binding:"max=128"`
+	Database          appconfig.DatabaseConfig    `json:"database"`
+	RootDirs          []appconfig.DirectoryConfig `json:"rootDirs"`
+	Initialized       bool                        `json:"initialized"`
+	RequireLogin      bool                        `json:"requireLogin"`      // 是否强制登录（默认 false，保持与现有默认行为一致）
+	AllowRegistration bool                        `json:"allowRegistration"` // 是否允许注册（默认 false，保持与现有默认行为一致）
 }
 
 // SaveConfig 保存配置（仅在未初始化时可用）
@@ -88,6 +90,11 @@ func (h *SetupHandler) SaveConfig(c *gin.Context) {
 		utils.HandleBadRequest(c, "请设置管理员密码", nil)
 		return
 	}
+	// 初始化设置管理员密码属于「设密」场景，按新策略强制最短 8 位
+	if len(req.AdminPassword) < 8 {
+		utils.HandleBadRequest(c, "管理员密码至少8位", nil)
+		return
+	}
 
 	// 更新配置
 	appconfig.GlobalConfig.App.Name = req.AppName
@@ -109,6 +116,8 @@ func (h *SetupHandler) SaveConfig(c *gin.Context) {
 	}
 	appconfig.GlobalConfig.Database = req.Database
 	appconfig.GlobalConfig.Storage.Public.RootDirs = req.RootDirs
+	appconfig.GlobalConfig.Account.RequireLogin = req.RequireLogin
+	appconfig.GlobalConfig.Account.AllowRegistration = req.AllowRegistration
 
 	// 重建 RootNames 映射（确保新配置的根目录名可被后续请求识别）
 	if len(req.RootDirs) > 0 {
@@ -159,7 +168,8 @@ func (h *SetupHandler) SaveConfig(c *gin.Context) {
 		return
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	// 配置文件可能含 JWT 密钥等敏感字段，写权限收紧为仅属主可读写（0600）
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		utils.HandleErrorCompat(c, http.StatusInternalServerError, "保存配置失败: "+err.Error(), nil)
 		return
 	}
