@@ -1,16 +1,22 @@
 <template>
-  <div class="admin-tasks">
+  <div class="admin-tasks page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>系统作业</h2>
         <p class="description">查看系统任务执行历史和当前状态</p>
+      </div>
+      <div class="header-right">
+        <el-button type="primary" @click="openScheduleModal">
+          <el-icon><Setting /></el-icon>
+          作业配置
+        </el-button>
       </div>
     </div>
 
     <!-- 活跃任务 -->
     <el-card shadow="never" style="margin-bottom: 16px;">
       <template #header>当前执行中的任务</template>
-      <div class="tasks-table-wrap">
+      <div class="table-v2-wrap">
         <!-- 表内嵌于流式卡片中，使用普通 el-table（支持 max-height）即可满足固定高度滚动，虚拟滚动无法稳定测量高度，故未采用 el-table-v2 -->
         <el-table :data="visibleActiveTasks" size="small" :border="false" :max-height="400">
           <el-table-column label="任务名称" prop="taskName" min-width="200" show-overflow-tooltip />
@@ -91,7 +97,7 @@
           </el-space>
         </div>
       </template>
-      <div class="tasks-table-wrap">
+      <div class="table-v2-wrap">
         <el-table :data="historyTasks" size="small" :border="false" :max-height="500">
           <el-table-column label="任务名称" prop="taskName" min-width="200" show-overflow-tooltip />
           <el-table-column label="类型" width="110">
@@ -156,14 +162,41 @@
         </div>
       </template>
     </el-card>
+
+    <el-dialog v-model="showScheduleModal" title="作业调度配置" width="560px" :close-on-click-modal="false">
+      <el-form v-loading="scheduleLoading" label-width="140px">
+        <el-form-item label="扫描启动延迟">
+          <div class="inline-number">
+            <el-input-number v-model="scheduleDraft.scanStartDelaySeconds" :min="1" :max="3600" />
+            <span>秒</span>
+          </div>
+          <div class="field-hint">服务启动后延迟执行首次全量扫描，默认 10 秒</div>
+        </el-form-item>
+        <el-form-item label="定时扫描间隔">
+          <el-input v-model="scheduleDraft.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨 1 点）" />
+          <div class="field-hint">Cron 表达式，控制定时全量扫描，默认 <code>0 1 * * *</code></div>
+        </el-form-item>
+        <el-form-item label="检索索引对齐间隔">
+          <el-input v-model="scheduleDraft.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨 5 点）" />
+          <div class="field-hint">定时校正检索索引与文件表的对齐，默认 <code>0 5 * * *</code></div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="showScheduleModal = false">取消</el-button>
+          <el-button type="primary" :loading="scheduleSaving" @click="saveSchedule">保存</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { AdminApi } from '@/api'
+import { ElMessage } from 'element-plus'
+import { AdminApi, ConfigApi } from '@/api'
 import { TimeUtils } from '@/utils'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, Setting } from '@element-plus/icons-vue'
 
 // 计算耗时（startedAt 到 endedAt 的差值，返回可读字符串）
 const formatDuration = (startedAt, endedAt) => {
@@ -294,6 +327,70 @@ const onFilterTypeChange = () => {
   loadHistory()
 }
 
+// 作业调度配置：从系统配置读取定时扫描 / 检索索引对齐的 cron 与启动延迟
+const showScheduleModal = ref(false)
+const scheduleLoading = ref(false)
+const scheduleSaving = ref(false)
+const scheduleLoaded = ref(false)
+const schedule = ref({
+  scanStartDelaySeconds: 10,
+  scanCronExpression: '0 1 * * *',
+  searchReconcileCronExpression: '0 5 * * *'
+})
+const scheduleDraft = ref({ ...schedule.value })
+
+const loadSchedule = async () => {
+  scheduleLoading.value = true
+  try {
+    const res = await ConfigApi.get()
+    if (res.success && res.data) {
+      const idx = res.data.index || {}
+      schedule.value = {
+        scanStartDelaySeconds: idx.scanStartDelaySeconds || 10,
+        scanCronExpression: idx.scanCronExpression || '0 1 * * *',
+        searchReconcileCronExpression: idx.searchReconcileCronExpression || '0 5 * * *'
+      }
+      scheduleLoaded.value = true
+    }
+  } catch (e) {
+    console.error('加载作业配置失败', e)
+  } finally {
+    scheduleLoading.value = false
+  }
+}
+
+const openScheduleModal = async () => {
+  if (!scheduleLoaded.value) await loadSchedule()
+  scheduleDraft.value = { ...schedule.value }
+  showScheduleModal.value = true
+}
+
+const saveSchedule = async () => {
+  scheduleSaving.value = true
+  try {
+    const draft = scheduleDraft.value
+    const res = await ConfigApi.save({
+      index: {
+        scanStartDelaySeconds: draft.scanStartDelaySeconds,
+        scanCronExpression: draft.scanCronExpression.trim(),
+        searchReconcileCronExpression: draft.searchReconcileCronExpression.trim()
+      }
+    })
+    if (res.success) {
+      schedule.value = { ...draft }
+      showScheduleModal.value = false
+      ElMessage.success('作业配置已保存')
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    console.error('保存作业配置失败', e)
+    ElMessage.error('保存失败')
+  } finally {
+    scheduleSaving.value = false
+  }
+}
+
 onMounted(() => {
   loadActiveTasks()
   loadHistory()
@@ -304,30 +401,10 @@ onMounted(() => {
 @import '@/styles/variables.less';
 
 .admin-tasks {
-  padding: @container-padding;
-
   .history-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-
-  .tasks-table-wrap {
-    position: relative;
-    width: 100%;
-  }
-
-  .table-loading-mask {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.6);
-    z-index: 5;
   }
 
   .progress-count {
@@ -340,18 +417,6 @@ onMounted(() => {
     display: flex;
     justify-content: center;
     padding: 40px 0;
-  }
-}
-
-@media @tablet {
-  .admin-tasks {
-    padding: 12px;
-  }
-}
-
-@media @mobile {
-  .admin-tasks {
-    padding: 8px;
   }
 }
 </style>

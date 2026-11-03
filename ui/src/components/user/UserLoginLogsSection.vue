@@ -167,21 +167,5 @@ onMounted(load)
 
 .user-login-logs-section {
   padding: @container-padding;
-
-  .filter-card {
-    margin-bottom: 14px;
-  }
-
-  .filter-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .pagination {
-    margin-top: 16px;
-    justify-content: flex-end;
-  }
 }
 </style>

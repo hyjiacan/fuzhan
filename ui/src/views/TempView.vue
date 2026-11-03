@@ -1,5 +1,5 @@
 <template>
-  <div class="temp-files" @dragover.prevent @drop.prevent="handleGlobalDrop">
+  <div class="temp-files page-container page-container--gap" @dragover.prevent @drop.prevent="handleGlobalDrop">
     <div class="header-section">
       <div class="header-left">
         <h2>临时文件</h2>
@@ -567,28 +567,6 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .temp-files {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: @container-padding;
-
-  .breadcrumb-row {
-    font-size: 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    .breadcrumb-link {
-      text-decoration: none;
-      color: inherit;
-      transition: color @transition-fast;
-
-      &:hover {
-        color: @primary-color;
-      }
-    }
-  }
-
   .breadcrumb-left {
     display: flex;
     align-items: center;
@@ -602,9 +580,8 @@ onUnmounted(() => {
   }
 
   .breadcrumb-root {
-    font-size: 18px;
+    font-size: @font-size-lg;
     font-weight: 600;
-    color: @text-color;
   }
 
   .breadcrumb-right {
@@ -615,30 +592,7 @@ onUnmounted(() => {
     color: @text-color-secondary;
   }
 
-  .ip-badge,
-  .quota-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 8px;
-    height: 22px;
-    background: @bg-color-secondary;
-    border: 1px solid @border-color-light;
-    border-radius: @border-radius-sm;
-    font-size: @font-size-xs;
-    color: @text-color-secondary;
-  }
-
-  .ip-badge {
-    font-family: monospace;
-    margin: 0 5px;
-  }
-
   .toolbar-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-
     .access-code-section {
       flex: 1;
 
@@ -646,38 +600,11 @@ onUnmounted(() => {
         max-width: 360px;
       }
     }
-
-    .toolbar-right {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-
-      .search-input {
-        width: 200px;
-      }
-    }
   }
 
   .content-table {
-    background: @bg-color;
-    border-radius: @content-radius;
-    overflow: hidden;
-    box-shadow: @shadow-sm;
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-
     .table-v2-wrap {
       height: 400px;
-    }
-
-    .table-pagination {
-      display: flex;
-      justify-content: flex-end;
-      padding: 8px 16px;
-      border-top: 1px solid @border-color-light;
     }
 
     :deep(.el-table-v2) {
@@ -689,20 +616,9 @@ onUnmounted(() => {
       }
     }
   }
-
-  .empty-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 200px;
-  }
 }
 
 @media @tablet {
-  .temp-files {
-    padding: 12px;
-  }
-
   .toolbar-row {
     flex-direction: column;
     align-items: stretch;
@@ -725,10 +641,6 @@ onUnmounted(() => {
 }
 
 @media @mobile {
-  .temp-files {
-    padding: 8px;
-  }
-
   .toolbar-row {
     .toolbar-right {
       .quota-info-text {

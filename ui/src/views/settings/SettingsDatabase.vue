@@ -134,9 +134,4 @@ const dbDrivers = [
     font-size: @font-size-sm;
   }
 }
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-}
 </style>

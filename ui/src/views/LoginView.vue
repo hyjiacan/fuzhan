@@ -456,16 +456,6 @@ const leaveLoginPage = async () => {
     }
   }
 
-  .auth-external-block {
-    .auth-external {
-      width: 100%;
-      margin-top: 4px;
-    }
-    .auth-external-icon {
-      margin-right: 6px;
-    }
-  }
-
   .login-footer {
     margin-top: 8px;
 
@@ -475,12 +465,6 @@ const leaveLoginPage = async () => {
 
     .auth-switch {
       margin-top: 12px;
-      text-align: center;
-      font-size: 13px;
-
-      .auth-switch-text {
-        color: @text-color-secondary;
-      }
 
       &.auth-anon {
         margin-top: 8px;

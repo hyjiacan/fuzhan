@@ -154,12 +154,7 @@ const textChunkSizeDisplay = computed({
 @import '@/styles/variables.less';
 
 .el-card {
-  transition: transform @transition-smooth, box-shadow @transition-smooth;
   margin-bottom: 16px;
-
-  &:hover {
-    box-shadow: @shadow-md;
-  }
 }
 
 .switch-global {
@@ -205,11 +200,5 @@ const textChunkSizeDisplay = computed({
   font-weight: 500;
   color: @text-color;
   margin-bottom: 2px;
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-  line-height: 1.5;
 }
 </style>

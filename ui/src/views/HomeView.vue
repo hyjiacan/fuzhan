@@ -1,5 +1,5 @@
 <template>
-  <div class="home-view" @dragenter.prevent="handlePageDragEnter" @dragover.prevent="handlePageDragOver"
+  <div class="home-view page-container page-container--fill" @dragenter.prevent="handlePageDragEnter" @dragover.prevent="handlePageDragOver"
     @dragleave.prevent="handlePageDragLeave" @drop.prevent="handlePageDrop">
     <!-- Breadcrumb + Actions -->
     <div class="content-header">
@@ -431,107 +431,19 @@ watch(
 @import '@/styles/variables.less';
 
 .home-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: @container-padding;
-
   .content-header {
-    flex: 0 0 auto;
-    margin-bottom: 16px;
+    .breadcrumb-actions .header-actions .search-input {
+      transition: width @transition-smooth;
 
-    .breadcrumb-actions {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-
-      .search-status {
-        flex: 1;
-        font-size: 14px;
-        color: @text-color-secondary;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-
-        .search-count {
-          color: @primary-color;
-          font-weight: 500;
-        }
-
-        .search-time {
-          color: @text-color-placeholder;
-        }
-      }
-
-      .breadcrumb {
-        flex: 1;
-
-        .breadcrumb-link {
-          text-decoration: none;
-          color: inherit;
-          transition: color @transition-fast;
-
-          &:hover {
-            color: @primary-color;
-          }
-        }
-      }
-
-      .breadcrumb-root {
-        flex: 1;
-        font-size: 14px;
-        font-weight: 500;
-        color: @text-color;
-      }
-
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-
-        .search-input {
-          width: 200px;
-          transition: width @transition-smooth;
-
-          :deep(.el-input) {
-            width: 100%;
-          }
-        }
-
-        .el-button {
-          transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-          &:hover {
-            transform: translateY(-1px);
-            box-shadow: @button-hover-shadow;
-          }
-
-          &:active {
-            transform: scale(0.97);
-          }
-        }
+      :deep(.el-input) {
+        width: 100%;
       }
     }
   }
 
   .content-table {
-    flex: 1 1 auto;
-    min-height: 0;
-    background: @bg-color;
-    border-radius: @content-radius;
-    box-shadow: @shadow-sm;
-    transition: box-shadow @transition-smooth;
-    overflow: hidden;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-
     .table-v2-wrap {
       height: 100%;
-      width: 100%;
     }
 
     .table-empty {
@@ -595,10 +507,6 @@ watch(
 
 /* 小屏头部布局调整 */
 @media @tablet {
-  .home-view {
-    padding: 12px;
-  }
-
   .breadcrumb-actions {
     flex-wrap: wrap;
 
@@ -617,61 +525,6 @@ watch(
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-}
-
-@media @mobile {
-  .home-view {
-    padding: 8px;
-  }
-}
-
-.file-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-
-  &:hover {
-    .icon-filetype {
-      color: @primary-accent;
-    }
-
-    .path-segment,
-    .file-link {
-      color: @primary-color;
-    }
-  }
-
-  .file-icon-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-
-    .icon-filetype {
-      color: @text-color-placeholder;
-    }
-  }
-
-  .file-path-content {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .file-link {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.icon-filetype {
-  color: @text-color-placeholder;
 }
 
 .dialog-footer {

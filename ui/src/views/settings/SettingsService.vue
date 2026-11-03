@@ -201,20 +201,3 @@ onMounted(() => {
   loadNetworkInterfaces()
 })
 </script>
-
-<style lang="less" scoped>
-@import '@/styles/variables.less';
-
-.el-card {
-  transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-  &:hover {
-    box-shadow: @shadow-md;
-  }
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-}
-</style>

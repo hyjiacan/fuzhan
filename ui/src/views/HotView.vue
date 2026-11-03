@@ -1,8 +1,8 @@
 <template>
-  <div class="hot-view">
+  <div class="hot-view page-container">
     <div class="hot-cards">
       <!-- 热门搜索关键词 -->
-      <el-card class="hot-card">
+      <el-card class="hot-card hover-card">
         <template #header>热门搜索关键词</template>
         <div v-if="keywords.length > 0" class="keyword-badges">
           <el-badge v-for="kw in keywords" :key="kw.word" :value="kw.count" :max="999" type="warning" class="keyword-badge">
@@ -18,7 +18,7 @@
       </el-card>
 
       <!-- 热门下载文件 -->
-      <el-card class="hot-card">
+      <el-card class="hot-card hover-card">
         <template #header>热门下载文件</template>
         <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
           <el-table-v2
@@ -302,20 +302,10 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .hot-view {
-  padding: @container-padding;
-
   .hot-cards {
     display: flex;
     flex-direction: column;
     gap: 24px;
-  }
-
-  .hot-card {
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @card-hover-shadow;
-    }
   }
 
   .keyword-badge :deep(.el-badge__content) {
@@ -341,17 +331,7 @@ onUnmounted(() => {
   }
 }
 
-@media @tablet {
-  .hot-view {
-    padding: 12px;
-  }
-}
-
 @media @mobile {
-  .hot-view {
-    padding: 8px;
-  }
-
   .pagination-wrapper {
     flex-direction: column;
     gap: 8px;

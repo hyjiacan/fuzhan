@@ -127,11 +127,6 @@ const FIELD_LABELS = {
   'openApi.domainWhitelist': '域名白名单',
   'openApi.rateLimitEnabled': '频率限制',
   'openApi.requestsPerMinute': '请求频率(次/分钟)',
-  'openApi.authMode': 'API 鉴权方式',
-
-  scanStartDelaySeconds: '扫描启动延迟',
-  scanCronExpression: '定时扫描间隔',
-  searchReconcileCronExpression: '检索索引对齐间隔',
 
   security: '安全配置',
   'security.trustProxy': '信任代理头',
@@ -187,9 +182,6 @@ const SECTION_NAMES = {
   download: '下载限制',
   preview: '预览配置',
   openApi: '访问控制',
-  scanStartDelaySeconds: '存储索引',
-  scanCronExpression: '存储索引',
-  searchReconcileCronExpression: '存储索引',
   security: '安全配置',
   auth: '身份认证'
 }
@@ -213,9 +205,6 @@ const SECTION_PANELS = {
   download: 'access',
   preview: 'preview',
   openApi: 'access',
-  scanStartDelaySeconds: 'storage',
-  scanCronExpression: 'storage',
-  searchReconcileCronExpression: 'storage',
   security: 'access',
   auth: 'auth'
 }

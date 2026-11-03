@@ -235,12 +235,6 @@ onMounted(() => {
         font-size: @font-size-xs;
       }
     }
-
-    .quota-hint {
-      color: @text-color-placeholder;
-      font-size: @font-size-xs;
-      text-align: center;
-    }
   }
 }
 </style>

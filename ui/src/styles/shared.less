@@ -1,0 +1,501 @@
+// ============================================
+// 公共页面 / 区块样式（全局）
+// 说明：本文件由 global.less 引入，选择器不带 scoped 数据属性，
+// 供各页面直接复用，避免在每个 <style scoped> 中重复定义同样规则。
+// 仅收录「跨文件重复」的骨架、容器与小组件样式；页面特有样式仍留在各自组件内。
+// ============================================
+@import './variables.less';
+
+// ============================================
+// 管理页头部（补齐公共换行行为，具体间距由页面覆盖）
+// ============================================
+.header-section {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+// ============================================
+// 页面骨架
+// 用法：<div class="xxx page-container page-container--fill page-container--gap">
+// ============================================
+.page-container {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: @container-padding;
+
+  &--fill {
+    height: 100%;
+  }
+
+  &--gap {
+    gap: 16px;
+  }
+
+  &--scroll {
+    overflow: auto;
+  }
+
+  @media @tablet {
+    padding: 12px;
+  }
+
+  @media @mobile {
+    padding: 8px;
+  }
+}
+
+// ============================================
+// 面包屑
+// ============================================
+.breadcrumb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: @font-size-base;
+}
+
+.breadcrumb-link {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: color @transition-fast;
+
+  &:hover {
+    color: @primary-color;
+  }
+}
+
+.breadcrumb-root {
+  font-size: @font-size-base;
+  font-weight: 500;
+  color: @text-color;
+}
+
+// ============================================
+// 工具栏
+// ============================================
+.toolbar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+
+  .search-input {
+    width: 200px;
+  }
+}
+
+.toolbar-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+// ============================================
+// 表格容器与加载遮罩
+// ============================================
+.table-v2-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.table-loading-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+  z-index: 5;
+}
+
+// 带卡片外观的表格面板（el-table / el-table-v2 通用）
+.table-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: @bg-color;
+  border-radius: @content-radius;
+  box-shadow: @shadow-sm;
+  overflow: hidden;
+  position: relative;
+
+  .el-table {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .pagination-wrap {
+    flex-shrink: 0;
+    justify-content: flex-end;
+    padding: 12px 16px;
+    border-top: 1px solid @border-color-light;
+  }
+}
+
+// ============================================
+// 分页容器
+// ============================================
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 0 0;
+
+  &--center {
+    justify-content: center;
+    padding: 8px 0 0;
+  }
+
+  &--bordered {
+    padding: 12px 16px;
+    border-top: 1px solid @border-color-light;
+  }
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-top: 1px solid @border-color-light;
+}
+
+// 简单分页（用户记录 / 登录日志）
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+// ============================================
+// 筛选区
+// ============================================
+.filter-card {
+  margin-bottom: 14px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  color: @text-color-secondary;
+  font-size: @font-size-base;
+}
+
+// ============================================
+// 数值 + 单位输入
+// ============================================
+.size-input {
+  display: flex;
+  align-items: center;
+  gap: @spacing-md;
+
+  .el-input {
+    width: 200px;
+  }
+}
+
+.size-echo {
+  color: @text-color-placeholder;
+}
+
+// ============================================
+// 卡片悬停抬升（仅阴影，不位移）
+// hover-elevate：轻量抬升；hover-card：强化抬升（用于重点卡片）
+// ============================================
+.hover-elevate {
+  transition: box-shadow @transition-smooth;
+
+  &:hover {
+    box-shadow: @shadow-md;
+  }
+}
+
+.hover-card {
+  transition: box-shadow @transition-smooth;
+
+  &:hover {
+    box-shadow: @card-hover-shadow;
+  }
+}
+
+// ============================================
+// 卡片标题
+// ============================================
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  &--baseline {
+    align-items: baseline;
+    gap: 10px;
+  }
+}
+
+.card-sub {
+  color: @text-color-secondary;
+  font-size: @font-size-xs;
+  font-weight: normal;
+}
+
+// ============================================
+// 顶部标记（配额 / IP）
+// ============================================
+.quota-badge,
+.ip-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 22px;
+  background: @bg-color-secondary;
+  border: 1px solid @border-color-light;
+  border-radius: @border-radius-sm;
+  font-size: @font-size-xs;
+  color: @text-color-secondary;
+}
+
+.ip-badge {
+  font-family: monospace;
+  margin: 0 5px;
+}
+
+// ============================================
+// 未保存提示
+// ============================================
+.dirty-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: @font-size-xs;
+  color: @warning-color;
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: @warning-color;
+  }
+
+  .dirty-link {
+    color: @primary-color;
+    text-decoration: underline;
+  }
+
+  &--chip {
+    padding: 6px 12px;
+    border-radius: @border-radius-lg;
+    background: #fdf4e3;
+    font-size: @font-size-sm;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color @transition-fast;
+
+    &:hover {
+      background: #fbe9cd;
+    }
+  }
+}
+
+// ============================================
+// 配额说明文字
+// ============================================
+.quota-hint {
+  color: @text-color-placeholder;
+  font-size: @font-size-xs;
+  text-align: center;
+}
+
+// ============================================
+// 数字输入 + 单位（如“60 秒”“7 天”）
+// ============================================
+.inline-number {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+// ============================================
+// 统计卡片（el-card 版）
+// ============================================
+.stat-card {
+  .el-card__body {
+    padding: 16px;
+  }
+
+  .stat-content {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stat-info {
+    .stat-value {
+      font-size: @font-size-xxl;
+      font-weight: 600;
+    }
+
+    .stat-label {
+      font-size: @font-size-base;
+      color: @text-color-secondary;
+    }
+  }
+}
+
+// ============================================
+// 设置页 / 个人中心：卡片 hover 阴影
+// 设置面板全部嵌套在 .settings-view 内，统一在此处理，避免各子面板重复声明
+// ============================================
+.settings-view {
+  .el-card {
+    transition: box-shadow @transition-smooth;
+
+    &:hover {
+      box-shadow: @shadow-md;
+    }
+  }
+
+  .auth-card .el-card__header {
+    padding: 14px 18px;
+  }
+}
+
+// ============================================
+// 侧边栏布局（个人中心 / 系统管理共用）
+// 用法：<el-container class="xxx app-layout">
+// ============================================
+.app-layout {
+  height: 100%;
+
+  .layout-sider {
+    background: @bg-color;
+    height: 100%;
+    border-right: 1px solid @border-color-light;
+    transition: width @transition-normal;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .sider-header {
+      flex: 0 0 auto;
+      padding: 16px;
+      border-bottom: 1px solid @border-color-light;
+      font-weight: 600;
+      font-size: @font-size-lg;
+      color: @text-color;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: background-color @transition-fast;
+
+      &:hover {
+        background-color: var(--el-fill-color-light);
+      }
+
+      .sider-brand-dot {
+        flex: 0 0 auto;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: @primary-accent;
+        box-shadow: 0 0 6px fade(@primary-accent, 60%);
+        transition: transform @transition-smooth;
+
+        &.is-collapsed {
+          transform: scale(1.15);
+        }
+      }
+
+      .sider-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .layout-menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px 0 16px;
+    }
+  }
+
+  .layout-menu {
+    border-right: none;
+  }
+
+  .layout-content {
+    background: @bg-color-secondary;
+    height: 100%;
+    overflow: auto;
+    padding: 0;
+
+    .layout-router > * {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+  }
+}
+
+// ============================================
+// 外部统一认证入口（登录页 / 登录弹框共用）
+// ============================================
+.auth-external-block {
+  margin-top: 4px;
+
+  .auth-divider {
+    margin: 8px 0 16px;
+
+    .el-divider__text {
+      font-size: @font-size-sm;
+      color: @text-color-secondary;
+    }
+  }
+}
+
+.auth-external {
+  width: 100%;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+
+  .auth-external-icon {
+    margin-right: 6px;
+  }
+}
+
+.auth-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  .auth-switch-text {
+    font-size: @font-size-sm;
+    color: @text-color-secondary;
+  }
+
+  .switch-link {
+    font-weight: 600;
+    font-size: @font-size-sm;
+  }
+}

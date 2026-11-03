@@ -110,14 +110,6 @@ const removeDir = (index) => {
 
 .field-col-cards {
   margin-bottom: @spacing-md;
-
-  :deep(.el-card) {
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-  }
 }
 
 .dir-block {
@@ -125,11 +117,6 @@ const removeDir = (index) => {
   padding: @spacing-md;
   background: var(--el-fill-color-light);
   border-radius: @border-radius-lg;
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: @font-size-xs;
 }
 
 .option-usage {

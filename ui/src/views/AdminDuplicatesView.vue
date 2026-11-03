@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-duplicates">
+  <div class="admin-duplicates page-container page-container--fill">
     <div class="header-section">
       <div class="header-left">
         <h2>重复文件管理</h2>
@@ -14,7 +14,7 @@
       </div>
     </div>
 
-    <div class="content-section">
+    <div class="content-section hover-elevate">
       <el-empty v-if="!dupLoading && duplicateGroups.length === 0" description="暂无重复文件" />
 
       <el-collapse v-else v-model="openGroups">
@@ -230,11 +230,6 @@ onMounted(() => {
 @import '@/styles/variables.less';
 
 .admin-duplicates {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: @container-padding;
-
   .content-section {
     flex: 1;
     overflow: auto;
@@ -242,11 +237,6 @@ onMounted(() => {
     border-radius: @content-radius;
     box-shadow: @shadow-sm;
     padding: 16px;
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
   }
 
   .dup-pagination {
@@ -283,18 +273,6 @@ onMounted(() => {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-  }
-}
-
-@media @tablet {
-  .admin-duplicates {
-    padding: 12px;
-  }
-}
-
-@media @mobile {
-  .admin-duplicates {
-    padding: 8px;
   }
 }
 </style>

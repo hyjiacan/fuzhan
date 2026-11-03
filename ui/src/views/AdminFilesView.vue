@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-files">
+  <div class="admin-files page-container page-container--fill">
     <!-- Header -->
     <div class="header-section">
       <div class="header-left">
@@ -258,69 +258,9 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-files {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: @container-padding;
-
   .content-header {
     margin-bottom: 12px;
     flex-shrink: 0;
-
-    .breadcrumb-actions {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-
-      .search-status {
-        flex: 1;
-        font-size: 14px;
-        color: @text-color-secondary;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-
-        .search-count {
-          color: @primary-color;
-          font-weight: 500;
-        }
-
-        .search-time {
-          color: @text-color-placeholder;
-        }
-      }
-
-      .breadcrumb {
-        flex: 1;
-
-        .breadcrumb-link {
-          cursor: pointer;
-          color: @text-color;
-          transition: color @transition-fast;
-
-          &:hover {
-            color: @primary-color;
-          }
-        }
-      }
-
-      .breadcrumb-root {
-        font-size: @font-size-base;
-        font-weight: 500;
-        color: @text-color;
-      }
-
-      .header-actions {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-
-        .search-input {
-          width: 200px;
-        }
-      }
-    }
   }
 
   .scan-progress-text {
@@ -342,78 +282,16 @@ onUnmounted(() => {
   }
 
   .content-table {
-    flex: 1;
     min-height: 0;
-    background: @bg-color;
-    border-radius: @content-radius;
-    box-shadow: @shadow-sm;
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
 
     .table-v2-wrap {
       height: 100%;
     }
   }
-
-
-}
-
-.file-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-
-  &:hover {
-    .icon-filetype {
-      color: @primary-accent;
-    }
-
-    .path-segment,
-    .file-link {
-      color: @primary-color;
-    }
-  }
-
-  .file-icon-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-
-    .icon-filetype {
-      color: @text-color-placeholder;
-    }
-  }
-
-  .file-path-content {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .file-link {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 .icon-filetype {
-  color: @text-color-placeholder;
   font-size: 20px;
-}
-
-.file-link {
-  color: @text-color;
-  cursor: pointer;
 }
 
 .dir-link {
@@ -475,10 +353,6 @@ onUnmounted(() => {
 }
 
 @media @tablet {
-  .admin-files {
-    padding: 12px;
-  }
-
   .breadcrumb-actions {
     flex-wrap: wrap;
 
@@ -489,12 +363,6 @@ onUnmounted(() => {
         min-width: 0;
       }
     }
-  }
-}
-
-@media @mobile {
-  .admin-files {
-    padding: 8px;
   }
 }
 </style>

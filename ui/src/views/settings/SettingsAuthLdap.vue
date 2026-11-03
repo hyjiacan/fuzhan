@@ -1,7 +1,7 @@
 <template>
   <el-card class="auth-card">
     <template #header>
-      <div class="card-head">
+      <div class="card-head card-head--baseline">
         <span>LDAP 认证</span>
         <span class="card-sub">Active Directory / OpenLDAP</span>
       </div>
@@ -130,24 +130,3 @@ const testConnection = async () => {
   }
 }
 </script>
-
-<style lang="less" scoped>
-@import '@/styles/variables.less';
-
-.auth-card {
-  :deep(.el-card__header) { padding: 14px 18px; }
-}
-
-.card-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-
-  .card-sub { font-size: 12px; color: @text-color-secondary; }
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-}
-</style>

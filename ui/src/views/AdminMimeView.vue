@@ -24,7 +24,7 @@
       <!-- 添加 -->
       <el-row :gutter="16">
         <el-col :xs="24">
-          <el-card class="mime-card">
+          <el-card class="mime-card hover-elevate">
             <template #header><span>添加</span></template>
             <el-input autocomplete="off"
               v-model="batchText"
@@ -44,7 +44,7 @@
       <!-- 自定义映射列表 -->
       <el-row :gutter="16">
         <el-col :span="24">
-          <el-card class="mime-card">
+          <el-card class="mime-card hover-elevate">
             <template #header>
               <span>自定义条目（{{ mimeList.length }}）</span>
             </template>
@@ -212,47 +212,15 @@ loadConfig()
   padding: @spacing-md @spacing-lg;
 
   .header-section {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
     margin-bottom: 16px;
-  }
-  .header-left {
-    h2 { margin: 0; }
-    .description { margin: 4px 0 0; font-size: 12px; color: @text-color-secondary; }
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .dirty-tip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: @warning-color;
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: @warning-color; }
-  }
-}
 
-.mime-card {
-  transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-  &:hover {
-    box-shadow: @shadow-md;
+    .description {
+      font-size: @font-size-xs;
+    }
   }
 }
 
 .mime-ext {
   font-family: var(--el-font-family-mono, monospace);
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-  margin-top: 8px;
 }
 </style>

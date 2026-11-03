@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-dashboard">
+  <div class="admin-dashboard page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>系统看板</h2>
@@ -342,8 +342,6 @@ onMounted(() => {
 @import '@/styles/variables.less';
 
 .admin-dashboard {
-  padding: @container-padding;
-
   .stat-grid :deep(.el-col) {
     display: flex;
   }
@@ -398,17 +396,13 @@ onMounted(() => {
       transform: translateY(-2px);
       box-shadow: @card-hover-shadow;
     }
+  }
 
-    :deep(.el-card__body) {
-      padding: 16px;
-    }
+  .chart-card :deep(.el-card__body) {
+    padding: 16px;
   }
 
   .stat-content {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-
     .el-icon {
       transition: transform @transition-bounce;
     }
@@ -438,15 +432,9 @@ onMounted(() => {
   .stat-info {
     .stat-value {
       font-size: @font-size-display;
-      font-weight: 600;
       color: @text-color;
       font-variant-numeric: tabular-nums;
       letter-spacing: -0.5px;
-    }
-
-    .stat-label {
-      font-size: @font-size-base;
-      color: @text-color-secondary;
     }
   }
 
@@ -623,8 +611,6 @@ onMounted(() => {
 /* 响应式：看板 */
 @media @tablet {
   .admin-dashboard {
-    padding: 12px;
-
     .dashboard-bottom {
       flex-direction: column;
     }
@@ -642,10 +628,6 @@ onMounted(() => {
 }
 
 @media @mobile {
-  .admin-dashboard {
-    padding: 8px;
-  }
-
   .storage-header,
   .storage-item {
     grid-template-columns: 2fr 1fr !important;

@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-logs">
+  <div class="admin-logs page-container page-container--fill">
     <div class="header-section">
       <div class="header-left">
         <h2>日志</h2>
@@ -720,11 +720,7 @@ onBeforeUnmount(() => {
 @import '@/styles/variables.less';
 
 .admin-logs {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
   min-height: 0;
-  padding: @container-padding;
 
   .log-dir {
     max-width: 320px;

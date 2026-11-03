@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-uploads">
+  <div class="admin-uploads page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>上传任务</h2>
@@ -276,40 +276,11 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-uploads {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: @container-padding;
-
-  .stat-card :deep(.el-card__body) {
-    padding: 16px;
-  }
-
-  .stat-content {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .stat-info {
-    .stat-value {
-      font-size: @font-size-xxl;
-      font-weight: 600;
-    }
-
-    .stat-label {
-      font-size: @font-size-base;
-      color: @text-color-secondary;
-    }
-  }
-
   .table-v2-wrap {
     height: 420px;
   }
 
   .pagination-wrap {
-    display: flex;
-    justify-content: flex-end;
     padding: 16px 0 8px;
   }
 }

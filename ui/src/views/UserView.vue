@@ -1,5 +1,5 @@
 <template>
-  <div class="user-view">
+  <div class="user-view page-container page-container--gap">
     <div class="header-section">
       <div class="header-left">
         <h2>个人中心</h2>
@@ -272,11 +272,6 @@ onMounted(() => {
 @import '@/styles/variables.less';
 
 .user-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: @container-padding;
-
   .el-card {
     transition: transform @transition-smooth, box-shadow @transition-smooth;
 
@@ -289,27 +284,13 @@ onMounted(() => {
       font-weight: 600;
     }
   }
-
-  .quota-hint {
-    color: @text-color-placeholder;
-    font-size: @font-size-xs;
-    text-align: center;
-  }
-}
-
-@media @tablet {
-  .user-view {
-    padding: 12px;
-  }
 }
 
 @media @mobile {
   .user-view {
-    padding: 8px;
-  }
-
-  :deep(.el-form .el-form-item .el-form-item__label) {
-    padding-bottom: 4px;
+    :deep(.el-form .el-form-item .el-form-item__label) {
+      padding-bottom: 4px;
+    }
   }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-security">
+  <div class="admin-security page-container page-container--fill page-container--scroll">
     <!-- 头部 -->
     <div class="header-section">
       <div class="header-left">
@@ -22,7 +22,7 @@
 
     <!-- 严重级别统计卡片 -->
     <div class="stat-cards">
-      <div class="stat-card" v-for="c in statCards" :key="c.key" @click="applyStatFilter(c)">
+      <div class="stat-card hover-elevate" v-for="c in statCards" :key="c.key" @click="applyStatFilter(c)">
         <div class="stat-label">{{ c.label }}</div>
         <div class="stat-value" :class="c.key.toLowerCase()">{{ c.value }}</div>
         <div class="stat-sub" v-if="c.sub">{{ c.sub }}</div>
@@ -116,7 +116,7 @@
       </div>
     </div>
 
-    <div ref="wrapRef" class="table-wrap" v-loading="loading">
+    <div ref="wrapRef" class="table-wrap table-panel" v-loading="loading">
       <el-table :data="eventList" size="small" :border="false" stripe :max-height="tableHeight"
         @row-click="openDetail">
         <el-table-column label="时间" width="180">
@@ -415,12 +415,6 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-security {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: @container-padding;
-  overflow: auto;
-
   .stat-cards {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -433,9 +427,6 @@ onUnmounted(() => {
       box-shadow: @shadow-sm;
       padding: 14px 16px;
       cursor: pointer;
-      transition: box-shadow @transition-fast;
-
-      &:hover { box-shadow: @shadow-md; }
 
       .stat-label {
         font-size: @font-size-sm;
@@ -596,31 +587,17 @@ onUnmounted(() => {
   }
 
   .table-wrap {
-    flex: 1 1 auto;
     min-height: 320px;
-    display: flex;
-    flex-direction: column;
-    background: @bg-color;
-    border-radius: @content-radius;
-    box-shadow: @shadow-sm;
-    overflow: hidden;
-    position: relative;
 
-    :deep(.el-table) { flex: 1 1 auto; min-height: 0; cursor: pointer; }
+    :deep(.el-table) {
+      cursor: pointer;
+    }
 
     .path-cell {
       display: block;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    .pagination-wrap {
-      flex-shrink: 0;
-      display: flex;
-      justify-content: flex-end;
-      padding: 12px 16px;
-      border-top: 1px solid @border-color-light;
     }
   }
 

@@ -14,55 +14,16 @@
         <!-- <el-tag v-if="enabled && realtimeMode" type="success" effect="plain" size="small">
           {{ realtimeMode === 'sse' ? '实时推送' : '轮询' }}
         </el-tag> -->
+        <el-button size="small" @click="openResourceConfigModal">
+          <el-icon><Setting /></el-icon>
+          配置
+        </el-button>
         <el-button type="primary" size="small" :loading="loading" @click="refreshAll">
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
     </div>
-
-    <!-- ============ 资源配置（本页维护） ============ -->
-    <section class="config-section">
-      <el-card shadow="never" class="config-card">
-        <div class="config-head">
-          <span class="config-title">资源配置</span>
-          <span class="config-sub">监控采集参数在此直接维护，保存后立即生效</span>
-          <div class="config-actions">
-            <el-button size="small" :disabled="!cfgDirty" @click="loadResourceConfig">重置</el-button>
-            <el-button type="primary" size="small" :loading="cfgSaving" :disabled="!cfgDirty" @click="saveResourceConfig">
-              保存
-            </el-button>
-          </div>
-        </div>
-        <el-form autocomplete="off" label-width="140px" class="resource-form">
-          <el-form-item label="启用监控">
-            <el-switch v-model="resourceCfg.enabled" />
-            <div class="field-hint">开启后本页采集并展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量</div>
-          </el-form-item>
-          <el-form-item label="实时采样间隔">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <el-input-number v-model="resourceCfg.samplingInterval" :min="1" :max="60" />
-              <span>秒</span>
-            </div>
-            <div class="field-hint">实时曲线按此频率在内存采样刷新（不落库）</div>
-          </el-form-item>
-          <el-form-item label="历史采集间隔">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <el-input-number v-model="resourceCfg.collectInterval" :min="10" :max="3600" />
-              <span>秒</span>
-            </div>
-            <div class="field-hint">历史数据按此间隔落库，默认 60 秒（每分钟一条）</div>
-          </el-form-item>
-          <el-form-item label="历史保留天数">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <el-input-number v-model="resourceCfg.retentionDays" :min="1" :max="365" />
-              <span>天</span>
-            </div>
-            <div class="field-hint">超出保留期的历史数据将被定期清理，默认 7 天</div>
-          </el-form-item>
-        </el-form>
-      </el-card>
-    </section>
 
     <!-- ============ 服务器配置 ============ -->
     <section class="hardware-section">
@@ -222,6 +183,51 @@
         <el-card shadow="never" class="chart-card wide"><div ref="netChartEl" class="chart-box"></div></el-card>
       </div>
     </section>
+
+    <!-- ============ 资源配置弹窗 ============ -->
+    <el-dialog
+      v-model="showResourceConfigModal"
+      title="资源配置"
+      width="640px"
+      :close-on-click-modal="false"
+      :before-close="closeResourceConfigModal"
+    >
+      <el-form autocomplete="off" label-width="140px">
+        <el-form-item label="启用监控">
+          <el-switch v-model="resourceCfg.enabled" />
+          <div class="field-hint">开启后本页采集并展示服务器整体与本程序的 CPU、内存、磁盘占用、磁盘 IO 与网络流量</div>
+        </el-form-item>
+        <el-form-item label="实时采样间隔">
+          <div class="inline-number">
+            <el-input-number v-model="resourceCfg.samplingInterval" :min="1" :max="60" />
+            <span>秒</span>
+          </div>
+          <div class="field-hint">实时曲线按此频率在内存采样刷新（不落库）</div>
+        </el-form-item>
+        <el-form-item label="历史采集间隔">
+          <div class="inline-number">
+            <el-input-number v-model="resourceCfg.collectInterval" :min="10" :max="3600" />
+            <span>秒</span>
+          </div>
+          <div class="field-hint">历史数据按此间隔落库，默认 60 秒（每分钟一条）</div>
+        </el-form-item>
+        <el-form-item label="历史保留天数">
+          <div class="inline-number">
+            <el-input-number v-model="resourceCfg.retentionDays" :min="1" :max="365" />
+            <span>天</span>
+          </div>
+          <div class="field-hint">超出保留期的历史数据将被定期清理，默认 7 天</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="closeResourceConfigModal()">取消</el-button>
+          <el-button type="primary" :loading="cfgSaving" :disabled="!cfgDirty" @click="saveResourceConfig">
+            保存
+          </el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -234,7 +240,7 @@ import 'echarts/lib/component/grid'
 import 'echarts/lib/component/tooltip'
 import 'echarts/lib/component/title'
 import 'echarts/lib/component/legend'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Setting } from '@element-plus/icons-vue'
 import { ConfigApi, ResourceApi } from '@/api'
 import { useTheme } from '@/composables/useTheme'
 import { ElMessage } from 'element-plus'
@@ -264,6 +270,19 @@ const cfgDirty = computed(() => cfgBaseline.value !== '' && JSON.stringify(resou
 const cfgSaving = ref(false)
 const markCfgClean = () => { cfgBaseline.value = JSON.stringify(resourceCfg) }
 
+// 弹窗编辑：打开时暂存，取消时回滚未保存的修改
+const showResourceConfigModal = ref(false)
+const cfgBackup = ref(null)
+const openResourceConfigModal = () => {
+  cfgBackup.value = { ...resourceCfg }
+  showResourceConfigModal.value = true
+}
+const closeResourceConfigModal = (done) => {
+  if (cfgBackup.value) Object.assign(resourceCfg, cfgBackup.value)
+  if (typeof done === 'function') done()
+  else showResourceConfigModal.value = false
+}
+
 // 读取资源配置切片（增量合并的独立顶层 key）
 const loadResourceConfig = async () => {
   try {
@@ -290,6 +309,7 @@ const saveResourceConfig = async () => {
     const res = await ConfigApi.save({ resource: { ...resourceCfg } })
     if (res.success) {
       markCfgClean()
+      showResourceConfigModal.value = false
       ElMessage.success(res.message || '配置已保存并生效')
       // 启用状态可能变化，重新校准实时采集
       enabled.value = resourceCfg.enabled
@@ -929,34 +949,6 @@ onUnmounted(() => {
 
 .admin-resource {
   padding: @spacing-md @spacing-lg;
-
-  .config-section {
-    margin-bottom: 16px;
-
-    .config-card {
-      :deep(.el-card__body) { padding: 14px 18px; }
-
-      .config-head {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 6px;
-
-        .config-title { font-size: 15px; font-weight: 600; color: @text-color; }
-        .config-sub { font-size: 12px; color: @text-color-secondary; }
-        .config-actions { margin-left: auto; display: flex; gap: 8px; }
-      }
-
-      .resource-form { margin-top: 10px; }
-
-      .field-hint {
-        margin-left: 12px;
-        color: @text-color-secondary;
-        font-size: 12px;
-      }
-    }
-  }
 
   .hardware-section {
     margin-bottom: 16px;

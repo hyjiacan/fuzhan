@@ -37,7 +37,7 @@
 
     <el-card class="auth-card">
       <template #header>
-        <div class="card-head">
+        <div class="card-head card-head--baseline">
           <span>第三方身份认证</span>
           <span class="card-sub">选择一种外部身份系统接入</span>
         </div>
@@ -90,16 +90,6 @@ const provider = computed({
 .settings-auth {
   .auth-card { margin-bottom: 16px; }
 
-  .card-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-  }
-
-  .card-sub { color: @text-color-secondary; font-size: 12px; }
-
   .provider-select { width: 260px; }
-
-  .field-hint { color: @text-color-secondary; font-size: 12px; }
 }
 </style>

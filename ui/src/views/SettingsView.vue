@@ -1,12 +1,12 @@
 <template>
-  <div class="settings-view">
+  <div class="settings-view page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>系统设置</h2>
         <p class="description">管理系统配置和参数调整</p>
       </div>
       <div class="header-right">
-        <div class="dirty-tip" v-if="isDirty" @click="showChanges = true">
+        <div class="dirty-tip dirty-tip--chip" v-if="isDirty" @click="showChanges = true">
           <span class="dot"></span>有未保存的更改（{{ changeList.length }} 项）
           <span class="dirty-link">查看更改</span>
         </div>
@@ -16,9 +16,9 @@
     <div class="settings-body">
       <!-- 侧栏分节导航 -->
       <aside class="settings-sider" :class="{ collapsed }">
-        <button class="sider-toggle" :title="collapsed ? '展开导航' : '收起导航'" @click="collapsed = !collapsed">
+        <!-- <button class="sider-toggle" :title="collapsed ? '展开导航' : '收起导航'" @click="collapsed = !collapsed">
           <el-icon><component :is="collapsed ? Expand : Fold" /></el-icon>
-        </button>
+        </button> -->
         <el-menu
           :default-active="activePanel"
           :collapse="collapsed"
@@ -287,9 +287,6 @@ const settings = reactive({
     rateLimitEnabled: true,
     requestsPerMinute: 60
   },
-  scanStartDelaySeconds: 10,
-  scanCronExpression: '0 1 * * *',
-  searchReconcileCronExpression: '0 5 * * *',
   security: {
     trustProxy: false,
     allowedOrigins: []
@@ -499,10 +496,6 @@ const loadSettings = async () => {
         requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
       }
 
-      settings.scanStartDelaySeconds = cfg.index?.scanStartDelaySeconds || 10
-      settings.scanCronExpression = cfg.index?.scanCronExpression || '0 1 * * *'
-      settings.searchReconcileCronExpression = cfg.index?.searchReconcileCronExpression || '0 5 * * *'
-
       settings.security = {
         trustProxy: cfg.security?.trustProxy ?? false,
         allowedOrigins: cfg.security?.allowedOrigins || []
@@ -583,7 +576,6 @@ const SECTION_SOURCES = {
   download: ['download'],
   preview: ['preview'],
   openApi: ['openApi'],
-  index: ['scanStartDelaySeconds', 'scanCronExpression', 'searchReconcileCronExpression'],
   security: ['security'],
   auth: ['auth']
 }
@@ -719,11 +711,6 @@ const doSaveSettings = async () => {
         rateLimitEnabled: settings.openApi.rateLimitEnabled,
         requestsPerMinute: settings.openApi.requestsPerMinute
       },
-      index: {
-        scanStartDelaySeconds: settings.scanStartDelaySeconds,
-        scanCronExpression: settings.scanCronExpression,
-        searchReconcileCronExpression: settings.searchReconcileCronExpression,
-      },
       security: {
         trustProxy: settings.security.trustProxy,
         allowedOrigins: settings.security.allowedOrigins
@@ -783,6 +770,7 @@ const doSaveSettings = async () => {
             ftpPort: optionsRes.data.ftp?.port ?? null,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
+            urlUploadEnabled: optionsRes.data.upload?.urlUpload?.enabled ?? false,
             allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
             requireLogin: optionsRes.data.account?.requireLogin ?? false,
             captchaMode: optionsRes.data.account?.captcha?.mode ?? 'disabled',
@@ -875,39 +863,6 @@ onMounted(() => {
 @import '@/styles/variables.less';
 
 .settings-view {
-  padding: @container-padding;
-
-  .dirty-tip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: @border-radius-lg;
-    background: #fdf4e3;
-    color: @warning-color;
-    font-size: @font-size-sm;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color @transition-fast;
-
-    &:hover {
-      background: #fbe9cd;
-    }
-
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: @warning-color;
-    }
-
-    .dirty-link {
-      color: @primary-color;
-      text-decoration: underline;
-    }
-  }
-
   .settings-body {
     display: flex;
     gap: 20px;
@@ -958,8 +913,8 @@ onMounted(() => {
       }
 
       :deep(.el-menu-item) {
-        height: 44px;
-        line-height: 44px;
+        height: 32px;
+        line-height: 32px;
         border-radius: @menu-item-radius;
         margin: 2px @menu-item-margin-x;
 
@@ -1044,8 +999,6 @@ onMounted(() => {
 
 @media @tablet {
   .settings-view {
-    padding: 12px;
-
     .settings-sider {
       flex-basis: 64px;
 
@@ -1062,8 +1015,6 @@ onMounted(() => {
 
 @media @mobile {
   .settings-view {
-    padding: 8px;
-
     .settings-body {
       flex-direction: column;
       align-items: stretch;

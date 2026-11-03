@@ -1,81 +1,17 @@
 <template>
-  <div class="admin-openapi">
+  <div class="admin-openapi page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>Open API 管理</h2>
         <p class="description">管理 Open API 服务配置和访问密钥</p>
       </div>
+      <div class="header-right">
+        <el-button type="primary" @click="openConfigModal">
+          <el-icon><Setting /></el-icon>
+          服务配置
+        </el-button>
+      </div>
     </div>
-
-    <!-- OpenAPI 服务配置 -->
-    <el-card header="服务配置" style="margin-bottom: 16px;">
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-form label-width="120px">
-            <el-form-item label="启用 Open API">
-              <el-switch v-model="openApiConfig.enabled" />
-              <div class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</div>
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="12">
-          <el-form label-width="120px">
-            <el-form-item label="启用频率限制">
-              <el-switch v-model="openApiConfig.rateLimitEnabled" />
-              <div class="field-hint">限制 API 调用频率，防止滥用</div>
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="12">
-          <el-form label-width="120px">
-            <el-form-item label="访问模式">
-              <el-radio-group v-model="openApiConfig.ipAccessMode">
-                <el-radio value="allow">白名单模式</el-radio>
-                <el-radio value="deny">黑名单模式</el-radio>
-                <el-radio value="none">不限制</el-radio>
-              </el-radio-group>
-              <div class="field-hint">白名单和黑名单不能同时生效</div>
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="12">
-          <el-form label-width="120px" v-if="openApiConfig.rateLimitEnabled">
-            <el-form-item label="请求频率">
-              <el-input-number v-model="openApiConfig.requestsPerMinute" :min="1" :max="10000" />
-              <span>次/分钟</span>
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="12" v-if="openApiConfig.ipAccessMode !== 'none'">
-          <el-form label-width="120px">
-            <el-form-item :label="openApiConfig.ipAccessMode === 'allow' ? 'IP 白名单' : 'IP 黑名单'">
-              <el-input
-                v-model="ipAccessListDisplay"
-                type="textarea"
-                :placeholder="openApiConfig.ipAccessMode === 'allow' ? '每行一个 IP 或 CIDR，如 192.168.1.0/24' : '每行一个 IP 或 CIDR'"
-                :rows="4"
-              />
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="12" v-if="openApiConfig.ipAccessMode === 'allow'">
-          <el-form label-width="120px">
-            <el-form-item label="域名白名单">
-              <el-input
-                v-model="domainWhitelistDisplay"
-                type="textarea"
-                placeholder="每行一个域名，如 example.com（自动匹配其所有子域）"
-                :rows="4"
-              />
-              <div class="field-hint">除 IP/CIDR 外，来源于这些域名（含子域）的请求也允许访问</div>
-            </el-form-item>
-          </el-form>
-        </el-col>
-      </el-row>
-      <el-space style="margin-top: 16px;">
-        <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
-      </el-space>
-    </el-card>
 
     <!-- API Key 管理 -->
     <el-card header="API Key 管理">
@@ -194,12 +130,74 @@
         </el-space>
       </template>
     </el-dialog>
+
+    <!-- OpenAPI 服务配置弹窗 -->
+    <el-dialog v-model="showConfigModal" title="Open API 服务配置" width="640px" :close-on-click-modal="false">
+      <el-form label-width="120px">
+        <el-form-item label="启用 Open API">
+          <el-switch v-model="configDraft.enabled" />
+          <div class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</div>
+        </el-form-item>
+        <el-form-item label="鉴权方式">
+          <el-radio-group v-model="configDraft.authMode">
+            <el-radio label="none">凭证访问</el-radio>
+            <el-radio label="api_key">API Key</el-radio>
+          </el-radio-group>
+          <div class="field-hint">
+            凭证访问：接受有效的 Web 会话 JWT 或 API Key；API Key：仅接受管理端「API Key 管理」签发且带 scope 的 Key
+          </div>
+        </el-form-item>
+        <el-form-item label="启用频率限制">
+          <el-switch v-model="configDraft.rateLimitEnabled" />
+          <div class="field-hint">限制 API 调用频率，防止滥用</div>
+        </el-form-item>
+        <el-form-item v-if="configDraft.rateLimitEnabled" label="请求频率">
+          <el-input-number v-model="configDraft.requestsPerMinute" :min="1" :max="10000" />
+          <span style="margin-left: 8px;">次/分钟</span>
+        </el-form-item>
+        <el-form-item label="访问模式">
+          <el-radio-group v-model="configDraft.ipAccessMode">
+            <el-radio label="allow">白名单模式</el-radio>
+            <el-radio label="deny">黑名单模式</el-radio>
+            <el-radio label="none">不限制</el-radio>
+          </el-radio-group>
+          <div class="field-hint">白名单和黑名单不能同时生效</div>
+        </el-form-item>
+        <el-form-item
+          v-if="configDraft.ipAccessMode !== 'none'"
+          :label="configDraft.ipAccessMode === 'allow' ? 'IP 白名单' : 'IP 黑名单'"
+        >
+          <el-input
+            v-model="ipAccessListDisplay"
+            type="textarea"
+            :placeholder="configDraft.ipAccessMode === 'allow' ? '每行一个 IP 或 CIDR，如 192.168.1.0/24' : '每行一个 IP 或 CIDR'"
+            :rows="4"
+          />
+        </el-form-item>
+        <el-form-item v-if="configDraft.ipAccessMode === 'allow'" label="域名白名单">
+          <el-input
+            v-model="domainWhitelistDisplay"
+            type="textarea"
+            placeholder="每行一个域名，如 example.com（自动匹配其所有子域）"
+            :rows="4"
+          />
+          <div class="field-hint">除 IP/CIDR 外，来源于这些域名（含子域）的请求也允许访问</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="showConfigModal = false">取消</el-button>
+          <el-button type="primary" :loading="savingConfig" @click="saveConfig">保存配置</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElButton, ElTag } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
 import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
@@ -238,6 +236,7 @@ const createRules = {
 
 const openApiConfig = ref({
   enabled: false,
+  authMode: 'none',
   ipAccessMode: 'none',
   ipWhitelist: '',
   ipBlacklist: '',
@@ -246,24 +245,32 @@ const openApiConfig = ref({
   requestsPerMinute: 60
 })
 
+// 弹窗内的临时配置副本，取消时丢弃修改
+const showConfigModal = ref(false)
+const configDraft = ref({ ...openApiConfig.value })
+const openConfigModal = () => {
+  configDraft.value = { ...openApiConfig.value }
+  showConfigModal.value = true
+}
+
 const domainWhitelistDisplay = computed({
-  get: () => (openApiConfig.value.domainWhitelist || '').split('\n').filter(s => s.trim()).join('\n'),
+  get: () => (configDraft.value.domainWhitelist || '').split('\n').filter(s => s.trim()).join('\n'),
   set: (val) => {
-    openApiConfig.value.domainWhitelist = val.split('\n').map(s => s.trim()).filter(Boolean).join('\n')
+    configDraft.value.domainWhitelist = val.split('\n').map(s => s.trim()).filter(Boolean).join('\n')
   }
 })
 
 const ipAccessListDisplay = computed({
   get: () => {
-    if (openApiConfig.value.ipAccessMode === 'allow') return openApiConfig.value.ipWhitelist
-    if (openApiConfig.value.ipAccessMode === 'deny') return openApiConfig.value.ipBlacklist
+    if (configDraft.value.ipAccessMode === 'allow') return configDraft.value.ipWhitelist
+    if (configDraft.value.ipAccessMode === 'deny') return configDraft.value.ipBlacklist
     return ''
   },
   set: (val) => {
-    if (openApiConfig.value.ipAccessMode === 'allow') {
-      openApiConfig.value.ipWhitelist = val
-    } else if (openApiConfig.value.ipAccessMode === 'deny') {
-      openApiConfig.value.ipBlacklist = val
+    if (configDraft.value.ipAccessMode === 'allow') {
+      configDraft.value.ipWhitelist = val
+    } else if (configDraft.value.ipAccessMode === 'deny') {
+      configDraft.value.ipBlacklist = val
     }
   }
 })
@@ -400,6 +407,7 @@ async function loadConfig() {
       const cfg = data.data.openApi || {}
       openApiConfig.value = {
         enabled: cfg.enabled ?? false,
+        authMode: cfg.authMode || 'none',
         ipAccessMode: cfg.ipAccessMode || 'none',
         ipWhitelist: (cfg.ipWhitelist || []).join('\n'),
         ipBlacklist: (cfg.ipBlacklist || []).join('\n'),
@@ -416,21 +424,25 @@ async function loadConfig() {
 async function saveConfig() {
   savingConfig.value = true
   try {
+    const draft = configDraft.value
     const data = await ConfigApi.save({
       openApi: {
-        enabled: openApiConfig.value.enabled,
-        ipAccessMode: openApiConfig.value.ipAccessMode,
-        ipWhitelist: openApiConfig.value.ipWhitelist.split('\n').filter(ip => ip.trim()),
-        ipBlacklist: openApiConfig.value.ipBlacklist.split('\n').filter(ip => ip.trim()),
-        domainWhitelist: openApiConfig.value.domainWhitelist.split('\n').filter(d => d.trim()),
-        rateLimitEnabled: openApiConfig.value.rateLimitEnabled,
-        requestsPerMinute: openApiConfig.value.requestsPerMinute
+        enabled: draft.enabled,
+        authMode: draft.authMode,
+        ipAccessMode: draft.ipAccessMode,
+        ipWhitelist: draft.ipWhitelist.split('\n').filter(ip => ip.trim()),
+        ipBlacklist: draft.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        domainWhitelist: draft.domainWhitelist.split('\n').filter(d => d.trim()),
+        rateLimitEnabled: draft.rateLimitEnabled,
+        requestsPerMinute: draft.requestsPerMinute
       }
     })
     if (data.success) {
+      openApiConfig.value = { ...draft }
+      showConfigModal.value = false
       ElMessage.success('配置已保存')
       // 更新 store 中的 openApiEnabled
-      store.setConfig({ openApiEnabled: openApiConfig.value.enabled })
+      store.setConfig({ openApiEnabled: draft.enabled })
     } else {
       ElMessage.error(data.message || '保存失败')
     }
@@ -591,26 +603,12 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-openapi {
-  padding: @container-padding;
-
   .table-v2-wrap {
     height: 420px;
-  }
-
-  .pagination-wrap {
-    display: flex;
-    justify-content: flex-end;
-    padding: 12px 0 0;
   }
 }
 
 // 以下样式用于创建弹窗（Element Plus 会 Teleport 到 body，不能嵌套在 .admin-openapi 下）
-.field-hint {
-  font-size: 12px;
-  color: @text-color-secondary;
-  line-height: 1.5;
-}
-
 .scope-groups {
   display: flex;
   flex-direction: column;
@@ -670,17 +668,5 @@ onUnmounted(() => {
   font-family: @font-family-mono;
   font-size: @font-size-xs;
   color: @text-color-secondary;
-}
-
-@media @tablet {
-  .admin-openapi {
-    padding: 12px;
-  }
-}
-
-@media @mobile {
-  .admin-openapi {
-    padding: 8px;
-  }
 }
 </style>

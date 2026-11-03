@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-api-key">
+  <div class="admin-api-key page-container">
     <div class="header-section">
       <div class="header-left">
         <h2>API Key 管理</h2>
@@ -58,7 +58,7 @@
           <el-icon class="is-loading" :size="22"><Loading /></el-icon>
         </div>
       </div>
-      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+      <div class="pagination-wrap">
         <el-pagination
           v-if="pagination.itemCount > 0"
           v-model:current-page="pagination.page"
@@ -434,42 +434,17 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-api-key {
-  padding: 24px;
-}
-.stat-card :deep(.el-card__body),
-.stat-card .stat-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-}
-.stat-label {
-  font-size: 14px;
-  color: @text-color-secondary;
-}
-.field-hint {
-  font-size: 12px;
-  color: @text-color-secondary;
-  line-height: 1.5;
-}
-.table-v2-wrap {
-  position: relative;
-  height: 480px;
-  width: 100%;
-}
-.table-loading-mask {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.6);
-  z-index: 5;
+  .stat-card .stat-content {
+    gap: 12px;
+  }
+
+  .stat-card .stat-value {
+    font-size: @font-size-xxl;
+    font-weight: 700;
+  }
+
+  .table-v2-wrap {
+    height: 480px;
+  }
 }
 </style>

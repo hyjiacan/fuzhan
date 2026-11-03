@@ -1059,47 +1059,6 @@ export default {
       transform: @active-scale;
     }
   }
-
-  .auth-switch {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-
-    .auth-switch-text {
-      font-size: @font-size-sm;
-      color: @text-color-secondary;
-    }
-
-    .switch-link {
-      font-weight: 600;
-      font-size: @font-size-sm;
-    }
-  }
-}
-
-// 外部统一认证入口（登录弹框内）
-.auth-external-block {
-  margin-top: 4px;
-
-  .auth-divider {
-    margin: 8px 0 16px;
-
-    :deep(.el-divider__text) {
-      font-size: @font-size-sm;
-      color: @text-color-secondary;
-    }
-  }
-
-  .auth-external {
-    width: 100%;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-
-    .auth-external-icon {
-      margin-right: 6px;
-    }
-  }
 }
 
 // 安全事件强提醒弹框

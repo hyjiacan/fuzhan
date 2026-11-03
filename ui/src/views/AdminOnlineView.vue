@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-online">
+  <div class="admin-online page-container page-container--fill">
     <div class="header-section">
       <div class="header-left">
         <h2>在线IP</h2>
@@ -25,7 +25,7 @@
       title="判定规则：某 IP 在空闲超时内发出过任一元请求即视为在线，距上次请求超过该时长自动离线。"
     />
 
-    <div ref="wrapRef" class="table-wrap" v-loading="loading">
+    <div ref="wrapRef" class="table-wrap table-panel" v-loading="loading">
       <el-table
         :data="onlineList"
         size="small"
@@ -162,11 +162,6 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-online {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: @container-padding;
-
   .online-summary {
     font-size: 14px;
     color: @text-color-secondary;
@@ -181,36 +176,11 @@ onUnmounted(() => {
     margin-bottom: 12px;
   }
 
-  .table-wrap {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    background: @bg-color;
-    border-radius: @content-radius;
-    box-shadow: @shadow-sm;
+  .ua-cell {
+    display: block;
     overflow: hidden;
-    position: relative;
-
-    :deep(.el-table) {
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-
-    .ua-cell {
-      display: block;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .pagination-wrap {
-      flex-shrink: 0;
-      display: flex;
-      justify-content: flex-end;
-      padding: 12px 16px;
-      border-top: 1px solid @border-color-light;
-    }
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

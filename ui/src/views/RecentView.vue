@@ -1,8 +1,8 @@
 <template>
-  <div class="recent-view">
+  <div class="recent-view page-container page-container--gap">
     <div class="recent-cards">
       <!-- 最近搜索 -->
-      <el-card class="recent-card">
+      <el-card class="recent-card hover-card">
         <template #header>最近搜索</template>
         <div v-if="recentKeywords.length > 0" class="keyword-tags">
           <el-tag v-for="kw in recentKeywords" :key="kw.word" style="cursor: pointer" @click="searchKeyword(kw.word)">
@@ -18,7 +18,7 @@
       </el-card>
 
       <!-- 最近上传 -->
-      <el-card class="recent-card">
+      <el-card class="recent-card hover-card">
         <template #header>最近上传</template>
         <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="uploadsLoading">
           <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
@@ -45,7 +45,7 @@
       </el-card>
 
       <!-- 最近下载 -->
-      <el-card class="recent-card">
+      <el-card class="recent-card hover-card">
         <template #header>最近下载</template>
         <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="downloadsLoading">
           <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
@@ -373,23 +373,10 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .recent-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: @container-padding;
-
   .recent-cards {
     display: flex;
     flex-direction: column;
     gap: 24px;
-  }
-
-  .recent-card {
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @card-hover-shadow;
-    }
   }
 
   .table-v2-wrap {
@@ -422,18 +409,6 @@ onUnmounted(() => {
     display: flex;
     justify-content: center;
     padding: 8px 0 0 0;
-  }
-}
-
-@media @tablet {
-  .recent-view {
-    padding: 12px;
-  }
-}
-
-@media @mobile {
-  .recent-view {
-    padding: 8px;
   }
 }
 </style>

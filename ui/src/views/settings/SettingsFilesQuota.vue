@@ -102,32 +102,5 @@ const tempQuotaPerIPDisplay = computed({
 
 .field-col-cards {
   margin-bottom: @spacing-md;
-
-  :deep(.el-card) {
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-  }
-}
-
-.size-input {
-  display: flex;
-  align-items: center;
-  gap: @spacing-md;
-
-  :deep(.el-input) {
-    width: 200px;
-  }
-}
-
-.size-echo {
-  color: @text-color-placeholder;
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: @font-size-xs;
 }
 </style>

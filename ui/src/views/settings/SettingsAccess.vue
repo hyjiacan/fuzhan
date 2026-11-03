@@ -47,21 +47,6 @@
 
     <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
       <el-card>
-        <template #header><span>OpenAPI 身份认证</span></template>
-        <el-form autocomplete="off" label-width="120px">
-          <el-form-item label="鉴权方式">
-            <el-radio-group v-model="settings.openApi.authMode">
-              <el-radio label="none">匿名访问</el-radio>
-              <el-radio label="api_key">API Key</el-radio>
-            </el-radio-group>
-            <div class="field-hint">API Key 由管理端「API Key 管理」生成并带 scope（open_api:reader / writer / admin）；强制登录开启时仅允许 API Key</div>
-          </el-form-item>
-        </el-form>
-      </el-card>
-    </el-col>
-
-    <el-col :span="12" :sm="12" :xs="24" style="margin-bottom: 16px;">
-      <el-card>
         <template #header><span>文件访问控制</span></template>
         <el-form autocomplete="off" label-width="120px">
           <el-form-item label="允许的扩展名">
@@ -237,19 +222,6 @@ const allowedOriginsDisplay = computed({
 
 <style lang="less" scoped>
 @import '@/styles/variables.less';
-
-.el-card {
-  transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-  &:hover {
-    box-shadow: @shadow-md;
-  }
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-}
 
 .full-col {
   margin-bottom: 16px;

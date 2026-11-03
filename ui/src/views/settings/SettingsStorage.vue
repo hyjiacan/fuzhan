@@ -83,24 +83,6 @@
           </el-form-item>
         </el-form>
       </el-card>
-
-      <el-card class="index-card">
-        <template #header><span>文件索引配置</span></template>
-        <el-form autocomplete="off" label-width="140px">
-          <el-form-item label="扫描启动延迟">
-            <el-input-number v-model="settings.scanStartDelaySeconds" :min="0" :step="1" style="width: 200px;" />
-            <div class="field-hint">启动后延迟执行首次扫描（秒），默认 10</div>
-          </el-form-item>
-          <el-form-item label="定时扫描间隔">
-            <el-input autocomplete="off" v-model="settings.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨1点）" />
-            <div class="field-hint">Cron 表达式，默认 <code>0 1 * * *</code>（每天凌晨 1:00）</div>
-          </el-form-item>
-          <el-form-item label="检索索引对齐间隔">
-            <el-input autocomplete="off" v-model="settings.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨5点）" />
-            <div class="field-hint">定时校正检索索引与文件表对齐，默认 <code>0 5 * * *</code>（每天凌晨 5:00，与定时扫描错开）</div>
-          </el-form-item>
-        </el-form>
-      </el-card>
     </el-col>
   </el-row>
 </template>
@@ -121,21 +103,8 @@ const isS3 = computed(() => backend.value === 's3' || backend.value === 'minio')
 <style lang="less" scoped>
 @import '@/styles/variables.less';
 
-.el-card {
-  transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-  &:hover {
-    box-shadow: @shadow-md;
-  }
-}
-
 .backend-card {
   margin-bottom: 16px;
-}
-
-.field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
 }
 
 .backend-form {

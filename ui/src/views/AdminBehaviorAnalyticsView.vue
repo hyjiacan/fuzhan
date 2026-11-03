@@ -712,19 +712,6 @@ onUnmounted(() => {
   overflow: unset;
 }
 
-.filter-card {
-  margin-bottom: 14px;
-}
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.filter-label {
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-}
 .section-title {
   display: flex;
   align-items: baseline;

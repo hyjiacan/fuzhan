@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-users-view">
+  <div class="admin-users-view page-container page-container--gap">
     <div class="header-section">
       <div class="header-left">
         <h2>用户管理</h2>
@@ -207,7 +207,7 @@ const columns = [
   {
     title: '用户ID',
     key: 'uuid',
-    width: 250,
+    width: 300,
     cellRenderer: ({ rowData: row }) => row.uuid || '-'
   },
   {
@@ -249,7 +249,6 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 200,
-    fixed: 'right',
     cellRenderer: ({ rowData: row }) => h('div', { style: 'display: flex; gap: 8px;' }, [
       h(ElButton, {
         size: 'small',
@@ -436,20 +435,9 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-users-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: @container-padding;
-
   .table-card {
     .table-v2-wrap {
       height: 480px;
-    }
-
-    .pagination-wrap {
-      display: flex;
-      justify-content: flex-end;
-      padding: 12px 0 0;
     }
   }
 }

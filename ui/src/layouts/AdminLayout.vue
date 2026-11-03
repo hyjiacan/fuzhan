@@ -1,5 +1,5 @@
 <template>
-  <el-container class="admin-layout">
+  <el-container class="admin-layout app-layout">
     <!-- Sidebar -->
     <el-aside :width="collapsed ? '64px' : '200px'" class="layout-sider">
       <div class="sider-header" @click="collapsed = !collapsed" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">
@@ -173,58 +173,7 @@ const handleMenuSelect = (key) => {
   height: 100%;
 
   .layout-sider {
-    background: @bg-color;
-    height: 100%;
-    border-right: 1px solid @border-color-light;
-    transition: width @transition-normal;
-    overflow-x: hidden;
-    display: flex;
-    flex-direction: column;
-
-    .sider-header {
-      flex: 0 0 auto;
-      padding: 16px;
-      border-bottom: 1px solid @border-color-light;
-      font-weight: 600;
-      font-size: @font-size-lg;
-      color: @text-color;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-      overflow: hidden;
-      transition: background-color @transition-fast;
-
-      &:hover {
-        background-color: var(--el-fill-color-light);
-      }
-
-      .sider-brand-dot {
-        flex: 0 0 auto;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: @primary-accent;
-        box-shadow: 0 0 6px fade(@primary-accent, 60%);
-        transition: transform @transition-smooth;
-
-        &.is-collapsed {
-          transform: scale(1.15);
-        }
-      }
-
-      .sider-title {
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-    }
-
     .layout-menu {
-      flex: 1 1 auto;
-      overflow-y: auto;
-      overflow-x: hidden;
       padding: 4px 0 16px;
 
       .menu-item-label {
@@ -278,19 +227,8 @@ const handleMenuSelect = (key) => {
   }
 
   .layout-content {
-    background: @bg-color-secondary;
-    height: 100%;
-    overflow: auto;
-    padding: 0;
-
     .layout-router {
       height: 100%;
-
-      & > * {
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-      }
     }
   }
 

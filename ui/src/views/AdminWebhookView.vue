@@ -9,6 +9,10 @@
         <div class="dirty-tip" v-if="isDirty">
           <span class="dot"></span>有未保存的更改
         </div>
+        <el-button :disabled="!loaded" @click="openGlobalModal">
+          <el-icon><Setting /></el-icon>
+          全局参数
+        </el-button>
         <el-button :disabled="!loaded || !isDirty" @click="handleReset">重置</el-button>
         <el-button type="primary" :loading="saving" :disabled="!loaded || !isDirty" @click="saveConfig">
           保存配置{{ isDirty ? '' : ' ✓' }}
@@ -21,42 +25,6 @@
       <el-button type="primary" @click="loadConfig">重新加载</el-button>
     </el-empty>
     <template v-else>
-      <el-card>
-        <template #header><span>全局参数</span></template>
-        <el-form autocomplete="off" label-width="140px">
-          <el-form-item label="启用 Webhook">
-            <el-switch v-model="data.enabled" />
-            <div class="field-hint" style="margin-left: 12px;">启用后将关键事件推送到下方各回调地址</div>
-          </el-form-item>
-
-          <el-form-item label="默认签名密钥">
-            <el-input v-model="data.secret" type="password" show-password placeholder="留空则不签名（依赖 HTTPS 保护）" autocomplete="new-password" />
-            <div class="field-hint">端点密钥留空时继承此处；配置后每条推送体计算 HMAC-SHA256，写入响应头 X-Fuzhan-Signature（sha256=&lt;hex&gt;）</div>
-          </el-form-item>
-
-          <el-row :gutter="16">
-            <el-col :span="8" :sm="8" :xs="24">
-              <el-form-item label="默认超时(秒)">
-                <el-input-number v-model="data.timeoutSeconds" :min="1" :max="120" style="width: 100%;" />
-                <div class="field-hint">单次 HTTP 请求超时时间，端点可覆盖</div>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8" :sm="8" :xs="24">
-              <el-form-item label="默认失败重试">
-                <el-input-number v-model="data.maxRetries" :min="0" :max="10" style="width: 100%;" />
-                <div class="field-hint">发送失败后按指数退避重试的次数，端点可覆盖</div>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8" :sm="8" :xs="24">
-              <el-form-item label="队列容量">
-                <el-input-number v-model="data.queueSize" :min="1" :max="100000" style="width: 100%;" />
-                <div class="field-hint">进程内事件队列上限，超限丢弃以保护服务（重启生效）</div>
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </el-form>
-      </el-card>
-
       <el-card>
         <template #header>
           <div class="card-head">
@@ -258,12 +226,46 @@
         </div>
       </el-card>
     </template>
+
+    <el-dialog v-model="showGlobalModal" title="Webhook 全局参数" width="640px" :close-on-click-modal="false">
+      <el-form autocomplete="off" label-width="140px">
+        <el-form-item label="启用 Webhook">
+          <el-switch v-model="globalDraft.enabled" />
+          <div class="field-hint" style="margin-left: 12px;">启用后将关键事件推送到各回调地址</div>
+        </el-form-item>
+
+        <el-form-item label="默认签名密钥">
+          <el-input v-model="globalDraft.secret" type="password" show-password placeholder="留空则不签名（依赖 HTTPS 保护）" autocomplete="new-password" />
+          <div class="field-hint">端点密钥留空时继承此处；配置后每条推送体计算 HMAC-SHA256，写入响应头 X-Fuzhan-Signature（sha256=&lt;hex&gt;）</div>
+        </el-form-item>
+
+        <el-form-item label="默认超时(秒)">
+          <el-input-number v-model="globalDraft.timeoutSeconds" :min="1" :max="120" style="width: 200px;" />
+          <div class="field-hint">单次 HTTP 请求超时时间，端点可覆盖</div>
+        </el-form-item>
+        <el-form-item label="默认失败重试">
+          <el-input-number v-model="globalDraft.maxRetries" :min="0" :max="10" style="width: 200px;" />
+          <div class="field-hint">发送失败后按指数退避重试的次数，端点可覆盖</div>
+        </el-form-item>
+        <el-form-item label="队列容量">
+          <el-input-number v-model="globalDraft.queueSize" :min="1" :max="100000" style="width: 200px;" />
+          <div class="field-hint">进程内事件队列上限，超限丢弃以保护服务（重启生效）</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="showGlobalModal = false">取消</el-button>
+          <el-button type="primary" :loading="globalSaving" @click="saveGlobal">保存</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { ConfigApi, SystemApi } from '@/api'
 import store from '@/store'
 
@@ -301,6 +303,28 @@ const webhookEndpointPayload = (ep) => ({
   query: ep.query || {}
 })
 
+// 全局参数弹窗：草稿编辑，取消即丢弃；保存时连同当前端点一并提交
+const showGlobalModal = ref(false)
+const globalSaving = ref(false)
+const globalDraft = ref({
+  enabled: false,
+  secret: '',
+  timeoutSeconds: 10,
+  maxRetries: 3,
+  queueSize: 1024
+})
+
+const openGlobalModal = () => {
+  globalDraft.value = {
+    enabled: data.enabled,
+    secret: data.secret,
+    timeoutSeconds: data.timeoutSeconds,
+    maxRetries: data.maxRetries,
+    queueSize: data.queueSize
+  }
+  showGlobalModal.value = true
+}
+
 const loadConfig = async () => {
   loadError.value = false
   try {
@@ -331,22 +355,22 @@ const loadConfig = async () => {
   }
 }
 
+// 组装 Webhook 提交切片：全局参数 + 当前端点（保存整个 webhook 节点时需一并提交端点）
+const webhookPayload = (globals) => ({
+  enabled: globals.enabled,
+  urls: data.urls,
+  endpoints: data.endpoints.map(webhookEndpointPayload),
+  secret: globals.secret,
+  timeoutSeconds: globals.timeoutSeconds,
+  maxRetries: globals.maxRetries,
+  queueSize: globals.queueSize
+})
+
 const saveConfig = async () => {
   if (!validateWebhookPermissions()) return
   saving.value = true
   try {
-    const payload = {
-      webhook: {
-        enabled: data.enabled,
-        urls: data.urls,
-        endpoints: data.endpoints.map(webhookEndpointPayload),
-        secret: data.secret,
-        timeoutSeconds: data.timeoutSeconds,
-        maxRetries: data.maxRetries,
-        queueSize: data.queueSize
-      }
-    }
-    const res = await ConfigApi.save(payload)
+    const res = await ConfigApi.save({ webhook: webhookPayload(data) })
     if (res.success) {
       ElMessage.success(res.message || '配置已保存并生效')
       markClean()
@@ -359,6 +383,29 @@ const saveConfig = async () => {
     ElMessage.error('保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+// 弹窗内保存全局参数：成功后回写 data 并同步基线
+const saveGlobal = async () => {
+  if (!validateWebhookPermissions(globalDraft.value.enabled)) return
+  globalSaving.value = true
+  try {
+    const res = await ConfigApi.save({ webhook: webhookPayload({ ...data, ...globalDraft.value }) })
+    if (res.success) {
+      Object.assign(data, globalDraft.value)
+      markClean()
+      refreshStoreOptions()
+      showGlobalModal.value = false
+      ElMessage.success(res.message || '全局参数已保存并生效')
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    console.error('保存 Webhook 全局参数失败', e)
+    ElMessage.error('保存失败')
+  } finally {
+    globalSaving.value = false
   }
 }
 
@@ -392,8 +439,8 @@ const refreshStoreOptions = async () => {
 }
 
 // Webhook 事件权限校验：启用 Webhook 时启用中的端点必须显式指定事件
-const validateWebhookPermissions = () => {
-  if (!data.enabled) return true
+const validateWebhookPermissions = (enabled = data.enabled) => {
+  if (!enabled) return true
   const bad = data.endpoints.find((ep) => ep.enabled !== false && !(ep.events && ep.events.length))
   if (!bad) return true
   ElMessage.error(`回调地址「${bad.name || bad.url || '未命名'}」未选择任何事件，请在「事件权限」中勾选事件或开启「接收全部事件」`)
@@ -618,62 +665,15 @@ onMounted(() => {
   padding: @spacing-md @spacing-lg;
 
   .header-section {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
     margin-bottom: 16px;
-  }
-  .header-left {
-    h2 { margin: 0; }
-    .description { margin: 4px 0 0; font-size: 12px; color: @text-color-secondary; }
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .dirty-tip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: @warning-color;
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: @warning-color; }
-  }
-}
 
-.settings-webhook {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-
-  .el-card {
-    transition: transform @transition-smooth, box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
+    .description {
+      font-size: @font-size-xs;
     }
   }
 }
 
-.card-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.card-sub {
-  color: @text-color-secondary;
-  font-size: 12px;
-  font-weight: normal;
-}
-
 .field-hint {
-  color: @text-color-secondary;
-  font-size: 12px;
-
   &.is-error {
     color: @error-color;
   }

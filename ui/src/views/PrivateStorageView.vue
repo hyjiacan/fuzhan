@@ -1,5 +1,5 @@
 <template>
-  <div class="private-storage">
+  <div class="private-storage page-container page-container--gap">
     <div class="header-section">
       <div class="header-left">
         <h2>私有存储</h2>
@@ -418,90 +418,18 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .private-storage {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: @container-padding;
-
-  .header-section {
-    .quota-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0 8px;
-      height: 22px;
-      background: @bg-color-secondary;
-      border: 1px solid @border-color-light;
-      border-radius: @border-radius-sm;
-      font-size: @font-size-xs;
-      color: @text-color-secondary;
-    }
-  }
-
-  .toolbar-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-
-    .toolbar-left {
-      flex: 1;
-    }
-
-    .toolbar-right {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .search-input {
-      width: 200px;
-    }
-  }
-
   .breadcrumb-row {
     margin-bottom: 8px;
-    font-size: 14px;
-
-    .breadcrumb-link {
-      text-decoration: none;
-      color: inherit;
-      transition: color @transition-fast;
-
-      &:hover {
-        color: @primary-color;
-      }
-    }
   }
 
   .breadcrumb-root {
-    font-size: 14px;
-    font-weight: 500;
-    color: @text-color;
-    margin-bottom: 8px;
     display: block;
+    margin-bottom: 8px;
   }
 
-
   .content-table {
-    background: @bg-color;
-    border-radius: @content-radius;
-    overflow: hidden;
-    box-shadow: @shadow-sm;
-    transition: box-shadow @transition-smooth;
-
-    &:hover {
-      box-shadow: @shadow-md;
-    }
-
     .table-v2-wrap {
       height: 400px;
-    }
-
-    .table-pagination {
-      display: flex;
-      justify-content: flex-end;
-      padding: 8px 16px;
-      border-top: 1px solid @border-color-light;
     }
 
     :deep(.el-table-v2) {
@@ -514,29 +442,9 @@ onUnmounted(() => {
       }
     }
   }
-
-  .empty-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 200px;
-  }
 }
 
 @media @tablet {
-  .private-storage {
-    padding: 12px;
-  }
-
-  .header-row {
-    flex-direction: column;
-    gap: 8px;
-
-    .header-right {
-      align-self: flex-start;
-    }
-  }
-
   .toolbar-row {
     .search-input {
       width: 150px;
@@ -545,10 +453,6 @@ onUnmounted(() => {
 }
 
 @media @mobile {
-  .private-storage {
-    padding: 8px;
-  }
-
   .toolbar-row {
     flex-direction: column;
     align-items: stretch;
