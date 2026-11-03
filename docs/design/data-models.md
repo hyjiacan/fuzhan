@@ -143,7 +143,7 @@
 ## OperationRecord 操作记录模型
 
 - **表名**: `operation_records`
-- **说明**: 上传/下载/搜索等操作审计记录。行为分析中的下载行为基于其中 `dl_event=1` 的公开下载事件聚合（私有/临时来源不计入）。
+- **说明**: 上传/下载/搜索/删除等操作审计记录。行为分析中的下载行为基于其中 `dl_event=1` 的公开下载事件聚合（私有/临时来源不计入）。文件删除成功后写入 `action=delete` 记录，不参与删除文件时的上传/下载记录级联清理。
 
 | 字段名 | 类型 | 约束 | 说明 |
 |--------|------|------|------|
@@ -156,13 +156,14 @@
 | FileType | string(50) | - | 文件类型 |
 | Status | string(10) | not null, default:"success" | 处理状态 (success/failed) |
 | FailReason | string(255) | - | 失败原因（仅 Status=failed 时填写） |
-| SourceType | string(16) | default:"public" | 下载来源类型 (public/private/temp) |
+| SourceType | string(16) | default:"public" | 操作来源类型 (public/private/temp) |
 | SourceID | uint | default:0 | 来源文件索引记录ID（0=未能关联） |
 | FileRecordID | uint | index | 关联公共文件索引ID（移动/重命名后身份关联） |
 | ClientIP | string(45) | index | 客户端IP |
 | UserID | string(64) | index | 用户ID |
 | UploadType | TargetType | size:20, not null, default:"regular" | 上传类型 |
-| Action | string(20) | default:"upload", index | 操作类型 (upload/download/download-by-hash/search/preview) |
+| Action | string(20) | default:"upload", index | 操作类型 (upload/download/download-by-hash/search/preview/delete/rename/mkdir) |
+| Overwritten | bool | not null, default:false | 上传记录是否覆盖了已存在的同名文件（仅 `action=upload` 有意义；由上传收尾阶段按目标是否已存在写入） |
 | SearchQuery | string(255) | index | 搜索关键词 |
 | UploadTime | time.Time | not null, index | 上传时间 |
 | CreatedAt | time.Time | index | 创建时间 |

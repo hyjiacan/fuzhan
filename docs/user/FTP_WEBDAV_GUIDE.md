@@ -198,7 +198,7 @@ curl -k --ftp-ssl -u username:password ftp://localhost:2121/
 
 ## 操作记录
 
-通过 WebDAV 和 FTP 进行的上传、下载、创建目录操作会自动记录到数据库的 `operation_records` 表中。
+通过 WebDAV 和 FTP 进行的上传、下载、创建目录、删除操作会自动记录到数据库的 `operation_records` 表中。删除操作记为 `action=delete`，可在管理端「操作记录 → 最近删除」中查看。
 
 可在 Web 管理界面的监控页面查看最近的访问统计和操作记录。
 

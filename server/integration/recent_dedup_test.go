@@ -134,6 +134,42 @@ func TestListRecentAllPaginated_DeletedFileExcluded(t *testing.T) {
 	}
 }
 
+// TestListRecentAllPaginated_DeleteRecords 验证删除记录：
+// 公共 delete 记录不因文件已不存在而被过滤，且管理端列表不展示私有来源的 delete 记录。
+func TestListRecentAllPaginated_DeleteRecords(t *testing.T) {
+	db := getTestDB(t)
+	repo := repositories.NewRecordRepository(db)
+	now := time.Now()
+
+	ops := []models.OperationRecord{
+		// 公共文件删除：索引记录已随删除消失，但仍需在「最近删除」中显示
+		{Action: "delete", RootName: "rootD", FilePath: "/d/gone.txt", FileName: "gone.txt",
+			UploadType: models.TargetTypeRegular, SourceType: models.SourceTypePublic, CreatedAt: now},
+		// 私有文件删除：不应出现在管理端「最近删除」
+		{Action: "delete", RootName: "private", FilePath: "/p/secret.txt", FileName: "secret.txt",
+			UploadType: models.TargetTypePrivate, SourceType: models.SourceTypePrivate, CreatedAt: now.Add(-time.Hour)},
+	}
+	for _, rec := range ops {
+		if err := repo.Create(&rec); err != nil {
+			t.Fatalf("创建记录失败: %v", err)
+		}
+	}
+
+	got, total, err := repo.ListRecentAllPaginated(1, 10, "delete")
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total=1 (仅公共来源删除记录), got %d", total)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(got))
+	}
+	if got[0].FileName != "gone.txt" {
+		t.Errorf("期望返回 gone.txt，实际 %s", got[0].FileName)
+	}
+}
+
 // TestListRecentAllPaginated_DedupByFileID 验证按 file_id 身份去重：
 // 同一文件移动/重命名后，历史操作记录的路径快照不同，但 file_record_id 相同，
 // 去重后仅保留最新一条，并经 AttachCurrentPaths 显示文件当前路径。

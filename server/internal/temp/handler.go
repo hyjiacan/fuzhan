@@ -324,9 +324,30 @@ func (h *Handler) DeleteHandler(c *gin.Context) {
 	}
 
 	ip := h.getClientIP(c)
+	// 删除前先取文件信息，供删除操作记录使用（删除后记录已不存在）
+	tempFile, infoErr := h.tempService.GetByCode(code)
 	if err := h.tempService.Delete(code, ip); err != nil {
 		utils.HandleNotFound(c, err.Error())
 		return
+	}
+
+	if infoErr == nil && tempFile != nil {
+		op := &models.OperationRecord{
+			FileName:   truncateStr(tempFile.Filename, 255),
+			FilePath:   truncateStr(code, 512),
+			FullPath:   truncateStr("/temp/"+code, 1024),
+			RootName:   "temp",
+			FileSize:   tempFile.FileSize,
+			ClientIP:   truncateStr(ip, 45),
+			SourceType: models.SourceTypeTemp,
+			SourceID:   tempFile.ID,
+			UploadType: models.TargetTypeTemp,
+		}
+		if !services.SubmitDeleteRecord(op) {
+			if db := configPkg.GetDB(); db != nil {
+				db.Create(op)
+			}
+		}
 	}
 
 	middleware.LogOperation(c, "temp.delete", code, nil)

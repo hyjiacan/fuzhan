@@ -88,7 +88,7 @@ Content-Type: application/json
 | GET | `/api/v1/web/files/list` | `file.Handler.ListDirectories` | 目录列表 | 受强制登录开关控制 |
 | GET | `/api/v1/web/files/preview/*path` | `file.PreviewHandler.PreviewFile` | 文件预览 | 受强制登录开关控制 |
 | GET | `/api/v1/web/files/preview-chunk` | `file.PreviewHandler.PreviewChunk` | 文本分片预览 | 受强制登录开关控制 |
-| GET | `/api/v1/web/files/recent` | `file.RecentHandler.GetRecent` | 最近上传 | 受强制登录开关控制 |
+| GET | `/api/v1/web/files/recent` | `file.RecentHandler.GetRecent` | 最近操作记录（上传/下载/搜索/预览/删除） | 受强制登录开关控制 |
 | GET | `/api/v1/web/files/recent/carousel` | `file.RecentHandler.GetRecentCarousel` | 首页轮播 | 受强制登录开关控制 |
 | GET | `/download/*path` | `file.DownloadHandler.DownloadFile` | 文件下载 | 受强制登录开关控制 |
 | GET | `/api/v1/web/search/*query` | `file.SearchHandler.SearchFiles` | 文件搜索(SSE) | 受强制登录开关控制 |

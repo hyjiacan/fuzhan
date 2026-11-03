@@ -172,6 +172,25 @@ func (h *PrivateStorageHandlers) Delete(c *gin.Context) {
 		utils.Error("删除私有文件记录失败", utils.Err(err))
 	}
 
+	// 写入删除操作记录（私有来源，按文件记录 ID 关联）
+	op := &models.OperationRecord{
+		FileName:   truncateStr(rec.FileName, 255),
+		FileSize:   rec.FileSize,
+		FilePath:   truncateStr(rec.FilePath, 512),
+		FullPath:   truncateStr(rec.FullPath, 1024),
+		RootName:   privateRootName,
+		ClientIP:   truncateStr(utils.GetClientIP(c), 45),
+		UserID:     userID,
+		SourceType: models.SourceTypePrivate,
+		SourceID:   rec.ID,
+		UploadType: models.TargetTypePrivate,
+	}
+	if !services.SubmitDeleteRecord(op) {
+		if err := db.Create(op).Error; err != nil {
+			utils.Warn("写入私有文件删除记录失败", utils.String("code", code), utils.Err(err))
+		}
+	}
+
 	middleware.LogOperation(c, "private.delete", code, nil)
 	utils.HandleSuccess(c, http.StatusOK, "", nil)
 }

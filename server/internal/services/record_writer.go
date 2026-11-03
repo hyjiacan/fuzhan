@@ -201,6 +201,27 @@ func SubmitDownloadRecord(op *models.OperationRecord) bool {
 	return SubmitRecord(op)
 }
 
+// SubmitDeleteRecord 提交一条删除操作记录，默认补齐 Action=delete、
+// SourceType=public 与 CreatedAt。供公开/私有/临时删除入口统一复用。
+func SubmitDeleteRecord(op *models.OperationRecord) bool {
+	if op == nil {
+		return false
+	}
+	if op.Action == "" {
+		op.Action = "delete"
+	}
+	if op.SourceType == "" {
+		op.SourceType = models.SourceTypePublic
+	}
+	if op.CreatedAt.IsZero() {
+		op.CreatedAt = utils.Now()
+	}
+	if op.UploadTime.IsZero() {
+		op.UploadTime = utils.Now()
+	}
+	return SubmitRecord(op)
+}
+
 // StopRecordWriter 停止全局有界记录器。
 func StopRecordWriter() {
 	defaultWriterMu.RLock()

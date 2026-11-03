@@ -232,6 +232,42 @@ func TestRecordingFileSystem_Upload(t *testing.T) {
 	if r.UploadType != models.TargetTypeRegular {
 		t.Errorf("expected TargetTypeRegular, got %s", r.UploadType)
 	}
+	if r.Overwritten {
+		t.Error("expected Overwritten false for new file")
+	}
+}
+
+func TestRecordingFileSystem_UploadOverwrite(t *testing.T) {
+	inner, cleanup := newInMemoryFS(t)
+	defer os.RemoveAll(cleanup)
+
+	repo := &mockRecordRepo{}
+	rec := NewRecordingFileSystem(inner, repo)
+
+	if err := os.WriteFile(filepath.Join(inner.root, "existing.txt"), []byte("old"), 0644); err != nil {
+		t.Fatalf("prepare existing file failed: %v", err)
+	}
+
+	ctx := recordingContext("PUT", "192.168.1.1", "uploader-uuid")
+	f, err := rec.OpenFile(ctx, "/existing.txt", os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("OpenFile for overwrite upload failed: %v", err)
+	}
+	if _, err := f.Write([]byte("new")); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	f.Close()
+
+	if !waitForRecords(repo, 1) {
+		t.Fatal("timed out waiting for upload record")
+	}
+	r := repo.records[0]
+	if r.Action != "upload" {
+		t.Errorf("expected action upload, got %s", r.Action)
+	}
+	if !r.Overwritten {
+		t.Error("expected Overwritten true when target file exists")
+	}
 }
 
 func TestRecordingFileSystem_UploadPrivate(t *testing.T) {
@@ -398,8 +434,15 @@ func TestRecordingFileSystem_RemoveAll(t *testing.T) {
 		t.Error("directory should have been removed")
 	}
 
-	if len(repo.records) != 0 {
-		t.Errorf("expected 0 records for RemoveAll, got %d", len(repo.records))
+	if !waitForRecords(repo, 1) {
+		t.Fatal("timed out waiting for delete record")
+	}
+	r := repo.records[0]
+	if r.Action != "delete" {
+		t.Errorf("expected action delete, got %s", r.Action)
+	}
+	if r.FileName != "dirtoremove" {
+		t.Errorf("expected filename dirtoremove, got %s", r.FileName)
 	}
 }
 

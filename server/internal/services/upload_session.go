@@ -474,6 +474,8 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 		if !s.finalizer.AllowsOverwrite(session, allowOverwrite) {
 			return nil, ErrFileExists
 		}
+		// 标记本次上传为覆盖，供收尾写操作记录时标注
+		session.Overwritten = true
 		utils.Info("覆盖文件", utils.String("path", targetPath))
 	}
 
@@ -516,6 +518,8 @@ func (s *UploadSessionService) finalizeRemote(session *models.UploadSession, tar
 			utils.Error("覆盖文件时删除失败", utils.String("path", targetPath), utils.Err(err))
 			return nil, fmt.Errorf("无法覆盖已有文件: %w", err)
 		}
+		// 标记本次上传为覆盖，供收尾写操作记录时标注
+		session.Overwritten = true
 		utils.Info("覆盖文件", utils.String("path", targetPath))
 	}
 

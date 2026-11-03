@@ -66,6 +66,14 @@ func (fs *RecordingFileSystem) OpenFile(ctx context.Context, name string, flag i
 	if fs.recordRepo == nil {
 		return nil, os.ErrPermission
 	}
+	// 写入前先判断目标是否已存在，用于在上传记录中标注「覆盖」
+	overwritten := false
+	if isWriteFlags(flag) {
+		if _, err := fs.inner.Stat(ctx, name); err == nil {
+			overwritten = true
+		}
+	}
+
 	f, err := fs.inner.OpenFile(ctx, name, flag, perm)
 	if err != nil {
 		return nil, err
@@ -79,16 +87,17 @@ func (fs *RecordingFileSystem) OpenFile(ctx context.Context, name string, flag i
 	rootName, filePath, targetType := decodeUnifiedPath(name)
 	now := utils.Now()
 	record := &models.OperationRecord{
-		Action:     action,
-		FileName:   filepath.Base(name),
-		FilePath:   filePath,
-		FullPath:   "/" + rootName + filePath,
-		RootName:   rootName,
-		UploadTime: now,
-		CreatedAt:  now,
-		ClientIP:   getClientIP(ctx),
-		UserID:     getUserUUID(ctx),
-		UploadType: targetType,
+		Action:      action,
+		FileName:    filepath.Base(name),
+		FilePath:    filePath,
+		FullPath:    "/" + rootName + filePath,
+		RootName:    rootName,
+		UploadTime:  now,
+		CreatedAt:   now,
+		ClientIP:    getClientIP(ctx),
+		UserID:      getUserUUID(ctx),
+		UploadType:  targetType,
+		Overwritten: overwritten && action == "upload",
 	}
 
 	// For downloads, try to get file size from the opened file handle.
@@ -106,7 +115,32 @@ func (fs *RecordingFileSystem) RemoveAll(ctx context.Context, name string) error
 	if fs.recordRepo == nil {
 		return os.ErrPermission
 	}
-	return fs.inner.RemoveAll(ctx, name)
+	if err := fs.inner.RemoveAll(ctx, name); err != nil {
+		return err
+	}
+	rootName, filePath, targetType := decodeUnifiedPath(name)
+	sourceType := models.SourceTypePublic
+	switch targetType {
+	case models.TargetTypePrivate:
+		sourceType = models.SourceTypePrivate
+	case models.TargetTypeTemp:
+		sourceType = models.SourceTypeTemp
+	}
+	now := utils.Now()
+	fs.recordAsync(&models.OperationRecord{
+		Action:     "delete",
+		FileName:   filepath.Base(name),
+		FilePath:   filePath,
+		FullPath:   "/" + rootName + filePath,
+		RootName:   rootName,
+		UploadType: targetType,
+		SourceType: sourceType,
+		UploadTime: now,
+		CreatedAt:  now,
+		ClientIP:   getClientIP(ctx),
+		UserID:     getUserUUID(ctx),
+	})
+	return nil
 }
 
 func (fs *RecordingFileSystem) Rename(ctx context.Context, oldName, newName string) error {

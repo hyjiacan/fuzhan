@@ -24,7 +24,8 @@ func sqlTrimSlashes(col string) string {
 // ApplyExistingFileFilter 为 operation_records 查询追加"文件仍然存在"过滤：
 // 公共文件（upload_type 为 regular 或空）的上传/下载记录，仅当索引表
 // file_records_public 中仍存在对应的 active 记录时返回（文件被删除后不再出现
-// 于最近上传/下载/热门下载等页面）；search 记录与 temp/private 记录不过滤，
+// 于最近上传/下载/热门下载等页面）；search 与 delete 记录（文件删除后本就
+// 不再存在，需要保留审计痕迹）以及 temp/private 记录不过滤，
 // 分别由各自页面独立管理。
 //
 // 性能约束：两个关联分支必须写成相互独立、各自可被索引定位的 EXISTS，
@@ -53,6 +54,7 @@ func ApplyExistingFileFilter(q *gorm.DB) *gorm.DB {
 	)
 	return q.Where(repl.Replace(`(
 		{op}.action = 'search'
+		OR {op}.action = 'delete'
 		OR {op}.upload_type NOT IN ('regular', '')
 		OR ({op}.file_record_id > 0 AND EXISTS (
 			SELECT 1 FROM {frp} frp
@@ -413,6 +415,10 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	if action != "" {
 		distinctSub = distinctSub.Where("action IN ?", ExpandRecordActions(action))
 	}
+	if action == "delete" {
+		// 管理端「最近删除」仅展示公共来源，私有/临时删除记录归个人操作记录页
+		distinctSub = distinctSub.Where("(source_type = ? OR source_type = '')", models.SourceTypePublic)
+	}
 	distinctSub = ApplyExistingFileFilter(distinctSub)
 	var total int64
 	if err := r.db.Table("(?) AS d", distinctSub.Distinct()).Count(&total).Error; err != nil {
@@ -425,6 +431,9 @@ func (r *RecordRepository) ListRecentAllPaginated(page, pageSize int, action str
 	)
 	if action != "" {
 		rowsQuery = rowsQuery.Where("action IN ?", ExpandRecordActions(action))
+	}
+	if action == "delete" {
+		rowsQuery = rowsQuery.Where("(source_type = ? OR source_type = '')", models.SourceTypePublic)
 	}
 	rowsQuery = ApplyExistingFileFilter(rowsQuery)
 

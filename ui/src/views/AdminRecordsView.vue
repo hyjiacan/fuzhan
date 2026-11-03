@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-records">
+  <div class="admin-records page-container page-container--fill">
     <div class="header-section">
       <div class="header-left">
         <h2>操作记录</h2>
@@ -46,6 +46,16 @@
           <el-icon><DeleteIcon /></el-icon>
           清空预览
         </el-button>
+        <el-button
+          type="danger"
+          size="small"
+          :loading="clearingRecord === 'delete'"
+          :disabled="clearingRecord !== null"
+          @click="handleClearRecords('delete')"
+        >
+          <el-icon><DeleteIcon /></el-icon>
+          清空删除
+        </el-button>
       </div>
     </div>
 
@@ -65,7 +75,7 @@
             row-key="id"
           />
         </div>
-        <div class="pagination-wrap" v-if="uploadTotal > 0">
+        <div class="pagination-wrap pagination-wrap--center" v-if="uploadTotal > 0">
           <el-pagination
             v-model:current-page="uploadPage"
             :page-size="pageSize"
@@ -87,7 +97,7 @@
             row-key="id"
           />
         </div>
-        <div class="pagination-wrap" v-if="downloadTotal > 0">
+        <div class="pagination-wrap pagination-wrap--center" v-if="downloadTotal > 0">
           <el-pagination
             v-model:current-page="downloadPage"
             :page-size="pageSize"
@@ -109,7 +119,7 @@
             row-key="id"
           />
         </div>
-        <div class="pagination-wrap" v-if="searchTotal > 0">
+        <div class="pagination-wrap pagination-wrap--center" v-if="searchTotal > 0">
           <el-pagination
             v-model:current-page="searchPage"
             :page-size="pageSize"
@@ -131,13 +141,35 @@
             row-key="id"
           />
         </div>
-        <div class="pagination-wrap" v-if="previewTotal > 0">
+        <div class="pagination-wrap pagination-wrap--center" v-if="previewTotal > 0">
           <el-pagination
             v-model:current-page="previewPage"
             :page-size="pageSize"
             :total="previewTotal"
             layout="prev, pager, next"
             @current-change="() => loadRecords('preview')"
+          />
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane name="delete" label="最近删除">
+        <div ref="deleteWrapRef" class="table-v2-wrap" v-loading="loading">
+          <el-table-v2
+            :columns="deleteColumns"
+            :data="deleteRecords"
+            :width="deleteWidth"
+            :height="deleteHeight"
+            :row-height="TableConst.ROW_HEIGHT"
+            row-key="id"
+          />
+        </div>
+        <div class="pagination-wrap pagination-wrap--center" v-if="deleteTotal > 0">
+          <el-pagination
+            v-model:current-page="deletePage"
+            :page-size="pageSize"
+            :total="deleteTotal"
+            layout="prev, pager, next"
+            @current-change="() => loadRecords('delete')"
           />
         </div>
       </el-tab-pane>
@@ -148,7 +180,7 @@
 <script setup>
 import { ref, h, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElButton } from 'element-plus'
+import { ElMessage, ElButton, ElTag } from 'element-plus'
 import { FileApi, AdminApi } from '@/api'
 import { TableConst, NumberUtils, TimeUtils } from '@/utils'
 
@@ -181,6 +213,11 @@ const previewRecords = ref([])
 const previewTotal = ref(0)
 const previewPage = ref(1)
 
+// 删除
+const deleteRecords = ref([])
+const deleteTotal = ref(0)
+const deletePage = ref(1)
+
 // 清空
 const clearingRecord = ref(null)
 
@@ -198,6 +235,7 @@ const uploadWrapRef = ref(null)
 const downloadWrapRef = ref(null)
 const searchWrapRef = ref(null)
 const previewWrapRef = ref(null)
+const deleteWrapRef = ref(null)
 const uploadWidth = ref(600)
 const uploadHeight = ref(300)
 const downloadWidth = ref(600)
@@ -206,6 +244,8 @@ const searchWidth = ref(600)
 const searchHeight = ref(300)
 const previewWidth = ref(600)
 const previewHeight = ref(300)
+const deleteWidth = ref(600)
+const deleteHeight = ref(300)
 let tableResizeObs = null
 
 const updateTableSize = () => {
@@ -228,6 +268,11 @@ const updateTableSize = () => {
   if (p && p.clientWidth > 0) {
     previewWidth.value = p.clientWidth
     previewHeight.value = p.clientHeight || 300
+  }
+  const del = deleteWrapRef.value
+  if (del && del.clientWidth > 0) {
+    deleteWidth.value = del.clientWidth
+    deleteHeight.value = del.clientHeight || 300
   }
 }
 
@@ -293,7 +338,10 @@ const renderRecordPathCell = (row) => {
           '/'
         ]
       }).flat(),
-      h('span', { class: 'file-link', style: 'cursor:default;' }, fileName)
+      h('span', { class: 'file-link', style: 'cursor:default;' }, fileName),
+      row.overwritten
+        ? h(ElTag, { type: 'warning', size: 'small', effect: 'plain', style: 'margin-left:6px;flex-shrink:0;' }, { default: () => '覆盖' })
+        : null
     ])
   ])
 }
@@ -369,6 +417,18 @@ const previewColumns = [
   deleteRecordColumn('preview')
 ]
 
+const deleteColumns = [
+  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'fileSize', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  },
+  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
+  { title: '删除时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  },
+  deleteRecordColumn('delete')
+]
+
 // ============ 数据加载 ============
 
 const loadRecords = async (action) => {
@@ -378,6 +438,7 @@ const loadRecords = async (action) => {
     if (action === 'upload') page = uploadPage.value
     else if (action === 'download') page = downloadPage.value
     else if (action === 'preview') page = previewPage.value
+    else if (action === 'delete') page = deletePage.value
     else page = searchPage.value
 
     const res = await FileApi.recent(page, pageSize, action)
@@ -394,6 +455,9 @@ const loadRecords = async (action) => {
       } else if (action === 'preview') {
         previewRecords.value = records
         previewTotal.value = total
+      } else if (action === 'delete') {
+        deleteRecords.value = records
+        deleteTotal.value = total
       } else {
         searchRecords.value = records
         searchTotal.value = total
@@ -417,7 +481,7 @@ const handleTabChange = (tab) => {
 // ============ 单条删除 ============
 
 const handleDeleteRecord = async (row, action) => {
-  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览' }
+  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览', delete: '删除' }
   const label = actionLabels[action] || action
   if (!window.confirm(`确定要删除该条${label}记录吗？此操作不可恢复。`)) {
     return
@@ -442,7 +506,7 @@ const handleDeleteRecord = async (row, action) => {
 // ============ 清空记录 ============
 
 const handleClearRecords = async (action) => {
-  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览' }
+  const actionLabels = { search: '搜索', upload: '上传', download: '下载', preview: '预览', delete: '删除' }
   const label = actionLabels[action] || action
   if (!window.confirm(`确定要清空所有${label}记录吗？此操作不可恢复。`)) {
     return
@@ -474,9 +538,10 @@ onMounted(() => {
   if (downloadWrapRef.value) tableResizeObs.observe(downloadWrapRef.value)
   if (searchWrapRef.value) tableResizeObs.observe(searchWrapRef.value)
   if (previewWrapRef.value) tableResizeObs.observe(previewWrapRef.value)
+  if (deleteWrapRef.value) tableResizeObs.observe(deleteWrapRef.value)
   // 支持从看板等入口通过 ?tab=xxx 直接定位到对应 tab
   const tabQuery = route.query.tab
-  const initialTab = ['upload', 'download', 'search', 'preview'].includes(tabQuery) ? tabQuery : 'upload'
+  const initialTab = ['upload', 'download', 'search', 'preview', 'delete'].includes(tabQuery) ? tabQuery : 'upload'
   activeTab.value = initialTab
   loadRecords(initialTab)
 })
@@ -494,11 +559,6 @@ watch(activeTab, () => {
 @import '@/styles/variables.less';
 
 .admin-records {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: @container-padding;
-
   .records-tabs {
     flex: 1 1 auto;
     min-height: 0;
@@ -530,13 +590,6 @@ watch(activeTab, () => {
       border-radius: @content-radius;
       box-shadow: @shadow-sm;
       overflow: hidden;
-    }
-
-    .pagination-wrap {
-      flex-shrink: 0;
-      display: flex;
-      justify-content: center;
-      padding: 8px 0 0;
     }
   }
 }

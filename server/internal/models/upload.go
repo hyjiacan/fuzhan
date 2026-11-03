@@ -38,11 +38,13 @@ type UploadSession struct {
 	Checksum    string       `gorm:"size:64" json:"checksum"`                        // 文件校验和
 	Status      UploadStatus `gorm:"size:20;not null;default:pending" json:"status"` // 会话状态
 	TargetType  TargetType   `gorm:"size:20;not null;default:regular" json:"targetType"`
-	TargetPath  string       `gorm:"size:512" json:"targetPath"`        // 目标路径
-	TargetRoot  string       `gorm:"size:255" json:"targetRoot"`        // 目标根目录
-	UserID      string       `gorm:"size:64" json:"userID"`             // 用户ID
-	ClientIP    string       `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
-	ChunkDir    string       `gorm:"size:512" json:"chunkDir"`          // 分片目录
+	TargetPath  string       `gorm:"size:512" json:"targetPath"` // 目标路径
+	TargetRoot  string       `gorm:"size:255" json:"targetRoot"` // 目标根目录
+	// Overwritten 本次上传是否覆盖了已存在的目标文件（仅运行期使用，不落库）
+	Overwritten bool   `gorm:"-" json:"overwritten,omitempty"`
+	UserID      string `gorm:"size:64" json:"userID"`             // 用户ID
+	ClientIP    string `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
+	ChunkDir    string `gorm:"size:512" json:"chunkDir"`          // 分片目录
 	// Code 访问码（仅临时上传携带，32 位十六进制 128bit 熵，用于命名与分享/下载）
 	Code string `gorm:"size:64" json:"code,omitempty"`
 	// DeleteOnDownload 下载后自动删除（仅临时上传使用）
@@ -103,15 +105,17 @@ type OperationRecord struct {
 	// SourceID 来源文件记录ID（对应 file_records_public/private/temp 主键），0 表示未能关联
 	SourceID uint `gorm:"default:0" json:"sourceId"`
 	// FileRecordID 关联的公共文件索引记录 ID，用于移动/重命名后身份关联
-	FileRecordID uint           `gorm:"index" json:"fileRecordId"`     // 公共文件索引记录 ID（0 表示未关联/历史数据）
-	ClientIP     string         `gorm:"size:45;index" json:"clientIP"` // 客户端IP
-	UserID       string         `gorm:"size:64;index" json:"userID"`   // 用户ID
-	UploadType   TargetType     `gorm:"size:20;not null;default:regular" json:"uploadType"`
-	Action       string         `gorm:"size:20;default:upload;index" json:"action"` // 操作类型: upload, download, search
-	SearchQuery  string         `gorm:"size:255;index" json:"searchQuery"`          // 搜索关键词
-	UploadTime   time.Time      `gorm:"not null;index" json:"uploadTime"`           // 上传时间
-	CreatedAt    time.Time      `gorm:"index" json:"createdAt"`                     // 创建时间（用于统计查询）
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	FileRecordID uint       `gorm:"index" json:"fileRecordId"`     // 公共文件索引记录 ID（0 表示未关联/历史数据）
+	ClientIP     string     `gorm:"size:45;index" json:"clientIP"` // 客户端IP
+	UserID       string     `gorm:"size:64;index" json:"userID"`   // 用户ID
+	UploadType   TargetType `gorm:"size:20;not null;default:regular" json:"uploadType"`
+	Action       string     `gorm:"size:20;default:upload;index" json:"action"` // 操作类型: upload, download, search, preview, delete, rename, mkdir
+	// Overwritten 上传记录是否覆盖了已存在的同名文件（仅 action=upload 有意义）
+	Overwritten bool           `gorm:"not null;default:false" json:"overwritten"`
+	SearchQuery string         `gorm:"size:255;index" json:"searchQuery"` // 搜索关键词
+	UploadTime  time.Time      `gorm:"not null;index" json:"uploadTime"`  // 上传时间
+	CreatedAt   time.Time      `gorm:"index" json:"createdAt"`            // 创建时间（用于统计查询）
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
 	// DlEvent 下载统计签名：1=该记录为公开下载事件（action∈{download,download-by-hash} 且来源为公共）。
 	// 写入侧在 BeforeCreate 计算，使行为分析查询退化为 dl_event/dl_ok 等值过滤，命中
 	// (dl_event, created_at, dl_ok) 覆盖索引，避免每次对 action/source_type 做 OR/IN 表达式过滤。

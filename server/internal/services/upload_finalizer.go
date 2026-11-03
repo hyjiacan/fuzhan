@@ -84,16 +84,17 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 		relativePath = relativePath + "/" + session.FileName
 	}
 	record := &models.OperationRecord{
-		FileName:   session.FileName,
-		FileSize:   session.FileSize,
-		FilePath:   relativePath,
-		FullPath:   "/" + session.TargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
-		RootName:   session.TargetRoot,
-		FileType:   pathutils.GetFileType(session.FileName),
-		ClientIP:   session.ClientIP,
-		UserID:     session.UserID,
-		UploadType: session.TargetType,
-		UploadTime: utils.Now(),
+		FileName:    session.FileName,
+		FileSize:    session.FileSize,
+		FilePath:    relativePath,
+		FullPath:    "/" + session.TargetRoot + "/" + strings.TrimPrefix(relativePath, "/"),
+		RootName:    session.TargetRoot,
+		FileType:    pathutils.GetFileType(session.FileName),
+		ClientIP:    session.ClientIP,
+		UserID:      session.UserID,
+		UploadType:  session.TargetType,
+		UploadTime:  utils.Now(),
+		Overwritten: session.Overwritten,
 	}
 	if err := f.recordRepo.Create(record); err != nil {
 		return nil, fmt.Errorf("创建上传记录失败: %w", err)

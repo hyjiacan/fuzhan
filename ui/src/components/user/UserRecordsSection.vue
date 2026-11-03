@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="header-left">
         <h2>操作记录</h2>
-        <p class="description">查看您的上传与下载等操作记录</p>
+        <p class="description">查看您的上传、下载、删除等操作记录</p>
       </div>
     </div>
 
@@ -21,6 +21,7 @@
           <el-option label="按哈希下载" value="download-by-hash" />
           <el-option label="搜索" value="search" />
           <el-option label="预览" value="preview" />
+          <el-option label="删除" value="delete" />
         </el-select>
         <el-select
           v-model="filterSource"
@@ -84,7 +85,11 @@
           <template #default="{ row }">{{ sourceLabel(row.sourceType) }}</template>
         </el-table-column>
         <el-table-column label="文件名 / 路径" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.fileName }}{{ row.fullPath ? '（' + row.fullPath + '）' : '' }}</template>
+          <template #default="{ row }">
+            <span>{{ row.fileName }}</span>
+            <el-tag v-if="row.overwritten" size="small" type="warning" effect="plain" style="margin: 0 6px">覆盖</el-tag>
+            <span>{{ row.fullPath ? '（' + row.fullPath + '）' : '' }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="大小" width="120">
           <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
@@ -136,7 +141,8 @@ const actionLabel = (a) => {
     download: '下载',
     'download-by-hash': '下载',
     search: '搜索',
-    preview: '预览'
+    preview: '预览',
+    delete: '删除'
   }
   return map[a] || a || '—'
 }
@@ -202,21 +208,5 @@ onMounted(load)
 
 .user-records-section {
   padding: @container-padding;
-
-  .filter-card {
-    margin-bottom: 14px;
-  }
-
-  .filter-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .pagination {
-    margin-top: 16px;
-    justify-content: flex-end;
-  }
 }
 </style>

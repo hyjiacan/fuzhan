@@ -348,13 +348,19 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 		return
 	}
 
-	// 在删除前判断是否为目录（删除后 Stat 会失败）
+	rootName, relPath := splitPath(req.Path)
+
+	// 在删除前判断是否为目录并取得文件大小（删除后 Stat 会失败）
 	isDir := false
-	if rootName, relPath := splitPath(req.Path); rootName != "" {
+	var fileSize int64
+	if rootName != "" {
 		if st, ok := fh.BaseHandler.storageFor(rootName); ok {
 			rel := strings.TrimPrefix(relPath, "/")
 			if info, err := st.Stat(c.Request.Context(), rel); err == nil {
 				isDir = info.IsDir
+				if !isDir {
+					fileSize = info.Size
+				}
 			}
 		}
 	}
@@ -366,8 +372,13 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 		return
 	}
 
+	// 删除成功后写入删除操作记录（先于级联清理，保证删除动作本身可审计）
+	if rootName != "" {
+		fh.recordPublicDelete(c, rootName, relPath, fileSize)
+	}
+
 	// 删除成功后硬删除索引记录
-	if rootName, relPath := splitPath(req.Path); rootName != "" {
+	if rootName != "" {
 		var records []models.FileRecordPublic
 		var queryErr error
 		if isDir {
@@ -417,6 +428,37 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 
 	middleware.LogOperation(c, "file.delete", req.Path, nil)
 	utils.HandleSuccess(c, http.StatusOK, "删除成功", nil)
+}
+
+// recordPublicDelete 写入一条公开文件的删除操作记录。
+// 与上传记录一致，公开操作以客户端 IP 作为归属（user_id 存 IP），
+// 便于个人操作记录按 user_id/client_ip 匹配。
+func (fh *FileHandlers) recordPublicDelete(c *gin.Context, rootName, relPath string, fileSize int64) {
+	name := path.Base(strings.TrimSuffix(relPath, "/"))
+	if name == "." || name == "/" || name == "" {
+		name = rootName
+	}
+	ip := utils.GetClientIP(c)
+	rec := &models.OperationRecord{
+		FileName:   name,
+		FileSize:   fileSize,
+		FilePath:   relPath,
+		FullPath:   "/" + rootName + relPath,
+		RootName:   rootName,
+		ClientIP:   ip,
+		UserID:     ip,
+		SourceType: models.SourceTypePublic,
+		UploadType: models.TargetTypeRegular,
+	}
+	if services.SubmitDeleteRecord(rec) {
+		return
+	}
+	if err := fh.DB.Create(rec).Error; err != nil {
+		utils.Warn("写入删除操作记录失败",
+			utils.String("root", rootName),
+			utils.String("path", relPath),
+			utils.Err(err))
+	}
 }
 
 // splitPath 将完整路径拆分为 rootName 和相对路径
