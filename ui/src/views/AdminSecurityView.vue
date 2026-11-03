@@ -199,6 +199,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Refresh, Check } from '@element-plus/icons-vue'
 import { SecurityApi } from '@/api'
+import store from '@/store'
 
 const severityMeta = {
   high: { label: '高危', type: 'danger' },
@@ -313,6 +314,7 @@ const loadUnread = async () => {
     const res = await SecurityApi.unreadSummary()
     if (res.success && res.data) {
       unread.value = { total: res.data.total || 0, high: res.data.high || 0 }
+      store.setSecurityUnread(unread.value.total)
     } else {
       unreadError.value = true
     }
@@ -378,6 +380,8 @@ const applyStatFilter = (c) => {
 const markAllRead = async () => {
   await SecurityApi.markAllRead()
   unread.value = { total: 0, high: 0 }
+  // 同步侧边栏角标，标记后立即消失
+  store.setSecurityUnread(0)
 }
 
 const formatTime = (iso) => {

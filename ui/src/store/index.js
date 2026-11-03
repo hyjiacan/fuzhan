@@ -80,7 +80,10 @@ const state = reactive({
   activeUrlTasks: false,
 
   // 健康检查结果（由 App.vue 启动时统一拉取一次，供页脚等组件复用，避免重复请求）
-  health: null
+  health: null,
+
+  // 未读安全事件总数（侧边栏菜单角标，标记已读后需全局同步）
+  securityUnread: 0
 })
 
 // 状态变更方法
@@ -216,6 +219,11 @@ const mutations = {
   // 设置健康检查结果
   setHealth(health) {
     state.health = health || null
+  },
+
+  // 设置未读安全事件数
+  setSecurityUnread(count) {
+    state.securityUnread = Math.max(0, Number(count) || 0)
   },
 
   // 设置通知列表

@@ -60,6 +60,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { safeStorage } from '@/utils/storage'
 import { SecurityApi } from '@/api'
+import store from '@/store'
 import {
   Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Warning, Close, Document, Bell, Grid
 } from '@element-plus/icons-vue'
@@ -126,7 +127,8 @@ const menuOptions = menuGroups.flatMap(g => g.items)
 
 // 安全事件菜单入口（用于红点标识）
 const SECURITY_KEY = '/admin/security'
-const securityUnread = ref(0)
+// 未读数取自全局 store，页面内标记已读后可立即清除角标
+const securityUnread = computed(() => store.state.securityUnread)
 let securityTimer = null
 
 // 加载未读安全事件数（供侧边栏红点）
@@ -134,7 +136,7 @@ const loadSecurityUnread = async () => {
   try {
     const res = await SecurityApi.unreadSummary()
     if (res.success && res.data) {
-      securityUnread.value = res.data.total || 0
+      store.setSecurityUnread(res.data.total || 0)
     }
   } catch (e) {
     // 拉取失败时保留上次数值，静默处理
