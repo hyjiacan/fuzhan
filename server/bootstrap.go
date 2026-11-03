@@ -378,7 +378,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 
 	// Open API 服务（v3 Phase 3）
 	openAPICfg := &appconfig.GlobalConfig.OpenAPI
-	openAPIHandler := openapi.NewHandler(db, indexService, depService, appconfig.RootNames)
+	openAPIHandler := openapi.NewHandler(db, indexService, depService, appconfig.RootNames, publicStorages, uploadSessionSvc, chunkSize)
 	openAPIRateLimiter := openapi.NewRateLimiter(openapi.NewRateLimitConfigFromAppConfig(
 		openAPICfg.RateLimitEnabled,
 		openAPICfg.RequestsPerMinute,

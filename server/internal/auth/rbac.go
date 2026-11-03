@@ -26,11 +26,15 @@ var ScopeEndpoints = map[string][]string{
 		"/api/open/v1/files/list",
 		"/api/open/v1/files/search",
 		"/api/open/v1/files/download",
+		"/api/open/v1/files/info",
 	},
+	"open_api:files:info":   {"/api/open/v1/files/info"},
+	"open_api:files:upload": {"/api/open/v1/files/upload"},
 	"open_api:writer": {
 		"/api/open/v1/files/list",
 		"/api/open/v1/files/search",
 		"/api/open/v1/files/download",
+		"/api/open/v1/files/info",
 		"/api/open/v1/files/upload",
 	},
 	"open_api:admin": {}, // 空表示所有端点
@@ -38,9 +42,11 @@ var ScopeEndpoints = map[string][]string{
 
 // ScopeMethods 每个 scope 允许的 HTTP 方法
 var ScopeMethods = map[string][]string{
-	"open_api:reader": {"GET", "HEAD"},
-	"open_api:writer": {"GET", "HEAD", "POST", "PUT", "DELETE"},
-	"open_api:admin":  {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"},
+	"open_api:reader":       {"GET", "HEAD"},
+	"open_api:files:info":   {"GET", "HEAD"},
+	"open_api:files:upload": {"POST"},
+	"open_api:writer":       {"GET", "HEAD", "POST", "PUT", "DELETE"},
+	"open_api:admin":        {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"},
 }
 
 // RequireScope 检查请求是否有指定的 scope 权限
@@ -141,13 +147,16 @@ var rbacScopeHierarchy = map[string][]string{
 	models.ScopeOpenAPIAdmin: {
 		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter, models.ScopeOpenAPIAdmin,
 		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+		models.ScopeFilesInfo, models.ScopeFilesUpload,
 	},
 	models.ScopeOpenAPIWriter: {
 		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter,
 		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+		models.ScopeFilesInfo, models.ScopeFilesUpload,
 	},
 	models.ScopeOpenAPIReader: {
 		models.ScopeOpenAPIReader, models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
+		models.ScopeFilesInfo,
 	},
 }
 

@@ -463,11 +463,13 @@ ftp://localhost:2121
 
 服务端提供 REST API，接口前缀为 `/api/v1`，可用于脚本、自动化与第三方集成。
 
-- **认证方式**：登录后获取 JWT，通过 `Authorization: Bearer <token>` 调用；或在管理后台创建 API Key，通过 `X-API-Key: <key>` 调用。
+- **认证方式**：登录后获取 JWT，通过 `Authorization: Bearer <token>` 调用；或在管理后台创建 API Key，通过 `Authorization: Bearer <keyId>:<secret>` 调用。
 - **统一响应**：`{ "success": true, "code": 0, "message": "", "data": ... }`。
-- **API Key 限制**：创建 Key 时按接口分组勾选权限（重复文件查询、文件备注查询、文件依赖树查询），
-  至少选择一项；文件列表 / 搜索 / 下载为公开接口，无需授权。旧版 `open_api:reader` / `open_api:writer`
-  合并权限继续兼容（等价于全部读取类接口）。
+- **API Key 限制**：创建 Key 时按接口分组勾选权限（兼容权限 / 文件信息 / 文件操作），
+  至少选择一项；Open API 所有接口都需要凭证——列表 / 搜索 / 下载 / 详情需读取类权限，
+  上传需写入类权限。`open_api:reader` / `open_api:writer` 合并权限继续兼容（writer 额外含上传）。
+- **分片上传**：大文件可使用 `/files/upload/init` 创建会话，再逐片调用 `/files/upload/chunk`，
+  最后调用 `/files/upload/finalize` 合并；`GET /files/upload/{id}` 可查询已上传分片用于断点续传。
 - **完整端点**：参见 [API 接口文档](../design/api/api-contracts.md)。
 
 ---

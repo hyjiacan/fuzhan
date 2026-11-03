@@ -28,7 +28,7 @@ func (ApiKey) TableName() string {
 }
 
 // 细粒度 OpenAPI scope（按接口授权）。
-// 保留 reader/writer/admin 作为兼容层级：reader/writer 覆盖全部读取类接口，
+// 保留 reader/writer/admin 作为兼容层级：reader 覆盖全部读取类接口，writer 额外覆盖上传；
 // admin 仅供内部使用，管理接口不允许授予。
 const (
 	ScopeOpenAPIReader   = "open_api:reader"
@@ -37,6 +37,8 @@ const (
 	ScopeFilesDuplicates = "open_api:files:duplicates"
 	ScopeFilesNotes      = "open_api:files:notes"
 	ScopeFilesDepends    = "open_api:files:depends"
+	ScopeFilesInfo       = "open_api:files:info"
+	ScopeFilesUpload     = "open_api:files:upload"
 )
 
 // ScopeCatalogItem 一项可授予的 OpenAPI 接口权限
@@ -46,12 +48,16 @@ type ScopeCatalogItem struct {
 	Group string `json:"group"`
 }
 
-// OpenAPIScopeCatalog 细粒度接口权限目录（仅包含需要认证的接口，公开接口无需授权）
+// OpenAPIScopeCatalog 可授予的接口权限目录（Open API 所有接口均需凭证访问）
 func OpenAPIScopeCatalog() []ScopeCatalogItem {
 	return []ScopeCatalogItem{
+		{ScopeOpenAPIReader, "读取类接口（列表 / 搜索 / 下载 / 详情）", "兼容权限"},
+		{ScopeOpenAPIWriter, "读写类接口（含上传）", "兼容权限"},
 		{ScopeFilesDuplicates, "重复文件查询", "文件信息"},
 		{ScopeFilesNotes, "文件备注查询", "文件信息"},
 		{ScopeFilesDepends, "文件依赖树查询", "文件信息"},
+		{ScopeFilesInfo, "文件详情查询", "文件信息"},
+		{ScopeFilesUpload, "文件上传", "文件操作"},
 	}
 }
 
@@ -68,18 +74,19 @@ func IsGrantableScope(scope string) bool {
 	return false
 }
 
-// scopeHierarchy 定义 scope 的层级关系（包含关系）；兼容 reader/writer 授予全部读取类权限
+// scopeHierarchy 定义 scope 的层级关系（包含关系）；兼容 reader/writer 授予全部读取类权限，
+// 上传属于写入能力，仅 writer/admin 覆盖。
 var scopeHierarchy = map[string][]string{
 	ScopeOpenAPIAdmin: {
 		ScopeOpenAPIReader, ScopeOpenAPIWriter, ScopeOpenAPIAdmin,
-		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends, ScopeFilesInfo, ScopeFilesUpload,
 	},
 	ScopeOpenAPIWriter: {
 		ScopeOpenAPIReader, ScopeOpenAPIWriter,
-		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+		ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends, ScopeFilesInfo, ScopeFilesUpload,
 	},
 	ScopeOpenAPIReader: {
-		ScopeOpenAPIReader, ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends,
+		ScopeOpenAPIReader, ScopeFilesDuplicates, ScopeFilesNotes, ScopeFilesDepends, ScopeFilesInfo,
 	},
 }
 

@@ -6,10 +6,16 @@
         <p class="description">管理 Open API 服务配置和访问密钥</p>
       </div>
       <div class="header-right">
-        <el-button type="primary" @click="openConfigModal">
-          <el-icon><Setting /></el-icon>
-          服务配置
-        </el-button>
+        <el-space>
+          <el-button :disabled="!openApiConfig.enabled" @click="openDocs">
+            <el-icon><Document /></el-icon>
+            API 文档
+          </el-button>
+          <el-button type="primary" @click="openConfigModal">
+            <el-icon><Setting /></el-icon>
+            服务配置
+          </el-button>
+        </el-space>
       </div>
     </div>
 
@@ -76,7 +82,7 @@
             </div>
           </div>
           <div class="field-hint">
-            仅需为需要认证的接口授权；文件列表 / 搜索 / 下载为公开接口，无需勾选。
+            列表 / 搜索 / 下载 / 详情属于读取类接口，勾选「读取」即可全部授权；上传需勾选「写入」或「文件上传」。
           </div>
         </el-form-item>
         <el-form-item label="过期时间" prop="expiresIn">
@@ -197,7 +203,7 @@
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElButton, ElTag } from 'element-plus'
-import { Setting } from '@element-plus/icons-vue'
+import { Setting, Document } from '@element-plus/icons-vue'
 import { ApiKeyApi, ConfigApi, AuthApi } from '@/api'
 import { TableConst, TimeUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
@@ -251,6 +257,11 @@ const configDraft = ref({ ...openApiConfig.value })
 const openConfigModal = () => {
   configDraft.value = { ...openApiConfig.value }
   showConfigModal.value = true
+}
+
+// 在新标签页打开 OpenAPI 文档页（/api/open/v1/docs 会重定向到 Scalar 页面）
+const openDocs = () => {
+  window.open('/api/open/v1/docs', '_blank', 'noopener,noreferrer')
 }
 
 const domainWhitelistDisplay = computed({
