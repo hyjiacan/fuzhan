@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -441,6 +442,126 @@ func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
 			"completedAt":     task.CompletedAt,
 		},
 	})
+}
+
+// URL 任务 SSE 推送参数
+const (
+	urlTaskStreamInterval    = time.Second
+	urlTaskStreamHeartbeat   = 15 * time.Second
+	urlTaskStreamBackfillAge = 2 * time.Second
+)
+
+// StreamURLTasks 以 SSE 推送当前用户的 URL 下载任务进度变化。
+// 建连即推送一帧活跃/近期任务，此后每秒只推送状态有变化的任务；
+// 原 GET /uploads/url-task/:taskId 轮询接口保留，供前端降级使用。
+func (h *UploadSessionHandler) StreamURLTasks(c *gin.Context) {
+	var userID, anonymousID *string
+	if uid, exists := c.Get("userUUID"); exists {
+		if s, ok := uid.(string); ok && s != "" {
+			userID = &s
+		}
+	}
+	anonID := c.GetHeader("X-Anonymous-ID")
+	if anonID != "" {
+		anonymousID = &anonID
+	}
+	if (userID == nil || *userID == "") && (anonymousID == nil || *anonymousID == "") {
+		utils.HandleBadRequest(c, "缺少任务归属标识", nil)
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	since := utils.Now().Add(-urlTaskStreamBackfillAge)
+	sent := make(map[string]string)
+
+	push := func() bool {
+		tasks, err := h.urlTaskRepo.ListActiveOrUpdatedByUser(userID, anonymousID, since)
+		if err != nil {
+			// 查询失败不中断连接，下个周期重试
+			return true
+		}
+		changed := make([]gin.H, 0, len(tasks))
+		for _, task := range tasks {
+			item := urlTaskStreamItem(task)
+			raw, merr := json.Marshal(item)
+			if merr != nil {
+				continue
+			}
+			key := string(raw)
+			if prev, exists := sent[task.ID]; exists && prev == key {
+				continue
+			}
+			sent[task.ID] = key
+			changed = append(changed, item)
+		}
+		if len(changed) == 0 {
+			return true
+		}
+		return writeURLTaskFrame(c, flusher, changed)
+	}
+
+	if !push() {
+		return
+	}
+
+	ticker := time.NewTicker(urlTaskStreamInterval)
+	defer ticker.Stop()
+	heartbeat := time.NewTicker(urlTaskStreamHeartbeat)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(c.Writer, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ticker.C:
+			if !push() {
+				return
+			}
+		}
+	}
+}
+
+// urlTaskStreamItem 组装单条任务推送数据（字段与 GetURLTask 保持一致）
+func urlTaskStreamItem(task models.URLDownloadTask) gin.H {
+	return gin.H{
+		"id":              task.ID,
+		"fileName":        task.FileName,
+		"fileSize":        task.FileSize,
+		"downloadedBytes": task.DownloadedBytes,
+		"status":          task.Status,
+		"errorMessage":    task.ErrorMessage,
+		"retryCount":      task.RetryCount,
+		"createdAt":       task.CreatedAt,
+		"completedAt":     task.CompletedAt,
+	}
+}
+
+// writeURLTaskFrame 写入一帧任务增量，返回 false 表示连接已断开
+func writeURLTaskFrame(c *gin.Context, flusher http.Flusher, tasks []gin.H) bool {
+	payload, err := json.Marshal(gin.H{"tasks": tasks})
+	if err != nil {
+		return false
+	}
+	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 // CancelURLTask 取消 URL 下载任务

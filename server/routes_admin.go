@@ -115,6 +115,8 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	if lh := rt.logHandler; lh != nil {
 		admin.GET("/logs/files", lh.Files)
 		admin.GET("/logs/tail", lh.Tail)
+		// SSE 实时增量推送：前端 fetch 流式解析；失败时回退到 /logs/tail 轮询
+		admin.GET("/logs/stream", lh.Stream)
 	}
 
 	// 服务器资源监控

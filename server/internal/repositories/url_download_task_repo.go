@@ -132,6 +132,26 @@ func (r *URLDownloadTaskRepository) ListByUser(userID *string, anonymousID *stri
 	return tasks, total, err
 }
 
+// ListActiveOrUpdatedByUser 查询用户当前活跃（pending/downloading）或 since 之后有更新的任务。
+// 供 SSE 增量推送使用：连接建立时记录 since，之后只取有变化的任务。只读查询，不影响队列调度。
+func (r *URLDownloadTaskRepository) ListActiveOrUpdatedByUser(userID *string, anonymousID *string, since time.Time) ([]models.URLDownloadTask, error) {
+	var tasks []models.URLDownloadTask
+	query := r.db.Model(&models.URLDownloadTask{}).
+		Where("(status IN ? OR updated_at >= ?)",
+			[]models.URLDownloadStatus{models.URLDownloadStatusPending, models.URLDownloadStatusDownloading}, since)
+
+	if userID != nil && *userID != "" {
+		query = query.Where("user_id = ?", *userID)
+	} else if anonymousID != nil && *anonymousID != "" {
+		query = query.Where("anonymous_id = ? AND user_id IS NULL", *anonymousID)
+	} else {
+		return tasks, nil
+	}
+
+	err := query.Order("updated_at ASC").Find(&tasks).Error
+	return tasks, err
+}
+
 // Delete 删除任务
 func (r *URLDownloadTaskRepository) Delete(id string) error {
 	return r.db.Delete(&models.URLDownloadTask{}, "id = ?", id).Error

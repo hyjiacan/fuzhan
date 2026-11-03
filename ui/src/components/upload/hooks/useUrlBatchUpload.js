@@ -43,7 +43,7 @@ export const CHECKSUM_ALGORITHMS = [
   { value: 'sha256', label: 'SHA256' }
 ]
 
-// URL 批量上传：单条/多行添加、探测去重、逐条或整体入队（后端全局队列调度）、进度轮询
+// URL 批量上传：单条/多行添加、探测去重、逐条或整体入队（后端全局队列调度）、SSE 进度推送（失败降级轮询）
 export function useUrlBatchUpload({
   form,
   getApiUrl,
@@ -60,6 +60,17 @@ export function useUrlBatchUpload({
   const enqueuing = ref(false)
   const pollTimers = new Map()
   const MAX_POLL_RETRIES = 400 // ~10 分钟
+
+  // 共享 SSE 进度通道：fetch 流式解析（EventSource 无法携带 X-Anonymous-ID）；
+  // 连续失败 2 次后降级为原有逐条轮询，降级期间不破坏既有查询接口。
+  const URL_TASK_STREAM_URL = '/api/v1/web/uploads/url-tasks/stream'
+  const STREAM_RETRY_MS = 1500
+  const STREAM_MAX_ERRORS = 2
+  let streamCtrl = null
+  let streamRetryTimer = null
+  let streamConnected = false
+  let streamErrors = 0
+  let streamFallback = false
 
   const storageType = computed(() => {
     const createUrl = getApiUrl('createSession')
@@ -180,6 +191,7 @@ export function useUrlBatchUpload({
     stopPolling(id)
     const idx = items.value.findIndex(i => i.id === id)
     if (idx >= 0) items.value.splice(idx, 1)
+    syncStream()
   }
 
   // 入队单个条目：任务持久化到后端，由全局队列按并行上限调度
@@ -203,7 +215,7 @@ export function useUrlBatchUpload({
         if (data.data.fileSize) item.fileSize = data.data.fileSize
         if (data.data.fileName) item.fileName = item.fileName || data.data.fileName
         setMessage('已加入队列，等待上传...', 'info')
-        startPolling(item)
+        syncStream()
         return true
       }
       item.status = 'failed'
@@ -255,7 +267,7 @@ export function useUrlBatchUpload({
       item.progress = 0
       item.displayText = '排队中...'
       setMessage('已重新加入队列', 'info')
-      startPolling(item)
+      syncStream()
     } catch (e) {
       item.error = formatErrorMessage(e, '重试失败')
     }
@@ -292,6 +304,44 @@ export function useUrlBatchUpload({
     stopPolling(item.id)
     item.status = 'cancelled'
     item.displayText = ''
+    syncStream()
+  }
+
+  // applyTaskState 将后端任务状态映射到条目（SSE 与轮询共用；终态提示只触发一次）
+  const applyTaskState = (item, task) => {
+    if (!item || !task) return
+    item.progress = task.fileSize > 0 ? Math.round(task.downloadedBytes / task.fileSize * 100) : 0
+    item.retryCount = task.retryCount || 0
+    if (task.fileSize) item.fileSize = task.fileSize
+    if (task.fileName) item.fileName = task.fileName
+
+    const retrySuffix = item.retryCount > 0 ? `（第 ${item.retryCount} 次重试）` : ''
+    const st = mapTaskStatus(task.status)
+    const prev = item.status
+    item.status = st
+    if (st === 'pending') {
+      item.displayText = `排队中${retrySuffix}...`
+      setMessage('已加入队列，等待上传...', 'info')
+    } else if (st === 'uploading') {
+      item.displayText = `上传中 ${item.progress}%${retrySuffix}`
+      setMessage(`正在上传 ${item.fileName}...`, 'info')
+    } else if (st === 'completed') {
+      item.displayText = '上传完成'
+      item.progress = 100
+      stopPolling(item.id)
+      if (prev !== 'completed') {
+        setMessage('文件上传成功', 'success')
+        submitNotesAndDeps(item)
+        emit?.('upload-success')
+      }
+    } else if (st === 'failed') {
+      item.error = task.errorMessage || '上传失败'
+      stopPolling(item.id)
+      if (prev !== 'failed') setMessage('文件上传失败', 'error')
+    } else if (st === 'cancelled') {
+      stopPolling(item.id)
+    }
+    syncStream()
   }
 
   const startPolling = (item) => {
@@ -309,35 +359,7 @@ export function useUrlBatchUpload({
       try {
         const res = await UploadApi.getURLTask(item.taskId)
         if (!res.success) return
-        const task = res.data.task
-        item.progress = task.fileSize > 0 ? Math.round(task.downloadedBytes / task.fileSize * 100) : 0
-        item.retryCount = task.retryCount || 0
-        if (task.fileSize) item.fileSize = task.fileSize
-        if (task.fileName) item.fileName = task.fileName
-
-        const retrySuffix = item.retryCount > 0 ? `（第 ${item.retryCount} 次重试）` : ''
-        const st = mapTaskStatus(task.status)
-        item.status = st
-        if (st === 'pending') {
-          item.displayText = `排队中${retrySuffix}...`
-          setMessage('已加入队列，等待上传...', 'info')
-        } else if (st === 'uploading') {
-          item.displayText = `上传中 ${item.progress}%${retrySuffix}`
-          setMessage(`正在上传 ${item.fileName}...`, 'info')
-        } else if (st === 'completed') {
-          item.displayText = '上传完成'
-          item.progress = 100
-          stopPolling(item.id)
-          setMessage('文件上传成功', 'success')
-          submitNotesAndDeps(item)
-          emit?.('upload-success')
-        } else if (st === 'failed') {
-          item.error = task.errorMessage || '上传失败'
-          stopPolling(item.id)
-          setMessage('文件上传失败', 'error')
-        } else if (st === 'cancelled') {
-          stopPolling(item.id)
-        }
+        applyTaskState(item, res.data.task)
       } catch (e) {
         // 轮询失败不中断，继续尝试
         console.warn('轮询URL上传进度失败:', e)
@@ -354,8 +376,156 @@ export function useUrlBatchUpload({
     }
   }
 
-  const stopAllPolling = () => {
+  const clearPollTimers = () => {
     for (const id of Array.from(pollTimers.keys())) stopPolling(id)
+  }
+
+  // ============ 共享 SSE 进度通道 ============
+  const activeTaskItems = () =>
+    items.value.filter(i => i.taskId && (i.status === 'pending' || i.status === 'uploading'))
+
+  const anonHeaders = () => {
+    try {
+      const id = localStorage.getItem('anonymous_id')
+      if (id) return { 'X-Anonymous-ID': id }
+    } catch (e) { /* 忽略存储不可用 */ }
+    return {}
+  }
+
+  const startStream = () => {
+    if (typeof window === 'undefined' || !window.fetch) {
+      streamFallback = true
+      startPollingActive()
+      return
+    }
+    closeStream()
+    const ctrl = new AbortController()
+    streamCtrl = ctrl
+    // 同源 fetch 自动携带登录 Cookie；匿名身份通过 X-Anonymous-ID 头传递
+    fetch(URL_TASK_STREAM_URL, { signal: ctrl.signal, headers: anonHeaders() })
+      .then(async (resp) => {
+        if (ctrl.signal.aborted) return
+        if (!resp.ok || !resp.body) {
+          onStreamFailure()
+          return
+        }
+        streamConnected = true
+        streamErrors = 0
+        // 连接可用后停掉逐条轮询，避免重复请求；并立即对活跃任务做一次对账，
+        // 避免任务在建立连接前已完成而错过推送（服务端只推送活跃/近期变化的任务）
+        clearPollTimers()
+        reconcileActiveItems()
+        const reader = resp.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done || ctrl.signal.aborted) break
+            buffer += decoder.decode(value, { stream: true })
+            let sep
+            while ((sep = buffer.indexOf('\n\n')) >= 0) {
+              const block = buffer.slice(0, sep)
+              buffer = buffer.slice(sep + 2)
+              const line = block.split('\n').find(l => l.startsWith('data:'))
+              if (!line) continue
+              try {
+                const payload = JSON.parse(line.slice(5).trim())
+                applyStreamTasks(payload && payload.tasks)
+              } catch (e) { /* 忽略异常帧 */ }
+              streamErrors = 0
+            }
+          }
+          if (!ctrl.signal.aborted) onStreamFailure()
+        } catch (e) {
+          if (!ctrl.signal.aborted) onStreamFailure()
+        }
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) onStreamFailure()
+      })
+  }
+
+  const applyStreamTasks = (tasks) => {
+    for (const task of tasks || []) {
+      const item = items.value.find(i => i.taskId === task.id)
+      if (item) applyTaskState(item, task)
+    }
+  }
+
+  // reconcileActiveItems 建连后对活跃任务逐条补一次状态，弥补推送的时间窗
+  const reconcileActiveItems = async () => {
+    for (const item of activeTaskItems()) {
+      try {
+        const res = await UploadApi.getURLTask(item.taskId)
+        if (res.success && res.data && res.data.task) applyTaskState(item, res.data.task)
+      } catch (e) {
+        // 单条对账失败忽略，后续由推送或降级轮询补齐
+      }
+    }
+  }
+
+  const onStreamFailure = () => {
+    streamConnected = false
+    closeStream()
+    streamErrors += 1
+    if (streamErrors >= STREAM_MAX_ERRORS) {
+      streamFallback = true
+      streamErrors = 0
+      startPollingActive()
+      return
+    }
+    if (!hasActive.value) return
+    if (streamRetryTimer) clearTimeout(streamRetryTimer)
+    streamRetryTimer = setTimeout(() => {
+      streamRetryTimer = null
+      if (!streamFallback && hasActive.value) startStream()
+    }, STREAM_RETRY_MS)
+  }
+
+  // closeStream 仅中断当前连接，保留失败计数供重试/降级判断
+  const closeStream = () => {
+    if (streamCtrl) {
+      streamCtrl.abort()
+      streamCtrl = null
+    }
+  }
+
+  const stopStream = () => {
+    closeStream()
+    streamConnected = false
+    streamErrors = 0
+    if (streamRetryTimer) {
+      clearTimeout(streamRetryTimer)
+      streamRetryTimer = null
+    }
+  }
+
+  const startPollingActive = () => {
+    for (const item of activeTaskItems()) {
+      if (!pollTimers.has(item.id)) startPolling(item)
+    }
+  }
+
+  // syncStream 依据活跃任务维持共享通道：有活跃任务时确保连接（或降级轮询），否则关闭
+  const syncStream = () => {
+    if (!hasActive.value) {
+      stopStream()
+      streamFallback = false
+      return
+    }
+    if (streamFallback) {
+      startPollingActive()
+      return
+    }
+    if (streamConnected || streamCtrl || streamRetryTimer) return
+    startStream()
+  }
+
+  const stopAllPolling = () => {
+    clearPollTimers()
+    stopStream()
+    streamFallback = false
   }
 
   // 上传完成后提交备注/依赖（异步，轮询文件记录就绪后写入）

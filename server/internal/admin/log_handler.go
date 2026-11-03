@@ -4,13 +4,16 @@ package admin
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/pkg/response"
@@ -228,6 +231,138 @@ func (h *LogHandler) Tail(c *gin.Context) {
 		"next_offset": nextOffset,
 		"has_more":    hasMore,
 	})
+}
+
+const (
+	// logStreamCheckInterval 增量扫描间隔
+	logStreamCheckInterval = 500 * time.Millisecond
+	// logStreamHeartbeatInterval SSE 心跳间隔，避免代理按空闲超时断开
+	logStreamHeartbeatInterval = 15 * time.Second
+)
+
+// logStreamFrame SSE 数据帧
+type logStreamFrame struct {
+	Lines      []LogLine `json:"lines"`
+	NextOffset int64     `json:"next_offset"`
+}
+
+// Stream 以 SSE 持续推送日志增量（Tail 的实时版本）。
+//
+// 参数：
+//   - file     日志文件名（白名单内）
+//   - offset   起始游标（缺省从当前文件末尾开始，只推送之后新增的行）
+//   - lines    单帧最多返回行数（默认 200，上限 2000）
+//   - level    最低级别阈值
+//   - keyword  关键字
+func (h *LogHandler) Stream(c *gin.Context) {
+	file := c.DefaultQuery("file", "app.log")
+	if !isAllowedLogFile(file) {
+		response.HandleBadRequest(c, "不支持的日志文件", nil)
+		return
+	}
+	path := filepath.Join(resolveLogDir(), file)
+	f, err := os.Open(path)
+	if err != nil {
+		response.HandleNotFound(c, "日志文件不存在或不可读")
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		response.HandleInternalServerError(c, "读取日志文件信息失败")
+		return
+	}
+	offset := stat.Size()
+	if raw := c.Query("offset"); raw != "" {
+		parsed, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil || parsed < 0 {
+			response.HandleBadRequest(c, "offset 参数非法", nil)
+			return
+		}
+		offset = parsed
+	}
+	maxLines := parseLogLinesParam(c.Query("lines"))
+	match := buildLogMatcher(c.Query("level"), c.Query("keyword"))
+
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	// 建连即回一帧当前游标，便于前端确认连接已生效
+	if !writeLogStreamFrame(c, flusher, nil, offset) {
+		return
+	}
+
+	checkTicker := time.NewTicker(logStreamCheckInterval)
+	defer checkTicker.Stop()
+	heartbeatTicker := time.NewTicker(logStreamHeartbeatInterval)
+	defer heartbeatTicker.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-heartbeatTicker.C:
+			if _, err := fmt.Fprint(c.Writer, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-checkTicker.C:
+			lines, next, err := readLogIncrement(f, offset, maxLines, match)
+			if err != nil {
+				// 读取失败不中断连接，下个周期重试
+				continue
+			}
+			offset = next
+			if len(lines) == 0 {
+				continue
+			}
+			if !writeLogStreamFrame(c, flusher, lines, offset) {
+				return
+			}
+		}
+	}
+}
+
+// readLogIncrement 从 offset 读取新增的完整行；文件被截断或轮转后偏移越界时归零重读。
+func readLogIncrement(f *os.File, offset int64, maxLines int, match logMatcher) ([]LogLine, int64, error) {
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, offset, err
+	}
+	size := stat.Size()
+	if offset > size {
+		offset = 0
+	}
+	lines, next, _, err := scanLogFrom(f, offset, size, maxLines, match)
+	if err != nil {
+		return nil, offset, err
+	}
+	return lines, next, nil
+}
+
+// writeLogStreamFrame 写入一帧日志增量，返回 false 表示连接已断开
+func writeLogStreamFrame(c *gin.Context, flusher http.Flusher, lines []LogLine, nextOffset int64) bool {
+	if lines == nil {
+		lines = []LogLine{}
+	}
+	payload, err := json.Marshal(logStreamFrame{Lines: lines, NextOffset: nextOffset})
+	if err != nil {
+		return false
+	}
+	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 // parseLogLinesParam 解析并收敛 lines 参数

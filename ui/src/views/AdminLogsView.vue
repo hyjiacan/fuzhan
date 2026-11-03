@@ -86,7 +86,7 @@
           {{ following ? '· 跟随最新' : '· 已暂停跟随（上翻阅读中）' }}
         </span>
         <span class="status-right">
-          每 {{ POLL_MS / 1000 }} 秒增量拉取 · 已缓存 {{ lines.length }} / 最多 {{ MAX_BUFFER_LINES }} 行
+          {{ realtimeText }} · 已缓存 {{ lines.length }} / 最多 {{ MAX_BUFFER_LINES }} 行
         </span>
       </div>
 
@@ -198,6 +198,10 @@ const INITIAL_LINES = 200
 const FETCH_LINES = 300
 // 增量轮询间隔
 const POLL_MS = 2500
+// SSE 增量推送（fetch 流式；EventSource 无法携带自定义请求头，故统一用 fetch）
+const STREAM_URL = '/api/v1/web/admin/logs/stream'
+// SSE 建连失败后的重试间隔（连续失败 2 次降级为轮询）
+const SSE_RETRY_MS = 1500
 
 // ============ 状态 ============
 const files = ref([])
@@ -227,6 +231,12 @@ const viewportHeight = ref(0)
 const following = ref(true)
 const pendingNew = ref(0)
 
+// 增量来源：'sse' 实时推送 / 'polling' 轮询降级
+const realtimeMode = ref('')
+const realtimeText = computed(() =>
+  realtimeMode.value === 'sse' ? '实时推送' : `每 ${POLL_MS / 1000} 秒增量拉取`
+)
+
 // 交互状态
 const selectedUid = ref(null)
 const selectedLine = ref(null)
@@ -241,6 +251,9 @@ let pollTimer = null
 let debounceTimer = null
 let highlightTimer = null
 let resizeObserver = null
+let sseCtrl = null
+let sseErrors = 0
+let streamRetryTimer = null
 
 // ============ 计算属性 ============
 const displayLines = computed(() => {
@@ -412,6 +425,8 @@ async function loadFiles() {
 
 async function handleMount() {
   reqSeq += 1
+  stopStream()
+  stopPolling()
   const seq = reqSeq
   loading.value = true
   error.value = null
@@ -441,7 +456,7 @@ async function handleMount() {
   } finally {
     if (seq === reqSeq) {
       loading.value = false
-      schedulePoll()
+      startRealtime()
     }
   }
 }
@@ -456,10 +471,129 @@ function onFileChange() {
   handleMount()
 }
 
-// ============ 增量轮询 ============
+// ============ 增量来源：SSE 优先，连续失败 2 次降级为轮询 ============
+function realtimeSafe() {
+  return typeof window !== 'undefined' && window.fetch
+}
+
+// startRealtime 建立实时增量通道；游标缺失或环境不支持时直接走轮询
+function startRealtime() {
+  if (!realtimeSafe() || locating.value || cursor.value === null) {
+    schedulePoll()
+    return
+  }
+  startStream()
+}
+
+function startStream() {
+  stopPolling()
+  closeStream()
+  const ctrl = new AbortController()
+  sseCtrl = ctrl
+  const seq = reqSeq
+  const params = new URLSearchParams({
+    file: file.value,
+    lines: String(FETCH_LINES),
+    offset: String(cursor.value),
+  })
+  fetch(`${STREAM_URL}?${params.toString()}`, { signal: ctrl.signal })
+    .then(async (resp) => {
+      if (ctrl.signal.aborted || seq !== reqSeq) return
+      if (!resp.ok || !resp.body) {
+        onStreamFailure(seq)
+        return
+      }
+      realtimeMode.value = 'sse'
+      sseErrors = 0
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done || ctrl.signal.aborted) break
+          buffer += decoder.decode(value, { stream: true })
+          // 按空行分帧，取每帧的 data: 行
+          let sep
+          while ((sep = buffer.indexOf('\n\n')) >= 0) {
+            const block = buffer.slice(0, sep)
+            buffer = buffer.slice(sep + 2)
+            const line = block.split('\n').find((l) => l.startsWith('data:'))
+            if (!line) continue
+            if (seq !== reqSeq) return
+            try {
+              applyStreamFrame(JSON.parse(line.slice(5).trim()))
+            } catch (e) {
+              // 忽略异常帧
+            }
+            sseErrors = 0
+          }
+        }
+        if (!ctrl.signal.aborted && seq === reqSeq) onStreamFailure(seq)
+      } catch (e) {
+        if (!ctrl.signal.aborted && seq === reqSeq) onStreamFailure(seq)
+      }
+    })
+    .catch(() => {
+      if (!ctrl.signal.aborted && seq === reqSeq) onStreamFailure(seq)
+    })
+}
+
+// applyStreamFrame 应用一帧增量：更新游标并追加新行（addLines 内按 pos 去重）
+function applyStreamFrame(data) {
+  if (!data) return
+  if (typeof data.next_offset === 'number') cursor.value = data.next_offset
+  const incoming = (data.lines || []).map(normalizeLine)
+  if (incoming.length) addLines(incoming, false)
+}
+
+function onStreamFailure(seq) {
+  if (seq !== reqSeq) return
+  sseErrors += 1
+  closeStream()
+  if (sseErrors >= 2) {
+    stopStream()
+    schedulePoll()
+    return
+  }
+  if (streamRetryTimer) clearTimeout(streamRetryTimer)
+  streamRetryTimer = setTimeout(() => {
+    streamRetryTimer = null
+    if (seq !== reqSeq) return
+    startStream()
+  }, SSE_RETRY_MS)
+}
+
+// closeStream 中止当前连接但保留失败计数（供重试/降级判断）
+function closeStream() {
+  if (sseCtrl) {
+    sseCtrl.abort()
+    sseCtrl = null
+  }
+}
+
+// stopStream 中止连接并复位计数（切文件、重新加载、卸载时使用）
+function stopStream() {
+  closeStream()
+  sseErrors = 0
+  if (streamRetryTimer) {
+    clearTimeout(streamRetryTimer)
+    streamRetryTimer = null
+  }
+}
+
+// ============ 增量轮询（SSE 不可用/失败时的降级路径） ============
 function schedulePoll() {
+  realtimeMode.value = 'polling'
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = setTimeout(onPoll, POLL_MS)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
 }
 
 async function onPoll() {
@@ -538,6 +672,8 @@ async function locate(target) {
   }
   locateInput.value = t
   if (locating.value) return
+  // 定位期间暂停实时通道，避免增量行与翻页结果相互干扰
+  stopStream()
   locating.value = true
   highlightUid.value = null
   if (following.value) following.value = false
@@ -578,6 +714,7 @@ async function locate(target) {
     highlightTimer = setTimeout(() => { highlightUid.value = null }, 4000)
   } finally {
     locating.value = false
+    startRealtime()
   }
 }
 
@@ -709,7 +846,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   reqSeq += 1
-  if (pollTimer) clearTimeout(pollTimer)
+  stopStream()
+  stopPolling()
   if (debounceTimer) clearTimeout(debounceTimer)
   if (highlightTimer) clearTimeout(highlightTimer)
   if (resizeObserver) resizeObserver.disconnect()

@@ -205,6 +205,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		})
 		uploads.GET("/sessions", authMiddleware.AuthOptional(), uploadSessionHandler.ListUploadSessions)
 		uploads.GET("/url-tasks", authMiddleware.AuthOptional(), uploadSessionHandler.ListURLTasks)
+		// SSE 实时进度推送：前端 fetch 流式解析；失败时回退到 /url-task/:taskId 轮询
+		uploads.GET("/url-tasks/stream", authMiddleware.AuthOptional(), uploadSessionHandler.StreamURLTasks)
 		uploads.POST("/url-tasks/:taskId/cancel", authMiddleware.AuthOptional(), uploadSessionHandler.CancelURLTask)
 		uploads.POST("/url-tasks/:taskId/retry", authMiddleware.AuthOptional(), uploadSessionHandler.RetryURLTask)
 		uploads.POST("/url-tasks/:taskId/checksum", authMiddleware.AuthOptional(), uploadSessionHandler.ComputeURLTaskChecksum) // 计算已完成任务的校验值（md5/sha1/sha256）
