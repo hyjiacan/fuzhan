@@ -60,6 +60,11 @@ func (h *UploadSessionHandler) buildTargetPath(session *models.UploadSession) (t
 		return
 	}
 
+	// 禁止写入符号链接路径（含 Windows 目录联接），避免穿透根目录
+	if err = utils.EnsureNoSymlinkPath(rootPath, targetDir); err != nil {
+		return
+	}
+
 	if err = os.MkdirAll(targetDir, 0755); err != nil {
 		err = fmt.Errorf("创建目标目录失败: %q: %w", targetDir, err)
 		return
@@ -79,6 +84,13 @@ func (h *UploadSessionHandler) buildTargetPath(session *models.UploadSession) (t
 	targetPath = filepath.Join(targetDir, cleanFilename)
 	// 上传中临时文件名加前导 .，避免与用户文件冲突，且通过前导 . 过滤隐藏
 	uploadingPath = filepath.Join(filepath.Dir(targetPath), fmt.Sprintf(".%s.%d.uploading", filepath.Base(targetPath), session.ID))
+
+	// 目标与临时文件同样不允许落在符号链接上
+	for _, p := range []string{targetPath, uploadingPath} {
+		if err = utils.EnsureNoSymlinkPath(rootPath, p); err != nil {
+			return
+		}
+	}
 
 	return
 }
@@ -111,6 +123,11 @@ func (h *UploadSessionHandler) buildTempTargetPath(filename string, clientIP str
 		baseDir = filepath.Join(baseDir, cleanDir)
 	}
 
+	// 禁止写入符号链接路径（含 Windows 目录联接），避免穿透临时目录
+	if err = utils.EnsureNoSymlinkPath(tempPath, baseDir); err != nil {
+		return
+	}
+
 	if err = os.MkdirAll(baseDir, 0755); err != nil {
 		err = fmt.Errorf("创建目录失败: %w", err)
 		return
@@ -132,7 +149,34 @@ func (h *UploadSessionHandler) buildTempTargetPath(filename string, clientIP str
 	targetPath = filepath.Join(baseDir, cleanFilename)
 	uploadingPath = filepath.Join(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".url-download.uploading")
 
+	// 目标与临时文件同样不允许落在符号链接上
+	for _, p := range []string{targetPath, uploadingPath} {
+		if err = utils.EnsureNoSymlinkPath(tempPath, p); err != nil {
+			return
+		}
+	}
+
 	return
+}
+
+// validateURLTaskNoSymlink 校验 URL 下载任务的临时文件与目标文件路径不含符号链接。
+// 任务创建时已校验一次，执行前再校验一次，覆盖排队期间路径被替换的窗口。
+func validateURLTaskNoSymlink(task *models.URLDownloadTask) error {
+	var root string
+	if task.StorageType == models.URLDownloadStorageTemp {
+		root = appconfig.GlobalConfig.Storage.Temp.Path
+	} else {
+		root = appconfig.RootNames[task.RootName]
+	}
+	if root == "" {
+		return nil
+	}
+	for _, p := range []string{task.TempFilePath, task.TargetPath} {
+		if err := utils.EnsureNoSymlinkPath(root, p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // EnsureUploadingFile 确保上传文件存在，必要时预分配空间（供 URL 下载使用）
@@ -259,6 +303,14 @@ func (h *UploadSessionHandler) executeURLDownloadTask(task *models.URLDownloadTa
 	if h.dispatcher != nil {
 		h.dispatcher.RegisterCancel(task.ID, cancel)
 		defer h.dispatcher.UnregisterCancel(task.ID)
+	}
+
+	// 落盘前再次校验：任务排队期间路径层级可能被替换为符号链接
+	if err := validateURLTaskNoSymlink(task); err != nil {
+		utils.Warn("URL上传任务路径校验失败，任务终止",
+			utils.String("taskId", task.ID), utils.Err(err))
+		h.setURLTaskFailed(task.ID, err.Error())
+		return
 	}
 
 	sessionTargetType := models.TargetTypeRegular

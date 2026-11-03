@@ -563,6 +563,15 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		response.HandleNotFound(c, "根目录存储不可用: "+rootName)
 		return
 	}
+
+	// 本地后端禁止上传写入符号链接路径（含 Windows 目录联接），避免穿透根目录
+	if rootPath := h.rootNames[rootName]; st.Kind() == "local" && rootPath != "" {
+		if err := utils.EnsureNoSymlinkPath(rootPath, filepath.Join(rootPath, filepath.FromSlash(relPath))); err != nil {
+			response.HandleBadRequest(c, err.Error(), nil)
+			return
+		}
+	}
+
 	ctx := c.Request.Context()
 	clientIP := utils.GetClientIP(c)
 

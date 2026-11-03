@@ -48,6 +48,10 @@ type Watcher struct {
 	// 最近同步检查回调（由 index.Service 注入，用于检测文件是否刚被上传写入索引）
 	// 返回 true 表示文件最近已同步，watcher 应跳过处理
 	skipRecentlySynced func(rootName, relPath string) bool
+
+	// 上传中目标检查回调（由 index.Service 注入，上传落盘期间登记）
+	// 返回 true 表示该路径正在上传，watcher 应忽略其 Remove 事件
+	isUploadTarget func(rootName, relPath string) bool
 }
 
 // pendingEvent 待处理的文件事件
@@ -441,6 +445,30 @@ func (w *Watcher) resolveRenames(rootName string) {
 
 // handleRemove 处理删除事件
 func (w *Watcher) handleRemove(rootName, relPath string) {
+	// 该路径正在上传（覆盖替换）：Windows 会先上报目标路径的 Remove，
+	// 此时文件本应被新内容替换而非删除，忽略该事件。
+	if w.isUploadTarget != nil && w.isUploadTarget(rootName, relPath) {
+		utils.Debug("路径正在上传，忽略删除事件",
+			utils.String("path", relPath),
+			utils.String("root", rootName))
+		return
+	}
+
+	// 覆盖上传用 os.Rename 原子替换目标文件时，Windows 会先上报目标路径的 Remove，
+	// 之后才上报新名的 Rename（ReadDirectoryChangesW: REMOVED + RENAMED_NEW_NAME）。
+	// 若直接按 Remove 软删索引，上传收尾刚写入的 active 记录会被抹掉：文件仍在磁盘上
+	// 却从列表消失，再次上传还会因"查不到 active 归属记录"被判为目标已存在。
+	// 路径仍然存在说明只是替换过程的瞬时事件，忽略该删除即可。
+	if rootPath, ok := w.rootNames[rootName]; ok {
+		fullPath := filepath.Join(rootPath, filepath.FromSlash(relPath))
+		if _, err := os.Stat(fullPath); err == nil {
+			utils.Debug("路径仍然存在，忽略删除事件（覆盖替换产生的瞬时事件）",
+				utils.String("path", relPath),
+				utils.String("root", rootName))
+			return
+		}
+	}
+
 	utils.Info("文件删除事件",
 		utils.String("path", relPath),
 		utils.String("root", rootName))

@@ -219,6 +219,47 @@ func CalculateUserTempStorageSize(tempPath, userID string) (int64, error) {
 	return CalculateDirectorySize(userPath)
 }
 
+// EnsureNoSymlinkPath 校验 path 从 root 到自身（含最后一级）的每一层都不是符号链接。
+// 上传落盘前调用，避免文件被写入链接指向的位置（例如穿透到根目录之外）。
+// Windows 的目录联接（junction）在 os.Lstat 中表现为 ModeIrregular，这里一并拦截。
+// root 自身不做校验（允许管理员把根目录配置为链接）；路径越出 root 视为不安全。
+// 尚未创建的层级无需校验，直接返回成功。
+func EnsureNoSymlinkPath(root, path string) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("根路径解析失败: %q: %w", root, err)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("目标路径解析失败: %q: %w", path, err)
+	}
+
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("路径越界: 目标 %q 不在根目录 %q 内", absPath, absRoot)
+	}
+	if rel == "." {
+		return nil
+	}
+
+	cur := absRoot
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		cur = filepath.Join(cur, part)
+		info, statErr := os.Lstat(cur)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				// 该层级尚不存在，后续层级也不会存在，无需继续检查
+				return nil
+			}
+			return fmt.Errorf("检查路径 %q 失败: %w", cur, statErr)
+		}
+		if info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("禁止上传到符号链接路径: %q", cur)
+		}
+	}
+	return nil
+}
+
 // CopyFile 复制文件
 func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)

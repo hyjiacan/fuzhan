@@ -158,6 +158,25 @@ func (s *UploadSessionService) storageFor(session *models.UploadSession) (storag
 	return nil, false
 }
 
+// validateUploadNoSymlink 校验上传落盘路径的每一层都不是符号链接（含 Windows 目录联接）。
+// 上传会话创建、分片写入、完成落盘各校验一次，覆盖"会话创建后目标路径才被替换为链接"的窗口。
+// 远端后端无本地路径语义，直接放行。
+func (s *UploadSessionService) validateUploadNoSymlink(session *models.UploadSession, paths ...string) error {
+	if IsRemoteSession(session) {
+		return nil
+	}
+	root := s.storage.RootPath(session)
+	if root == "" {
+		return nil
+	}
+	for _, p := range paths {
+		if err := utils.EnsureNoSymlinkPath(root, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CreateSession 创建上传会话
 func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.UploadSession, error) {
 	// 检查磁盘空间
@@ -197,6 +216,15 @@ func (s *UploadSessionService) CreateSession(req *CreateSessionReq) (*models.Upl
 		ExpiredAt:        utils.Now().Add(24 * time.Hour),
 	}
 
+	// 落盘前先做符号链接校验，避免上传写入链接指向的位置；远端后端不适用本地路径语义
+	targetPath, uploadingPath, err := s.storage.Paths(session)
+	if err != nil {
+		return nil, fmt.Errorf("构建目标路径失败: %w", err)
+	}
+	if err := s.validateUploadNoSymlink(session, targetPath, uploadingPath); err != nil {
+		return nil, err
+	}
+
 	if err := s.sessionRepo.Create(session); err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
@@ -233,6 +261,9 @@ func (s *UploadSessionService) UploadChunk(req *UploadChunkReq) error {
 	_, uploadingPath, err := s.storage.Paths(session)
 	if err != nil {
 		return fmt.Errorf("构建目标路径失败: %w", err)
+	}
+	if err := s.validateUploadNoSymlink(session, uploadingPath); err != nil {
+		return err
 	}
 
 	// 计算预期分片大小
@@ -457,6 +488,19 @@ func (s *UploadSessionService) Finalize(uploadID uint, allowOverwrite bool) (*Fi
 	targetPath, uploadingPath, err := s.storage.Paths(session)
 	if err != nil {
 		return nil, fmt.Errorf("构建目标路径失败: %w", err)
+	}
+
+	// 覆盖上传用 os.Rename 原子替换目标文件时，Windows 监听器会先上报目标路径的 Remove。
+	// 落盘前把目标登记为"上传中"，watcher 对这段窗口内的 Remove 事件予以忽略，
+	// 避免刚同步好的索引记录被误删（文件仍在磁盘上却从列表消失）。
+	if s.indexSvc != nil && !IsRemoteSession(session) && session.TargetType == models.TargetTypeRegular {
+		unregister := s.indexSvc.BeginUploadTarget(session.TargetRoot, uploadRelPath(session))
+		defer unregister()
+	}
+
+	// 落盘前再次校验符号链接，防止会话创建后目标路径被替换为链接
+	if err := s.validateUploadNoSymlink(session, targetPath, uploadingPath); err != nil {
+		return nil, err
 	}
 
 	// 远端后端：分片为独立临时对象，按序流式合并为最终对象后再清理分片目录。

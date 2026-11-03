@@ -28,6 +28,10 @@ type UploadStorage interface {
 	// 流程保持"单 uploading 文件随机写 + 最终重命名"的既有实现。
 	// 返回 (分片目录逻辑路径, 指定分片索引的对象逻辑路径, ok)。
 	ChunkObjectPaths(session *models.UploadSession, chunkIndex int) (dirPath string, objectPath string, ok bool)
+
+	// RootPath 返回该策略本地落盘的物理根目录，供符号链接等路径安全校验使用。
+	// 远端存储后端或无法确定根目录时返回空字符串（跳过本地路径校验）。
+	RootPath(session *models.UploadSession) string
 }
 
 // IsRemoteSession 判断会话所属根目录是否使用远端存储后端。
@@ -137,6 +141,14 @@ func joinRemotePath(dir, file string) string {
 		return file
 	}
 	return pathpkg.Join(dir, file)
+}
+
+// RootPath 返回公开上传所隶属的本地根目录；远端后端无本地根，返回空字符串。
+func (PublicStorage) RootPath(session *models.UploadSession) string {
+	if IsRemoteSession(session) {
+		return ""
+	}
+	return appconfig.RootNames[session.TargetRoot]
 }
 
 // ChunkObjectPaths 实现远端公开存储的"每片独立临时对象"路径。

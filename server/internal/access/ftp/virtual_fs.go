@@ -151,6 +151,17 @@ func ftpRootName(name string) string {
 	return ""
 }
 
+// localWriteRoot 返回本地写入的物理根目录（用于符号链接校验）；远端根返回空。
+func (fs *MultiRootFs) localWriteRoot(rootName string, isPublic bool) string {
+	if isPublic {
+		return fs.rootNames[rootName]
+	}
+	if fs.privateDir != "" && fs.userUUID != "" {
+		return fs.privateDir
+	}
+	return ""
+}
+
 // recordPath 将虚拟路径拆为 (rootName, filePath)：
 // filePath 为带前导 / 的、不含 rootName 的相对路径（与索引表/操作记录约定一致）。
 // "public/files/sub/a.txt" -> ("files", "/sub/a.txt")
@@ -651,6 +662,13 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 		if isPublic {
 			if st, remote := fs.storageFor(rootName); remote {
 				return fs.openRemoteWrite(st, name, isPublic, isPrivate)
+			}
+		}
+
+		// 禁止上传写入符号链接路径（含 Windows 目录联接），避免穿透根目录
+		if root := fs.localWriteRoot(rootName, isPublic); root != "" {
+			if err := utils.EnsureNoSymlinkPath(root, realPath); err != nil {
+				return nil, os.ErrPermission
 			}
 		}
 

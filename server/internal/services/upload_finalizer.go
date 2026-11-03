@@ -73,16 +73,7 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 	_ = f.sessionRepo.UpdateStatus(session.ID, models.UploadStatusCompleted)
 
 	// 创建上传记录
-	relativePath := session.TargetPath
-	if relativePath == "/" || relativePath == "" {
-		relativePath = session.FileName
-	} else {
-		relativePath = strings.TrimSuffix(relativePath, "/")
-		if !strings.HasPrefix(relativePath, "/") {
-			relativePath = "/" + relativePath
-		}
-		relativePath = relativePath + "/" + session.FileName
-	}
+	relativePath := uploadRelPath(session)
 	record := &models.OperationRecord{
 		FileName:    session.FileName,
 		FileSize:    session.FileSize,

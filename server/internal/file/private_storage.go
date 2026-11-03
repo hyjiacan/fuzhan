@@ -70,6 +70,11 @@ func (*PrivateStorage) ChunkObjectPaths(_ *models.UploadSession, _ int) (dirPath
 	return "", "", false
 }
 
+// RootPath 返回私有存储的本地根目录，供上传路径的符号链接校验使用。
+func (st *PrivateStorage) RootPath(_ *models.UploadSession) string {
+	return st.basePath
+}
+
 // cleanPrivateDir 清洗私有子目录段：禁止绝对路径/上级跳转，返回清理后的相对目录。
 func cleanPrivateDir(d string) (string, error) {
 	d = strings.TrimSpace(d)

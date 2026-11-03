@@ -68,6 +68,11 @@ func (*Storage) ChunkObjectPaths(_ *models.UploadSession, _ int) (dirPath string
 	return "", "", false
 }
 
+// RootPath 返回临时存储的本地根目录，供上传路径的符号链接校验使用。
+func (s *Storage) RootPath(_ *models.UploadSession) string {
+	return s.basePath
+}
+
 // generateTempCode 生成128bit访问码（32位十六进制，防在线枚举）
 func generateTempCode() (string, error) {
 	b := make([]byte, 16)

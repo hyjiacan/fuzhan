@@ -138,6 +138,12 @@ func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int,
 	}
 
 	fullPath := filepath.Join(rootPath, subPath)
+	if isWriteFlags(flag) {
+		// 禁止上传写入符号链接路径（含 Windows 目录联接），避免穿透根目录
+		if err := utils.EnsureNoSymlinkPath(rootPath, fullPath); err != nil {
+			return nil, os.ErrPermission
+		}
+	}
 	if err := fs.validators[rootName].Validate(fullPath); err != nil {
 		return nil, os.ErrPermission
 	}
@@ -181,6 +187,7 @@ func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int,
 //   - 目录：先 Stat 判定 IsDir，返回 storageDirFile（Readdir 用 st.List）；
 //   - 新建：Stat 防覆盖 + st.OpenWriter 包装 storageSyncedFile；
 //   - 读取：st.Open 包装 storageReadFile（Seek 按后端能力降级）。
+//
 // rootPath 为物理配置根路径，仅用于磁盘分区检测（CheckDiskSpace 依赖本地分区）。
 func (fs *PublicFileSystem) openRemote(ctx context.Context, st storage.Storage, rootName, rootPath, subPath string, flag int, perm os.FileMode) (webdav.File, error) {
 	isCreate := flag&os.O_CREATE != 0

@@ -38,6 +38,12 @@ type Service struct {
 	recentlySynced map[string]time.Time
 	recentlyMu     sync.Mutex
 	recentlyStopCh chan struct{}
+
+	// 上传中的目标路径（key: rootName:relPath，值为引用计数）
+	// watcher 在登记有效期内忽略该路径的 Remove 事件：覆盖上传用 os.Rename 替换目标时，
+	// Windows 会先上报目标路径的 Remove，再上报 Rename，按 Remove 软删会误删刚写入的索引。
+	uploadTargets   map[string]int
+	uploadTargetsMu sync.Mutex
 }
 
 // TaskRecorder 任务记录接口（解耦 index 包对 services 包的依赖）
@@ -93,6 +99,7 @@ func NewService(db *gorm.DB, rootNames map[string]string, tempFilePath, privateP
 		hashWorker:     NewHashWorker(db, rootNames),
 		recentlySynced: make(map[string]time.Time),
 		recentlyStopCh: make(chan struct{}),
+		uploadTargets:  make(map[string]int),
 	}
 	// 启动最近同步记录清理协程
 	go s.cleanupRecentlySynced()

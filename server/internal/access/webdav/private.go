@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/webdav"
 
 	"fuzhan/internal/appconfig"
+	"fuzhan/internal/utils"
 )
 
 // PrivateFileSystem implements webdav.FileSystem scoped to the authenticated
@@ -93,6 +94,13 @@ func (fs *PrivateFileSystem) OpenFile(ctx context.Context, name string, flag int
 	}
 	if err := fs.ensureUserRoot(ctx); err != nil {
 		return nil, os.ErrPermission
+	}
+
+	// 禁止上传写入符号链接路径（含 Windows 目录联接）；即使链接指向私有目录内部也不放行
+	if flag&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_APPEND) != 0 {
+		if err := utils.EnsureNoSymlinkPath(fs.basePath, fullPath); err != nil {
+			return nil, os.ErrPermission
+		}
 	}
 
 	isCreate := flag&os.O_CREATE != 0 && flag&(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_TRUNC) != 0
