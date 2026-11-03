@@ -552,6 +552,16 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 
 	// —— OpenAPI ——
 	if req.OpenApi != nil && present("openApi") {
+		// 鉴权方式白名单校验：非法值会让 Open API 中间件直接返回 500，保存前拦截。
+		// 未提交（空字符串）时沿用原值，避免设置页的局部保存把已配置的方式重置。
+		if mode := strings.TrimSpace(req.OpenApi.AuthMode); mode != "" {
+			if mode != "none" && mode != "api_key" {
+				utils.HandleBadRequest(c, "Open API 鉴权方式无效，仅支持 none / api_key", nil)
+				return
+			}
+			appconfig.GlobalConfig.OpenAPI.AuthMode = mode
+			updates.Add("open_api.auth_mode", mode)
+		}
 		appconfig.GlobalConfig.OpenAPI.Enabled = req.OpenApi.Enabled
 		appconfig.GlobalConfig.OpenAPI.IPAccessMode = req.OpenApi.IpAccessMode
 		appconfig.GlobalConfig.OpenAPI.IPWhitelist = req.OpenApi.IpWhitelist
