@@ -242,26 +242,12 @@ func getDuration(c *gin.Context) int64 {
 }
 
 // recordRejectedSecurityEvent 将被拒绝（abort）的越权/禁止/限流请求写入安全事件库。
-// 仅对状态码命中风险集合（401/403/429）的请求登记，普通响应不产生安全事件以避免噪音。
+// 401 仅在越过认证边界时入库（未认证访问管理接口/写操作/非 Web 会话渠道）；
+// 普通读取请求的 401（令牌过期、未登录浏览）不构成安全事件。
 func recordRejectedSecurityEvent(c *gin.Context) {
 	status := c.Writer.Status()
-	// 降噪：前端 token 过期导致的自动轮询 GET 401 不是攻击行为，不入库
-	// （写操作 401、登录/注册、WebDAV 401、403/429 全部保留）
+	// 降噪：前端 token 过期导致的自动轮询 GET 401 不是攻击行为，即便是管理端轮询也不入库
 	if status == http.StatusUnauthorized && isNonActivityRequest(c.Request.Method, c.Request.URL.Path) {
-		return
-	}
-	var eventType, severity string
-	switch status {
-	case http.StatusUnauthorized:
-		eventType = models.EventAuthUnauthorized
-		severity = models.SeverityMedium
-	case http.StatusForbidden:
-		eventType = models.EventAccessForbidden
-		severity = models.SeverityMedium
-	case http.StatusTooManyRequests:
-		eventType = models.EventRateLimited
-		severity = models.SeverityLow
-	default:
 		return
 	}
 
@@ -273,12 +259,28 @@ func recordRejectedSecurityEvent(c *gin.Context) {
 		}
 	}
 
+	var eventType, severity, reason string
+	switch status {
+	case http.StatusUnauthorized:
+		relevant, why := security.EvaluateUnauthorized(c.Request.Method, c.Request.URL.Path, guard)
+		if !relevant {
+			return
+		}
+		eventType, severity, reason = models.EventAuthUnauthorized, models.SeverityMedium, why
+	case http.StatusForbidden:
+		eventType, severity, reason = models.EventAccessForbidden, models.SeverityMedium, "请求被拒绝（HTTP 403）"
+	case http.StatusTooManyRequests:
+		eventType, severity, reason = models.EventRateLimited, models.SeverityLow, "请求被拒绝（HTTP 429）"
+	default:
+		return
+	}
+
 	ev := &models.SecurityEvent{
 		EventType: eventType,
 		Severity:  severity,
 		Target:    c.Request.Method + " " + c.Request.URL.Path,
 		Guard:     guard,
-		Reason:    fmt.Sprintf("请求被拒绝（HTTP %d）", status),
+		Reason:    reason,
 	}
 	security.RecordFromGin(c, ev)
 }

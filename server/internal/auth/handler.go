@@ -31,6 +31,25 @@ func recordAuthEvent(c *gin.Context, eventType, operation, target, severity, rea
 	})
 }
 
+// recordAuthFailure 记录一次认证失败：单次失败只进登录日志，
+// 仅当命中频率/跨源/高价值身份等场景时才升级为安全事件。
+func (h *Handler) recordAuthFailure(c *gin.Context, operation, username string, highValue bool) {
+	decision := security.NoteLoginFailure(utils.GetClientIP(c), username, c.Request.UserAgent(), highValue)
+	if decision == nil {
+		return
+	}
+	recordAuthEvent(c, decision.EventType, operation, username, decision.Severity, decision.Reason)
+}
+
+// recordAuthSuccess 登录成功后检查「多次失败后从不同来源成功」的可疑登录场景。
+func recordAuthSuccess(c *gin.Context, username string) {
+	decision := security.NoteLoginSuccess(utils.GetClientIP(c), username, c.Request.UserAgent())
+	if decision == nil {
+		return
+	}
+	recordAuthEvent(c, decision.EventType, "auth.login", username, decision.Severity, decision.Reason)
+}
+
 // handleLoginBlocked 输出爆破防护拦截结果
 func handleLoginBlocked(c *gin.Context) {
 	response.HandleError(c, http.StatusTooManyRequests, response.CodeBadRequest, "尝试过于频繁，请稍后再试", nil)
@@ -108,7 +127,10 @@ func verifyCaptcha(c *gin.Context, id, answer string) bool {
 		return true
 	}
 	if !captcha.Verify(id, answer) {
-		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
+		// 单次验证码错误不构成安全事件；仅作为认证失败计入 IP 频率，达阈值时才入库。
+		if decision := security.NoteLoginFailure(utils.GetClientIP(c), "", c.Request.UserAgent(), false); decision != nil {
+			recordAuthEvent(c, decision.EventType, "auth.captcha", utils.GetClientIP(c), decision.Severity, decision.Reason)
+		}
 		response.HandleBadRequest(c, "验证码错误或已过期，请重试", gin.H{"code": "captcha_invalid"})
 		return false
 	}
@@ -151,7 +173,7 @@ func (h *Handler) Register(c *gin.Context) {
 		registerLoginFailure(utils.GetClientIP(c))
 		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
 		middleware.LogOperation(c, "auth.register", req.Username, err)
-		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.register", req.Username, models.SeverityMedium, "注册失败: "+err.Error())
+		h.recordAuthFailure(c, "auth.register", req.Username, false)
 		h.recordLoginLog(c, "", req.Username, "register", "failed", err.Error())
 		response.HandleBadRequest(c, err.Error(), nil)
 		return
@@ -187,7 +209,7 @@ func (h *Handler) Login(c *gin.Context) {
 		registerLoginFailure(utils.GetClientIP(c))
 		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
 		middleware.LogOperation(c, "auth.login", req.Username, err)
-		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.login", req.Username, models.SeverityMedium, "登录失败: "+err.Error())
+		h.recordAuthFailure(c, "auth.login", req.Username, h.authService.IsAdminUsername(req.Username))
 		h.recordLoginLog(c, "", req.Username, "local", "failed", err.Error())
 		response.HandleUnauthorized(c, err.Error())
 		return
@@ -195,6 +217,7 @@ func (h *Handler) Login(c *gin.Context) {
 	resetLoginFailures(utils.GetClientIP(c))
 	resetLoginFailuresByUsername(utils.GetClientIP(c), req.Username)
 	middleware.LogOperation(c, "auth.login", req.Username, nil)
+	recordAuthSuccess(c, resp.Username)
 	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
 	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
 	middleware.SetAuthCookie(c, resp.Token)

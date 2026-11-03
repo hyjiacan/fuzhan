@@ -208,6 +208,8 @@ const severityMeta = {
 const eventTypeMeta = {
   'auth.failed_login': '登录/注册失败',
   'auth.locked': '登录被锁定',
+  'auth.spraying': '密码喷洒/撞库',
+  'auth.suspicious_login': '可疑登录(失败后成功)',
   'auth.unauthorized': '认证失败(401)',
   'access.forbidden': '越权访问(403)',
   'rate.limited': '触发限流(429)',

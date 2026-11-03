@@ -55,15 +55,31 @@ func collectRejected(t *testing.T, method, path string, markGuard bool, status i
 	return store.events
 }
 
-func TestAudit_GetPollingUnauthorized_NotRecorded(t *testing.T) {
-	// GET 轮询类请求 401（token 过期）不入库降噪
-	if evs := collectRejected(t, "GET", "/api/v1/admin/security/events/unread-summary", false, http.StatusUnauthorized); len(evs) != 0 {
-		t.Fatalf("GET 轮询 401 不应入库，got %d 条", len(evs))
+func TestAudit_ReadUnauthorized_NotRecorded(t *testing.T) {
+	// 普通读取请求的 401（令牌过期、未登录浏览）不构成安全事件
+	for _, path := range []string{
+		"/api/v1/admin/security/events/unread-summary", // 轮询类
+		"/api/v1/files", // 普通读取
+	} {
+		if evs := collectRejected(t, "GET", path, false, http.StatusUnauthorized); len(evs) != 0 {
+			t.Fatalf("GET %s 401 不应入库，got %d 条", path, len(evs))
+		}
 	}
-	// 普通 GET 401（非轮询清单）仍入库
-	evs := collectRejected(t, "GET", "/api/v1/files", false, http.StatusUnauthorized)
+}
+
+func TestAudit_AdminUnauthorized_Recorded(t *testing.T) {
+	// 未认证访问管理接口属于越过认证边界，单次即入库
+	evs := collectRejected(t, "GET", "/api/v1/web/admin/users", false, http.StatusUnauthorized)
 	if len(evs) != 1 || evs[0].EventType != models.EventAuthUnauthorized {
-		t.Fatalf("普通 GET 401 应入库 1 条 auth.unauthorized，got %+v", evs)
+		t.Fatalf("未认证访问管理接口应入库 1 条 auth.unauthorized，got %+v", evs)
+	}
+}
+
+func TestAudit_SessionMaintenanceUnauthorized_NotRecorded(t *testing.T) {
+	// 会话维护接口的 401 属于令牌过期，不升级为安全事件
+	evs := collectRejected(t, "POST", "/api/v1/web/auth/refresh", false, http.StatusUnauthorized)
+	if len(evs) != 0 {
+		t.Fatalf("会话维护接口 401 不应入库，got %+v", evs)
 	}
 }
 

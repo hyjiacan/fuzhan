@@ -287,20 +287,34 @@
 | 取值 | 含义 |
 |------|------|
 | `high` | 高危：需管理员关注（暴破锁定、路径穿越、越权绕过等） |
-| `medium` | 中危：可疑但不一定恶意（单次 401 / 403 / 登录失败） |
+| `medium` | 中危：可疑但不一定恶意（未认证访问管理接口/写操作、403 越权、管理员账号单次认证失败等） |
 | `low` | 低危：常规限流触发等 |
 
 ### EventType 事件类型
 
 | 取值 | 含义 |
 |------|------|
-| `auth.failed_login` | 登录 / 注册失败 |
+| `auth.failed_login` | 登录 / 注册失败达阈值（按账号或 IP 聚合，仅记录一次）、管理员账号认证失败、OAuth2 回调认证失败 |
 | `auth.locked` | 登录 / 注册失败达阈值被锁定（暴破缓解） |
-| `auth.unauthorized` | 认证失败（401） |
+| `auth.spraying` | 同一 IP 对多个账号失败（密码喷洒/账号枚举），或同一账号来自多个 IP 失败（撞库） |
+| `auth.suspicious_login` | 同一账号短窗口内多次失败后从不同 IP/UA 成功登录（疑似凭证撞库成功） |
+| `auth.unauthorized` | 越过认证边界的 401：未认证访问管理接口、未认证写操作、WebDAV/FTP 等非 Web 会话渠道认证失败 |
 | `access.forbidden` | 越权 / 禁止访问（403） |
 | `rate.limited` | 触发频率限制（429） |
 | `code.bruteforce` | 无效分享 / 临时码 / 口令枚举达阈值被锁定 |
 | `ddos.suspected` | 疑似 DDoS / 高频请求（固定窗口计数超阈值，默认启用并下发 429 限流拦截；guard 恒为 `ddos`） |
+
+**认证失败升级为安全事件的条件**（单次失败只写 `login_logs` / 审计日志，不直接入库）：
+
+| 场景 | 判定条件 | 事件类型 |
+|------|----------|----------|
+| 单账号暴破 | 同一账号在 30 分钟窗口内失败达 5 次 | `auth.failed_login`（high，聚合一条） |
+| 广撒网暴破 | 同一 IP 在 15 分钟窗口内失败达 10 次 | `auth.failed_login`（high，聚合一条） |
+| 密码喷洒/账号枚举 | 同一 IP 在窗口内对 3 个以上账号失败 | `auth.spraying`（high） |
+| 撞库/分布式暴破 | 同一账号在窗口内来自 3 个以上 IP 失败 | `auth.spraying`（high） |
+| 失败后成功 | 同一账号窗口内失败 3 次以上，随后从不同 IP/UA 成功登录 | `auth.suspicious_login`（high） |
+| 越过认证边界 | 未认证访问管理接口、写操作（会话维护接口除外）、WebDAV/FTP 认证失败 | `auth.unauthorized`（medium） |
+| 高价值身份 | 管理员账号认证失败：首次 medium，连续 2 次 high | `auth.failed_login` |
 
 ### 索引
 

@@ -85,6 +85,25 @@ func recordAuthEvent(c *gin.Context, eventType, operation, target, severity, rea
 	})
 }
 
+// recordAuthFailure 记录一次认证失败：单次失败只进登录日志，
+// 仅当命中频率/跨源/高价值身份等场景时才升级为安全事件。
+func (h *Handlers) recordAuthFailure(c *gin.Context, operation, username string, highValue bool) {
+	decision := security.NoteLoginFailure(utils.GetClientIP(c), username, c.Request.UserAgent(), highValue)
+	if decision == nil {
+		return
+	}
+	recordAuthEvent(c, decision.EventType, operation, username, decision.Severity, decision.Reason)
+}
+
+// recordAuthSuccess 登录成功后检查「多次失败后从不同来源成功」的可疑登录场景。
+func (h *Handlers) recordAuthSuccess(c *gin.Context, username string) {
+	decision := security.NoteLoginSuccess(utils.GetClientIP(c), username, c.Request.UserAgent())
+	if decision == nil {
+		return
+	}
+	recordAuthEvent(c, decision.EventType, "auth.login", username, decision.Severity, decision.Reason)
+}
+
 // sanitizeRedirect 收敛回跳地址：仅允许站内相对路径（须以 "/" 开头且不含反斜杠、
 // 非 // 或 /\ 开头的协议相对地址），并强制回跳到 /lite 内，防止开放重定向与越权回跳。
 // 非法或为空时返回 /lite。
@@ -204,7 +223,8 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 		challenge := c.PostForm("captcha_challenge")
 		text := c.PostForm("captcha_text")
 		if !captcha.Verify(challenge, text) {
-			recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
+			// 单次验证码错误不构成安全事件，仅计入 IP 频率，达阈值时才入库。
+			h.recordAuthFailure(c, "auth.captcha", data.Username, h.AuthService.IsAdminUsername(data.Username))
 			renderAuthPage(c, "登录", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
 			return
 		}
@@ -222,7 +242,7 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 	if err != nil {
 		liteRegisterFailure(ip)
 		middleware.LogOperation(c, "auth.login", data.Username, err)
-		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.login", data.Username, models.SeverityMedium, "登录失败: "+err.Error())
+		h.recordAuthFailure(c, "auth.login", data.Username, h.AuthService.IsAdminUsername(data.Username))
 		h.recordLoginLog(c, "", data.Username, "local", "failed", err.Error())
 		renderAuthPage(c, "登录", err.Error(), data, http.StatusUnauthorized)
 		return
@@ -230,6 +250,7 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 
 	liteResetFailures(ip)
 	middleware.LogOperation(c, "auth.login", data.Username, nil)
+	h.recordAuthSuccess(c, resp.Username)
 	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
 	// 把与 web 同源的 JWT 存入 HttpOnly Cookie：LoginGate 依据它放行 /lite、/download 等
 	// 受保护请求（下载身份鉴别与 web 完全一致，仍走「换票 + URL 票据」链路）。
@@ -273,7 +294,8 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 		challenge := c.PostForm("captcha_challenge")
 		text := c.PostForm("captcha_text")
 		if !captcha.Verify(challenge, text) {
-			recordAuthEvent(c, models.EventAuthFailedLogin, "auth.captcha", utils.GetClientIP(c), models.SeverityMedium, "验证码错误")
+			// 单次验证码错误不构成安全事件，仅计入 IP 频率，达阈值时才入库。
+			h.recordAuthFailure(c, "auth.captcha", data.Username, false)
 			renderAuthPage(c, "注册", "验证码错误或已过期，请重试", data, http.StatusBadRequest)
 			return
 		}
@@ -291,7 +313,7 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 	if err != nil {
 		liteRegisterFailure(ip)
 		middleware.LogOperation(c, "auth.register", data.Username, err)
-		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.register", data.Username, models.SeverityMedium, "注册失败: "+err.Error())
+		h.recordAuthFailure(c, "auth.register", data.Username, false)
 		h.recordLoginLog(c, "", data.Username, "register", "failed", err.Error())
 		renderAuthPage(c, "注册", err.Error(), data, http.StatusBadRequest)
 		return

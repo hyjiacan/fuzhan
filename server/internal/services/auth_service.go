@@ -159,6 +159,22 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 	return &user, nil
 }
 
+// IsAdminUsername 判断用户名是否为管理员账号。
+// 供认证失败定级使用：管理员账号属于高价值身份，单次失败即升级为安全事件。
+func (s *AuthService) IsAdminUsername(username string) bool {
+	username = strings.TrimSpace(username)
+	if username == "" || s.db == nil {
+		return false
+	}
+	var count int64
+	if err := s.db.Model(&models.User{}).
+		Where("username = ? AND role = ?", username, "admin").
+		Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
 // Login 用户登录
 func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 	user, err := s.LoginByPassword(req.Username, req.Password)
