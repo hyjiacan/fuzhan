@@ -100,7 +100,7 @@
           />
         </el-tab-pane>
 
-        <el-tab-pane name="url" label="从 URL 上传">
+        <el-tab-pane v-if="urlUploadEnabled" name="url" label="从 URL 上传">
           <!-- 单条输入（默认） -->
           <el-form-item label="文件的 URL:">
             <div class="url-add-row">
@@ -476,6 +476,14 @@ const needsRootSelection = computed(() => {
 const isTempUpload = computed(() => {
   const url = getApiUrl('createSession')
   return url && url.includes('/temp/')
+})
+
+// URL 上传总开关（服务端配置）：关闭时隐藏「从 URL 上传」入口
+const urlUploadEnabled = computed(() => store.state.config.urlUploadEnabled === true)
+watch(urlUploadEnabled, (enabled) => {
+  if (!enabled && form.uploadMethod === 'url') {
+    form.uploadMethod = 'local'
+  }
 })
 
 // "下载后自动删除"勾选（支持父级 v-model:delete-on-download）
@@ -890,70 +898,12 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
   height: 65vh;
   overflow: auto;
 
-  .drop-zone {
-    margin-top: 12px;
-    padding: 24px;
-    border: 2px dashed @border-color;
-    border-radius: 8px;
-    text-align: center;
-    transition: all 0.2s;
-    cursor: pointer;
-    color: @text-color-secondary;
-
-    &:hover {
-      border-color: @primary-color;
-      color: @primary-color;
-    }
-  }
-
-  .drop-zone-active {
-    border-color: @primary-color;
-    background: fade(@primary-color, 5%);
-    color: @primary-color;
-  }
-
-  .drop-zone-content {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-
   .upload-queue {
-    margin-top: 16px;
-    border: 1px solid @border-color-light;
-    border-radius: 8px;
-    overflow: hidden;
-    width: 100%;
-    box-sizing: border-box;
     max-height: 200px;
   }
 
-  .queue-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 12px;
-    background: @bg-color-secondary;
-    border-bottom: 1px solid @border-color-light;
-    font-size: 13px;
-    color: @text-color;
-  }
-
-  .queue-list {
-    max-height: 280px;
-    overflow-y: auto;
-  }
-
   .queue-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-bottom: 1px solid @border-color-light;
-
-      &:last-child {
-        border-bottom: none;
-      }
+      border-bottom-color: @border-color-light;
 
       .queue-item-index {
         width: 20px;
@@ -965,8 +915,6 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
       }
 
       .queue-item-info {
-      flex: 1;
-      min-width: 0;
 
       .queue-item-name {
         display: block;
@@ -1003,8 +951,6 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
       }
 
       .queue-item-size {
-        font-size: 11px;
-        color: @text-color-placeholder;
         flex: 2;
       }
 
@@ -1014,24 +960,6 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
         gap: 20px;
         justify-content: flex-end;
       }
-
-      .queue-item-speed {
-        font-size: 11px;
-        color: @text-color-secondary;
-        margin-top: 2px;
-      }
-
-      .queue-item-error {
-        font-size: 11px;
-        color: #d03050;
-        margin-top: 2px;
-      }
-    }
-
-    .queue-item-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
   }
 
@@ -1051,7 +979,6 @@ defineExpose({ startUpload, canStartUpload, addFile: addFileToQueue, hasActiveUp
     }
 
     .checksum-hint {
-      font-size: 12px;
       color: @text-color-secondary;
     }
 

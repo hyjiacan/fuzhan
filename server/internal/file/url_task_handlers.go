@@ -44,6 +44,12 @@ const (
 
 // UploadFromURL 从URL上传文件（异步，返回 taskId 供前端轮询进度）
 func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
+	// URL 上传总开关：关闭时拒绝新建任务，避免前端隐藏入口后仍可经 API 提交
+	if !appconfig.GlobalConfig.Upload.URLUpload.Enabled {
+		utils.HandleErrorCompat(c, http.StatusForbidden, "URL 上传功能未启用", nil)
+		return
+	}
+
 	var req UploadFromURLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
@@ -282,6 +288,12 @@ type URLProbeRequest struct {
 // ProbeURLs 批量探测 URL：串行 HEAD 取文件名/大小，并检查目标文件是否已存在、
 // 该 URL 是否已成功上传过（全局范围）。供前端添加条目时即时提示与文件名编辑。
 func (h *UploadSessionHandler) ProbeURLs(c *gin.Context) {
+	// URL 上传总开关：关闭时不允许探测，与提交入口口径保持一致
+	if !appconfig.GlobalConfig.Upload.URLUpload.Enabled {
+		utils.HandleErrorCompat(c, http.StatusForbidden, "URL 上传功能未启用", nil)
+		return
+	}
+
 	var req URLProbeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)

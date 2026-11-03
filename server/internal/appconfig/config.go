@@ -289,7 +289,8 @@ type DownloadRateLimitConfig struct {
 
 // URLUploadConfig URL上传安全配置
 type URLUploadConfig struct {
-	// 是否启用安全限制（默认 false）
+	// URL 上传总开关（默认 false）：关闭时前端隐藏入口且后端拒绝新建/探测任务；
+	// 开启后同时启用 SSRF 安全限制（按 AllowedIPRanges 校验目标地址）
 	Enabled bool `yaml:"enabled"`
 	// 允许的 IP 网段列表（CIDR 格式，如 1.2.3.4/24），为空表示不限制（允许所有 IP）
 	AllowedIPRanges []string `yaml:"allowed_ip_ranges"`

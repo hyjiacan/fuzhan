@@ -56,6 +56,7 @@ async function loadConfigAndCheckSetup() {
         ftpPort: d.ftp?.port ?? null,
         webdavEnabled: d.webdav?.enabled ?? false,
         openApiEnabled: d.openApi?.enabled ?? false,
+        urlUploadEnabled: d.upload?.urlUpload?.enabled ?? false,
         allowRegistration: d.account?.allowRegistration ?? false,
         requireLogin: d.account?.requireLogin ?? false,
         anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || '',
