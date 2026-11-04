@@ -24,8 +24,10 @@ func TestInjectWebSessionGrantsWriterCompatScope(t *testing.T) {
 		models.ScopeFilesInfo,
 		models.ScopeFilesUpload,
 		models.ScopeFilesDuplicates,
-		models.ScopeFilesNotes,
-		models.ScopeFilesDepends,
+		models.ScopeFilesExists,
+		models.ScopeFilesOverwrite,
+		models.ScopeFilesDelete,
+		models.ScopeFilesRename,
 	} {
 		if !rbac.HasContextScope(c, scope) {
 			t.Errorf("Web 会话应覆盖 scope %s", scope)

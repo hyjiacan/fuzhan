@@ -9,6 +9,7 @@ import (
 
 	"fuzhan/internal/accessguard"
 	"fuzhan/internal/admin"
+	"fuzhan/internal/alert"
 	"fuzhan/internal/appconfig"
 	configh "fuzhan/internal/appconfig/api"
 	"fuzhan/internal/auth"
@@ -81,7 +82,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	})
 
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{})
+	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{}, &models.AlertMessage{})
 
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
@@ -378,7 +379,8 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 
 	// Open API 服务（v3 Phase 3）
 	openAPICfg := &appconfig.GlobalConfig.OpenAPI
-	openAPIHandler := openapi.NewHandler(db, indexService, depService, appconfig.RootNames, publicStorages, uploadSessionSvc, chunkSize)
+	openAPIHandler := openapi.NewHandler(db, indexService, depService, appconfig.RootNames, publicStorages,
+		uploadSessionSvc, fileService, idxSearch, chunkSize)
 	openAPIRateLimiter := openapi.NewRateLimiter(openapi.NewRateLimitConfigFromAppConfig(
 		openAPICfg.RateLimitEnabled,
 		openAPICfg.RequestsPerMinute,
@@ -412,6 +414,10 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 系统监测处理器 (无需认证)
 	monitorService := services.NewMonitorService(recordRepo, db)
 	monitorHandler := monitor.NewHandler(monitorService)
+
+	// 存储告警服务（周期检查 + Web/Webhook/邮件通知，worker 在下方启动）
+	storageAlertService := services.NewStorageAlertService(db)
+	storageAlertHandler := alert.NewHandler(storageAlertService)
 
 	// 行为分析处理器（需管理员认证；基于 operation_records 公开下载聚合）
 	behaviorAnalyticsHandler := behavioranalytics.NewHandler(behaviorAnalyticsService)
@@ -464,6 +470,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		recentHandler:            recentHandler,
 		userHandler:              userHandler,
 		monitorHandler:           monitorHandler,
+		storageAlertHandler:      storageAlertHandler,
 		resourceHandler:          resourceHandler,
 		previewHandler:           previewHandler,
 		behaviorAnalyticsHandler: behaviorAnalyticsHandler,
@@ -475,6 +482,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		openAPICallStat:          openAPICallStat,
 		openAPIStatsHandler:      openAPIStatsHandler,
 		idxSearch:                idxSearch,
+		storageAlertService:      storageAlertService,
 		resourceCollector:        resourceCollector,
 		ldapService:              ldapService,
 		publicStorages:           publicStorages,

@@ -249,7 +249,18 @@ const settings = reactive({
     backend: 'local',
     s3: { endpoint: '', accessKey: '', secretKey: '', bucket: '', region: '', useSSL: false },
     oss: { endpoint: '', accessKey: '', secretKey: '', bucket: '' },
-    webdav: { url: '', username: '', password: '' }
+    webdav: { url: '', username: '', password: '' },
+    alert: {
+      enabled: false,
+      thresholdPercent: 85,
+      checkIntervalMinutes: 10,
+      cooldownMinutes: 120,
+      webEnabled: true,
+      webhookEnabled: false,
+      emailEnabled: false,
+      emailRecipients: [],
+      smtp: { host: '', port: 587, username: '', password: '', from: '', tlsMode: 'starttls' }
+    }
   },
   privateFiles: {
     enabled: false,
@@ -442,6 +453,24 @@ const loadSettings = async () => {
           url: cfg.storageBackend?.webdav?.url || '',
           username: cfg.storageBackend?.webdav?.username || '',
           password: cfg.storageBackend?.webdav?.password || ''
+        },
+        alert: {
+          enabled: cfg.storageBackend?.alert?.enabled ?? false,
+          thresholdPercent: cfg.storageBackend?.alert?.thresholdPercent ?? 85,
+          checkIntervalMinutes: cfg.storageBackend?.alert?.checkIntervalMinutes ?? 10,
+          cooldownMinutes: cfg.storageBackend?.alert?.cooldownMinutes ?? 120,
+          webEnabled: cfg.storageBackend?.alert?.webEnabled ?? true,
+          webhookEnabled: cfg.storageBackend?.alert?.webhookEnabled ?? false,
+          emailEnabled: cfg.storageBackend?.alert?.emailEnabled ?? false,
+          emailRecipients: cfg.storageBackend?.alert?.emailRecipients || [],
+          smtp: {
+            host: cfg.storageBackend?.alert?.smtp?.host || '',
+            port: cfg.storageBackend?.alert?.smtp?.port ?? 587,
+            username: cfg.storageBackend?.alert?.smtp?.username || '',
+            password: cfg.storageBackend?.alert?.smtp?.password || '',
+            from: cfg.storageBackend?.alert?.smtp?.from || '',
+            tlsMode: cfg.storageBackend?.alert?.smtp?.tlsMode || 'starttls'
+          }
         }
       }
 
@@ -685,7 +714,12 @@ const doSaveSettings = async () => {
         backend: settings.storageBackend.backend,
         s3: { ...settings.storageBackend.s3 },
         oss: { ...settings.storageBackend.oss },
-        webdav: { ...settings.storageBackend.webdav }
+        webdav: { ...settings.storageBackend.webdav },
+        alert: {
+          ...settings.storageBackend.alert,
+          emailRecipients: [...(settings.storageBackend.alert?.emailRecipients || [])],
+          smtp: { ...settings.storageBackend.alert?.smtp }
+        }
       },
       privateFiles: {
         ...settings.privateFiles,

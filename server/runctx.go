@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"fuzhan/internal/admin"
+	"fuzhan/internal/alert"
 	"fuzhan/internal/appconfig"
 	configh "fuzhan/internal/appconfig/api"
 	"fuzhan/internal/auth"
@@ -32,6 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
 // runCtx 汇总路由注册与 worker 运行所需的全部依赖，
 // 避免在 main 中通过闭包传递上百个局部变量，也便于热重启时复用同一份依赖重新构建 Engine。
 type runCtx struct {
@@ -75,6 +77,7 @@ type runCtx struct {
 	recentHandler            *file.RecentHandler
 	userHandler              *user.Handler
 	monitorHandler           *monitor.Handler
+	storageAlertHandler      *alert.Handler
 	resourceHandler          *resource.Handler
 	previewHandler           *file.PreviewHandler
 	behaviorAnalyticsHandler *behavioranalytics.Handler
@@ -88,9 +91,10 @@ type runCtx struct {
 	openAPICallStat     *openapi.APICallStat
 	openAPIStatsHandler *openapi.StatsHandler
 
-	idxSearch         *search.SearchIndex
-	resourceCollector *resource.Collector
-	ldapService       *auth.LDAPService
+	storageAlertService *services.StorageAlertService
+	idxSearch           *search.SearchIndex
+	resourceCollector   *resource.Collector
+	ldapService         *auth.LDAPService
 
 	// 公开多根目录的存储后端映射（rootName → Storage）。
 	// 本地后端可不注入（rootNames 物理路径语义零变化）；远端后端（s3/minio/oss/webdav）

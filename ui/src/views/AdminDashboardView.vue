@@ -82,6 +82,30 @@
               </div>
             </el-card>
             <el-card class="chart-card" shadow="never">
+              <template #header>
+                <div class="card-header">
+                  <span>存储告警</span>
+                  <el-link v-if="alertUnread > 0" type="primary" :underline="false" @click="markAllAlertsRead">
+                    全部已读 ({{ alertUnread }})
+                  </el-link>
+                </div>
+              </template>
+              <div v-if="alertMessages.length > 0" class="alert-list">
+                <div v-for="item in alertMessages" :key="item.id" class="alert-item" :class="item.level">
+                  <div class="alert-title">
+                    <el-tag size="small" :type="item.level === 'critical' ? 'danger' : 'warning'">
+                      {{ item.level === 'critical' ? '严重' : '预警' }}
+                    </el-tag>
+                    <span>{{ item.title }}</span>
+                    <span v-if="!item.read" class="unread-dot"></span>
+                  </div>
+                  <div class="alert-content">{{ item.content }}</div>
+                  <div class="alert-time">{{ formatTime(item.createdAt) }}</div>
+                </div>
+              </div>
+              <el-empty v-else description="暂无存储告警" />
+            </el-card>
+            <el-card class="chart-card" shadow="never">
               <template #header>临时文件配额</template>
               <div v-if="Object.keys(storageStats.temp?.usedByIP || {}).length > 0" class="quota-list">
                 <div class="quota-header">
@@ -169,7 +193,7 @@ import { ref, h, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { NumberUtils, TimeUtils } from '@/utils'
-import { AdminApi, MonitorApi, IndexApi } from '@/api'
+import { AdminApi, MonitorApi, IndexApi, AlertApi } from '@/api'
 import store from '@/store'
 
 const router = useRouter()
@@ -221,6 +245,27 @@ const indexStats = ref({
 const storageError = ref(false)
 const indexError = ref(false)
 const accessError = ref(false)
+
+// 存储告警消息（仅管理员可见）
+const alertMessages = ref([])
+const alertUnread = ref(0)
+
+const loadAlerts = async () => {
+  try {
+    const res = await AlertApi.listMessages({ page: 1, pageSize: 5 })
+    if (res.success) {
+      alertMessages.value = res.data?.list || []
+      alertUnread.value = res.data?.unread || 0
+    }
+  } catch (e) {
+    console.error('获取存储告警消息失败:', e)
+  }
+}
+
+const markAllAlertsRead = async () => {
+  await AlertApi.markAllRead()
+  await loadAlerts()
+}
 
 // ============ Icons ============
 const UserIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
@@ -335,6 +380,7 @@ const loadStats = async () => {
 
 onMounted(() => {
   loadStats()
+  loadAlerts()
 })
 </script>
 
@@ -363,6 +409,52 @@ onMounted(() => {
   .keyword-badge :deep(.el-badge__content) {
     right: -3px;
     top: -3px;
+  }
+
+  .alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .alert-item {
+    padding: 8px 10px;
+    border-left: 3px solid var(--el-color-warning);
+    background: var(--el-fill-color-light);
+    border-radius: 4px;
+
+    &.critical {
+      border-left-color: var(--el-color-danger);
+    }
+  }
+
+  .alert-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+  }
+
+  .alert-content {
+    margin-top: 4px;
+    white-space: pre-wrap;
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+  }
+
+  .alert-time {
+    margin-top: 4px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+
+  .unread-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--el-color-danger);
   }
 
   .dashboard-bottom {

@@ -87,8 +87,8 @@
               :value="opt.value"
             />
           </el-select>
-          <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载<br>
-            open_api:writer - 额外包含文件备注、依赖关系</span>
+          <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载、详情、存在性查询<br>
+            open_api:writer - 额外包含上传、覆盖、删除、重命名（备注与依赖树已并入文件详情）</span>
         </el-form-item>
         <el-form-item label="过期时间" prop="expiresIn">
           <el-select v-model="createForm.expiresIn" placeholder="选择过期时间" style="width: 100%;">

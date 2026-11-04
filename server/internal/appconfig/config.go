@@ -210,9 +210,33 @@ type StorageConfig struct {
 	Temp              TempConfig           `yaml:"temp"`
 	Private           PrivateStorageConfig `yaml:"private"`
 	AllowedExtensions []string             `yaml:"allowed_extensions"`
+	Alert             StorageAlertConfig   `yaml:"alert"`            // 存储使用率告警配置
 	S3                S3StorageConfig      `yaml:"s3,omitempty"`     // S3/MinIO 后端连接配置
 	OSS               OSSStorageConfig     `yaml:"oss,omitempty"`    // 阿里云 OSS 后端连接配置
 	WebDAV            WebDAVStorageConfig  `yaml:"webdav,omitempty"` // WebDAV 后端连接配置
+}
+
+// StorageAlertConfig 存储使用率告警配置。
+type StorageAlertConfig struct {
+	Enabled              bool       `yaml:"enabled"`                // 是否启用存储告警
+	ThresholdPercent     float64    `yaml:"threshold_percent"`      // 使用率阈值（1-100）
+	CheckIntervalMinutes int        `yaml:"check_interval_minutes"` // 检测间隔（分钟）
+	CooldownMinutes      int        `yaml:"cooldown_minutes"`       // 持续超阈值时的重复告警冷却（分钟）
+	WebEnabled           bool       `yaml:"web_enabled"`            // Web 消息（仅管理员可见）
+	WebhookEnabled       bool       `yaml:"webhook_enabled"`        // Webhook 推送
+	EmailEnabled         bool       `yaml:"email_enabled"`          // 邮件通知
+	EmailRecipients      []string   `yaml:"email_recipients"`       // 邮件接收人
+	SMTP                 SMTPConfig `yaml:"smtp"`                   // SMTP 服务配置
+}
+
+// SMTPConfig 告警邮件发送所用的 SMTP 配置。
+type SMTPConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	From     string `yaml:"from"`
+	TLSMode  string `yaml:"tls_mode"` // none / starttls / ssl，默认按端口推断
 }
 
 // S3StorageConfig S3/MinIO 后端连接配置（storage.backend=s3/minio 时使用）
@@ -238,6 +262,55 @@ type WebDAVStorageConfig struct {
 	URL      string `yaml:"url"`                // WebDAV 服务地址，如 https://example.com/dav
 	Username string `yaml:"username,omitempty"` // 用户名
 	Password string `yaml:"password,omitempty"` // 密码
+}
+
+// NormalizeStorageAlertConfig 补齐存储告警配置的默认值，并限制阈值范围。
+func NormalizeStorageAlertConfig(cfg StorageAlertConfig) StorageAlertConfig {
+	if cfg.ThresholdPercent <= 0 || cfg.ThresholdPercent > 100 {
+		cfg.ThresholdPercent = 85
+	}
+	if cfg.CheckIntervalMinutes <= 0 {
+		cfg.CheckIntervalMinutes = 10
+	}
+	if cfg.CooldownMinutes <= 0 {
+		cfg.CooldownMinutes = 120
+	}
+	if cfg.SMTP.Port <= 0 {
+		cfg.SMTP.Port = 587
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.SMTP.TLSMode)) {
+	case "", "none", "starttls", "ssl":
+	default:
+		cfg.SMTP.TLSMode = ""
+	}
+	cfg.SMTP.TLSMode = strings.ToLower(strings.TrimSpace(cfg.SMTP.TLSMode))
+	cfg.SMTP.Host = strings.TrimSpace(cfg.SMTP.Host)
+	cfg.SMTP.Username = strings.TrimSpace(cfg.SMTP.Username)
+	cfg.SMTP.From = strings.TrimSpace(cfg.SMTP.From)
+	// 收件人去空、去重，避免重复发送
+	recipients := make([]string, 0, len(cfg.EmailRecipients))
+	seen := make(map[string]bool, len(cfg.EmailRecipients))
+	for _, item := range cfg.EmailRecipients {
+		addr := strings.TrimSpace(item)
+		if addr == "" {
+			continue
+		}
+		key := strings.ToLower(addr)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		recipients = append(recipients, addr)
+	}
+	cfg.EmailRecipients = recipients
+	return cfg
+}
+
+// GetStorageAlertConfig 返回补齐默认值后的存储告警配置副本。
+func GetStorageAlertConfig() StorageAlertConfig {
+	cfg := NormalizeStorageAlertConfig(GlobalConfig.Storage.Alert)
+	cfg.EmailRecipients = append([]string(nil), cfg.EmailRecipients...)
+	return cfg
 }
 
 // StorageBackendIsRemote 判断存储后端是否为远端存储（非本地磁盘）。

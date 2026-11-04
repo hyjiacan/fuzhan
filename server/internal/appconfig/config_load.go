@@ -34,6 +34,7 @@ func readConfig() {
 			Temp              TempFilesConfigWithStringQuota      `yaml:"temp"`
 			Private           PrivateStorageConfigWithStringQuota `yaml:"private"`
 			AllowedExtensions []string                            `yaml:"allowed_extensions"`
+			Alert             StorageAlertConfig                  `yaml:"alert"`
 			Backend           string                              `yaml:"backend"`
 			S3                S3StorageConfig                     `yaml:"s3,omitempty"`
 			OSS               OSSStorageConfig                    `yaml:"oss,omitempty"`
@@ -68,6 +69,7 @@ func readConfig() {
 	GlobalConfig.Server = tempConfig.Server
 	GlobalConfig.Account = tempConfig.Account
 	GlobalConfig.Storage.AllowedExtensions = tempConfig.Storage.AllowedExtensions
+	GlobalConfig.Storage.Alert = tempConfig.Storage.Alert
 	GlobalConfig.Storage.Backend = tempConfig.Storage.Backend
 	GlobalConfig.Storage.S3 = tempConfig.Storage.S3
 	GlobalConfig.Storage.OSS = tempConfig.Storage.OSS
@@ -278,6 +280,8 @@ func validateConfig() {
 		utils.Fatal("配置错误: storage.temp.default_expire_days 不能为负数",
 			utils.String("file", ConfigPath))
 	}
+	// 存储告警默认值
+	GlobalConfig.Storage.Alert = NormalizeStorageAlertConfig(GlobalConfig.Storage.Alert)
 
 	// Open API 配置默认值
 	if GlobalConfig.OpenAPI.RequestsPerMinute <= 0 {

@@ -84,6 +84,92 @@
         </el-form>
       </el-card>
     </el-col>
+
+    <el-col :span="24" :sm="24" :xs="24">
+      <el-card class="backend-card">
+        <template #header><span>存储告警</span></template>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="根目录配置配额时按配额使用率计算，未配置配额时按所在磁盘使用率计算。"
+        >
+          <template #default>
+            达到阈值后通过所选通道发送告警：Web 消息仅管理员可见（可在管理后台首页查看），
+            Webhook 事件为 storage.alert，邮件通过下方 SMTP 配置发送。
+          </template>
+        </el-alert>
+
+        <el-form autocomplete="off" label-width="140px" class="backend-form">
+          <el-form-item label="启用告警">
+            <el-switch v-model="settings.storageBackend.alert.enabled" />
+            <div class="field-hint">关闭后不再检测存储使用率。</div>
+          </el-form-item>
+          <el-form-item label="使用率阈值">
+            <el-input-number v-model="settings.storageBackend.alert.thresholdPercent" :min="1" :max="100" :step="1" />
+            <span class="unit">%</span>
+            <div class="field-hint">达到或超过该百分比时触发告警。</div>
+          </el-form-item>
+          <el-form-item label="检测间隔">
+            <el-input-number v-model="settings.storageBackend.alert.checkIntervalMinutes" :min="1" :max="1440" :step="1" />
+            <span class="unit">分钟</span>
+          </el-form-item>
+          <el-form-item label="重复告警间隔">
+            <el-input-number v-model="settings.storageBackend.alert.cooldownMinutes" :min="1" :max="10080" :step="1" />
+            <span class="unit">分钟</span>
+            <div class="field-hint">持续超过阈值时，两次告警之间的最短间隔；恢复后再次越线会立即告警。</div>
+          </el-form-item>
+
+          <el-form-item label="通知通道">
+            <div class="channel-list">
+              <el-checkbox v-model="settings.storageBackend.alert.webEnabled">Web 消息（仅管理员）</el-checkbox>
+              <el-checkbox v-model="settings.storageBackend.alert.webhookEnabled">Webhook 推送</el-checkbox>
+              <el-checkbox v-model="settings.storageBackend.alert.emailEnabled">邮件通知</el-checkbox>
+            </div>
+          </el-form-item>
+
+          <template v-if="settings.storageBackend.alert.emailEnabled">
+            <el-form-item label="收件人">
+              <el-input
+                v-model="recipientsText"
+                type="textarea"
+                :rows="3"
+                placeholder="每行一个邮箱地址，也可用逗号分隔"
+              />
+            </el-form-item>
+            <el-form-item label="SMTP 服务器">
+              <el-input v-model="settings.storageBackend.alert.smtp.host" placeholder="如 smtp.example.com" />
+            </el-form-item>
+            <el-form-item label="端口">
+              <el-input-number v-model="settings.storageBackend.alert.smtp.port" :min="1" :max="65535" />
+              <div class="field-hint">常见：587（STARTTLS）、465（SSL）。</div>
+            </el-form-item>
+            <el-form-item label="加密方式">
+              <el-select v-model="settings.storageBackend.alert.smtp.tlsMode" style="width: 180px">
+                <el-option label="STARTTLS" value="starttls" />
+                <el-option label="SSL/TLS" value="ssl" />
+                <el-option label="不加密" value="none" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="用户名">
+              <el-input v-model="settings.storageBackend.alert.smtp.username" placeholder="可留空" />
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input
+                v-model="settings.storageBackend.alert.smtp.password"
+                type="password"
+                autocomplete="new-password"
+                show-password
+                placeholder="可留空"
+              />
+            </el-form-item>
+            <el-form-item label="发件人">
+              <el-input v-model="settings.storageBackend.alert.smtp.from" placeholder="留空时使用用户名" />
+            </el-form-item>
+          </template>
+        </el-form>
+      </el-card>
+    </el-col>
   </el-row>
 </template>
 
@@ -98,6 +184,17 @@ const props = defineProps({
 const backend = computed(() => props.settings.storageBackend?.backend || 'local')
 // S3 与 MinIO 共用同一组连接参数
 const isS3 = computed(() => backend.value === 's3' || backend.value === 'minio')
+
+// 邮件收件人以多行文本编辑，写回时按换行/逗号/分号拆分
+const recipientsText = computed({
+  get: () => (props.settings.storageBackend?.alert?.emailRecipients || []).join('\n'),
+  set: (value) => {
+    props.settings.storageBackend.alert.emailRecipients = value
+      .split(/[\n,，;；]+/)
+      .map(item => item.trim())
+      .filter(Boolean)
+  }
+})
 </script>
 
 <style lang="less" scoped>
@@ -109,5 +206,16 @@ const isS3 = computed(() => backend.value === 's3' || backend.value === 'minio')
 
 .backend-form {
   margin-top: 16px;
+}
+
+.unit {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+}
+
+.channel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
 }
 </style>

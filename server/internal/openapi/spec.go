@@ -27,8 +27,8 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			{"url": "/api/open/v1", "description": "Open API v1"},
 		},
 		"tags": []map[string]interface{}{
-			{"name": "文件操作", "description": "文件列表、搜索、下载与单请求上传"},
-			{"name": "文件信息", "description": "文件详情、备注、依赖与重复文件查询"},
+			{"name": "文件操作", "description": "文件列表、搜索、下载、上传、重命名/移动与删除"},
+			{"name": "文件信息", "description": "文件详情（含备注与依赖树）、存在性查询与重复文件查询"},
 			{"name": "分片上传", "description": "大文件分片上传（断点续传）。需 `open_api:files:upload` 权限。\n\n" +
 				"## 调用流程\n" +
 				"1. `POST /files/upload/init`：提交文件名、文件总大小与目标目录，获取 `uploadId`、`chunkSize`、`totalChunks`\n" +
@@ -37,7 +37,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"4. （可选）`GET /files/upload/{id}`：查询 `uploadedIndexes` 与过期时间，实现断点续传\n\n" +
 				"注意事项：\n" +
 				"- 上传会话 24 小时过期，过期后需重新 init\n" +
-				"- 目标文件已存在时，仅上传者同一 IP 可覆盖（与 Web 公共目录上传一致）\n" +
+				"- 目标文件已存在时，需传 `overwrite=true` 且具备 `open_api:files:overwrite` 权限\n" +
 				"- 小文件可直接使用 `POST /files/upload` 单请求上传，无需分片"},
 			{"name": "系统", "description": "OpenAPI 规范与文档页面。同样需要有效凭证，但不要求 API Key scope"},
 		},
@@ -74,20 +74,22 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/search": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件搜索",
-					"description":      "根据关键词搜索文件（匹配文件名和备注）。\n\n所需 scope：`open_api:reader`",
+					"description":      "根据关键词模糊搜索文件（匹配文件名和备注）；空格分隔的多个关键词需全部命中。支持按扩展名过滤，并返回与 Web 端一致的搜索建议词。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "query", "in": "query", "required": true, "description": "搜索关键词", "schema": map[string]interface{}{"type": "string", "example": "report"}},
+						{"name": "query", "in": "query", "required": true, "description": "搜索关键词，支持空格分隔多个关键词（全部命中）", "schema": map[string]interface{}{"type": "string", "example": "annual report"}},
 						{"name": "root", "in": "query", "description": "限定搜索的根目录名称（不是完整路径）", "schema": map[string]interface{}{"type": "string", "example": "docs"}},
+						{"name": "ext", "in": "query", "description": "扩展名过滤，支持逗号分隔多个；可带或不带前导点", "schema": map[string]interface{}{"type": "string", "example": "pdf,docx"}},
 						{"name": "page", "in": "query", "description": "页码，从 1 开始", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "default": 1}},
 						{"name": "pageSize", "in": "query", "description": "每页数量，非法值回退为 50", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("搜索结果", objectSchema(map[string]interface{}{
-							"results":    arraySchema(schemaRef("SearchFileItem")),
-							"pagination": schemaRef("Pagination"),
+							"results":     arraySchema(schemaRef("SearchFileItem")),
+							"suggestions": arraySchema(map[string]interface{}{"type": "string", "description": "搜索建议关键词（前缀补全 / 相关词 / 拼写纠错），逻辑与 Web 端一致"}),
+							"pagination":  schemaRef("Pagination"),
 						}, "results", "pagination")),
 						"400": errorResponse("缺少搜索关键词 query"),
 						"401": guardResponse("缺少或无效凭证"),
@@ -130,7 +132,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/info": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件详情",
-					"description":      "根据文件记录 ID 或完整路径 `/rootName/path/to/file` 获取单个文件/目录的详细信息。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
+					"description":      "根据文件记录 ID 或完整路径 `/rootName/path/to/file` 获取单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:info",
@@ -151,7 +153,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/upload": map[string]interface{}{
 				"post": map[string]interface{}{
 					"summary":          "文件上传",
-					"description":      "以 multipart/form-data 上传单个文件到指定公共目录（适合小文件）；大文件请使用「分片上传」分组的接口。目标已存在时仅上传者同一 IP 且传 overwrite=true 才会覆盖。\n\n所需 scope：`open_api:files:upload`（兼容 `open_api:writer`）",
+					"description":      "以 multipart/form-data 上传单个文件到指定公共目录（适合小文件）；大文件请使用「分片上传」分组的接口。目标已存在时需传 overwrite=true 且具备 `open_api:files:overwrite` 权限才会覆盖。\n\n所需 scope：`open_api:files:upload`（兼容 `open_api:writer`）",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:upload",
@@ -165,7 +167,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 									"properties": map[string]interface{}{
 										"file":      map[string]interface{}{"type": "string", "format": "binary", "description": "上传的文件"},
 										"path":      map[string]interface{}{"type": "string", "description": "目标目录，格式 /rootName[/subdir]，缺省为 /", "example": "/docs"},
-										"overwrite": map[string]interface{}{"type": "boolean", "description": "目标已存在时是否覆盖（仅上传者同一 IP 有效）", "default": false},
+										"overwrite": map[string]interface{}{"type": "boolean", "description": "目标已存在时是否覆盖，需具备 open_api:files:overwrite 权限", "default": false},
 									},
 								},
 							},
@@ -255,7 +257,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/upload/finalize": map[string]interface{}{
 				"post": map[string]interface{}{
 					"summary":          "完成分片上传",
-					"description":      "大文件分片上传第 3 步：全部分片上传完成后调用，服务端按序合并落盘、同步索引并写入上传记录；目标已存在时仅上传者同一 IP 可覆盖（与 Web 公共目录上传一致）。\n\n所需 scope：`open_api:files:upload`",
+					"description":      "大文件分片上传第 3 步：全部分片上传完成后调用，服务端按序合并落盘、同步索引并写入上传记录；目标已存在时需传 overwrite=true 且具备 `open_api:files:overwrite` 权限。\n\n所需 scope：`open_api:files:upload`",
 					"tags":             []string{"分片上传"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:upload",
@@ -267,7 +269,8 @@ func GenerateOpenAPISpec() map[string]interface{} {
 									"type":     "object",
 									"required": []string{"uploadId"},
 									"properties": map[string]interface{}{
-										"uploadId": map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
+										"uploadId":  map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
+										"overwrite": map[string]interface{}{"type": "boolean", "description": "目标已存在时是否覆盖，需具备 open_api:files:overwrite 权限", "default": false},
 									},
 								},
 							},
@@ -329,44 +332,102 @@ func GenerateOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/files/notes": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":          "文件备注查询",
-					"description":      "获取指定文件的备注信息。\n\n所需 scope：`open_api:files:notes`（兼容 `open_api:reader` / `open_api:writer`）",
+			"/files/exists": map[string]interface{}{
+				"post": map[string]interface{}{
+					"summary":          "批量查询文件是否存在",
+					"description":      "按一组 xxh3 哈希批量查询文件是否存在，返回每个哈希的存在情况与命中路径（多个副本时返回全部路径，首个路径同时作为 `path`）。单次最多 100 个哈希。\n\n所需 scope：`open_api:files:exists`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
-					"x-required-scope": "open_api:files:notes",
-					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "query", "required": true, "description": "文件完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+					"x-required-scope": "open_api:files:exists",
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"xxh3"},
+									"properties": map[string]interface{}{
+										"xxh3": map[string]interface{}{
+											"type":        "array",
+											"description": "待查询的 xxh3 哈希列表（不区分大小写）",
+											"minItems":    1,
+											"maxItems":    100,
+											"items":       map[string]interface{}{"type": "string", "example": "5d41402abc4b2a76"},
+										},
+									},
+								},
+							},
+						},
 					},
 					"responses": map[string]interface{}{
-						"200": successResponse("文件备注", schemaRef("NotesResult")),
-						"400": errorResponse("缺少文件路径或路径格式错误"),
+						"200": successResponse("存在性查询结果", objectSchema(map[string]interface{}{
+							"results": arraySchema(schemaRef("FileExistsItem")),
+						}, "results")),
+						"400": errorResponse("请求数据格式错误或 xxh3 为空"),
 						"401": guardResponse("缺少或无效凭证"),
-						"403": mixedErrorResponse("API Key 缺少 open_api:files:notes scope"),
-						"404": errorResponse("文件不存在"),
+						"403": mixedErrorResponse("API Key 缺少 open_api:files:exists scope"),
 						"429": errorResponse("请求过于频繁"),
 					},
 				},
 			},
-			"/files/{id}/depends": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":          "文件依赖树查询",
-					"description":      "基于文件记录 ID 查询文件的依赖树：上游递归（最多 10 层），下游仅一层。\n\n所需 scope：`open_api:files:depends`（兼容 `open_api:reader` / `open_api:writer`）",
-					"tags":             []string{"文件信息"},
+			"/files/rename": map[string]interface{}{
+				"post": map[string]interface{}{
+					"summary":          "重命名或移动文件",
+					"description":      "支持仅修改文件名（newName，同目录）或修改完整路径（newPath，可跨目录/跨根）；两者至少提供一个。\n\n所需 scope：`open_api:files:rename`（兼容 `open_api:writer`）",
+					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
-					"x-required-scope": "open_api:files:depends",
-					"parameters": []map[string]interface{}{
-						{"name": "id", "in": "path", "required": true, "description": "文件记录 ID", "schema": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 1, "example": 1}},
+					"x-required-scope": "open_api:files:rename",
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"path"},
+									"properties": map[string]interface{}{
+										"path":    map[string]interface{}{"type": "string", "description": "文件当前完整路径", "example": "/docs/report.pdf"},
+										"newName": map[string]interface{}{"type": "string", "description": "新文件名（仅同目录改名时使用）", "example": "report-2026.pdf"},
+										"newPath": map[string]interface{}{"type": "string", "description": "新完整路径（移动或跨目录改名时使用）", "example": "/archive/report-2026.pdf"},
+									},
+								},
+							},
+						},
 					},
 					"responses": map[string]interface{}{
-						"200": successResponse("依赖树", objectSchema(map[string]interface{}{
-							"root": schemaRef("DependencyTreeNode"),
-						}, "root")),
-						"400": errorResponse("无效的记录 ID 或查询依赖树失败（如循环依赖、层级过深）"),
+						"200": successResponse("重命名/移动成功", objectSchema(map[string]interface{}{
+							"old_path": map[string]interface{}{"type": "string", "description": "原完整路径"},
+							"path":     map[string]interface{}{"type": "string", "description": "新完整路径"},
+							"name":     map[string]interface{}{"type": "string", "description": "新文件名"},
+							"root":     map[string]interface{}{"type": "string", "description": "新根目录名称"},
+						}, "old_path", "path", "name", "root")),
+						"400": errorResponse("参数错误、路径格式错误、目标已存在或文件不存在"),
 						"401": guardResponse("缺少或无效凭证"),
-						"403": mixedErrorResponse("API Key 缺少 open_api:files:depends scope"),
-						"404": errorResponse("文件记录不存在"),
+						"403": mixedErrorResponse("API Key 缺少 open_api:files:rename scope"),
+						"429": errorResponse("请求过于频繁"),
+					},
+				},
+			},
+			"/files": map[string]interface{}{
+				"delete": map[string]interface{}{
+					"summary":          "删除文件或目录",
+					"description":      "删除指定文件或目录（目录会递归删除），并同步清理索引记录。\n\n所需 scope：`open_api:files:delete`（兼容 `open_api:writer`）",
+					"tags":             []string{"文件操作"},
+					"security":         dataEndpointSecurity(),
+					"x-required-scope": "open_api:files:delete",
+					"parameters": []map[string]interface{}{
+						{"name": "path", "in": "query", "required": true, "description": "文件/目录完整路径 `/rootName/path`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+					},
+					"responses": map[string]interface{}{
+						"200": successResponse("删除成功", objectSchema(map[string]interface{}{
+							"path":      map[string]interface{}{"type": "string", "description": "被删除的完整路径"},
+							"deleted":   map[string]interface{}{"type": "boolean", "description": "是否删除成功"},
+							"is_dir":    map[string]interface{}{"type": "boolean", "description": "是否为目录删除"},
+							"file_size": map[string]interface{}{"type": "integer", "format": "int64", "description": "被删除文件大小（目录为 0）"},
+						}, "path", "deleted")),
+						"400": errorResponse("缺少文件路径、路径格式错误或删除失败"),
+						"401": guardResponse("缺少或无效凭证"),
+						"403": mixedErrorResponse("API Key 缺少 open_api:files:delete scope"),
+						"404": errorResponse("文件/目录不存在"),
 						"429": errorResponse("请求过于频繁"),
 					},
 				},
@@ -567,11 +628,12 @@ func componentSchemas() map[string]interface{} {
 			"xxh3_hash":      map[string]interface{}{"type": "string", "description": "xxh3 哈希值，未计算时为空", "example": "0123456789abcdef"},
 			"hash_status":    map[string]interface{}{"type": "string", "enum": []string{"pending", "done", "failed"}, "description": "哈希计算状态", "example": "done"},
 			"notes":          map[string]interface{}{"type": "string", "description": "文件备注", "example": ""},
+			"depends":        map[string]interface{}{"nullable": true, "description": "文件依赖树（上游递归最多 10 层、下游 1 层）；目录或查询失败时为 null", "allOf": []map[string]interface{}{schemaRef("DependencyTreeNode")}},
 			"download_count": map[string]interface{}{"type": "integer", "format": "int64", "description": "下载次数", "example": 3},
 			"status":         map[string]interface{}{"type": "string", "enum": []string{"active", "deleted"}, "description": "文件记录状态", "example": "active"},
 			"created_at":     map[string]interface{}{"type": "string", "format": "date-time", "description": "记录创建时间", "example": "2026-11-03T10:00:00+08:00"},
 			"updated_at":     map[string]interface{}{"type": "string", "format": "date-time", "description": "记录更新时间", "example": "2026-11-03T10:00:00+08:00"},
-		}, "id", "name", "path", "full_path", "root", "file_path", "size", "is_dir", "mod_time", "xxh3_hash", "hash_status", "notes", "download_count", "status", "created_at", "updated_at"),
+		}, "id", "name", "path", "full_path", "root", "file_path", "size", "is_dir", "mod_time", "xxh3_hash", "hash_status", "notes", "depends", "download_count", "status", "created_at", "updated_at"),
 
 		"UploadResult": objectSchema(map[string]interface{}{
 			"id":          map[string]interface{}{"type": "integer", "format": "int64", "description": "上传操作记录 ID（索引同步失败时可能为 0）", "example": 1},
@@ -617,10 +679,26 @@ func componentSchemas() map[string]interface{} {
 			"expiredAt":       map[string]interface{}{"type": "string", "format": "date-time", "description": "会话过期时间", "example": "2026-11-04T10:00:00+08:00"},
 		}, "uploadId", "fileName", "fileSize", "chunkSize", "totalChunks", "uploadedIndexes", "status", "expired", "expiredAt"),
 
-		"NotesResult": objectSchema(map[string]interface{}{
-			"path":  map[string]interface{}{"type": "string", "description": "规范化后的文件完整路径", "example": "/docs/report.pdf"},
-			"notes": map[string]interface{}{"type": "string", "description": "文件备注，无备注时为空字符串", "example": "季度报告"},
-		}, "path", "notes"),
+		"FileExistsFileItem": objectSchema(map[string]interface{}{
+			"id":        map[string]interface{}{"type": "integer", "format": "int64", "description": "文件记录 ID", "example": 1},
+			"name":      map[string]interface{}{"type": "string", "description": "文件名", "example": "report.pdf"},
+			"path":      map[string]interface{}{"type": "string", "description": "完整路径", "example": "/docs/report.pdf"},
+			"root":      map[string]interface{}{"type": "string", "description": "根目录名称", "example": "docs"},
+			"file_path": map[string]interface{}{"type": "string", "description": "根目录内相对路径", "example": "/report.pdf"},
+			"size":      map[string]interface{}{"type": "integer", "format": "int64", "description": "文件大小（字节）", "example": 10240},
+			"mod_time":  map[string]interface{}{"type": "string", "format": "date-time", "description": "文件修改时间"},
+			"xxh3_hash": map[string]interface{}{"type": "string", "description": "xxh3 哈希值", "example": "0123456789abcdef"},
+		}, "id", "name", "path", "root", "file_path", "size", "mod_time", "xxh3_hash"),
+
+		"FileExistsItem": objectSchema(map[string]interface{}{
+			"xxh3":   map[string]interface{}{"type": "string", "description": "查询的 xxh3 哈希（小写）", "example": "0123456789abcdef"},
+			"exists": map[string]interface{}{"type": "boolean", "description": "是否存在", "example": true},
+			"path":   map[string]interface{}{"type": "string", "description": "首个命中文件的完整路径；不存在时为空", "example": "/docs/report.pdf"},
+			"paths":  arraySchema(map[string]interface{}{"type": "string", "description": "全部命中文件的完整路径"}),
+			"id":     map[string]interface{}{"type": "integer", "format": "int64", "description": "首个命中文件的记录 ID"},
+			"size":   map[string]interface{}{"type": "integer", "format": "int64", "description": "首个命中文件的大小"},
+			"files":  arraySchema(schemaRef("FileExistsFileItem")),
+		}, "xxh3", "exists", "paths"),
 
 		"DuplicateFileItem": objectSchema(map[string]interface{}{
 			"id":       map[string]interface{}{"type": "integer", "format": "int64", "description": "文件记录 ID", "example": 1},

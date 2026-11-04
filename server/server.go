@@ -216,6 +216,9 @@ func (rt *runCtx) run() {
 		workerStart(wm, "consistency-check", rt.runConsistencyCheckWorker)
 		workerStart(wm, "search-reconcile", rt.runSearchReconcileWorker)
 		workerStart(wm, "resource-monitor", func(ctx context.Context) { rt.resourceCollector.Run(ctx) })
+		if rt.storageAlertService != nil {
+			workerStart(wm, "storage-alert", func(ctx context.Context) { rt.storageAlertService.Run(ctx) })
+		}
 		if rt.ldapService != nil {
 			workerStart(wm, "ldap-sync", func(workerCtx context.Context) { rt.ldapService.StartSyncWorker(workerCtx) })
 		}

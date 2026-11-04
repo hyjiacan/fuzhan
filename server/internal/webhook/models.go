@@ -17,6 +17,7 @@ const (
 	EventTaskFailed   = "task.failed"    // 系统作业失败
 	EventTaskCanceled = "task.canceled"  // 系统作业被取消
 	EventSecurity     = "security.event" // 安全事件
+	EventStorageAlert = "storage.alert"  // 存储使用率达到告警阈值
 )
 
 // EventCatalogItem 事件目录条目（供管理接口/前端动态渲染）。
@@ -37,6 +38,7 @@ func EventCatalog() []EventCatalogItem {
 		{EventTaskFailed, "系统作业失败（含进程重启中断的对账记录）", "任务"},
 		{EventTaskCanceled, "系统作业被取消", "任务"},
 		{EventSecurity, "安全事件（登录暴破/越权拒绝/频率限制/DDoS 告警）", "安全"},
+		{EventStorageAlert, "存储使用率达到配置的告警阈值", "系统"},
 		// 文件
 		{"file.upload_started", "创建上传会话，开始上传文件", "文件"},
 		{"file.upload_canceled", "取消上传会话", "文件"},

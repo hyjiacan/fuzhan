@@ -895,6 +895,22 @@ export const SecurityApi = {
   }
 }
 
+// ========== 存储告警消息 API（仅管理员） ==========
+export const AlertApi = {
+  listMessages(params = {}) {
+    return request.get('/admin/alert-messages', { params })
+  },
+  unreadCount() {
+    return request.get('/admin/alert-messages/unread-count')
+  },
+  markRead(ids) {
+    return request.post('/admin/alert-messages/read', { ids }, { skipSuccessToast: true })
+  },
+  markAllRead() {
+    return request.post('/admin/alert-messages/read', { all: true }, { skipSuccessToast: true })
+  }
+}
+
 export default {
   AuthApi,
   ConfigApi,
@@ -910,5 +926,6 @@ export default {
   NotificationApi,
   ApiKeyApi,
   SecurityApi,
+  AlertApi,
   PersonalApi
 }

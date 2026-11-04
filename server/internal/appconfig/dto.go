@@ -177,6 +177,30 @@ type StorageBackendDTO struct {
 	S3      S3StorageConfigDTO     `json:"s3"`
 	OSS     OSSStorageConfigDTO    `json:"oss"`
 	WebDAV  WebDAVStorageConfigDTO `json:"webdav"`
+	Alert   StorageAlertConfigDTO  `json:"alert"`
+}
+
+// StorageAlertConfigDTO 存储使用率告警配置 DTO。
+type StorageAlertConfigDTO struct {
+	Enabled              bool          `json:"enabled"`
+	ThresholdPercent     float64       `json:"thresholdPercent"`
+	CheckIntervalMinutes int           `json:"checkIntervalMinutes"`
+	CooldownMinutes      int           `json:"cooldownMinutes"`
+	WebEnabled           bool          `json:"webEnabled"`
+	WebhookEnabled       bool          `json:"webhookEnabled"`
+	EmailEnabled         bool          `json:"emailEnabled"`
+	EmailRecipients      []string      `json:"emailRecipients"`
+	SMTP                 SMTPConfigDTO `json:"smtp"`
+}
+
+// SMTPConfigDTO 告警邮件 SMTP 配置 DTO。
+type SMTPConfigDTO struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+	TLSMode  string `json:"tlsMode"`
 }
 
 // S3StorageConfigDTO S3/MinIO 连接配置 DTO
@@ -471,6 +495,24 @@ func (c *Config) ToDTO() ConfigDTO {
 				Username: c.Storage.WebDAV.Username,
 				Password: c.Storage.WebDAV.Password,
 			},
+			Alert: StorageAlertConfigDTO{
+				Enabled:              c.Storage.Alert.Enabled,
+				ThresholdPercent:     c.Storage.Alert.ThresholdPercent,
+				CheckIntervalMinutes: c.Storage.Alert.CheckIntervalMinutes,
+				CooldownMinutes:      c.Storage.Alert.CooldownMinutes,
+				WebEnabled:           c.Storage.Alert.WebEnabled,
+				WebhookEnabled:       c.Storage.Alert.WebhookEnabled,
+				EmailEnabled:         c.Storage.Alert.EmailEnabled,
+				EmailRecipients:      c.Storage.Alert.EmailRecipients,
+				SMTP: SMTPConfigDTO{
+					Host:     c.Storage.Alert.SMTP.Host,
+					Port:     c.Storage.Alert.SMTP.Port,
+					Username: c.Storage.Alert.SMTP.Username,
+					Password: c.Storage.Alert.SMTP.Password,
+					From:     c.Storage.Alert.SMTP.From,
+					TLSMode:  c.Storage.Alert.SMTP.TLSMode,
+				},
+			},
 		},
 		TempFiles: TempFilesConfigDTO{
 			Enabled:           c.Storage.Temp.Enabled,
@@ -698,6 +740,24 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 			Username: dto.StorageBackend.WebDAV.Username,
 			Password: dto.StorageBackend.WebDAV.Password,
 		}
+		cfg.Storage.Alert = NormalizeStorageAlertConfig(StorageAlertConfig{
+			Enabled:              dto.StorageBackend.Alert.Enabled,
+			ThresholdPercent:     dto.StorageBackend.Alert.ThresholdPercent,
+			CheckIntervalMinutes: dto.StorageBackend.Alert.CheckIntervalMinutes,
+			CooldownMinutes:      dto.StorageBackend.Alert.CooldownMinutes,
+			WebEnabled:           dto.StorageBackend.Alert.WebEnabled,
+			WebhookEnabled:       dto.StorageBackend.Alert.WebhookEnabled,
+			EmailEnabled:         dto.StorageBackend.Alert.EmailEnabled,
+			EmailRecipients:      dto.StorageBackend.Alert.EmailRecipients,
+			SMTP: SMTPConfig{
+				Host:     dto.StorageBackend.Alert.SMTP.Host,
+				Port:     dto.StorageBackend.Alert.SMTP.Port,
+				Username: dto.StorageBackend.Alert.SMTP.Username,
+				Password: dto.StorageBackend.Alert.SMTP.Password,
+				From:     dto.StorageBackend.Alert.SMTP.From,
+				TLSMode:  dto.StorageBackend.Alert.SMTP.TLSMode,
+			},
+		})
 	}
 
 	// 私有存储（前端字段名 privateFiles）

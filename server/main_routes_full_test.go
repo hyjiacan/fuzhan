@@ -210,8 +210,10 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	openAPI.GET("/files/search", dummy)
 	openAPI.GET("/files/download/*path", dummy)
 	openAPI.GET("/files/duplicates", dummy)
-	openAPI.GET("/files/notes", dummy)
-	openAPI.GET("/files/:id/depends", dummy)
+	openAPI.GET("/files/info", dummy)
+	openAPI.POST("/files/exists", dummy)
+	openAPI.POST("/files/rename", dummy)
+	openAPI.DELETE("/files", dummy)
 	openAPI.GET("/docs", dummy)
 
 	// 文档路由单独成组，与 registerTopLevelRoutes 中 openapiDoc 的独立注册方式保持一致

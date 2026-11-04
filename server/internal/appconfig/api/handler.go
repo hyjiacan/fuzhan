@@ -421,6 +421,50 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("storage.webdav.url", appconfig.GlobalConfig.Storage.WebDAV.URL)
 		updates.Add("storage.webdav.username", appconfig.GlobalConfig.Storage.WebDAV.Username)
 		updates.Add("storage.webdav.password", appconfig.GlobalConfig.Storage.WebDAV.Password)
+
+		// —— 存储告警（内存配置即时生效，无需重启）——
+		// 仅在请求显式包含 storageBackend.alert 时更新，避免旧客户端只提交
+		// 存储后端字段时把告警配置重置为默认值。
+		if rawSB, ok := raw["storageBackend"]; ok {
+			var sbFields map[string]json.RawMessage
+			if json.Unmarshal(rawSB, &sbFields) == nil {
+				if _, hasAlert := sbFields["alert"]; hasAlert {
+					alert := appconfig.NormalizeStorageAlertConfig(appconfig.StorageAlertConfig{
+						Enabled:              sb.Alert.Enabled,
+						ThresholdPercent:     sb.Alert.ThresholdPercent,
+						CheckIntervalMinutes: sb.Alert.CheckIntervalMinutes,
+						CooldownMinutes:      sb.Alert.CooldownMinutes,
+						WebEnabled:           sb.Alert.WebEnabled,
+						WebhookEnabled:       sb.Alert.WebhookEnabled,
+						EmailEnabled:         sb.Alert.EmailEnabled,
+						EmailRecipients:      sb.Alert.EmailRecipients,
+						SMTP: appconfig.SMTPConfig{
+							Host:     sb.Alert.SMTP.Host,
+							Port:     sb.Alert.SMTP.Port,
+							Username: sb.Alert.SMTP.Username,
+							Password: sb.Alert.SMTP.Password,
+							From:     sb.Alert.SMTP.From,
+							TLSMode:  sb.Alert.SMTP.TLSMode,
+						},
+					})
+					appconfig.GlobalConfig.Storage.Alert = alert
+					updates.Add("storage.alert.enabled", alert.Enabled)
+					updates.Add("storage.alert.threshold_percent", alert.ThresholdPercent)
+					updates.Add("storage.alert.check_interval_minutes", alert.CheckIntervalMinutes)
+					updates.Add("storage.alert.cooldown_minutes", alert.CooldownMinutes)
+					updates.Add("storage.alert.web_enabled", alert.WebEnabled)
+					updates.Add("storage.alert.webhook_enabled", alert.WebhookEnabled)
+					updates.Add("storage.alert.email_enabled", alert.EmailEnabled)
+					updates.Add("storage.alert.email_recipients", alert.EmailRecipients)
+					updates.Add("storage.alert.smtp.host", alert.SMTP.Host)
+					updates.Add("storage.alert.smtp.port", alert.SMTP.Port)
+					updates.Add("storage.alert.smtp.username", alert.SMTP.Username)
+					updates.Add("storage.alert.smtp.password", alert.SMTP.Password)
+					updates.Add("storage.alert.smtp.from", alert.SMTP.From)
+					updates.Add("storage.alert.smtp.tls_mode", alert.SMTP.TLSMode)
+				}
+			}
+		}
 	}
 
 	// —— 私有文件存储（前端字段名 privateFiles）——

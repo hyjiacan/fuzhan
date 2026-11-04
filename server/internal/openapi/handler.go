@@ -14,7 +14,10 @@ import (
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
 	"fuzhan/internal/index"
+	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
+	"fuzhan/internal/repositories"
+	"fuzhan/internal/search"
 	"fuzhan/internal/services"
 	"fuzhan/internal/storage"
 	"fuzhan/internal/utils"
@@ -56,6 +59,10 @@ type Handler struct {
 	storages map[string]storage.Storage
 	// uploadSvc 分片上传会话服务（与 Web 端公共上传共用会话/分片/落盘流程）
 	uploadSvc *services.UploadSessionService
+	// fileSvc 文件重命名/移动/删除服务（与 Web 端复用同一套落盘逻辑）
+	fileSvc *services.FileService
+	// searchIdx 文件名检索索引，用于搜索建议词（逻辑与 Web 端一致）
+	searchIdx *search.SearchIndex
 	// chunkSize 分片大小（字节），由配置 upload.chunk_size 决定
 	chunkSize int64
 }
@@ -63,7 +70,8 @@ type Handler struct {
 // NewHandler 创建 Open API 处理器
 func NewHandler(db *gorm.DB, indexSvc *index.Service, depSvc *index.DependencyService,
 	rootNames map[string]string, storages map[string]storage.Storage,
-	uploadSvc *services.UploadSessionService, chunkSize int64) *Handler {
+	uploadSvc *services.UploadSessionService, fileSvc *services.FileService,
+	searchIdx *search.SearchIndex, chunkSize int64) *Handler {
 	return &Handler{
 		db:        db,
 		indexSvc:  indexSvc,
@@ -71,7 +79,25 @@ func NewHandler(db *gorm.DB, indexSvc *index.Service, depSvc *index.DependencySe
 		rootNames: rootNames,
 		storages:  storages,
 		uploadSvc: uploadSvc,
+		fileSvc:   fileSvc,
+		searchIdx: searchIdx,
 		chunkSize: chunkSize,
+	}
+}
+
+// hasContextScope 判断当前鉴权上下文是否包含指定 scope。
+func hasContextScope(c *gin.Context, required string) bool {
+	v, ok := c.Get(scopesContextKey)
+	if !ok {
+		return false
+	}
+	switch scopes := v.(type) {
+	case string:
+		return models.ScopeContains(scopes, required)
+	case []string:
+		return models.ScopeContains(strings.Join(scopes, ","), required)
+	default:
+		return false
 	}
 }
 
@@ -181,15 +207,23 @@ func (h *Handler) ListFiles(c *gin.Context) {
 type SearchFilesQuery struct {
 	Query    string `form:"query" binding:"required"`
 	Root     string `form:"root"`
+	Ext      string `form:"ext"` // 扩展名过滤，支持逗号分隔多个（如 pdf,docx）
 	Page     int    `form:"page"`
 	PageSize int    `form:"pageSize"`
 }
 
 // SearchFiles GET /api/open/v1/files/search
+// 支持多关键词模糊匹配（空格分隔，全部命中）、扩展名过滤，并返回与 Web 端一致的搜索建议词。
 func (h *Handler) SearchFiles(c *gin.Context) {
 	var query SearchFilesQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
 		response.HandleBadRequest(c, "缺少搜索关键词 query", nil)
+		return
+	}
+
+	keywords := strings.Fields(query.Query)
+	if len(keywords) == 0 {
+		response.HandleBadRequest(c, "搜索关键词不能为空", nil)
 		return
 	}
 
@@ -201,9 +235,24 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 	}
 
 	dbQuery := h.db.Model(&models.FileRecordPublic{}).
-		Where("status = ?", models.FileStatusActive).
-		Where("(file_name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')",
-			"%"+escapeLike(query.Query)+"%", "%"+escapeLike(query.Query)+"%")
+		Where("status = ?", models.FileStatusActive)
+
+	// 逐个关键词 AND 匹配文件名/备注，形成模糊搜索语义
+	for _, kw := range keywords {
+		pattern := "%" + escapeLike(kw) + "%"
+		dbQuery = dbQuery.Where("(file_name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')", pattern, pattern)
+	}
+
+	if exts := normalizeSearchExtensions(query.Ext); len(exts) > 0 {
+		conditions := make([]string, 0, len(exts))
+		args := make([]interface{}, 0, len(exts))
+		for _, ext := range exts {
+			conditions = append(conditions, "LOWER(file_name) LIKE ? ESCAPE '\\'")
+			args = append(args, "%."+escapeLike(ext))
+		}
+		dbQuery = dbQuery.Where("is_dir = ?", false).
+			Where("("+strings.Join(conditions, " OR ")+")", args...)
+	}
 
 	if query.Root != "" {
 		dbQuery = dbQuery.Where("root_name = ?", query.Root)
@@ -233,13 +282,79 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"results": files,
+		"results":     files,
+		"suggestions": h.buildSearchSuggestions(query.Query, 10),
 		"pagination": gin.H{
 			"page":      query.Page,
 			"page_size": query.PageSize,
 			"total":     total,
 		},
 	})
+}
+
+// normalizeSearchExtensions 规范化扩展名过滤参数：去点、转小写、去重，最多 10 个。
+func normalizeSearchExtensions(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' '
+	})
+	seen := make(map[string]bool, len(parts))
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		ext := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(p), "."))
+		if ext == "" || len(ext) > 20 || seen[ext] {
+			continue
+		}
+		seen[ext] = true
+		out = append(out, ext)
+		if len(out) >= 10 {
+			break
+		}
+	}
+	return out
+}
+
+// buildSearchSuggestions 返回与 Web 端一致的搜索建议词：
+// 前缀补全 + 多词相关词 + 拼写纠错，去重后最多 limit 个。
+func (h *Handler) buildSearchSuggestions(q string, limit int) []string {
+	if h.searchIdx == nil || strings.TrimSpace(q) == "" || limit <= 0 {
+		return []string{}
+	}
+	seen := make(map[string]bool)
+	out := make([]string, 0, limit)
+	add := func(names []string) {
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if key == strings.ToLower(strings.TrimSpace(q)) || seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, name)
+			if len(out) >= limit {
+				return
+			}
+		}
+	}
+	if names, err := h.searchIdx.SuggestKeywords(strings.TrimSpace(q), limit); err == nil {
+		add(names)
+	}
+	if strings.Contains(strings.TrimSpace(q), " ") {
+		if names, err := h.searchIdx.SuggestRelatedKeywords(strings.TrimSpace(q), limit); err == nil {
+			add(names)
+		}
+	}
+	if len(out) < limit {
+		if names, err := h.searchIdx.SuggestCorrectKeywords(strings.TrimSpace(q), limit); err == nil {
+			add(names)
+		}
+	}
+	return out
 }
 
 // ==================== FR-3.3: 文件下载 API ====================
@@ -387,43 +502,6 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 	})
 }
 
-// ==================== FR-3.6: 文件备注查询 API ====================
-
-// GetNotes GET /api/open/v1/files/notes
-func (h *Handler) GetNotes(c *gin.Context) {
-	path := c.Query("path")
-	if path == "" {
-		response.HandleBadRequest(c, "缺少文件路径", nil)
-		return
-	}
-
-	// URL 解码，处理中文和特殊字符
-	path, _ = url.QueryUnescape(path)
-
-	cleanPath := filepath.ToSlash(path)
-	parts := splitPath(cleanPath)
-	if len(parts) < 2 {
-		response.HandleBadRequest(c, "路径格式错误", nil)
-		return
-	}
-
-	rootName := parts[0]
-	relPath := "/" + strings.Join(parts[1:], "/")
-	relPath = filepath.ToSlash(relPath)
-
-	var record models.FileRecordPublic
-	if err := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
-		rootName, relPath, models.FileStatusActive).First(&record).Error; err != nil {
-		response.HandleNotFound(c, "文件不存在: "+rootName+relPath)
-		return
-	}
-
-	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"path":  cleanPath,
-		"notes": record.Notes,
-	})
-}
-
 // ==================== 文件详情 API ====================
 
 // GetFileInfo GET /api/open/v1/files/info
@@ -463,6 +541,14 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 		}
 	}
 
+	// 依赖树并入文件详情：查询失败不阻塞详情返回，仅返回 depends=null。
+	var depTree *index.DependencyTreeNode
+	if h.depSvc != nil && !record.IsDir {
+		if tree, err := h.depSvc.GetDependencyTree(record.ID); err == nil {
+			depTree = tree
+		}
+	}
+
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"id":             record.ID,
 		"name":           record.FileName,
@@ -476,10 +562,278 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 		"xxh3_hash":      record.Xxh3Hash,
 		"hash_status":    record.HashStatus,
 		"notes":          record.Notes,
+		"depends":        depTree,
 		"download_count": record.DownloadCount,
 		"status":         record.Status,
 		"created_at":     record.CreatedAt,
 		"updated_at":     record.UpdatedAt,
+	})
+}
+
+// ==================== 文件存在性查询 API ====================
+
+// CheckFilesExistRequest 文件存在性查询请求
+type CheckFilesExistRequest struct {
+	// Xxh3 待查询的 xxh3 哈希列表（不区分大小写）
+	Xxh3 []string `json:"xxh3" binding:"required,min=1,max=100"`
+}
+
+// CheckFilesExist POST /api/open/v1/files/exists
+// 按一组 xxh3 哈希批量查询文件是否存在，并返回每个哈希对应的路径。
+func (h *Handler) CheckFilesExist(c *gin.Context) {
+	var req CheckFilesExistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求数据格式错误: 需要提供 xxh3 数组（1-100 个）", nil)
+		return
+	}
+
+	// 规范化哈希：去空白、转小写、去重，保持输入顺序
+	hashes := make([]string, 0, len(req.Xxh3))
+	seen := make(map[string]bool, len(req.Xxh3))
+	for _, raw := range req.Xxh3 {
+		hash := strings.ToLower(strings.TrimSpace(raw))
+		if hash == "" || seen[hash] {
+			continue
+		}
+		seen[hash] = true
+		hashes = append(hashes, hash)
+	}
+	if len(hashes) == 0 {
+		response.HandleBadRequest(c, "xxh3 不能为空", nil)
+		return
+	}
+
+	var records []models.FileRecordPublic
+	if err := h.db.Where("status = ? AND is_dir = ? AND xxh3_hash IN ?",
+		models.FileStatusActive, false, hashes).Order("id ASC").Find(&records).Error; err != nil {
+		response.HandleInternalServerError(c, "查询文件存在性失败: "+err.Error())
+		return
+	}
+
+	grouped := make(map[string][]models.FileRecordPublic, len(hashes))
+	for _, rec := range records {
+		key := strings.ToLower(rec.Xxh3Hash)
+		grouped[key] = append(grouped[key], rec)
+	}
+
+	results := make([]gin.H, 0, len(hashes))
+	for _, hash := range hashes {
+		matched := grouped[hash]
+		paths := make([]string, 0, len(matched))
+		files := make([]gin.H, 0, len(matched))
+		for _, rec := range matched {
+			paths = append(paths, rec.FullPath)
+			files = append(files, gin.H{
+				"id":        rec.ID,
+				"name":      rec.FileName,
+				"path":      rec.FullPath,
+				"root":      rec.RootName,
+				"file_path": rec.FilePath,
+				"size":      rec.FileSize,
+				"mod_time":  rec.ModTime,
+				"xxh3_hash": rec.Xxh3Hash,
+			})
+		}
+		item := gin.H{
+			"xxh3":   hash,
+			"exists": len(matched) > 0,
+			"paths":  paths,
+			"files":  files,
+		}
+		if len(matched) > 0 {
+			item["path"] = matched[0].FullPath
+			item["id"] = matched[0].ID
+			item["size"] = matched[0].FileSize
+		}
+		results = append(results, item)
+	}
+
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{"results": results})
+}
+
+// ==================== 文件重命名/移动 API ====================
+
+// RenameFileRequest 重命名或移动文件请求
+type RenameFileRequest struct {
+	Path    string `json:"path" binding:"required"`
+	NewName string `json:"newName"` // 仅修改文件名（同目录）
+	NewPath string `json:"newPath"` // 修改完整路径（可跨目录）
+}
+
+// RenameFile POST /api/open/v1/files/rename
+// 支持仅修改文件名（newName）或修改完整路径（newPath），二者至少提供一个。
+func (h *Handler) RenameFile(c *gin.Context) {
+	var req RenameFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求数据格式错误: path 必填", nil)
+		return
+	}
+
+	oldPath := filepath.ToSlash(strings.TrimSpace(req.Path))
+	newName := strings.TrimSpace(req.NewName)
+	newPath := filepath.ToSlash(strings.TrimSpace(req.NewPath))
+	if oldPath == "" || (newName == "" && newPath == "") {
+		response.HandleBadRequest(c, "path 与 newName/newPath 至少需要提供一项新名称或新路径", nil)
+		return
+	}
+	if h.fileSvc == nil {
+		response.HandleInternalServerError(c, "文件服务不可用")
+		return
+	}
+
+	if newPath != "" && newName != "" && filepath.Base(newPath) != newName {
+		response.HandleBadRequest(c, "newName 与 newPath 的文件名不一致", nil)
+		return
+	}
+
+	if newPath != "" {
+		if err := h.fileSvc.MoveFile(oldPath, newPath); err != nil {
+			response.HandleBadRequest(c, err.Error(), nil)
+			return
+		}
+		if oldRoot, oldRel := splitRootPath(oldPath); oldRoot != "" {
+			if newRoot, newRel := splitRootPath(newPath); newRoot != "" {
+				h.syncIndexMove(oldRoot, oldRel, newRoot, newRel)
+				newPath = "/" + newRoot + strings.TrimPrefix(newRel, "/")
+			}
+		}
+	} else {
+		if err := h.fileSvc.RenameFile(oldPath, newName); err != nil {
+			response.HandleBadRequest(c, err.Error(), nil)
+			return
+		}
+		if root, rel := splitRootPath(oldPath); root != "" {
+			newRel := "/" + strings.TrimPrefix(filepath.ToSlash(filepath.Join(filepath.Dir(rel), newName)), "/")
+			newPath = "/" + root + newRel
+			h.syncIndexMove(root, rel, root, newRel)
+		}
+	}
+
+	rootName, _ := splitRootPath(newPath)
+	response.HandleSuccess(c, http.StatusOK, "重命名成功", gin.H{
+		"old_path": oldPath,
+		"path":     newPath,
+		"name":     filepath.Base(newPath),
+		"root":     rootName,
+	})
+}
+
+// syncIndexMove 文件移动/重命名后的索引同步（跨根时软删旧记录并重建新记录）。
+func (h *Handler) syncIndexMove(oldRoot, oldRel, newRoot, newRel string) {
+	if h.indexSvc == nil {
+		return
+	}
+	oldRel = "/" + strings.TrimPrefix(filepath.ToSlash(oldRel), "/")
+	newRel = "/" + strings.TrimPrefix(filepath.ToSlash(newRel), "/")
+	if oldRoot == newRoot {
+		if err := h.indexSvc.MoveFile(oldRoot, oldRel, newRel); err != nil {
+			utils.Warn("开放接口移动文件后同步索引失败",
+				utils.String("root", oldRoot),
+				utils.String("from", oldRel),
+				utils.String("to", newRel),
+				utils.Err(err))
+		}
+		return
+	}
+	if err := h.indexSvc.RemoveFile(oldRoot, oldRel); err != nil {
+		utils.Warn("开放接口跨根移动软删旧索引失败",
+			utils.String("root", oldRoot), utils.String("path", oldRel), utils.Err(err))
+	}
+	if err := h.indexSvc.SyncFile(newRoot, newRel); err != nil {
+		utils.Warn("开放接口跨根移动重建索引失败",
+			utils.String("root", newRoot), utils.String("path", newRel), utils.Err(err))
+	}
+}
+
+// ==================== 文件删除 API ====================
+
+// DeleteFileQuery 删除文件查询参数
+type DeleteFileQuery struct {
+	Path string `form:"path" binding:"required"`
+}
+
+// DeleteFile DELETE /api/open/v1/files?path=/rootName/path/to/file
+// 删除文件或目录（目录会递归删除），并同步清理索引记录。
+func (h *Handler) DeleteFile(c *gin.Context) {
+	var req DeleteFileQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.HandleBadRequest(c, "缺少文件路径 path", nil)
+		return
+	}
+	cleanPath := filepath.ToSlash(strings.TrimSpace(req.Path))
+	rootName, relPath := splitRootPath(cleanPath)
+	if rootName == "" || strings.TrimSpace(relPath) == "" {
+		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+		return
+	}
+	if h.fileSvc == nil {
+		response.HandleInternalServerError(c, "文件服务不可用")
+		return
+	}
+
+	// 删除前判断目录/文件大小，供操作记录与索引清理使用
+	isDir := false
+	var fileSize int64
+	if st, ok := h.storageFor(rootName); ok {
+		if info, err := st.Stat(c.Request.Context(), strings.TrimPrefix(relPath, "/")); err == nil {
+			isDir = info.IsDir
+			if !isDir {
+				fileSize = info.Size
+			}
+		}
+	}
+
+	if err := h.fileSvc.DeleteFile(cleanPath); err != nil {
+		response.HandleBadRequest(c, err.Error(), nil)
+		return
+	}
+
+	if h.indexSvc != nil {
+		var records []models.FileRecordPublic
+		var queryErr error
+		if isDir {
+			// 目录删除：同时清理目录自身的索引记录与其所有子项（前缀匹配）
+			prefix := strings.TrimPrefix(relPath, "/") + "/"
+			queryErr = h.db.Where("root_name = ? AND (file_path = ? OR file_path LIKE ?) AND status = ?",
+				rootName, relPath, "/"+escapeLike(prefix)+"%", models.FileStatusActive).Find(&records).Error
+		} else {
+			queryErr = h.db.Where("root_name = ? AND file_path = ? AND status = ?",
+				rootName, relPath, models.FileStatusActive).Find(&records).Error
+		}
+		if queryErr != nil {
+			utils.Warn("开放接口删除后查找索引记录失败",
+				utils.String("root", rootName), utils.String("path", relPath), utils.Err(queryErr))
+		} else {
+			recordIDs := make([]uint, 0, len(records))
+			for _, rec := range records {
+				recordIDs = append(recordIDs, rec.ID)
+				if err := h.indexSvc.DeleteRecord(rec.ID); err != nil {
+					utils.Warn("开放接口删除索引记录失败",
+						utils.Int("id", int(rec.ID)),
+						utils.String("root", rootName),
+						utils.String("path", rec.FilePath),
+						utils.Err(err))
+				}
+			}
+			// 与 Web 端删除保持一致：级联清理该文件/目录的上传、下载操作记录
+			if removed, err := repositories.NewRecordRepository(h.db).
+				DeleteByFile(rootName, relPath, isDir, recordIDs); err != nil {
+				utils.Warn("开放接口删除后清理操作记录失败",
+					utils.String("root", rootName), utils.String("path", relPath), utils.Err(err))
+			} else if removed > 0 {
+				utils.Info("开放接口删除已清理操作记录",
+					utils.Int("count", int(removed)),
+					utils.String("root", rootName), utils.String("path", relPath))
+			}
+		}
+	}
+
+	middleware.LogOperation(c, "file.delete", cleanPath, nil)
+	response.HandleSuccess(c, http.StatusOK, "删除成功", gin.H{
+		"path":      cleanPath,
+		"deleted":   true,
+		"is_dir":    isDir,
+		"file_size": fileSize,
 	})
 }
 
@@ -489,7 +843,7 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 // 以 multipart/form-data 上传单个文件到指定公共目录：
 //   - file: 上传的文件（必填）
 //   - path: 目标目录，格式 /rootName[/subdir]，缺省为 /
-//   - overwrite: 目标已存在时是否覆盖，仅管理员可覆盖
+//   - overwrite: 目标已存在时是否覆盖，需具备 open_api:files:overwrite 权限
 func (h *Handler) UploadFile(c *gin.Context) {
 	if !appconfig.GlobalConfig.Upload.Enabled {
 		response.HandleForbidden(c, "公共目录上传功能已关闭")
@@ -588,13 +942,9 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		overwrite, _ = strconv.ParseBool(v)
 	}
 	if existing {
-		indexPath := "/" + relPath
-		var existingRec models.FileRecordPublic
-		recErr := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
-			rootName, indexPath, models.FileStatusActive).First(&existingRec).Error
-		if !overwrite || recErr != nil || clientIP == "" || existingRec.UploaderIP != clientIP {
+		if !overwrite || !hasContextScope(c, models.ScopeFilesOverwrite) {
 			response.HandleErrorCompat(c, http.StatusConflict,
-				"目标文件已存在；仅上传者同一 IP 可覆盖，且需传 overwrite=true", nil)
+				"目标文件已存在；覆盖需传 overwrite=true 且具备 open_api:files:overwrite 权限", nil)
 			return
 		}
 	}
@@ -848,6 +1198,8 @@ func (h *Handler) GetChunkUploadStatus(c *gin.Context) {
 // FinalizeChunkUploadRequest 完成分片上传请求
 type FinalizeChunkUploadRequest struct {
 	UploadID uint64 `json:"uploadId" binding:"required"`
+	// Overwrite 目标文件已存在时是否覆盖，需具备 open_api:files:overwrite 权限
+	Overwrite bool `json:"overwrite"`
 }
 
 // FinalizeChunkUpload POST /api/open/v1/files/upload/finalize
@@ -863,8 +1215,12 @@ func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 		return
 	}
 
-	// 公开目录覆盖沿用 Web 上传语义：不引入管理员会话，仅当上传者 IP 与现有记录一致时放行
-	result, err := h.uploadSvc.Finalize(uint(req.UploadID), false)
+	if req.Overwrite && !hasContextScope(c, models.ScopeFilesOverwrite) {
+		response.HandleForbidden(c, "覆盖已有文件需要 open_api:files:overwrite 权限")
+		return
+	}
+
+	result, err := h.uploadSvc.Finalize(uint(req.UploadID), req.Overwrite)
 	if err != nil {
 		if errors.Is(err, services.ErrFileExists) {
 			response.HandleErrorCompat(c, http.StatusConflict, err.Error(), nil)
@@ -1007,33 +1363,6 @@ func (h *Handler) callerUserUUID(c *gin.Context) string {
 	return ""
 }
 
-// GetDependencyTree GET /api/open/v1/files/{id}/depends
-func (h *Handler) GetDependencyTree(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil || id == 0 {
-		response.HandleBadRequest(c, "无效的记录ID", nil)
-		return
-	}
-
-	// 先检查文件记录是否存在
-	_, err = h.indexSvc.GetRecord(uint(id))
-	if err != nil {
-		response.HandleNotFound(c, "文件记录不存在")
-		return
-	}
-
-	tree, err := h.depSvc.GetDependencyTree(uint(id))
-	if err != nil {
-		response.HandleBadRequest(c, "查询依赖树失败", nil)
-		return
-	}
-
-	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"root": tree,
-	})
-}
-
 // ==================== FR-3.10: OpenAPI 文档 ====================
 
 // GetOpenAPISpec GET /api/open/v1/openapi.json
@@ -1065,4 +1394,16 @@ func splitPath(p string) []string {
 		}
 	}
 	return parts
+}
+
+// splitRootPath 将完整路径拆为根目录名与带前导 / 的相对路径。
+func splitRootPath(p string) (rootName, relPath string) {
+	parts := splitPath(filepath.ToSlash(p))
+	if len(parts) == 0 {
+		return "", ""
+	}
+	if len(parts) == 1 {
+		return parts[0], ""
+	}
+	return parts[0], "/" + strings.Join(parts[1:], "/")
 }

@@ -74,6 +74,22 @@ const FIELD_LABELS = {
   'storageBackend.webdav.url': '服务地址',
   'storageBackend.webdav.username': '用户名',
   'storageBackend.webdav.password': '密码',
+  'storageBackend.alert': '存储告警',
+  'storageBackend.alert.enabled': '启用存储告警',
+  'storageBackend.alert.thresholdPercent': '告警阈值(%)',
+  'storageBackend.alert.checkIntervalMinutes': '检测间隔(分钟)',
+  'storageBackend.alert.cooldownMinutes': '重复告警间隔(分钟)',
+  'storageBackend.alert.webEnabled': 'Web 消息通知',
+  'storageBackend.alert.webhookEnabled': 'Webhook 推送',
+  'storageBackend.alert.emailEnabled': '邮件通知',
+  'storageBackend.alert.emailRecipients': '邮件收件人',
+  'storageBackend.alert.smtp': 'SMTP',
+  'storageBackend.alert.smtp.host': 'SMTP 服务器',
+  'storageBackend.alert.smtp.port': 'SMTP 端口',
+  'storageBackend.alert.smtp.username': 'SMTP 用户名',
+  'storageBackend.alert.smtp.password': 'SMTP 密码',
+  'storageBackend.alert.smtp.from': '发件人',
+  'storageBackend.alert.smtp.tlsMode': '加密方式',
 
   privateFiles: '私有文件',
   'privateFiles.enabled': '启用私有文件',
@@ -229,7 +245,8 @@ const SECRET_FIELDS = new Set([
   'auth.oauth2.clientSecret',
   'storageBackend.s3.secretKey',
   'storageBackend.oss.secretKey',
-  'storageBackend.webdav.password'
+  'storageBackend.webdav.password',
+  'storageBackend.alert.smtp.password'
 ])
 
 // 枚举值中文名
@@ -237,6 +254,7 @@ const VALUE_LABELS = {
   'database.driver': { sqlite: 'SQLite', mysql: 'MySQL', postgres: 'PostgreSQL' },
   'openApi.ipAccessMode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' },
   'storageBackend.backend': { local: '本地磁盘', s3: 'S3', minio: 'MinIO', oss: '阿里云 OSS', webdav: 'WebDAV' },
+  'storageBackend.alert.smtp.tlsMode': { none: '不加密', starttls: 'STARTTLS', ssl: 'SSL/TLS' },
   'account.captcha.mode': { disabled: '关闭', always: '始终开启', after_n: '失败后开启' }
 }
 

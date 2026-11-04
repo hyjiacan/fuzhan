@@ -136,7 +136,10 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		// FR-3.3: 文件下载 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/download/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
 		// 文件详情 API（需认证，需要文件详情查询权限；reader/writer 层级同样覆盖）
+		// 备注与依赖树已并入详情响应，不再提供独立接口
 		openAPI.GET("/files/info", rt.rbacService.RequireScope(models.ScopeFilesInfo), rt.openAPIHandler.GetFileInfo)
+		// 文件存在性查询 API（需认证，需要文件存在性查询权限；reader/writer 层级同样覆盖）
+		openAPI.POST("/files/exists", rt.rbacService.RequireScope(models.ScopeFilesExists), rt.openAPIHandler.CheckFilesExist)
 		// 文件上传 API（需认证，需要文件上传权限；仅 writer/admin 层级覆盖）
 		openAPI.POST("/files/upload", rt.rbacService.RequireScope(models.ScopeFilesUpload), rt.openAPIHandler.UploadFile)
 		// 分片上传 API：创建会话 → 上传分片 → 完成合并（权限同上）
@@ -146,10 +149,10 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openAPI.GET("/files/upload/:id", rt.rbacService.RequireScope(models.ScopeFilesUpload), rt.openAPIHandler.GetChunkUploadStatus)
 		// FR-3.5: 重复文件查询 API（需认证，需要重复文件查询权限）
 		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope(models.ScopeFilesDuplicates), rt.openAPIHandler.ListDuplicates)
-		// FR-3.6: 文件备注查询 API（需认证，需要文件备注查询权限）
-		openAPI.GET("/files/notes", rt.rbacService.RequireScope(models.ScopeFilesNotes), rt.openAPIHandler.GetNotes)
-		// FR-4.1: 文件依赖树查询 API（需认证，需要文件依赖树查询权限）
-		openAPI.GET("/files/:id/depends", rt.rbacService.RequireScope(models.ScopeFilesDepends), rt.openAPIHandler.GetDependencyTree)
+		// 文件重命名/移动 API（需认证，需要文件重命名权限；仅 writer/admin 层级覆盖）
+		openAPI.POST("/files/rename", rt.rbacService.RequireScope(models.ScopeFilesRename), rt.openAPIHandler.RenameFile)
+		// 文件删除 API（需认证，需要文件删除权限；仅 writer/admin 层级覆盖）
+		openAPI.DELETE("/files", rt.rbacService.RequireScope(models.ScopeFilesDelete), rt.openAPIHandler.DeleteFile)
 		openAPI.GET("/docs", rt.openAPIHandler.GetDocsPage)
 	}
 

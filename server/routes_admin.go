@@ -42,6 +42,13 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 		admin.GET("/security/events/stats", sh.Stats)
 	}
 
+	// 存储告警消息路由（仅管理员可见的 Web 消息通道）
+	if ah := rt.storageAlertHandler; ah != nil {
+		admin.GET("/alert-messages", ah.List)
+		admin.GET("/alert-messages/unread-count", ah.UnreadCount)
+		admin.POST("/alert-messages/read", ah.MarkRead)
+	}
+
 	// 行为分析路由（下载行为 /admin/behavior-analytics，基于 operation_records 公开下载聚合）
 	if h := rt.behaviorAnalyticsHandler; h != nil {
 		admin.GET("/behavior-analytics/summary", h.SummaryHandle)
