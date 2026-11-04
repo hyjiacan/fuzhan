@@ -202,21 +202,33 @@ func TestListDuplicateGroups_MinSize(t *testing.T) {
 	createTestRecord(db, "small2.txt", "/small2.txt", "docs", "hash_small", 50)
 	createTestRecord(db, "large1.txt", "/large1.txt", "docs", "hash_large", 1024)
 	createTestRecord(db, "large2.txt", "/large2.txt", "docs", "hash_large", 1024)
+	// 同组内的一个小文件，用于验证文件列表也按 MinSize 过滤
+	createTestRecord(db, "large3.txt", "/large3.txt", "docs", "hash_large", 50)
 
 	// 过滤掉小文件
 	groups, total, err := svc.ListDuplicateGroups(DuplicateQuery{MinSize: 100})
 	if err != nil {
 		t.Fatalf("查询失败: %v", err)
 	}
-	// total 返回的是系统中所有重复分组的总数（不含 MinSize 过滤）
-	if total < 2 {
-		t.Errorf("系统中应有 2 个重复分组，实际 %d", total)
+	// total 与 groups 使用同一过滤条件：只有 hash_large 满足
+	if total != 1 {
+		t.Errorf("MinSize 过滤后应有 1 个重复分组，实际 %d", total)
 	}
 	if len(groups) != 1 {
 		t.Fatalf("MinSize 过滤后期望 1 个分组，实际 %d", len(groups))
 	}
 	if groups[0].Xxh3Hash != "hash_large" {
 		t.Errorf("期望保留大文件分组，实际得到 %s", groups[0].Xxh3Hash)
+	}
+	// fileCount / totalSize / files 必须基于同一过滤结果
+	if groups[0].FileCount != 2 {
+		t.Errorf("期望组内 2 个文件，实际 %d", groups[0].FileCount)
+	}
+	if len(groups[0].Files) != 2 {
+		t.Errorf("期望组内文件列表 2 条，实际 %d", len(groups[0].Files))
+	}
+	if groups[0].TotalSize != 2048 {
+		t.Errorf("期望组内总大小 2048，实际 %d", groups[0].TotalSize)
 	}
 }
 

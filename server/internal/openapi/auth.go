@@ -41,8 +41,8 @@ const cacheControlNoStore = "no-store"
 //     auth_mode=api_key 校验 API Key。
 //   - 开启强制登录：none 与 api_key 语义一致——none 表现为「至少需要 Web 会话 JWT」。
 //
-// 与 Web 登录态隔离：未开启强制登录时只接受 Web 会话 JWT（Cookie/Bearer）或 API Key；
-// 鉴权通过后把 scope 列表写入上下文，供 auth.RBACService.RequireScope / RequireReaderScope 复用。
+// 与 Web 登录态隔离：auth_mode=api_key 时只接受 API Key；auth_mode=none 接受 Web 会话 JWT（Cookie/Bearer）
+// 或 API Key。鉴权通过后把 scope 列表写入上下文，供 auth.RBACService.RequireScope / RequireReaderScope 复用。
 func AuthGateMiddleware(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		mode := CurrentAuthMode()
@@ -142,13 +142,17 @@ func requireWebSession(c *gin.Context, authMW *middleware.AuthMiddleware, rbac *
 }
 
 // injectWebSession 把已验签的 Web 会话 JWT 身份写入上下文（供下游 scope/身份校验复用）。
+//
+// auth_mode=none 下 Web 会话在 L6 加固前可访问全部 Open API 数据端点；
+// 加固后要求 scope 校验，因此这里注入 writer 兼容层级（覆盖读取、详情、上传、备注、依赖、重复文件），
+// 保持已登录 Web 用户的原有能力，同时 API Key 仍严格受自身 scopes 限制。
 func injectWebSession(c *gin.Context, claims *jwt.Claims) {
 	c.Set(string(constants.ContextKeyUsername), claims.Username)
 	c.Set(string(constants.ContextKeyRole), claims.Role)
 	c.Set(string(constants.ContextKeyUserUUID), claims.UUID)
 	c.Set(userIDContextKey, 0)
 	c.Set(authTypeContextKey, AuthModeNone)
-	c.Set(scopesContextKey, []string{})
+	c.Set(scopesContextKey, []string{models.ScopeOpenAPIWriter})
 }
 
 // LoginRequiredWhenForced OpenAPI 文档（/openapi.json、/docs）专用守卫。
@@ -184,8 +188,8 @@ func CurrentAuthMode() string {
 }
 
 // RequireReaderScope 要求具备 open_api:reader（或更高）scope，用于原本公开的列表/搜索/下载接口。
-// L6 加固后 auth_mode=none 也已注入 scope 上下文（Web 会话 JWT 注入空 scope，API Key 注入其 scope）：
-// 因此统一按「上下文是否带 reader scope」判定——Web 会话 / 匿名一律 403，API Key 无 reader 也 403。
+// auth_mode=none 下 Web 会话注入 writer 兼容 scope，因此可正常访问；匿名在闸门已 401；
+// API Key 无 reader 仍 403。
 func RequireReaderScope(rbac *auth.RBACService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if rbac == nil || !rbac.HasContextScope(c, models.ScopeOpenAPIReader) {

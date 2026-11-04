@@ -20,35 +20,6 @@ func NewRBACService(apiKeySvc *ApiKeyService) *RBACService {
 	return &RBACService{apiKeySvc: apiKeySvc}
 }
 
-// ScopePermission scope 到 API 端点的映射
-var ScopeEndpoints = map[string][]string{
-	"open_api:reader": {
-		"/api/open/v1/files/list",
-		"/api/open/v1/files/search",
-		"/api/open/v1/files/download",
-		"/api/open/v1/files/info",
-	},
-	"open_api:files:info":   {"/api/open/v1/files/info"},
-	"open_api:files:upload": {"/api/open/v1/files/upload"},
-	"open_api:writer": {
-		"/api/open/v1/files/list",
-		"/api/open/v1/files/search",
-		"/api/open/v1/files/download",
-		"/api/open/v1/files/info",
-		"/api/open/v1/files/upload",
-	},
-	"open_api:admin": {}, // 空表示所有端点
-}
-
-// ScopeMethods 每个 scope 允许的 HTTP 方法
-var ScopeMethods = map[string][]string{
-	"open_api:reader":       {"GET", "HEAD"},
-	"open_api:files:info":   {"GET", "HEAD"},
-	"open_api:files:upload": {"POST"},
-	"open_api:writer":       {"GET", "HEAD", "POST", "PUT", "DELETE"},
-	"open_api:admin":        {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"},
-}
-
 // RequireScope 检查请求是否有指定的 scope 权限
 func (s *RBACService) RequireScope(requiredScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -141,44 +112,10 @@ func (s *RBACService) RequireScopeOptional(requiredScope string) gin.HandlerFunc
 	}
 }
 
-// scopeHierarchy 定义 scope 的层级关系（兼容 reader/writer 授予全部读取类权限，
-// 细粒度 permission 之间相互独立；admin 仅供内部使用）
-var rbacScopeHierarchy = map[string][]string{
-	models.ScopeOpenAPIAdmin: {
-		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter, models.ScopeOpenAPIAdmin,
-		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
-		models.ScopeFilesInfo, models.ScopeFilesUpload,
-	},
-	models.ScopeOpenAPIWriter: {
-		models.ScopeOpenAPIReader, models.ScopeOpenAPIWriter,
-		models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
-		models.ScopeFilesInfo, models.ScopeFilesUpload,
-	},
-	models.ScopeOpenAPIReader: {
-		models.ScopeOpenAPIReader, models.ScopeFilesDuplicates, models.ScopeFilesNotes, models.ScopeFilesDepends,
-		models.ScopeFilesInfo,
-	},
-}
-
-// hasRequiredScope 检查 scopes 中是否有需要的 scope（含层级关系）
+// hasRequiredScope 检查 scopes 中是否有需要的 scope（含层级关系）。
+// 层级定义统一放在 models.ScopeContains，避免 RBAC 与 API Key 两套规则分叉。
 func (s *RBACService) hasRequiredScope(scopes, required string) bool {
-	if scopes == "" {
-		return false
-	}
-	for _, s := range strings.Split(scopes, ",") {
-		s = strings.TrimSpace(s)
-		if s == required || s == "*" {
-			return true
-		}
-		if allowed, ok := rbacScopeHierarchy[s]; ok {
-			for _, a := range allowed {
-				if a == required {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return models.ScopeContains(scopes, required)
 }
 
 // scopeContains 检查逗号分隔的 scope 列表是否包含某个 scope

@@ -90,26 +90,34 @@ var scopeHierarchy = map[string][]string{
 	},
 }
 
-// HasScope 检查是否拥有指定 scope（包含层级关系）
-func (k *ApiKey) HasScope(scope string) bool {
-	if k.Scopes == "" {
+// ScopeContains 判断逗号分隔的已授权 scope 是否覆盖 required（支持 * 与层级关系）。
+// 这是 scope 判定的唯一实现，RBAC 与 API Key 都必须复用它，避免层级定义分叉。
+func ScopeContains(scopes, required string) bool {
+	if strings.TrimSpace(scopes) == "" {
 		return false
 	}
-	for _, s := range strings.Split(k.Scopes, ",") {
+	for _, s := range strings.Split(scopes, ",") {
 		s = strings.TrimSpace(s)
-		if s == scope || s == "*" {
+		if s == "" {
+			continue
+		}
+		if s == required || s == "*" {
 			return true
 		}
-		// 检查层级关系
 		if allowed, ok := scopeHierarchy[s]; ok {
 			for _, a := range allowed {
-				if a == scope {
+				if a == required {
 					return true
 				}
 			}
 		}
 	}
 	return false
+}
+
+// HasScope 检查是否拥有指定 scope（包含层级关系）
+func (k *ApiKey) HasScope(scope string) bool {
+	return ScopeContains(k.Scopes, scope)
 }
 
 // OAuthClient OAuth 2.0 客户端注册

@@ -146,13 +146,16 @@ func (s *Service) GetStats() (*RecordStatsResponse, error) {
 func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, int64, error) {
 	query.Normalize()
 
-	// 分组总数（返回系统中所有重复分组总数，不含 MinSize 过滤；用 GORM 子查询而非 raw SQL，
-	// 避免读取到过期快照导致处理重复项后 total 不随 groups 实时减少）
+	// 分组总数与 groups 使用完全相同的过滤条件（含 MinSize），保证分页 total 与实际结果一致。
+	// 用 GORM 子查询而非 raw SQL，避免读取到过期快照导致处理重复项后 total 不随 groups 实时减少。
 	totalDup := s.db.Model(&models.FileRecordPublic{}).
 		Select("1 AS one").
 		Where("status = ? AND xxh3_hash != '' AND is_dir = ? AND file_size > 0",
-			string(models.FileStatusActive), false).
-		Group("xxh3_hash").Having("COUNT(*) > 1")
+			string(models.FileStatusActive), false)
+	if query.MinSize > 0 {
+		totalDup = totalDup.Where("file_size >= ?", query.MinSize)
+	}
+	totalDup = totalDup.Group("xxh3_hash").Having("COUNT(*) > 1")
 	var total int64
 	if err := s.db.Table("(?) AS t", totalDup).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询重复分组总数失败: %w", err)
@@ -198,18 +201,22 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 		return make([]DuplicateGroup, 0), total, nil
 	}
 
-	// 一次批量取出本页所有哈希对应的文件详情，避免逐哈希查询（N+1）
 	hashes := make([]string, len(hashCounts))
 	for i, hc := range hashCounts {
 		hashes[i] = hc.Xxh3Hash
 	}
+
+	// 一次批量取出本页所有哈希对应的文件详情，避免逐哈希查询（N+1）。
+	// 过滤条件必须与分组统计完全一致（含 MinSize），否则 fileCount 与实际 files 数量会不一致。
 	var allFiles []models.FileRecordPublic
-	if err := s.db.Model(&models.FileRecordPublic{}).
+	detailQuery := s.db.Model(&models.FileRecordPublic{}).
 		Select("id, file_name, file_path, full_path, root_name, file_size, mod_time, xxh3_hash").
 		Where("xxh3_hash IN ? AND status = ? AND is_dir = ? AND file_size > 0",
-			hashes, models.FileStatusActive, false).
-		Order("file_path ASC").
-		Find(&allFiles).Error; err != nil {
+			hashes, models.FileStatusActive, false)
+	if query.MinSize > 0 {
+		detailQuery = detailQuery.Where("file_size >= ?", query.MinSize)
+	}
+	if err := detailQuery.Order("file_path ASC").Find(&allFiles).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询重复分组文件详情失败: %w", err)
 	}
 	filesByHash := make(map[string][]DuplicateFileItem, len(hashCounts))
