@@ -518,6 +518,12 @@ type IndexConfig struct {
 	// SearchReconcileCronExpression 检索索引对齐任务的 cron 表达式，
 	// 默认 "0 5 * * *"（每天凌晨 5:00，与定时扫描错开）。为空使用默认值。
 	SearchReconcileCronExpression string `yaml:"search_reconcile_cron_expression,omitempty"`
+	// CleanupCronExpression 临时存储清理任务的 cron 表达式，
+	// 默认 "0 * * * *"（每小时整点）。为空使用默认值。
+	CleanupCronExpression string `yaml:"cleanup_cron_expression,omitempty"`
+	// ConsistencyCheckCronExpression 索引一致性检查的 cron 表达式，
+	// 默认 "0 3 * * *"（每天凌晨 3:00，与其它作业错开）。为空使用默认值。
+	ConsistencyCheckCronExpression string `yaml:"consistency_check_cron_expression,omitempty"`
 }
 
 // AuthConfig 认证配置

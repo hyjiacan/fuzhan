@@ -25,7 +25,50 @@ func (rt *runCtx) runFTPWorker(ctx context.Context, ftpHandler interface {
 	ftpHandler.Stop()
 }
 
-// runCleanupWorker 清理过期上传会话、临时上传分片会话与过期临时文件（启动一次 + 每小时一次）
+// runCronJob 按 5 段 cron 表达式周期执行 fn，直到 ctx 结束。
+// expr 为空或解析失败时回退 defaultExpr；每 30 秒唤醒一次以便及时响应停止信号。
+func (rt *runCtx) runCronJob(ctx context.Context, name, expr, defaultExpr string, fn func()) {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	if strings.TrimSpace(expr) == "" {
+		expr = defaultExpr
+	}
+	schedule, err := parser.Parse(expr)
+	if err != nil {
+		utils.Warn(name+" cron 表达式无效，回退默认值",
+			utils.String("cron", expr), utils.String("default", defaultExpr), utils.Err(err))
+		schedule, err = parser.Parse(defaultExpr)
+		if err != nil {
+			utils.Error(name+"默认 cron 表达式无效，作业不启动", utils.Err(err))
+			return
+		}
+	}
+	next := schedule.Next(time.Now())
+	utils.Info(name+"下次执行时间",
+		utils.String("cron", expr), utils.String("next", next.Format("2006-01-02 15:04:05")))
+
+	for {
+		wait := time.Until(next)
+		if wait < 0 {
+			wait = 0
+		}
+		timer := time.NewTimer(min(wait, 30*time.Second))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if time.Now().Before(next) {
+			continue
+		}
+		fn()
+		next = schedule.Next(time.Now())
+		utils.Info(name+"下次执行时间",
+			utils.String("cron", expr), utils.String("next", next.Format("2006-01-02 15:04:05")))
+	}
+}
+
+// runCleanupWorker 清理过期上传会话、临时上传分片会话与过期临时文件（启动时 + 按 cron 周期）
 func (rt *runCtx) runCleanupWorker(ctx context.Context) {
 	taskService := rt.taskService
 	uploadSessionHandler := rt.uploadSessionHandler
@@ -62,20 +105,11 @@ func (rt *runCtx) runCleanupWorker(ctx context.Context) {
 		}
 	}
 
-	// 启动时立即执行一次清理
+	// 启动时立即执行一次清理，之后按 cron 表达式周期执行（默认每小时整点）
 	runCleanupOnce("startup")
-
-	// 定时清理：每 1 小时一次
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			runCleanupOnce("timer")
-		case <-ctx.Done():
-			return
-		}
-	}
+	rt.runCronJob(ctx, "临时存储清理",
+		appconfig.GlobalConfig.Index.CleanupCronExpression, "0 * * * *",
+		func() { runCleanupOnce("timer") })
 }
 
 // runIndexScanWorker 启动时按 scope 检测索引表是否为空，为空则触发全量扫描
@@ -174,7 +208,7 @@ func (rt *runCtx) runScanTimerWorker(ctx context.Context) {
 	rt.indexService.StopScanTimer()
 }
 
-// runConsistencyCheckWorker 每 24 小时执行一次索引与文件系统的一致性校验
+// runConsistencyCheckWorker 按 cron 表达式定期执行索引与文件系统的一致性校验
 func (rt *runCtx) runConsistencyCheckWorker(ctx context.Context) {
 	// 等待初始扫描完成后再启动一致性校验（不设超时）
 	pollTicker := time.NewTicker(5 * time.Second)
@@ -195,25 +229,19 @@ func (rt *runCtx) runConsistencyCheckWorker(ctx context.Context) {
 		}
 	}
 
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			// 检查是否正在扫描, 如果是则跳过本次校验
-			progress := rt.indexService.GetScanProgress()
-			if progress.Status == index.ScanStatusRunning {
+	rt.runCronJob(ctx, "索引一致性检查",
+		appconfig.GlobalConfig.Index.ConsistencyCheckCronExpression, "0 3 * * *",
+		func() {
+			// 全量扫描进行中时跳过本次校验，避免与扫描写盘竞争
+			if rt.indexService.GetScanProgress().Status == index.ScanStatusRunning {
 				utils.Info("一致性校验跳过: 全量扫描进行中")
-				continue
+				return
 			}
 			utils.Info("开始定期一致性校验")
 			if _, err := rt.indexService.RunConsistencyCheck(ctx); err != nil {
 				utils.Error("一致性校验失败", utils.Err(err))
 			}
-		case <-ctx.Done():
-			return
-		}
-	}
+		})
 }
 
 // runSearchReconcileWorker 按 cron 表达式定期对文件名检索索引执行对齐

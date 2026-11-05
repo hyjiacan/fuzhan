@@ -163,7 +163,7 @@
       </template>
     </el-card>
 
-    <el-dialog v-model="showScheduleModal" title="作业调度配置" width="620px" :close-on-click-modal="false">
+    <el-dialog v-model="showScheduleModal" title="作业调度配置" width="680px" :close-on-click-modal="false">
       <el-form v-loading="scheduleLoading" label-width="140px">
         <el-form-item label="扫描启动延迟">
           <div class="inline-number">
@@ -180,16 +180,24 @@
           <cron-editor ref="reconcileCronEditorRef" v-model="scheduleDraft.searchReconcileCronExpression" />
           <div class="field-hint">定时校正检索索引与文件表的对齐，默认 <code>0 5 * * *</code>（每天 05:00）</div>
         </el-form-item>
+        <el-form-item label="临时存储清理间隔">
+          <cron-editor ref="cleanupCronEditorRef" v-model="scheduleDraft.cleanupCronExpression" />
+          <div class="field-hint">清理过期上传会话、分片与临时文件；启动时先执行一次，默认 <code>0 * * * *</code>（每小时整点）</div>
+        </el-form-item>
+        <el-form-item label="一致性检查间隔">
+          <cron-editor ref="consistencyCheckCronEditorRef" v-model="scheduleDraft.consistencyCheckCronExpression" />
+          <div class="field-hint">校验索引与文件系统是否一致；启动首轮在初始扫描完成后，默认 <code>0 3 * * *</code>（每天 03:00）</div>
+        </el-form-item>
       </el-form>
 
-      <el-divider content-position="left">其它系统作业</el-divider>
+      <el-divider content-position="left">其它系统作业（配置入口见说明）</el-divider>
       <el-table :data="otherSystemJobs" size="small" class="job-table">
         <el-table-column prop="name" label="作业" min-width="130" />
         <el-table-column prop="schedule" label="调度" min-width="180" />
-        <el-table-column prop="remark" label="说明" min-width="150" />
+        <el-table-column prop="remark" label="说明" min-width="220" />
       </el-table>
       <div class="field-hint job-hint">
-        以上作业按固定周期或事件触发，不支持在界面调整；此处仅用于展示系统作业全貌。
+        以上作业的调度由固定周期、独立配置页或事件驱动，不在此弹窗中编辑。
       </div>
       <template #footer>
         <el-space>
@@ -346,21 +354,23 @@ const scheduleLoaded = ref(false)
 const schedule = ref({
   scanStartDelaySeconds: 10,
   scanCronExpression: '0 1 * * *',
-  searchReconcileCronExpression: '0 5 * * *'
+  searchReconcileCronExpression: '0 5 * * *',
+  cleanupCronExpression: '0 * * * *',
+  consistencyCheckCronExpression: '0 3 * * *'
 })
 const scheduleDraft = ref({ ...schedule.value })
 const scanCronEditorRef = ref(null)
 const reconcileCronEditorRef = ref(null)
+const cleanupCronEditorRef = ref(null)
+const consistencyCheckCronEditorRef = ref(null)
 
-// 其它系统作业：调度由后端固定周期或事件触发，界面不提供调整入口，仅展示全貌
+// 其它系统作业：调度由固定周期、独立配置页或事件驱动，本弹窗不提供编辑入口，仅展示全貌
 const otherSystemJobs = [
-  { name: '临时存储清理', schedule: '启动时 + 每 1 小时', remark: '清理过期上传会话、分片与临时文件' },
-  { name: '一致性检查', schedule: '每 24 小时', remark: '首轮在启动 24 小时后，扫描进行中跳过' },
-  { name: '实时索引监听', schedule: '常驻监听', remark: '文件变动增量写入索引' },
-  { name: '资源监控采集', schedule: '采样 5 秒 / 采集 60 秒', remark: '采样间隔与应用配置有关' },
-  { name: '存储使用率告警', schedule: '每 1 分钟', remark: '达到阈值时发送通知' },
-  { name: 'LDAP 目录同步', schedule: '启动时 + 同步间隔', remark: '间隔取 LDAP 配置，未启用则跳过' },
-  { name: '回收站/记录落库', schedule: '事件驱动', remark: '请求产生的操作记录与下载计数' }
+  { name: '实时索引监听', schedule: '常驻监听', remark: '文件变动增量写入索引，无间隔可配' },
+  { name: '资源监控采集', schedule: '采样 5 秒 / 采集 60 秒', remark: '可在资源监控页调整' },
+  { name: '存储使用率告警', schedule: '按检测间隔（默认 10 分钟）', remark: '可在设置 → 存储中调整检测间隔' },
+  { name: 'LDAP 目录同步', schedule: '启动时 + 同步间隔', remark: '可在设置 → 认证 → LDAP 中调整同步间隔' },
+  { name: '操作记录与下载计数落库', schedule: '事件驱动', remark: '随请求触发，定时批量写入' }
 ]
 
 const loadSchedule = async () => {
@@ -372,7 +382,9 @@ const loadSchedule = async () => {
       schedule.value = {
         scanStartDelaySeconds: idx.scanStartDelaySeconds || 10,
         scanCronExpression: idx.scanCronExpression || '0 1 * * *',
-        searchReconcileCronExpression: idx.searchReconcileCronExpression || '0 5 * * *'
+        searchReconcileCronExpression: idx.searchReconcileCronExpression || '0 5 * * *',
+        cleanupCronExpression: idx.cleanupCronExpression || '0 * * * *',
+        consistencyCheckCronExpression: idx.consistencyCheckCronExpression || '0 3 * * *'
       }
       scheduleLoaded.value = true
     }
@@ -397,7 +409,13 @@ const saveSchedule = async () => {
   const reconcileValid = reconcileCronEditorRef.value
     ? reconcileCronEditorRef.value.validate()
     : /^(\S+\s+){4}\S+$/.test((draft.searchReconcileCronExpression || '').trim())
-  if (!scanValid || !reconcileValid) {
+  const cleanupValid = cleanupCronEditorRef.value
+    ? cleanupCronEditorRef.value.validate()
+    : /^(\S+\s+){4}\S+$/.test((draft.cleanupCronExpression || '').trim())
+  const consistencyCheckValid = consistencyCheckCronEditorRef.value
+    ? consistencyCheckCronEditorRef.value.validate()
+    : /^(\S+\s+){4}\S+$/.test((draft.consistencyCheckCronExpression || '').trim())
+  if (!scanValid || !reconcileValid || !cleanupValid || !consistencyCheckValid) {
     ElMessage.error('请填写有效的 cron 表达式')
     return
   }
@@ -408,7 +426,9 @@ const saveSchedule = async () => {
       index: {
         scanStartDelaySeconds: draft.scanStartDelaySeconds,
         scanCronExpression: draft.scanCronExpression.trim(),
-        searchReconcileCronExpression: draft.searchReconcileCronExpression.trim()
+        searchReconcileCronExpression: draft.searchReconcileCronExpression.trim(),
+        cleanupCronExpression: draft.cleanupCronExpression.trim(),
+        consistencyCheckCronExpression: draft.consistencyCheckCronExpression.trim()
       }
     })
     if (res.success) {

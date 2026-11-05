@@ -384,9 +384,11 @@ type WebDAVConfigResp struct {
 
 // IndexConfigDTO 文件索引配置 DTO
 type IndexConfigDTO struct {
-	ScanStartDelaySeconds         int    `json:"scanStartDelaySeconds"`
-	ScanCronExpression            string `json:"scanCronExpression"`
-	SearchReconcileCronExpression string `json:"searchReconcileCronExpression"`
+	ScanStartDelaySeconds          int    `json:"scanStartDelaySeconds"`
+	ScanCronExpression             string `json:"scanCronExpression"`
+	SearchReconcileCronExpression  string `json:"searchReconcileCronExpression"`
+	CleanupCronExpression          string `json:"cleanupCronExpression"`
+	ConsistencyCheckCronExpression string `json:"consistencyCheckCronExpression"`
 }
 
 // ResourceConfigDTO 服务器资源监控配置 DTO
@@ -601,9 +603,11 @@ func (c *Config) ToDTO() ConfigDTO {
 			AuthMode:          c.OpenAPI.AuthMode,
 		},
 		Index: IndexConfigDTO{
-			ScanStartDelaySeconds:         c.Index.ScanStartDelaySeconds,
-			ScanCronExpression:            c.Index.ScanCronExpression,
-			SearchReconcileCronExpression: c.Index.SearchReconcileCronExpression,
+			ScanStartDelaySeconds:          c.Index.ScanStartDelaySeconds,
+			ScanCronExpression:             c.Index.ScanCronExpression,
+			SearchReconcileCronExpression:  c.Index.SearchReconcileCronExpression,
+			CleanupCronExpression:          c.Index.CleanupCronExpression,
+			ConsistencyCheckCronExpression: c.Index.ConsistencyCheckCronExpression,
 		},
 		Resource: ResourceConfigDTO{
 			Enabled:          c.Resource.Enabled,
@@ -835,6 +839,8 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Index.ScanStartDelaySeconds = dto.Index.ScanStartDelaySeconds
 	cfg.Index.ScanCronExpression = dto.Index.ScanCronExpression
 	cfg.Index.SearchReconcileCronExpression = dto.Index.SearchReconcileCronExpression
+	cfg.Index.CleanupCronExpression = dto.Index.CleanupCronExpression
+	cfg.Index.ConsistencyCheckCronExpression = dto.Index.ConsistencyCheckCronExpression
 
 	// 资源监控配置
 	cfg.Resource.Enabled = dto.Resource.Enabled

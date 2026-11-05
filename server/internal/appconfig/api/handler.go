@@ -650,6 +650,18 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			appconfig.GlobalConfig.Index.ScanStartDelaySeconds = req.Index.ScanStartDelaySeconds
 			updates.Add("index.scan_start_delay_seconds", req.Index.ScanStartDelaySeconds)
 		}
+
+		// —— 临时存储清理 cron ——
+		if expr := strings.TrimSpace(req.Index.CleanupCronExpression); expr != "" {
+			appconfig.GlobalConfig.Index.CleanupCronExpression = expr
+			updates.Add("index.cleanup_cron_expression", expr)
+		}
+
+		// —— 一致性检查 cron ——
+		if expr := strings.TrimSpace(req.Index.ConsistencyCheckCronExpression); expr != "" {
+			appconfig.GlobalConfig.Index.ConsistencyCheckCronExpression = expr
+			updates.Add("index.consistency_check_cron_expression", expr)
+		}
 	}
 
 	// —— 服务器资源监控 ——
