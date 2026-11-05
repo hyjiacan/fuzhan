@@ -163,7 +163,7 @@
       </template>
     </el-card>
 
-    <el-dialog v-model="showScheduleModal" title="作业调度配置" width="560px" :close-on-click-modal="false">
+    <el-dialog v-model="showScheduleModal" title="作业调度配置" width="620px" :close-on-click-modal="false">
       <el-form v-loading="scheduleLoading" label-width="140px">
         <el-form-item label="扫描启动延迟">
           <div class="inline-number">
@@ -173,12 +173,12 @@
           <div class="field-hint">服务启动后延迟执行首次全量扫描，默认 10 秒</div>
         </el-form-item>
         <el-form-item label="定时扫描间隔">
-          <el-input v-model="scheduleDraft.scanCronExpression" placeholder="如 0 1 * * *（每天凌晨 1 点）" />
-          <div class="field-hint">Cron 表达式，控制定时全量扫描，默认 <code>0 1 * * *</code></div>
+          <cron-editor ref="scanCronEditorRef" v-model="scheduleDraft.scanCronExpression" />
+          <div class="field-hint">控制定时全量扫描，默认 <code>0 1 * * *</code>（每天 01:00）</div>
         </el-form-item>
         <el-form-item label="检索索引对齐间隔">
-          <el-input v-model="scheduleDraft.searchReconcileCronExpression" placeholder="如 0 5 * * *（每天凌晨 5 点）" />
-          <div class="field-hint">定时校正检索索引与文件表的对齐，默认 <code>0 5 * * *</code></div>
+          <cron-editor ref="reconcileCronEditorRef" v-model="scheduleDraft.searchReconcileCronExpression" />
+          <div class="field-hint">定时校正检索索引与文件表的对齐，默认 <code>0 5 * * *</code>（每天 05:00）</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -197,6 +197,7 @@ import { ElMessage } from 'element-plus'
 import { AdminApi, ConfigApi } from '@/api'
 import { TimeUtils } from '@/utils'
 import { Loading, Setting } from '@element-plus/icons-vue'
+import CronEditor from '@/components/common/CronEditor.vue'
 
 // 计算耗时（startedAt 到 endedAt 的差值，返回可读字符串）
 const formatDuration = (startedAt, endedAt) => {
@@ -338,6 +339,8 @@ const schedule = ref({
   searchReconcileCronExpression: '0 5 * * *'
 })
 const scheduleDraft = ref({ ...schedule.value })
+const scanCronEditorRef = ref(null)
+const reconcileCronEditorRef = ref(null)
 
 const loadSchedule = async () => {
   scheduleLoading.value = true
@@ -366,9 +369,20 @@ const openScheduleModal = async () => {
 }
 
 const saveSchedule = async () => {
+  const draft = scheduleDraft.value
+  const scanValid = scanCronEditorRef.value
+    ? scanCronEditorRef.value.validate()
+    : /^(\S+\s+){4}\S+$/.test((draft.scanCronExpression || '').trim())
+  const reconcileValid = reconcileCronEditorRef.value
+    ? reconcileCronEditorRef.value.validate()
+    : /^(\S+\s+){4}\S+$/.test((draft.searchReconcileCronExpression || '').trim())
+  if (!scanValid || !reconcileValid) {
+    ElMessage.error('请填写有效的 cron 表达式')
+    return
+  }
+
   scheduleSaving.value = true
   try {
-    const draft = scheduleDraft.value
     const res = await ConfigApi.save({
       index: {
         scanStartDelaySeconds: draft.scanStartDelaySeconds,
