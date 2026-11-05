@@ -137,7 +137,6 @@ func TestAuthPageRender(t *testing.T) {
 	}
 }
 
-
 func TestSearchRel(t *testing.T) {
 	cases := []struct {
 		path, rootName, want string

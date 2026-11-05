@@ -50,7 +50,7 @@ func BackfillDownloadCounted(db *gorm.DB) int64 {
 	if db == nil || !db.Migrator().HasTable(&models.OperationRecord{}) {
 		return 0
 	}
-	result := db.Exec(`UPDATE `+models.OperationRecord{}.TableName()+`
+	result := db.Exec(`UPDATE ` + models.OperationRecord{}.TableName() + `
 		SET dl_counted = 1
 		WHERE dl_event = 1 AND dl_ok = 1 AND dl_counted = 0 AND deleted_at IS NULL`)
 	if result.Error != nil {
@@ -149,7 +149,7 @@ func BackfillDownloadSignature(db *gorm.DB) {
 	if !db.Migrator().HasTable(&models.OperationRecord{}) {
 		return
 	}
-	result := db.Exec(`UPDATE `+models.OperationRecord{}.TableName()+`
+	result := db.Exec(`UPDATE ` + models.OperationRecord{}.TableName() + `
 		SET dl_event = CASE
 		      WHEN deleted_at IS NULL
 		       AND action IN ('download', 'download-by-hash')

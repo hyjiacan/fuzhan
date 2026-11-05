@@ -188,12 +188,12 @@ func TestSplitRequestPath(t *testing.T) {
 // TestNormalizeRel 相对路径归一化规则
 func TestNormalizeRel(t *testing.T) {
 	cases := map[string]string{
-		"/docs/report.pdf":   "docs/report.pdf",
-		"docs\\report.pdf":   "docs/report.pdf",
-		"//docs//a//b.txt":   "docs/a/b.txt",
-		"./docs/../a.txt":    "a.txt",
-		"":                   "",
-		".":                  "",
+		"/docs/report.pdf": "docs/report.pdf",
+		"docs\\report.pdf": "docs/report.pdf",
+		"//docs//a//b.txt": "docs/a/b.txt",
+		"./docs/../a.txt":  "a.txt",
+		"":                 "",
+		".":                "",
 	}
 	for in, want := range cases {
 		if got := NormalizeRel(in); got != want {

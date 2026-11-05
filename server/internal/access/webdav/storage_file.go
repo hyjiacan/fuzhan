@@ -246,4 +246,3 @@ func (f *storageSyncedFile) Readdir(_ int) ([]os.FileInfo, error) {
 }
 
 var _ webdav.File = (*storageSyncedFile)(nil)
-

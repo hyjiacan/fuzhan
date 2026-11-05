@@ -122,10 +122,10 @@ func (s *S3Storage) Open(ctx context.Context, path string) (io.ReadCloser, error
 // 本方法仅服务临时文件等顺序写场景。实现为缓冲到 Close 时 Put 一次。
 func (s *S3Storage) OpenWriter(ctx context.Context, path string) (io.WriteCloser, error) {
 	return &s3Writer{
-		ctx:   ctx,
-		s:     s,
-		key:   s.resolve(path),
-		body:  &strings.Builder{},
+		ctx:  ctx,
+		s:    s,
+		key:  s.resolve(path),
+		body: &strings.Builder{},
 	}, nil
 }
 

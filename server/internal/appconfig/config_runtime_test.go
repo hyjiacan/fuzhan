@@ -6,10 +6,10 @@ func TestLocalhostWhenSetup(t *testing.T) {
 	// H5：系统未初始化时，任意接口监听（空/0.0.0.0/::）强制回退本机 127.0.0.1；
 	// 已初始化或显式具体 IP 时原样返回。
 	cases := []struct {
-		name        string
-		initialized bool
-		host        string
-		want        string
+		name         string
+		initialized  bool
+		host         string
+		want         string
 		wantRestrict bool
 	}{
 		{name: "uninit empty host restrict", initialized: false, host: "", want: "127.0.0.1", wantRestrict: true},

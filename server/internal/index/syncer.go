@@ -31,8 +31,8 @@ type Syncer struct {
 	db        *gorm.DB
 	rootNames map[string]string
 	storages  map[string]storage.Storage // rootName → Storage（远端后端注入）
-	retryBase time.Duration // 重试基期间隔
-	maxRetry  int           // 最大重试次数
+	retryBase time.Duration              // 重试基期间隔
+	maxRetry  int                        // 最大重试次数
 
 	notifier FileIndexNotifier // 可选：检索索引变更通知
 }

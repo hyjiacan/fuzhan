@@ -81,13 +81,13 @@ func TestSaveWebhookEndpointsNested(t *testing.T) {
 
 	endpoints := []interface{}{
 		map[string]interface{}{
-			"name":      "文件事件",
-			"url":       "https://example.com/hook/file",
-			"enabled":   true,
-			"secret":    "s3cr3t",
-			"events":    []interface{}{"file.*", "task.started"},
-			"headers":   map[string]interface{}{"Authorization": "Bearer abc"},
-			"query":     map[string]interface{}{"token": "tok123"},
+			"name":            "文件事件",
+			"url":             "https://example.com/hook/file",
+			"enabled":         true,
+			"secret":          "s3cr3t",
+			"events":          []interface{}{"file.*", "task.started"},
+			"headers":         map[string]interface{}{"Authorization": "Bearer abc"},
+			"query":           map[string]interface{}{"token": "tok123"},
 			"timeout_seconds": 5,
 		},
 		map[string]interface{}{
