@@ -181,6 +181,16 @@
           <div class="field-hint">定时校正检索索引与文件表的对齐，默认 <code>0 5 * * *</code>（每天 05:00）</div>
         </el-form-item>
       </el-form>
+
+      <el-divider content-position="left">其它系统作业</el-divider>
+      <el-table :data="otherSystemJobs" size="small" class="job-table">
+        <el-table-column prop="name" label="作业" min-width="130" />
+        <el-table-column prop="schedule" label="调度" min-width="180" />
+        <el-table-column prop="remark" label="说明" min-width="150" />
+      </el-table>
+      <div class="field-hint job-hint">
+        以上作业按固定周期或事件触发，不支持在界面调整；此处仅用于展示系统作业全貌。
+      </div>
       <template #footer>
         <el-space>
           <el-button @click="showScheduleModal = false">取消</el-button>
@@ -342,6 +352,17 @@ const scheduleDraft = ref({ ...schedule.value })
 const scanCronEditorRef = ref(null)
 const reconcileCronEditorRef = ref(null)
 
+// 其它系统作业：调度由后端固定周期或事件触发，界面不提供调整入口，仅展示全貌
+const otherSystemJobs = [
+  { name: '临时存储清理', schedule: '启动时 + 每 1 小时', remark: '清理过期上传会话、分片与临时文件' },
+  { name: '一致性检查', schedule: '每 24 小时', remark: '首轮在启动 24 小时后，扫描进行中跳过' },
+  { name: '实时索引监听', schedule: '常驻监听', remark: '文件变动增量写入索引' },
+  { name: '资源监控采集', schedule: '采样 5 秒 / 采集 60 秒', remark: '采样间隔与应用配置有关' },
+  { name: '存储使用率告警', schedule: '每 1 分钟', remark: '达到阈值时发送通知' },
+  { name: 'LDAP 目录同步', schedule: '启动时 + 同步间隔', remark: '间隔取 LDAP 配置，未启用则跳过' },
+  { name: '回收站/记录落库', schedule: '事件驱动', remark: '请求产生的操作记录与下载计数' }
+]
+
 const loadSchedule = async () => {
   scheduleLoading.value = true
   try {
@@ -431,6 +452,14 @@ onMounted(() => {
     display: flex;
     justify-content: center;
     padding: 40px 0;
+  }
+
+  .job-table {
+    margin-bottom: 4px;
+  }
+
+  .job-hint {
+    margin-top: 8px;
   }
 }
 </style>
