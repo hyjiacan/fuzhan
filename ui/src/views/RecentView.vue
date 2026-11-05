@@ -38,7 +38,7 @@
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
             <el-pagination size="small" v-model:current-page="uploadPage" v-model:page-size="uploadPageSize"
-              :total="uploadTotal" :page-sizes="[5, 10, 20]" layout="total, sizes, prev, pager, next"
+              :total="uploadTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next"
               @current-change="onUploadPageChange" @size-change="onUploadPageSizeChange" />
           </div>
         </template>
@@ -65,7 +65,7 @@
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
             <el-pagination size="small" v-model:current-page="downloadPage" v-model:page-size="downloadPageSize"
-              :total="downloadTotal" :page-sizes="[5, 10, 20]" layout="total, sizes, prev, pager, next"
+              :total="downloadTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next"
               @current-change="onDownloadPageChange" @size-change="onDownloadPageSizeChange" />
           </div>
         </template>
@@ -99,25 +99,25 @@ const recentKeywords = ref([])
 const uploads = ref([])
 const uploadTotal = ref(0)
 const uploadPage = ref(1)
-const uploadPageSize = ref(5)
+const uploadPageSize = ref(10)
 
 // Download pagination
 const downloads = ref([])
 const downloadTotal = ref(0)
 const downloadPage = ref(1)
-const downloadPageSize = ref(5)
+const downloadPageSize = ref(10)
 
 // el-table-v2 需要数值宽高，实时测量容器
 const makeTableResize = () => {
   const wrapRef = ref(null)
   const width = ref(600)
-  const height = ref(360)
+  const height = ref(380)
   let resizeObs = null
   const update = () => {
     const el = wrapRef.value
     if (el) {
       width.value = el.clientWidth || 600
-      height.value = el.clientHeight || 360
+      height.value = el.clientHeight || 380
     }
   }
   const bind = () => {
@@ -380,7 +380,7 @@ onUnmounted(() => {
   }
 
   .table-v2-wrap {
-    height: 360px;
+    height: 380px;
   }
 
   .keyword-tags {
