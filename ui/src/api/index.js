@@ -107,8 +107,9 @@ request.interceptors.response.use(
       appError = createNetworkError(error)
     }
 
-    // 调用全局错误处理器
-    if (globalErrorHandler) {
+    // 401 不弹全局提示，交给路由守卫跳转（避免匿名请求失败时反复弹出「未登录」）
+    const silentAuthError = error.response?.status === 401
+    if (globalErrorHandler && !silentAuthError) {
       globalErrorHandler(appError, error)
     }
 
@@ -174,7 +175,7 @@ export const AuthApi = {
     return request.put('/auth/password', { oldPassword, newPassword }, { skipSuccessToast: true })
   },
 
-  // 外部 OAuth2/OIDC：登录页查询是否启用及提供方名称
+  // 外部 OAuth2/OIDC：登录页查询是否启用（不返回提供方等实现细节）
   oauth2Status() {
     return request.get('/auth/oauth2/status')
   },

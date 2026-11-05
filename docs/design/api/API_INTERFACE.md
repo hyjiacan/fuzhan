@@ -130,9 +130,9 @@
 用于对接外部统一认证系统（授权码模式）。三个接口均无需认证。
 
 - **查询状态**：`GET /api/v1/web/auth/oauth2/status`
-  - 返回是否启用及提供方显示名称，供登录页决定是否展示外部认证入口。
+  - 返回是否启用，供登录页决定是否展示外部认证入口（不暴露提供方等实现细节）。
   ```json
-  { "success": true, "data": { "enabled": true, "providerName": "企业 SSO" } }
+  { "success": true, "data": { "enabled": true } }
   ```
 
 - **发起授权**：`GET /api/v1/web/auth/oauth2/authorize`

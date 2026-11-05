@@ -37,7 +37,8 @@ onMounted(async () => {
   if (error) {
     status.value = 'error'
     title.value = '外部认证失败'
-    description.value = String(error)
+    // 后端只回传通用提示，具体失败原因已记录在服务端日志中，此处不再展示原始内容
+    description.value = '外部认证未完成，请返回登录页重试或联系管理员'
     return
   }
 

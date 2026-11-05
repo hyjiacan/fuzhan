@@ -8,7 +8,7 @@
     </template>
     <el-form autocomplete="off" label-width="150px">
       <el-form-item label="提供方名称">
-        <el-input autocomplete="off" v-model="settings.auth.oauth2.providerName" placeholder="如 企业 SSO / GitHub，用于登录页按钮文案" />
+        <el-input autocomplete="off" v-model="settings.auth.oauth2.providerName" placeholder="如 企业 SSO / GitHub，用于日志与审计中的提供方标识" />
       </el-form-item>
 
       <el-row :gutter="16">

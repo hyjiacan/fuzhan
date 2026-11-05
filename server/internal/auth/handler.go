@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -208,10 +209,16 @@ func (h *Handler) Login(c *gin.Context) {
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
+		// 详细原因进日志与登录日志，界面只给通用提示，避免暴露 LDAP/OAuth 等认证源细节
+		utils.Warn("用户登录失败", utils.String("username", req.Username), utils.Err(err))
 		middleware.LogOperation(c, "auth.login", req.Username, err)
 		h.recordAuthFailure(c, "auth.login", req.Username, h.authService.IsAdminUsername(req.Username))
 		h.recordLoginLog(c, "", req.Username, "local", "failed", err.Error())
-		response.HandleUnauthorized(c, err.Error())
+		msg := "用户名或密码错误"
+		if errors.Is(err, services.ErrAccountDisabled) {
+			msg = err.Error()
+		}
+		response.HandleUnauthorized(c, msg)
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
@@ -299,18 +306,11 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "密码修改成功", nil)
 }
 
-// OAuth2Status 返回外部 OAuth2 认证的可用状态，供登录页决定是否展示入口
+// OAuth2Status 返回外部 OAuth2 认证的可用状态，供登录页决定是否展示入口。
+// 不返回提供方名称等后端实现细节，避免界面暴露具体认证源。
 func (h *Handler) OAuth2Status(c *gin.Context) {
-	cfg := appconfig.GetConfig().Auth.OAuth2
 	enabled := h.oauth2Service != nil && h.oauth2Service.IsEnabled()
-	name := cfg.ProviderName
-	if name == "" {
-		name = "OAuth2"
-	}
-	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"enabled":      enabled,
-		"providerName": name,
-	})
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{"enabled": enabled})
 }
 
 // OAuth2Authorize 生成外部认证授权地址，交由前端跳转（便于统一处理错误提示）
@@ -322,7 +322,7 @@ func (h *Handler) OAuth2Authorize(c *gin.Context) {
 	authURL, state, err := h.oauth2Service.AuthorizeURL(h.oauth2CallbackURL(c))
 	if err != nil {
 		utils.Warn("生成 OAuth2 授权地址失败", utils.Err(err))
-		response.HandleInternalServerError(c, "生成授权地址失败: "+err.Error())
+		response.HandleInternalServerError(c, "外部认证暂时不可用，请稍后重试")
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
@@ -331,33 +331,44 @@ func (h *Handler) OAuth2Authorize(c *gin.Context) {
 	})
 }
 
+// oauth2UserFacingError 外部认证失败时展示给用户的通用提示，
+// 具体原因（连接失败、令牌交换失败、用户不存在等）只写日志。
+const oauth2UserFacingError = "外部认证未完成，请返回登录页重试或联系管理员"
+
 // OAuth2Callback 处理外部认证回调：校验 state → 换取用户信息 → 映射本地用户 → 写会话 Cookie 并跳回前端
 func (h *Handler) OAuth2Callback(c *gin.Context) {
 	if h.oauth2Service == nil || !h.oauth2Service.IsEnabled() {
-		h.redirectOAuth2Error(c, "OAuth2 认证未启用")
+		utils.Warn("OAuth2 回调时外部认证未启用")
+		h.redirectOAuth2Error(c)
 		return
 	}
 	if errMsg := strings.TrimSpace(c.Query("error")); errMsg != "" {
 		desc := c.Query("error_description")
-		h.redirectOAuth2Error(c, strings.TrimSpace(errMsg+" "+desc))
+		utils.Warn("OAuth2 提供方返回错误",
+			utils.String("error", errMsg), utils.String("error_description", desc))
+		h.redirectOAuth2Error(c)
 		return
 	}
 	if err := h.oauth2Service.verifyState(c.Query("state")); err != nil {
+		utils.Warn("OAuth2 回调 state 校验失败", utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", "", models.SeverityMedium, "OAuth2 回调 state 校验失败: "+err.Error())
-		h.redirectOAuth2Error(c, err.Error())
+		h.redirectOAuth2Error(c)
 		return
 	}
 
 	user, err := h.oauth2Service.Authenticate(c.Query("code"), h.oauth2CallbackURL(c))
 	if err != nil {
+		utils.Warn("OAuth2 认证失败", utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", "", models.SeverityMedium, "OAuth2 认证失败: "+err.Error())
-		h.redirectOAuth2Error(c, err.Error())
+		h.redirectOAuth2Error(c)
 		return
 	}
 
 	resp, err := h.authService.LoginByUser(user)
 	if err != nil {
-		h.redirectOAuth2Error(c, err.Error())
+		utils.Warn("OAuth2 用户登录失败", utils.String("username", user.Username), utils.Err(err))
+		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", user.Username, models.SeverityMedium, "OAuth2 用户登录失败: "+err.Error())
+		h.redirectOAuth2Error(c)
 		return
 	}
 	middleware.LogOperation(c, "auth.oauth2.login", user.Username, nil)
@@ -390,10 +401,9 @@ func (h *Handler) frontendBase(c *gin.Context) string {
 	return scheme + "://" + c.Request.Host
 }
 
-// redirectOAuth2Error 认证失败时跳回前端并携带错误信息
-func (h *Handler) redirectOAuth2Error(c *gin.Context, msg string) {
+// redirectOAuth2Error 认证失败时跳回前端，仅携带通用提示
+func (h *Handler) redirectOAuth2Error(c *gin.Context) {
 	q := url.Values{}
-	q.Set("error", msg)
-	// 相对地址跳转，避免用请求 Host 拼绝对 URL（Host 头可被伪造）。
+	q.Set("error", oauth2UserFacingError)
 	c.Redirect(http.StatusFound, "/#/oauth2/callback?"+q.Encode())
 }

@@ -16,6 +16,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrAccountDisabled 账户被禁用（少数可直接展示给用户的认证失败原因）
+var ErrAccountDisabled = errors.New("账户已被禁用")
+
 // LDAPAuthenticator LDAP 认证接口
 // 避免 services 和 internal/auth 之间的循环依赖
 type LDAPAuthenticator interface {
@@ -125,7 +128,7 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 		user, err := s.ldapService.Authenticate(username, password)
 		if err == nil {
 			if user.Disabled {
-				return nil, errors.New("账户已被禁用")
+				return nil, ErrAccountDisabled
 			}
 			return user, nil
 		}
@@ -153,7 +156,7 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 		return nil, errors.New("用户名或密码错误")
 	}
 	if user.Disabled {
-		return nil, errors.New("账户已被禁用")
+		return nil, ErrAccountDisabled
 	}
 
 	return &user, nil
@@ -205,7 +208,7 @@ func (s *AuthService) LoginByUser(user *models.User) (*AuthResponse, error) {
 		return nil, errors.New("用户信息为空")
 	}
 	if user.Disabled {
-		return nil, errors.New("账户已被禁用")
+		return nil, ErrAccountDisabled
 	}
 
 	role := user.Role

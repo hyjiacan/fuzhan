@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
@@ -223,7 +224,7 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 
 	if result.Error == nil {
 		if user.Disabled {
-			return nil, errors.New("账户已被禁用")
+			return nil, services.ErrAccountDisabled
 		}
 		return &user, nil
 	}

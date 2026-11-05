@@ -114,7 +114,7 @@
           @click="handleOAuth2Login"
         >
           <el-icon v-if="!oauth2Redirecting" class="auth-external-icon"><Key /></el-icon>
-          使用 {{ oauth2ProviderName }} 登录
+          使用统一认证登录
         </el-button>
       </div>
 
@@ -217,7 +217,6 @@ const registerRules = {
 
 // 外部 OAuth2/OIDC 认证入口
 const oauth2Enabled = ref(false)
-const oauth2ProviderName = ref('OAuth2')
 const oauth2Redirecting = ref(false)
 
 const loadOAuth2Status = async () => {
@@ -225,7 +224,6 @@ const loadOAuth2Status = async () => {
     const res = await AuthApi.oauth2Status()
     if (res.success && res.data) {
       oauth2Enabled.value = !!res.data.enabled
-      oauth2ProviderName.value = res.data.providerName || 'OAuth2'
     }
   } catch (e) {
     oauth2Enabled.value = false
@@ -239,11 +237,11 @@ const handleOAuth2Login = async () => {
     if (res.success && res.data?.authorizeUrl) {
       window.location.href = res.data.authorizeUrl
     } else {
-      ElMessage.error(res.message || '无法发起外部认证')
+      ElMessage.error('外部认证暂时不可用，请稍后重试')
       oauth2Redirecting.value = false
     }
   } catch (e) {
-    ElMessage.error('无法发起外部认证：' + (e?.message || e))
+    ElMessage.error('外部认证暂时不可用，请稍后重试')
     oauth2Redirecting.value = false
   }
 }
