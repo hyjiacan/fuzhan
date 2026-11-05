@@ -26,6 +26,7 @@ type UserListResult struct {
 type UserItem struct {
 	UUID        string    `json:"uuid"`
 	Username    string    `json:"username"`
+	DisplayName string    `json:"displayName"`
 	Role        string    `json:"role"`
 	Disabled    bool      `json:"disabled"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -79,7 +80,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 	dbQuery := s.db.Model(&models.User{}).Where("role != ?", "admin")
 	if query != "" {
 		likeQuery := "%" + query + "%"
-		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ?", likeQuery, likeQuery)
+		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ? OR display_name LIKE ?", likeQuery, likeQuery, likeQuery)
 	}
 
 	dbQuery.Count(&total)
@@ -127,6 +128,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 		items[i] = UserItem{
 			UUID:        u.UUID,
 			Username:    u.Username,
+			DisplayName: u.DisplayName,
 			Role:        u.Role,
 			Disabled:    u.Disabled,
 			CreatedAt:   u.CreatedAt,
@@ -141,7 +143,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 }
 
 // CreateUser 管理员主动创建用户
-func (s *AdminService) CreateUser(callerUUID, username, password, role string) (*models.User, error) {
+func (s *AdminService) CreateUser(callerUUID, username, displayName, password, role string) (*models.User, error) {
 	// 校验调用者是管理员
 	var caller models.User
 	if err := s.db.Where("uuid = ? AND role = ?", callerUUID, "admin").First(&caller).Error; err != nil {
@@ -152,6 +154,10 @@ func (s *AdminService) CreateUser(callerUUID, username, password, role string) (
 	username = strings.TrimSpace(username)
 	if len(username) < 3 || len(username) > 32 {
 		return nil, fmt.Errorf("用户名长度需在3到32个字符之间")
+	}
+	displayName = strings.TrimSpace(displayName)
+	if len([]rune(displayName)) > 64 {
+		return nil, fmt.Errorf("姓名过长")
 	}
 	if len(password) < 8 || len(password) > 128 {
 		return nil, fmt.Errorf("密码长度需在8到128个字符之间")
@@ -191,6 +197,7 @@ func (s *AdminService) CreateUser(callerUUID, username, password, role string) (
 	user := &models.User{
 		UUID:         uuid,
 		Username:     username,
+		DisplayName:  displayName,
 		PasswordHash: string(hashedPassword),
 		Role:         role,
 	}

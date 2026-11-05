@@ -1042,6 +1042,9 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 		if user.Disabled {
 			return nil, errors.New("账户已被禁用")
 		}
+		if user.DisplayName == "" && info.DisplayName != "" {
+			s.fillDisplayName(&user, info.DisplayName)
+		}
 		s.linkRecord(&user, provider, info)
 		return &user, nil
 	}
@@ -1060,6 +1063,7 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 	user = models.User{
 		UUID:         uuid,
 		Username:     s.uniqueUsername(username, info.Subject),
+		DisplayName:  info.DisplayName,
 		PasswordHash: "",
 		Role:         "user",
 	}
@@ -1068,6 +1072,16 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 	}
 	s.linkRecord(&user, provider, info)
 	return &user, nil
+}
+
+// fillDisplayName 本地用户缺少姓名时用外部身份信息补齐，失败只告警不阻断登录
+func (s *OAuth2Service) fillDisplayName(user *models.User, displayName string) {
+	if err := s.db.Model(user).Update("display_name", displayName).Error; err != nil {
+		utils.Warn("OAuth2 用户姓名补写失败",
+			utils.String("username", user.Username), utils.Err(err))
+		return
+	}
+	user.DisplayName = displayName
 }
 
 // linkRecord 写入认证关联记录（同一用户重复登录时幂等跳过）

@@ -31,12 +31,15 @@ func TestAdminService_CreateUser(t *testing.T) {
 		t.Fatalf("创建管理员失败: %v", err)
 	}
 
-	user, err := svc.CreateUser(admin.UUID, "zhangsan", "secret123", "user")
+	user, err := svc.CreateUser(admin.UUID, "zhangsan", "张三", "secret123", "user")
 	if err != nil {
 		t.Fatalf("创建用户失败: %v", err)
 	}
 	if user.Username != "zhangsan" {
 		t.Errorf("用户名不匹配: %s", user.Username)
+	}
+	if user.DisplayName != "张三" {
+		t.Errorf("姓名不匹配: %s", user.DisplayName)
 	}
 	if user.Role != "user" {
 		t.Errorf("角色不匹配: %s", user.Role)
@@ -49,7 +52,7 @@ func TestAdminService_CreateUser(t *testing.T) {
 	}
 
 	// 校验默认角色为 user
-	user2, err := svc.CreateUser(admin.UUID, "lisi", "secret123", "")
+	user2, err := svc.CreateUser(admin.UUID, "lisi", "", "secret123", "")
 	if err != nil {
 		t.Fatalf("创建用户失败(默认角色): %v", err)
 	}
@@ -81,7 +84,7 @@ func TestAdminService_CreateUser_Validation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := svc.CreateUser(admin.UUID, tc.username, tc.password, tc.role)
+			_, err := svc.CreateUser(admin.UUID, tc.username, "", tc.password, tc.role)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("CreateUser() error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -98,10 +101,10 @@ func TestAdminService_CreateUser_Duplicate(t *testing.T) {
 		t.Fatalf("创建管理员失败: %v", err)
 	}
 
-	if _, err := svc.CreateUser(admin.UUID, "dupuser", "secret123", "user"); err != nil {
+	if _, err := svc.CreateUser(admin.UUID, "dupuser", "", "secret123", "user"); err != nil {
 		t.Fatalf("首次创建失败: %v", err)
 	}
-	if _, err := svc.CreateUser(admin.UUID, "dupuser", "secret123", "user"); err == nil {
+	if _, err := svc.CreateUser(admin.UUID, "dupuser", "", "secret123", "user"); err == nil {
 		t.Fatal("重复用户名应返回错误")
 	}
 }
@@ -115,7 +118,7 @@ func TestAdminService_CreateUser_NonAdmin(t *testing.T) {
 		t.Fatalf("创建普通用户失败: %v", err)
 	}
 
-	if _, err := svc.CreateUser(regUser.UUID, "victim", "secret123", "user"); err == nil {
+	if _, err := svc.CreateUser(regUser.UUID, "victim", "", "secret123", "user"); err == nil {
 		t.Fatal("非管理员调用应返回错误")
 	}
 }
@@ -130,7 +133,7 @@ func TestAdminService_CreateUser_ReservedName(t *testing.T) {
 	}
 
 	// 匿名用户名（GetReservedUsernames 默认保留 "anonymous"）不允许使用
-	if _, err := svc.CreateUser(admin.UUID, "anonymous", "secret123", "user"); err == nil {
+	if _, err := svc.CreateUser(admin.UUID, "anonymous", "", "secret123", "user"); err == nil {
 		t.Fatal("保留用户名应返回错误")
 	}
 }

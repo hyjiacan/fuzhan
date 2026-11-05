@@ -478,8 +478,8 @@ export const AdminApi = {
     return request.get('/admin/users', { params: { page, pageSize, query } })
   },
 
-  createUser(username, password, role = 'user') {
-    return request.post('/admin/users', { username, password, role }, { skipSuccessToast: true })
+  createUser(username, displayName, password, role = 'user') {
+    return request.post('/admin/users', { username, displayName, password, role }, { skipSuccessToast: true })
   },
 
   resetPassword(uuid, newPassword) {

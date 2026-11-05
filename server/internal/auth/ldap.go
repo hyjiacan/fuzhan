@@ -140,7 +140,7 @@ func (s *LDAPService) Authenticate(username, password string) (*models.User, err
 
 	// 用解析出的用户 DN 绑定密码进行验证
 	if err := conn.Bind(userDN, password); err != nil {
-		return nil, fmt.Errorf("LDAP 认证失败: %w", err)
+		return nil, fmt.Errorf("%w: %v", services.ErrLDAPInvalidCredentials, err)
 	}
 
 	return s.findOrCreateUser(username, attrs)
@@ -166,7 +166,7 @@ func (s *LDAPService) resolveUserDN(conn *ldap.Conn, cfg *LDAPConfig, username s
 		ldap.NeverDerefAliases,
 		0, 0, false,
 		filter,
-		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName"},
+		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName", "givenName", "sn"},
 		nil,
 	)
 	sr, err := conn.Search(req)
@@ -174,7 +174,7 @@ func (s *LDAPService) resolveUserDN(conn *ldap.Conn, cfg *LDAPConfig, username s
 		return "", nil, fmt.Errorf("LDAP 目录查询失败: %w", err)
 	}
 	if len(sr.Entries) == 0 {
-		return "", nil, fmt.Errorf("未在 LDAP 目录中找到用户 %s", username)
+		return "", nil, fmt.Errorf("%w: 未在 LDAP 目录中找到用户 %s", services.ErrLDAPInvalidCredentials, username)
 	}
 	if len(sr.Entries) > 1 {
 		return "", nil, fmt.Errorf("LDAP 目录中存在多个匹配用户，请细化 user_filter")
@@ -194,10 +194,19 @@ func entryAttributes(entry *ldap.Entry) map[string]string {
 		"sAMAccountName": entry.GetAttributeValue("sAMAccountName"),
 		"mail":           entry.GetAttributeValue("mail"),
 		"displayName":    entry.GetAttributeValue("displayName"),
+		"givenName":      entry.GetAttributeValue("givenName"),
+		"sn":             entry.GetAttributeValue("sn"),
 	}
 	if attrs["cn"] == "" {
 		attrs["cn"] = attrs["sAMAccountName"]
 	}
+	// 姓名回退链：displayName → cn → givenName+sn；sAMAccountName 是登录名，不作为姓名
+	attrs["name"] = firstNonEmpty(
+		attrs["displayName"],
+		attrs["cn"],
+		strings.TrimSpace(attrs["givenName"]+" "+attrs["sn"]),
+		attrs["uid"],
+	)
 	return attrs
 }
 
@@ -226,6 +235,8 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 		if user.Disabled {
 			return nil, services.ErrAccountDisabled
 		}
+		// 历史用户可能没有姓名，登录时用目录中的姓名补齐
+		s.fillDisplayName(&user, attrs)
 		return &user, nil
 	}
 
@@ -250,6 +261,7 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 	user = models.User{
 		UUID:         uuid,
 		Username:     username,
+		DisplayName:  attrs["name"],
 		PasswordHash: "",
 		Role:         "user",
 	}
@@ -262,7 +274,7 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 		UserID:       user.ID,
 		AuthType:     "ldap",
 		ExternalID:   attrs["dn"],
-		ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["uid"], username),
+		ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"], username),
 		ProviderName: host,
 	}).Error; err != nil {
 		// 关联记录失败不影响本次登录（用户已创建），但需记录以便排查
@@ -271,6 +283,19 @@ func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string)
 	}
 
 	return &user, nil
+}
+
+// fillDisplayName 在本地用户缺少姓名时用目录属性补齐，失败只告警不阻断登录
+func (s *LDAPService) fillDisplayName(user *models.User, attrs map[string]string) {
+	if user.DisplayName != "" || attrs["name"] == "" {
+		return
+	}
+	if err := s.db.Model(user).Update("display_name", attrs["name"]).Error; err != nil {
+		utils.Warn("LDAP 用户姓名补写失败",
+			utils.String("username", user.Username), utils.Err(err))
+		return
+	}
+	user.DisplayName = attrs["name"]
 }
 
 // firstNonEmpty 返回第一个非空字符串，全部为空时返回空串
@@ -381,7 +406,7 @@ func (s *LDAPService) SyncUsers() (int, error) {
 		ldap.NeverDerefAliases,
 		0, 0, false,
 		s.syncFilter(cfg),
-		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName"},
+		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName", "givenName", "sn"},
 		nil,
 	)
 	// 使用分页查询，避免目录条目超过服务端单次返回上限（如 AD 默认 1000 条）时同步被截断
@@ -398,14 +423,17 @@ func (s *LDAPService) SyncUsers() (int, error) {
 			continue
 		}
 		// 先判断本地是否已存在：同步只负责补建缺失账户，避免把“已存在”计为新建
-		var count int64
-		if err := s.db.Model(&models.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+		var existing models.User
+		err := s.db.Where("username = ?", username).First(&existing).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			failed++
 			utils.Warn("LDAP 目录同步：查询本地用户失败",
 				utils.String("username", username), utils.Err(err))
 			continue
 		}
-		if count > 0 {
+		if err == nil {
+			// 已存在的用户不回补建，但在姓名缺失时用目录属性补齐
+			s.fillDisplayName(&existing, entryAttributes(entry))
 			continue
 		}
 		if _, err := s.findOrCreateUser(username, entryAttributes(entry)); err != nil {

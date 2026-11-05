@@ -922,6 +922,8 @@ func (h *Handler) TestLDAPConfig(c *gin.Context) {
 		InsecureSkipVerify: dto.InsecureSkipVerify,
 	})
 	if err := svc.TestConnection(); err != nil {
+		utils.Warn("LDAP 连接测试失败",
+			utils.String("host", dto.Host), utils.Int("port", dto.Port), utils.Err(err))
 		utils.HandleBadRequest(c, "LDAP 连接测试失败: "+err.Error(), nil)
 		return
 	}
@@ -960,6 +962,13 @@ func (h *Handler) TestOAuth2Config(c *gin.Context) {
 		InsecureSkipVerify: dto.InsecureSkipVerify,
 	})
 	if err := svc.TestConnection(); err != nil {
+		utils.Warn("OAuth2 配置测试失败",
+			utils.String("provider", dto.ProviderName),
+			utils.String("issuer", dto.Issuer),
+			utils.String("authUrl", dto.AuthURL),
+			utils.String("tokenUrl", dto.TokenURL),
+			utils.String("userInfoUrl", dto.UserInfoURL),
+			utils.Err(err))
 		utils.HandleBadRequest(c, "OAuth2 配置测试失败: "+err.Error(), nil)
 		return
 	}
@@ -989,6 +998,15 @@ func (h *Handler) TestWebhookConfig(c *gin.Context) {
 		cfg = webhookConfigFromDTO(dto)
 	}
 	results := webhook.TestPush(cfg)
+	for _, r := range results {
+		if r.Success {
+			continue
+		}
+		// 测试失败时留痕，仅记录端点名称与地址，不输出请求头/密钥
+		utils.Warn("Webhook 测试推送失败",
+			utils.String("name", r.Name), utils.String("url", r.URL),
+			utils.Int("statusCode", r.StatusCode), utils.String("error", r.Error))
+	}
 	response.HandleSuccess(c, http.StatusOK, "Webhook 测试完成", results)
 }
 

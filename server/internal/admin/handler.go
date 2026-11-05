@@ -111,9 +111,10 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 // CreateUserHandler 处理管理员主动创建用户
 func (h *Handler) CreateUserHandler(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required,min=3,max=32"`
-		Password string `json:"password" binding:"required,min=8,max=128"`
-		Role     string `json:"role"`
+		Username    string `json:"username" binding:"required,min=3,max=32"`
+		DisplayName string `json:"displayName"`
+		Password    string `json:"password" binding:"required,min=8,max=128"`
+		Role        string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.user.create", req.Username, err)
@@ -122,11 +123,11 @@ func (h *Handler) CreateUserHandler(c *gin.Context) {
 	}
 
 	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
-	user, err := h.adminService.CreateUser(callerUUID, req.Username, req.Password, req.Role)
+	user, err := h.adminService.CreateUser(callerUUID, req.Username, req.DisplayName, req.Password, req.Role)
 	if err != nil {
 		middleware.LogOperation(c, "admin.user.create", req.Username, err)
 		msg := err.Error()
-		if strings.Contains(msg, "无权操作") || strings.Contains(msg, "用户名") || strings.Contains(msg, "角色") {
+		if strings.Contains(msg, "无权操作") || strings.Contains(msg, "用户名") || strings.Contains(msg, "角色") || strings.Contains(msg, "姓名") {
 			response.HandleBadRequest(c, msg, nil)
 			return
 		}
@@ -136,9 +137,10 @@ func (h *Handler) CreateUserHandler(c *gin.Context) {
 
 	middleware.LogOperation(c, "admin.user.create", req.Username, nil)
 	response.HandleSuccess(c, http.StatusCreated, "用户创建成功", gin.H{
-		"uuid":     user.UUID,
-		"username": user.Username,
-		"role":     user.Role,
+		"uuid":        user.UUID,
+		"username":    user.Username,
+		"displayName": user.DisplayName,
+		"role":        user.Role,
 	})
 }
 

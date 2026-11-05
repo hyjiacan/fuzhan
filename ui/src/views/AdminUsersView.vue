@@ -54,6 +54,13 @@
             placeholder="3-32位字符"
           />
         </el-form-item>
+        <el-form-item label="姓名" prop="displayName">
+          <el-input
+            v-model="createUserForm.displayName"
+            :maxlength="64"
+            placeholder="可选，如 张三"
+          />
+        </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input
             v-model="createUserForm.password"
@@ -140,6 +147,7 @@ const creatingUser = ref(false)
 const createFormRef = ref(null)
 const createUserForm = ref({
   username: '',
+  displayName: '',
   password: '',
   role: 'user'
 })
@@ -194,6 +202,13 @@ const columns = [
     cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.username || '' }, [
       h('span', { class: 'file-link' }, row.username || '-')
     ])
+  },
+  {
+    title: '姓名',
+    key: 'displayName',
+    minWidth: 120,
+    flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { title: row.displayName || '' }, row.displayName || '-')
   },
   {
     title: '状态',
@@ -293,6 +308,7 @@ const loadUsers = async () => {
 const showCreateUserModal = () => {
   createUserForm.value = {
     username: '',
+    displayName: '',
     password: '',
     role: 'user'
   }
@@ -313,6 +329,7 @@ const handleCreateUser = async () => {
   try {
     const data = await AdminApi.createUser(
       createUserForm.value.username.trim(),
+      createUserForm.value.displayName.trim(),
       createUserForm.value.password,
       createUserForm.value.role
     )

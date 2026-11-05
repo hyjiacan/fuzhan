@@ -19,6 +19,9 @@ import (
 // ErrAccountDisabled 账户被禁用（少数可直接展示给用户的认证失败原因）
 var ErrAccountDisabled = errors.New("账户已被禁用")
 
+// ErrLDAPInvalidCredentials LDAP 明确拒绝凭据（用户不存在或密码错误），属正常登录失败
+var ErrLDAPInvalidCredentials = errors.New("LDAP 凭据无效")
+
 // LDAPAuthenticator LDAP 认证接口
 // 避免 services 和 internal/auth 之间的循环依赖
 type LDAPAuthenticator interface {
@@ -132,10 +135,17 @@ func (s *AuthService) LoginByPassword(username, password string) (*models.User, 
 			}
 			return user, nil
 		}
-		// LDAP 失败时记录调试日志并降级到本地认证，不直接返回错误，
+		// LDAP 失败时降级到本地认证，不直接返回错误，
 		// 以避免 LDAP 服务不可用时拒绝仍可用本地密码登录的账户。
-		utils.Debug("LDAP 认证未通过，回退本地认证",
-			utils.String("username", username), utils.Err(err))
+		if errors.Is(err, ErrLDAPInvalidCredentials) {
+			// 凭据错误属正常登录失败，只在调试日志留痕
+			utils.Debug("LDAP 认证未通过，回退本地认证",
+				utils.String("username", username), utils.Err(err))
+		} else {
+			// 连接失败、服务账号绑定失败、目录查询失败等认证源故障必须能被排查到
+			utils.Warn("LDAP 认证源不可用，回退本地认证",
+				utils.String("username", username), utils.Err(err))
+		}
 	}
 
 	// 第二步：本地密码认证

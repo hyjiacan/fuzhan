@@ -9,6 +9,7 @@ type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	UUID         string    `gorm:"uniqueIndex;size:36;not null" json:"uuid"` // 用户唯一标识，用于存储路径
 	Username     string    `gorm:"uniqueIndex;size:64;not null" json:"username"`
+	DisplayName  string    `gorm:"size:128" json:"displayName"` // 姓名/显示名，LDAP/OAuth 登录时同步
 	PasswordHash string    `gorm:"size:256;not null" json:"-"`
 	Role         string    `gorm:"size:32;default:user" json:"role"` // 用户角色：admin, user
 	Disabled     bool      `gorm:"default:false" json:"disabled"`    // 是否禁用
