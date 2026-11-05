@@ -248,6 +248,14 @@ const handleOAuth2Login = async () => {
   }
 }
 
+// 非 SPA 内页面（如 /scalar.html 文档页、/lite 轻量版）需要整页跳转，
+// hash 路由无法承载这类后端直出的页面，用 router.replace 会被 catch-all 吞掉
+const isPageRedirect = (p) => {
+  if (typeof p !== 'string' || !p) return false
+  const path = p.split('?')[0]
+  return path.startsWith('/lite') || path.endsWith('.html') || path.endsWith('.htm')
+}
+
 const finishAuth = async () => {
   window.dispatchEvent(new CustomEvent('auth:changed'))
   ElMessage.success('登录成功')
@@ -255,6 +263,11 @@ const finishAuth = async () => {
   const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
     ? route.query.redirect
     : '/files'
+  // 后端直出页面（/scalar.html 等）整页跳转回原地址
+  if (isPageRedirect(redirect)) {
+    window.location.href = redirect
+    return
+  }
   // 下载类 redirect（后端 302 携带）：换一次性票据后整页跳转执行下载，
   // hash 路由会吞掉非 hash 路径，不能用 router.replace
   if (await executeLoginDownload(redirect)) return
@@ -406,6 +419,11 @@ const leaveLoginPage = async () => {
   const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
     ? route.query.redirect
     : ''
+  // 后端直出页面（/scalar.html 等）整页跳转，hash 路由承载不了
+  if (isPageRedirect(redirect)) {
+    window.location.href = redirect
+    return
+  }
   // executeLoginDownload 为 async（恒返回 Promise），必须 await 判断其结果，
   // 直接 if(...) 会把始终 truthy 的 Promise 当作已发下载 → 下面的 replace 永不执行
   if (await executeLoginDownload(redirect)) return

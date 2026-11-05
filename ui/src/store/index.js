@@ -137,10 +137,11 @@ const mutations = {
     // 标准化路径分隔符为正斜杠
     const normalizedPath = path.replace(/\\/g, '/')
     state.currentPath = normalizedPath
-    // 更新页面标题
-    const displayPath = normalizedPath.replace(/^\//, '')
-    const dirName = displayPath ? displayPath.split('/').pop() : state.config.appName
-    document.title = displayPath ? `${dirName} - ${state.config.appName}` : state.config.appName
+    // 更新页面标题：显示当前所在的完整路径，便于多标签页区分
+    const displayPath = normalizedPath.replace(/^\/+|\/+$/g, '')
+    document.title = displayPath
+      ? `${displayPath} - ${state.config.appName}`
+      : state.config.appName
   },
 
   // 添加文件到列表

@@ -157,23 +157,32 @@ func injectWebSession(c *gin.Context, claims *jwt.Claims) {
 
 // LoginRequiredWhenForced OpenAPI 文档（/openapi.json、/docs）专用守卫。
 //
-// L6 加固后与 AuthGateMiddleware 语义完全一致：任何 auth_mode 都不再匿名放行。
-// 数据端点走 AuthGateMiddleware，文档端点走本守卫；两者共享同一套 requireWebSession
-// 校验逻辑，保证矩阵 case 全覆盖、无匿名漏网：
+// 文档端点与数据端点的准入策略不同：文档只是接口说明，不涉及业务数据，
+// 因此「未开启强制登录」时匿名可读，与 /scalar.html 静态页的开放策略保持一致；
+// 开启强制登录后再要求有效凭证，避免未登录用户借文档页探测系统。
 //
-//	requireLogin | auth_mode | openapi.json（与数据端点一致）
-//	-------------+-----------+---------------------------------------------------
-//	false        | none      | 需有效凭证（Web 会话 JWT 或 API Key），否则 401
-//	false        | api_key   | 需有效 API Key，否则 401
+//	requireLogin | auth_mode | openapi.json / docs
+//	-------------+-----------+------------------------------------------
+//	false        | none      | 匿名可读（无需认证）
+//	false        | api_key   | 匿名可读（文档本身不含数据）
 //	true         | none      | 需有效凭证（Web 会话 JWT 或 API Key），否则 401
 //	true         | api_key   | 需有效 API Key，否则 401
 //
+// auth_mode 配置非法时仍交给 AuthGateMiddleware 返回明确的 500，便于尽早发现配置错误。
 // authMW 用于 JWT 会话的禁用态校验：验签通过后调用 AuthMiddleware.CheckUserDisabled()
 // 实时查库（缓存 + 回源），被禁用用户直接写入 403 并 Abort，避免只验签就放行。
 // authMW 为 nil（测试场景）时退化为仅验签放行。
 func LoginRequiredWhenForced(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) gin.HandlerFunc {
 	gate := AuthGateMiddleware(authMW, rbac)
 	return func(c *gin.Context) {
+		switch CurrentAuthMode() {
+		case AuthModeNone, AuthModeAPIKey:
+			// 未开启强制登录：文档端点匿名放行
+			if !appconfig.GetConfig().Account.RequireLogin {
+				c.Next()
+				return
+			}
+		}
 		gate(c)
 	}
 }

@@ -132,8 +132,9 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		r.Static("/assets", assetsDir)
 		// scalar（OpenAPI 文档页）独立构建
 		r.Static("/scalar/assets", filepath.Join(scalarDir, "assets"))
-		// 独立页面
-		r.GET("/scalar.html", func(c *gin.Context) {
+		// 独立页面：开启强制登录后需先登录（匿名浏览器导航跳登录页并回跳），
+		// 未开启强制登录时 LoginGate 直接放行，保持匿名可读。
+		r.GET("/scalar.html", rt.authMiddleware.LoginGate(), func(c *gin.Context) {
 			c.File(filepath.Join(scalarDir, "scalar.html"))
 		})
 	} else {
@@ -157,8 +158,9 @@ func (rt *runCtx) newRouter() (*gin.Engine, *ftp.FTPHandler) {
 		r.StaticFS("/assets", http.FS(assetsFS))
 		// scalar（OpenAPI 文档页）独立构建
 		r.StaticFS("/scalar/assets", http.FS(scalarAssetsFS))
-		// 独立页面
-		r.GET("/scalar.html", func(c *gin.Context) {
+		// 独立页面：开启强制登录后需先登录（匿名浏览器导航跳登录页并回跳），
+		// 未开启强制登录时 LoginGate 直接放行，保持匿名可读。
+		r.GET("/scalar.html", rt.authMiddleware.LoginGate(), func(c *gin.Context) {
 			data, err := webAssets.ReadFile("scalar/scalar.html")
 			if err != nil {
 				utils.HandleNotFound(c, "scalar.html not found")

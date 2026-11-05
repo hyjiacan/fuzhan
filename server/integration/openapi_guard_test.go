@@ -152,16 +152,14 @@ func doOpenAPIDocRequest(router *gin.Engine, cookieToken, bearerToken string) *h
 	return w
 }
 
-// TestOpenAPIDocGuard_AnonymousRejectedWhenNotForced 非强制登录 + none：L6 加固后匿名一律 401。
-func TestOpenAPIDocGuard_AnonymousRejectedWhenNotForced(t *testing.T) {
+// TestOpenAPIDocGuard_AnonymousAllowedWhenNotForced 非强制登录 + none：文档端点匿名可读。
+// 文档只是接口说明、不含业务数据，与 /scalar.html 静态页的开放策略保持一致。
+func TestOpenAPIDocGuard_AnonymousAllowedWhenNotForced(t *testing.T) {
 	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
 
 	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "", "")
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("非强制登录匿名访问期望 401，实际 %d", w.Code)
-	}
-	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
-		t.Fatalf("拒绝匿名时应返回 Cache-Control: no-store，实际 %q", cc)
+	if w.Code != http.StatusOK {
+		t.Fatalf("非强制登录匿名访问文档期望 200，实际 %d", w.Code)
 	}
 }
 
@@ -198,26 +196,27 @@ func TestOpenAPIDocGuard_NotForcedNoneAcceptsBearerAPIKey(t *testing.T) {
 	}
 }
 
-// TestOpenAPIDocGuard_NotForcedNoneRejectsInvalidJWT 非强制登录 + none：无效 JWT 仍 401。
-func TestOpenAPIDocGuard_NotForcedNoneRejectsInvalidJWT(t *testing.T) {
+// TestOpenAPIDocGuard_NotForcedNoneIgnoresInvalidJWT 非强制登录 + none：文档匿名开放，
+// 携带无效凭证也不影响读取（不因坏凭证拒绝说明文档）。
+func TestOpenAPIDocGuard_NotForcedNoneIgnoresInvalidJWT(t *testing.T) {
 	setOpenAPIGuardConfig(t, false, openapi.AuthModeNone)
 
 	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "invalid-jwt", "invalid-jwt")
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("携带无效 JWT 期望 401，实际 %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("非强制登录携带无效 JWT 读文档期望 200，实际 %d", w.Code)
 	}
 }
 
-// TestOpenAPIDocGuard_APIKeyModeRequiresKeyWithoutLogin 非强制登录 + api_key：无 Key 必须 401（防回归）。
-func TestOpenAPIDocGuard_APIKeyModeRequiresKeyWithoutLogin(t *testing.T) {
+// TestOpenAPIDocGuard_APIKeyModeAnonymousAllowedWhenNotForced 非强制登录 + api_key：文档端点匿名可读。
+// 数据端点仍需 API Key，但文档本身不涉及业务数据，未开启强制登录时保持开放。
+func TestOpenAPIDocGuard_APIKeyModeAnonymousAllowedWhenNotForced(t *testing.T) {
 	setOpenAPIGuardConfig(t, false, openapi.AuthModeAPIKey)
 
-	// 注意：AuthGate 在服务未装配（rbac=nil）时是 fail-closed 503，故此处必须装配一个无 Key 的服务。
 	rbac := auth.NewRBACService(openAPIGuardApiKeyService(t))
 
 	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, rbac), "", "")
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("api_key 模式下无 Key 期望 401，实际 %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("非强制登录 + api_key 匿名访问文档期望 200，实际 %d", w.Code)
 	}
 }
 
@@ -326,9 +325,10 @@ func TestOpenAPIDocGuard_ForcedLoginNoneRejectsInvalidAPIKey(t *testing.T) {
 	}
 }
 
-// TestOpenAPIDocGuard_APIKeyModeWithoutRBACReturns503 api_key 模式且鉴权服务未装配：fail-closed 503 且禁缓存。
+// TestOpenAPIDocGuard_APIKeyModeWithoutRBACReturns503 强制登录 + api_key 且鉴权服务未装配：fail-closed 503 且禁缓存。
+// 未开启强制登录时文档匿名开放，不经过鉴权服务，故需在强制登录下验证 fail-closed 行为。
 func TestOpenAPIDocGuard_APIKeyModeWithoutRBACReturns503(t *testing.T) {
-	setOpenAPIGuardConfig(t, false, openapi.AuthModeAPIKey)
+	setOpenAPIGuardConfig(t, true, openapi.AuthModeAPIKey)
 
 	w := doOpenAPIDocRequest(newOpenAPIDocRouter(nil, nil), "", "")
 	if w.Code != http.StatusServiceUnavailable {

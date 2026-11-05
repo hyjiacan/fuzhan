@@ -124,7 +124,8 @@ func MonitoringMiddleware() gin.HandlerFunc {
 			fields = append(fields,
 				utils.String("action", method+" "+endpoint),
 			)
-			utils.OpenAPIAccess("开放API请求", fields...)
+			// 「API操作」仅用于开放 API 渠道；Web 界面请求见下方分支的具体业务操作名。
+			utils.OpenAPIAccess("API操作", fields...)
 		case isAPI:
 			// 补充操作详情：做了什么（action）、请求数据、异常消息。
 			// 不记录响应到前端的具体数据（result），避免业务数据落盘。
@@ -136,7 +137,9 @@ func MonitoringMiddleware() gin.HandlerFunc {
 			if activity.errMsg != "" {
 				fields = append(fields, utils.String("error", activity.errMsg))
 			}
-			utils.APIAccess("API操作", fields...)
+			// Web 界面请求按具体业务操作命名（如「创建用户」「下载文件」），
+			// 使 api.log 的 message 直接可读；「API操作」仅用于开放 API 渠道。
+			utils.APIAccess(webActionLabel(method, endpoint), fields...)
 		default:
 			// 静态资源 / favicon 不写入 access.log，避免其高频加载导致日志膨胀
 			if isStaticAssetRequest(path) {

@@ -446,7 +446,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/openapi.json": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":     "OpenAPI 规范文档",
-					"description": "返回 OpenAPI 3.x 规范 JSON。响应未被信封包裹。需要有效凭证（Web 会话 Cookie 或 API Key）但不需要 scope。",
+					"description": "返回 OpenAPI 3.x 规范 JSON。响应未被信封包裹。未开启强制登录时匿名可读；开启强制登录后需要有效凭证（Web 会话 Cookie 或 API Key），但不需要 scope。",
 					"tags":        []string{"系统"},
 					"security":    sessionOrAPIKeySecurity(),
 					"responses": map[string]interface{}{
@@ -458,7 +458,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 								},
 							},
 						},
-						"401": guardResponse("缺少或无效凭证"),
+						"401": guardResponse("开启强制登录后缺少或无效凭证"),
 						"404": errorResponse("Open API 功能未开启"),
 						"429": errorResponse("请求过于频繁"),
 						"503": guardResponse("Open API 鉴权服务不可用"),
@@ -468,7 +468,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/docs": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":     "API 文档页面",
-					"description": "301 重定向到 `/scalar.html`（Scalar 交互式 API 文档页面）。需要有效凭证，Scalar 静态页本身匿名可加载。",
+					"description": "301 重定向到 `/scalar.html`（Scalar 交互式 API 文档页面）。未开启强制登录时匿名可访问；开启强制登录后需要有效凭证。",
 					"tags":        []string{"系统"},
 					"security":    sessionOrAPIKeySecurity(),
 					"responses": map[string]interface{}{
@@ -478,7 +478,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 								"Location": map[string]interface{}{"description": "重定向目标", "schema": map[string]interface{}{"type": "string", "example": "/scalar.html"}},
 							},
 						},
-						"401": guardResponse("缺少或无效凭证"),
+						"401": guardResponse("开启强制登录后缺少或无效凭证"),
 						"404": errorResponse("Open API 功能未开启"),
 						"429": errorResponse("请求过于频繁"),
 						"503": guardResponse("Open API 鉴权服务不可用"),

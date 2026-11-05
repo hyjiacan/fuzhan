@@ -76,11 +76,15 @@ func TestAPIActivityLogging(t *testing.T) {
 	utils.Sync()
 	content := readLogFile(t, filepath.Join(dir, "api.log"))
 
-	// 做了什么 + 请求数据
-	for _, want := range []string{"API操作", "/api/v1/web/echo", "报告.pdf", `"action"`, `"request"`} {
+	// 做了什么 + 请求数据：Web 渠道日志用具体业务操作名，未登记路由回退到通用名称
+	for _, want := range []string{webActionFallback, "/api/v1/web/echo", "报告.pdf", `"action"`, `"request"`} {
 		if !strings.Contains(content, want) {
 			t.Errorf("api.log 缺少 %q\n%s", want, content)
 		}
+	}
+	// 「API操作」为开放 API 专属措辞，Web 渠道不应再出现
+	if strings.Contains(content, "API操作") {
+		t.Errorf("Web 渠道日志不应使用「API操作」\n%s", content)
 	}
 	// 异常消息
 	if !strings.Contains(content, "无效的目标根目录") {

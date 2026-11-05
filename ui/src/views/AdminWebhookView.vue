@@ -202,29 +202,6 @@
           </div>
         </el-form-item>
       </el-card>
-
-      <el-card>
-        <template #header><span>支持的事件（{{ events.length }}）</span></template>
-        <el-alert
-          v-if="eventsError"
-          type="error"
-          :closable="false"
-          show-icon
-          style="margin-bottom: 12px;"
-        >
-          事件目录加载失败，无法展示可用事件；请检查后端服务后刷新页面重试。
-        </el-alert>
-        <el-empty v-else-if="eventsLoaded && !events.length" description="后端未配置可用事件" :image-size="60" />
-        <div v-else class="event-table">
-          <div class="event-group" v-for="g in eventGroups" :key="g.label">
-            <div class="event-group-title">{{ g.label }}</div>
-            <div class="event-row" v-for="ev in g.items" :key="ev.event">
-              <div class="event-code">{{ ev.event }}</div>
-              <div class="event-desc">{{ ev.desc }}</div>
-            </div>
-          </div>
-        </div>
-      </el-card>
     </template>
 
     <el-dialog v-model="showGlobalModal" title="Webhook 全局参数" width="640px" :close-on-click-modal="false">
@@ -453,19 +430,13 @@ const testingAll = ref(false)
 const allTestResults = ref([])
 
 const events = ref([])
-const eventsLoaded = ref(false)
-const eventsError = ref(false)
 
 const loadEvents = async () => {
   try {
     const res = await ConfigApi.webhookEvents()
     if (res.success && res.data) events.value = res.data
-    eventsLoaded.value = true
-    eventsError.value = false
   } catch (e) {
     console.error('加载 Webhook 事件目录失败:', e)
-    eventsLoaded.value = true
-    eventsError.value = true
   }
 }
 
@@ -772,22 +743,5 @@ onMounted(() => {
   flex-direction: column;
   gap: 4px;
   width: 100%;
-}
-
-.event-table {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-
-  .event-group-title { font-weight: 600; margin-bottom: 4px; }
-
-  .event-row {
-    display: flex;
-    gap: 12px;
-    padding: 4px 0;
-    font-size: 13px;
-    .event-code { font-family: @font-family-mono; color: @text-color; min-width: 180px; }
-    .event-desc { color: @text-color-secondary; }
-  }
 }
 </style>

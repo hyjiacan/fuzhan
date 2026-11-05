@@ -195,16 +195,17 @@ export const ConfigApi = {
     return request.post('/config', config, { skipSuccessToast: true })
   },
 
+  // 连接测试的成功/失败提示由调用方组件自行展示，跳过拦截器自动 toast，避免重复提示
   testLdap(ldapConfig) {
-    return request.post('/config/ldap/test', ldapConfig)
+    return request.post('/config/ldap/test', ldapConfig, { skipSuccessToast: true })
   },
 
   testOAuth2(oauth2Config) {
-    return request.post('/config/oauth2/test', oauth2Config)
+    return request.post('/config/oauth2/test', oauth2Config, { skipSuccessToast: true })
   },
 
   testWebhook(webhookConfig) {
-    return request.post('/config/webhook/test', webhookConfig)
+    return request.post('/config/webhook/test', webhookConfig, { skipSuccessToast: true })
   },
 
   webhookEvents() {

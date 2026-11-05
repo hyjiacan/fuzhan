@@ -158,8 +158,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	}
 
 	// OpenAPI 文档：从组级 AuthGate 中单独抽出，改走 LoginRequiredWhenForced。
-	// L6 加固后与 AuthGate 语义一致：none 模式需有效 Web 会话 JWT 或 API Key，匿名 401；
-	// api_key 模式下要求 API Key（不开新洞）。
+	// 未开启强制登录时匿名可读（与 /scalar.html 一致）；开启强制登录后需有效凭证。
 	openapiDoc := r.Group("/api/open/v1")
 	openapiDoc.Use(openAPICommonMW...)
 	openapiDoc.Use(
