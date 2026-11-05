@@ -27,6 +27,7 @@ func TestInjectWebSessionGrantsWriterCompatScope(t *testing.T) {
 		models.ScopeFilesExists,
 		models.ScopeFilesOverwrite,
 		models.ScopeFilesDelete,
+		models.ScopeFilesDeleteDir,
 		models.ScopeFilesRename,
 	} {
 		if !rbac.HasContextScope(c, scope) {

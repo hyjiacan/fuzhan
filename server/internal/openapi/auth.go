@@ -203,6 +203,25 @@ func RequireReaderScope(rbac *auth.RBACService) gin.HandlerFunc {
 	}
 }
 
+// RequireAnyScope 要求具备 required 中任一 scope，用于需要按目标类型细分权限的接口：
+// 这里先做粗粒度拦截，具体类型（文件/目录）由 handler 判定后再校验精确 scope。
+func RequireAnyScope(rbac *auth.RBACService, required ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if rbac != nil {
+			for _, scope := range required {
+				if rbac.HasContextScope(c, scope) {
+					c.Next()
+					return
+				}
+			}
+		}
+		c.Header("Cache-Control", cacheControlNoStore)
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": "权限不足，需要 scope 之一: " + strings.Join(required, ", "),
+		})
+	}
+}
+
 // splitScopes 把逗号分隔的 scope 字符串拆成去空列表。
 func splitScopes(scopes string) []string {
 	if strings.TrimSpace(scopes) == "" {

@@ -101,42 +101,167 @@ func hasContextScope(c *gin.Context, required string) bool {
 	}
 }
 
-// ==================== FR-3.1: 文件列表 API ====================
-
-// ListFilesQuery 文件列表查询参数
-type ListFilesQuery struct {
-	Path     string `form:"path"`
-	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
-	Sort     string `form:"sort"`
-	Order    string `form:"order"`
+// optionalIntQuery 读取可选的整数查询参数。
+// 未提供（或为空）时返回默认值；一旦提供但非法（非整数或超出范围）则写入 400 响应并返回 ok=false，
+// 不做静默回退，避免调用方拿到与入参不符的结果。
+func optionalIntQuery(c *gin.Context, name string, def, min, max int64) (int64, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return def, true
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		response.HandleBadRequest(c, name+" 必须为整数", nil)
+		return 0, false
+	}
+	if v < min || (max > 0 && v > max) {
+		if max > 0 {
+			response.HandleBadRequest(c, fmt.Sprintf("%s 取值范围为 %d-%d", name, min, max), nil)
+		} else {
+			response.HandleBadRequest(c, fmt.Sprintf("%s 不能小于 %d", name, min), nil)
+		}
+		return 0, false
+	}
+	return v, true
 }
+
+// optionalEnumQuery 读取可选的枚举查询参数：未提供时返回默认值，提供非法值时写入 400 响应。
+func optionalEnumQuery(c *gin.Context, name, def string, allowed ...string) (string, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return def, true
+	}
+	for _, a := range allowed {
+		if raw == a {
+			return raw, true
+		}
+	}
+	response.HandleBadRequest(c, fmt.Sprintf("%s 仅支持 %s", name, strings.Join(allowed, " / ")), nil)
+	return "", false
+}
+
+// parseBoolForm 解析可选布尔表单字段：缺省为 false，提供非法值时返回错误。
+func parseBoolForm(c *gin.Context, name string) (bool, error) {
+	raw := strings.TrimSpace(c.PostForm(name))
+	if raw == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(raw)
+}
+
+// normalizeOpenAPIPath 校验并规范化 /rootName[/sub] 路径，拒绝 . 与 .. 片段。
+func normalizeOpenAPIPath(raw string) (string, error) {
+	p := filepath.ToSlash(strings.TrimSpace(raw))
+	if p == "" {
+		return "", errors.New("路径不能为空")
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	parts := splitPath(p)
+	for _, part := range parts {
+		if part == "." || part == ".." {
+			return "", errors.New("路径不能包含 . 或 ..")
+		}
+	}
+	if len(parts) == 0 {
+		return "/", nil
+	}
+	return "/" + strings.Join(parts, "/"), nil
+}
+
+// handleFileServiceError 把文件服务的错误映射为对应的 HTTP 状态码：
+// 资源不存在 404、目标冲突 409、访问/落盘失败 500、其余视为参数错误 400。
+func handleFileServiceError(c *gin.Context, err error) {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "不存在"):
+		response.HandleNotFound(c, msg)
+	case strings.Contains(msg, "已存在"):
+		response.HandleErrorCompat(c, http.StatusConflict, msg, nil)
+	case strings.Contains(msg, "无法访问"), strings.Contains(msg, "失败"):
+		response.HandleInternalServerError(c, msg)
+	default:
+		response.HandleBadRequest(c, msg, nil)
+	}
+}
+
+// validHexHash 判断是否为 16 位十六进制字符串（xxh3 64 位哈希的标准输出格式）。
+func validHexHash(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// validChunkChecksum 校验分片校验值：可选；提供时必须是 1-16 位十六进制字符串。
+func validChunkChecksum(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 16 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// handleUploadChunkError 把分片上传服务错误映射为对应 HTTP 状态码。
+func handleUploadChunkError(c *gin.Context, err error) {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "会话不存在"):
+		response.HandleNotFound(c, msg)
+	case strings.Contains(msg, "会话已过期"):
+		response.HandleErrorCompat(c, http.StatusConflict, msg+", 请重新 init", nil)
+	case strings.Contains(msg, "无效的分片索引"), strings.Contains(msg, "无效的分片大小"),
+		strings.Contains(msg, "xxh3校验"):
+		response.HandleBadRequest(c, msg, nil)
+	case strings.Contains(msg, "超过限制"):
+		response.HandleErrorCompat(c, http.StatusRequestEntityTooLarge, msg, nil)
+	default:
+		response.HandleInternalServerError(c, msg)
+	}
+}
+
+// ==================== FR-3.1: 文件列表 API ====================
 
 // ListFiles GET /api/open/v1/files/list
 func (h *Handler) ListFiles(c *gin.Context) {
-	var query ListFilesQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		response.HandleBadRequest(c, "请求参数格式错误", err.Error())
+	cleanPath := "/"
+	if raw := strings.TrimSpace(c.Query("path")); raw != "" {
+		var err error
+		if cleanPath, err = normalizeOpenAPIPath(raw); err != nil {
+			response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
+			return
+		}
+	}
+
+	page, ok := optionalIntQuery(c, "page", 1, 1, 0)
+	if !ok {
 		return
 	}
-
-	if query.Path == "" {
-		query.Path = "/"
+	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	if !ok {
+		return
 	}
-	if query.Page <= 0 {
-		query.Page = 1
+	sortBy, ok := optionalEnumQuery(c, "sort", "name", "name", "time", "size")
+	if !ok {
+		return
 	}
-	if query.PageSize <= 0 || query.PageSize > 100 {
-		query.PageSize = 50
+	orderBy, ok := optionalEnumQuery(c, "order", "asc", "asc", "desc")
+	if !ok {
+		return
 	}
-	if query.Sort == "" {
-		query.Sort = "name"
-	}
-	if query.Order == "" {
-		query.Order = "asc"
-	}
-
-	cleanPath := filepath.ToSlash(query.Path)
 
 	dbQuery := h.db.Model(&models.FileRecordPublic{}).
 		Where("status = ?", models.FileStatusActive)
@@ -159,22 +284,25 @@ func (h *Handler) ListFiles(c *gin.Context) {
 	}
 
 	var total int64
-	dbQuery.Count(&total)
+	if err := dbQuery.Count(&total).Error; err != nil {
+		response.HandleInternalServerError(c, "查询文件列表失败: "+err.Error())
+		return
+	}
 
 	sortField := map[string]string{"name": "file_name", "time": "mod_time", "size": "file_size"}
-	orderField := sortField["name"]
-	if f, ok := sortField[query.Sort]; ok {
-		orderField = f
-	}
+	orderField := sortField[sortBy]
 	orderDir := "ASC"
-	if query.Order == "desc" {
+	if orderBy == "desc" {
 		orderDir = "DESC"
 	}
 
-	offset := (query.Page - 1) * query.PageSize
+	offset := (page - 1) * pageSize
 	var records []models.FileRecordPublic
-	dbQuery.Order(orderField + " " + orderDir).
-		Offset(offset).Limit(query.PageSize).Find(&records)
+	if err := dbQuery.Order(orderField + " " + orderDir).
+		Offset(int(offset)).Limit(int(pageSize)).Find(&records).Error; err != nil {
+		response.HandleInternalServerError(c, "查询文件列表失败: "+err.Error())
+		return
+	}
 
 	files := make([]gin.H, 0)
 	for _, r := range records {
@@ -194,8 +322,8 @@ func (h *Handler) ListFiles(c *gin.Context) {
 		"path":  cleanPath,
 		"files": files,
 		"pagination": gin.H{
-			"page":      query.Page,
-			"page_size": query.PageSize,
+			"page":      page,
+			"page_size": pageSize,
 			"total":     total,
 		},
 	})
@@ -203,35 +331,28 @@ func (h *Handler) ListFiles(c *gin.Context) {
 
 // ==================== FR-3.2: 文件搜索 API ====================
 
-// SearchFilesQuery 搜索查询参数
-type SearchFilesQuery struct {
-	Query    string `form:"query" binding:"required"`
-	Root     string `form:"root"`
-	Ext      string `form:"ext"` // 扩展名过滤，支持逗号分隔多个（如 pdf,docx）
-	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
-}
-
 // SearchFiles GET /api/open/v1/files/search
 // 支持多关键词模糊匹配（空格分隔，全部命中）、扩展名过滤，并返回与 Web 端一致的搜索建议词。
 func (h *Handler) SearchFiles(c *gin.Context) {
-	var query SearchFilesQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
+	rawQuery := c.Query("query")
+	keywords := strings.Fields(rawQuery)
+	if len(keywords) == 0 {
 		response.HandleBadRequest(c, "缺少搜索关键词 query", nil)
 		return
 	}
 
-	keywords := strings.Fields(query.Query)
-	if len(keywords) == 0 {
-		response.HandleBadRequest(c, "搜索关键词不能为空", nil)
+	page, ok := optionalIntQuery(c, "page", 1, 1, 0)
+	if !ok {
 		return
 	}
-
-	if query.Page <= 0 {
-		query.Page = 1
+	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	if !ok {
+		return
 	}
-	if query.PageSize <= 0 || query.PageSize > 100 {
-		query.PageSize = 50
+	exts, err := parseSearchExtensions(c.Query("ext"))
+	if err != nil {
+		response.HandleBadRequest(c, "ext 参数非法: "+err.Error(), nil)
+		return
 	}
 
 	dbQuery := h.db.Model(&models.FileRecordPublic{}).
@@ -243,7 +364,7 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 		dbQuery = dbQuery.Where("(file_name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')", pattern, pattern)
 	}
 
-	if exts := normalizeSearchExtensions(query.Ext); len(exts) > 0 {
+	if len(exts) > 0 {
 		conditions := make([]string, 0, len(exts))
 		args := make([]interface{}, 0, len(exts))
 		for _, ext := range exts {
@@ -254,17 +375,23 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 			Where("("+strings.Join(conditions, " OR ")+")", args...)
 	}
 
-	if query.Root != "" {
-		dbQuery = dbQuery.Where("root_name = ?", query.Root)
+	if root := strings.TrimSpace(c.Query("root")); root != "" {
+		dbQuery = dbQuery.Where("root_name = ?", root)
 	}
 
 	var total int64
-	dbQuery.Count(&total)
+	if err := dbQuery.Count(&total).Error; err != nil {
+		response.HandleInternalServerError(c, "查询文件失败: "+err.Error())
+		return
+	}
 
-	offset := (query.Page - 1) * query.PageSize
+	offset := (page - 1) * pageSize
 	var records []models.FileRecordPublic
-	dbQuery.Order("file_name ASC").
-		Offset(offset).Limit(query.PageSize).Find(&records)
+	if err := dbQuery.Order("file_name ASC").
+		Offset(int(offset)).Limit(int(pageSize)).Find(&records).Error; err != nil {
+		response.HandleInternalServerError(c, "查询文件失败: "+err.Error())
+		return
+	}
 
 	files := make([]gin.H, 0)
 	for _, r := range records {
@@ -283,37 +410,48 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"results":     files,
-		"suggestions": h.buildSearchSuggestions(query.Query, 10),
+		"suggestions": h.buildSearchSuggestions(rawQuery, 10),
 		"pagination": gin.H{
-			"page":      query.Page,
-			"page_size": query.PageSize,
+			"page":      page,
+			"page_size": pageSize,
 			"total":     total,
 		},
 	})
 }
 
-// normalizeSearchExtensions 规范化扩展名过滤参数：去点、转小写、去重，最多 10 个。
-func normalizeSearchExtensions(raw string) []string {
+// parseSearchExtensions 规范化扩展名过滤参数：去点、转小写、去重，最多 10 个。
+// 提供非法扩展名（空项、超长或含非字母数字字符）时返回错误，由调用方返回 400。
+func parseSearchExtensions(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil
+		return nil, nil
 	}
-	parts := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == ' '
-	})
+	// 用 Split 而非 FieldsFunc：需要识别 "pdf,,docx" 这类空项，避免把非法输入静默忽略。
+	parts := strings.Split(strings.ReplaceAll(raw, ";", ","), ",")
 	seen := make(map[string]bool, len(parts))
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		ext := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(p), "."))
-		if ext == "" || len(ext) > 20 || seen[ext] {
+		if ext == "" {
+			return nil, errors.New("扩展名不能为空")
+		}
+		if len(ext) > 20 {
+			return nil, fmt.Errorf("扩展名过长: %s", ext)
+		}
+		for _, r := range ext {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+				return nil, fmt.Errorf("扩展名包含非法字符: %s", ext)
+			}
+		}
+		if seen[ext] {
 			continue
 		}
 		seen[ext] = true
 		out = append(out, ext)
-		if len(out) >= 10 {
-			break
+		if len(out) > 10 {
+			return nil, errors.New("最多支持 10 个扩展名")
 		}
 	}
-	return out
+	return out, nil
 }
 
 // buildSearchSuggestions 返回与 Web 端一致的搜索建议词：
@@ -367,13 +505,20 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	// URL 解码，处理中文和特殊字符
-	filePath, _ = url.QueryUnescape(filePath)
+	// URL 解码，处理中文和特殊字符；非法转义直接拒绝，不能沿用未解码值。
+	decoded, err := url.QueryUnescape(filePath)
+	if err != nil {
+		response.HandleBadRequest(c, "路径包含非法的 URL 转义", nil)
+		return
+	}
+	cleanPath, err := normalizeOpenAPIPath(decoded)
+	if err != nil {
+		response.HandleBadRequest(c, "路径格式错误: "+err.Error(), nil)
+		return
+	}
 
-	disposition := c.DefaultQuery("disposition", "attachment")
-	cleanPath := filepath.ToSlash(filePath)
-	if disposition != "attachment" && disposition != "inline" {
-		response.HandleBadRequest(c, "disposition 仅支持 attachment 或 inline", nil)
+	disposition, ok := optionalEnumQuery(c, "disposition", "attachment", "attachment", "inline")
+	if !ok {
 		return
 	}
 	parts := splitPath(cleanPath)
@@ -384,12 +529,15 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	rootName := parts[0]
 	relPath := "/" + strings.Join(parts[1:], "/")
-	relPath = filepath.ToSlash(relPath)
 
 	var record models.FileRecordPublic
 	if err := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
 		rootName, relPath, models.FileStatusActive).First(&record).Error; err != nil {
-		response.HandleNotFound(c, "文件不存在: "+rootName+relPath)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.HandleNotFound(c, "文件不存在: "+rootName+relPath)
+			return
+		}
+		response.HandleInternalServerError(c, "查询文件失败: "+err.Error())
 		return
 	}
 
@@ -400,7 +548,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	rootPath, ok := h.rootNames[rootName]
 	if !ok {
-		response.HandleInternalServerError(c, "根目录配置不存在")
+		response.HandleNotFound(c, "根目录配置不存在: "+rootName)
 		return
 	}
 
@@ -465,25 +613,23 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 // ListDuplicates GET /api/open/v1/files/duplicates
 func (h *Handler) ListDuplicates(c *gin.Context) {
-	minSize, _ := strconv.ParseInt(c.DefaultQuery("minSize", "0"), 10, 64)
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
-
-	// 对分页参数做边界约束，避免传超大 pageSize 造成资源占用（与其他 openapi 接口保持一致）
-	if minSize < 0 {
-		minSize = 0
+	minSize, ok := optionalIntQuery(c, "minSize", 0, 0, 0)
+	if !ok {
+		return
 	}
-	if page < 1 {
-		page = 1
+	page, ok := optionalIntQuery(c, "page", 1, 1, 0)
+	if !ok {
+		return
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 50
+	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	if !ok {
+		return
 	}
 
 	query := index.DuplicateQuery{
 		MinSize:  minSize,
-		Page:     page,
-		PageSize: pageSize,
+		Page:     int(page),
+		PageSize: int(pageSize),
 	}
 
 	groups, total, err := h.indexSvc.ListDuplicateGroups(query)
@@ -493,13 +639,73 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"groups": groups,
+		"groups": duplicateGroupsJSON(groups),
 		"pagination": gin.H{
 			"page":      page,
 			"page_size": pageSize,
 			"total":     total,
 		},
 	})
+}
+
+// duplicateGroupsJSON 把索引层的重复文件分组转换为 OpenAPI 响应结构。
+// OpenAPI 响应字段统一使用 snake_case，索引层模型（同时供 Web 端使用）使用 camelCase。
+func duplicateGroupsJSON(groups []index.DuplicateGroup) []gin.H {
+	out := make([]gin.H, 0, len(groups))
+	for _, g := range groups {
+		files := make([]gin.H, 0, len(g.Files))
+		for _, f := range g.Files {
+			files = append(files, gin.H{
+				"id":        f.ID,
+				"file_name": f.FileName,
+				"file_path": f.FilePath,
+				"full_path": f.FullPath,
+				"root_name": f.RootName,
+				"file_size": f.FileSize,
+				"mod_time":  f.ModTime,
+			})
+		}
+		out = append(out, gin.H{
+			"xxh3_hash":  g.Xxh3Hash,
+			"file_count": g.FileCount,
+			"total_size": g.TotalSize,
+			"files":      files,
+		})
+	}
+	return out
+}
+
+// dependencyTreeJSON 把索引层依赖树转换为 OpenAPI 响应结构（snake_case）。
+func dependencyTreeJSON(node *index.DependencyTreeNode) gin.H {
+	if node == nil {
+		return nil
+	}
+	children := make([]gin.H, 0, len(node.Children))
+	for _, child := range node.Children {
+		if child != nil {
+			children = append(children, dependencyTreeJSON(child))
+		}
+	}
+	downstream := make([]gin.H, 0, len(node.Downstream))
+	for _, item := range node.Downstream {
+		if item != nil {
+			downstream = append(downstream, dependencyTreeJSON(item))
+		}
+	}
+	return gin.H{
+		"id":            node.ID,
+		"dependency_id": node.DependencyID,
+		"file_name":     node.FileName,
+		"file_path":     node.FilePath,
+		"full_path":     node.FullPath,
+		"root_name":     node.RootName,
+		"file_size":     node.FileSize,
+		"is_dir":        node.IsDir,
+		"relation":      node.Relation,
+		"download_url":  node.DownloadURL,
+		"children":      children,
+		"downstream":    downstream,
+	}
 }
 
 // ==================== 文件详情 API ====================
@@ -513,6 +719,10 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 		response.HandleBadRequest(c, "缺少查询条件: id 或 path 至少提供一个", nil)
 		return
 	}
+	if idStr != "" && pathStr != "" {
+		response.HandleBadRequest(c, "id 与 path 只能提供一个", nil)
+		return
+	}
 
 	var record models.FileRecordPublic
 	if idStr != "" {
@@ -523,29 +733,42 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 		}
 		if err := h.db.Where("id = ? AND status = ?", uint(id), models.FileStatusActive).
 			First(&record).Error; err != nil {
-			response.HandleNotFound(c, "文件记录不存在")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				response.HandleNotFound(c, "文件记录不存在")
+				return
+			}
+			response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
 			return
 		}
 	} else {
-		parts := splitPath(filepath.ToSlash(pathStr))
+		cleanPath, err := normalizeOpenAPIPath(pathStr)
+		if err != nil {
+			response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
+			return
+		}
+		parts := splitPath(cleanPath)
 		if len(parts) < 2 {
 			response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
 			return
 		}
 		rootName := parts[0]
-		relPath := filepath.ToSlash("/" + strings.Join(parts[1:], "/"))
+		relPath := "/" + strings.Join(parts[1:], "/")
 		if err := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
 			rootName, relPath, models.FileStatusActive).First(&record).Error; err != nil {
-			response.HandleNotFound(c, "文件记录不存在: "+rootName+relPath)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				response.HandleNotFound(c, "文件记录不存在: "+rootName+relPath)
+				return
+			}
+			response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
 			return
 		}
 	}
 
 	// 依赖树并入文件详情：查询失败不阻塞详情返回，仅返回 depends=null。
-	var depTree *index.DependencyTreeNode
+	var depTree interface{}
 	if h.depSvc != nil && !record.IsDir {
 		if tree, err := h.depSvc.GetDependencyTree(record.ID); err == nil {
-			depTree = tree
+			depTree = dependencyTreeJSON(tree)
 		}
 	}
 
@@ -592,15 +815,19 @@ func (h *Handler) CheckFilesExist(c *gin.Context) {
 	seen := make(map[string]bool, len(req.Xxh3))
 	for _, raw := range req.Xxh3 {
 		hash := strings.ToLower(strings.TrimSpace(raw))
-		if hash == "" || seen[hash] {
+		if hash == "" {
+			response.HandleBadRequest(c, "xxh3 不能包含空值", nil)
+			return
+		}
+		if !validHexHash(hash) {
+			response.HandleBadRequest(c, "xxh3 哈希格式非法: "+hash+"（需 16 位十六进制）", nil)
+			return
+		}
+		if seen[hash] {
 			continue
 		}
 		seen[hash] = true
 		hashes = append(hashes, hash)
-	}
-	if len(hashes) == 0 {
-		response.HandleBadRequest(c, "xxh3 不能为空", nil)
-		return
 	}
 
 	var records []models.FileRecordPublic
@@ -669,12 +896,36 @@ func (h *Handler) RenameFile(c *gin.Context) {
 		return
 	}
 
-	oldPath := filepath.ToSlash(strings.TrimSpace(req.Path))
-	newName := strings.TrimSpace(req.NewName)
-	newPath := filepath.ToSlash(strings.TrimSpace(req.NewPath))
-	if oldPath == "" || (newName == "" && newPath == "") {
-		response.HandleBadRequest(c, "path 与 newName/newPath 至少需要提供一项新名称或新路径", nil)
+	oldPath, err := normalizeOpenAPIPath(req.Path)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
 		return
+	}
+	if len(splitPath(oldPath)) < 2 {
+		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+		return
+	}
+	newName := strings.TrimSpace(req.NewName)
+	newPathRaw := strings.TrimSpace(req.NewPath)
+	if newName == "" && newPathRaw == "" {
+		response.HandleBadRequest(c, "newName 或 newPath 至少需要提供一项", nil)
+		return
+	}
+	if newName != "" && len(newName) > 255 {
+		response.HandleBadRequest(c, "newName 长度不能超过 255", nil)
+		return
+	}
+	newPath := ""
+	if newPathRaw != "" {
+		newPath, err = normalizeOpenAPIPath(newPathRaw)
+		if err != nil {
+			response.HandleBadRequest(c, "newPath 参数非法: "+err.Error(), nil)
+			return
+		}
+		if len(splitPath(newPath)) < 2 {
+			response.HandleBadRequest(c, "newPath 格式错误: 需要 /rootName/path/to/file", nil)
+			return
+		}
 	}
 	if h.fileSvc == nil {
 		response.HandleInternalServerError(c, "文件服务不可用")
@@ -688,7 +939,7 @@ func (h *Handler) RenameFile(c *gin.Context) {
 
 	if newPath != "" {
 		if err := h.fileSvc.MoveFile(oldPath, newPath); err != nil {
-			response.HandleBadRequest(c, err.Error(), nil)
+			handleFileServiceError(c, err)
 			return
 		}
 		if oldRoot, oldRel := splitRootPath(oldPath); oldRoot != "" {
@@ -699,7 +950,7 @@ func (h *Handler) RenameFile(c *gin.Context) {
 		}
 	} else {
 		if err := h.fileSvc.RenameFile(oldPath, newName); err != nil {
-			response.HandleBadRequest(c, err.Error(), nil)
+			handleFileServiceError(c, err)
 			return
 		}
 		if root, rel := splitRootPath(oldPath); root != "" {
@@ -760,9 +1011,13 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 		response.HandleBadRequest(c, "缺少文件路径 path", nil)
 		return
 	}
-	cleanPath := filepath.ToSlash(strings.TrimSpace(req.Path))
+	cleanPath, err := normalizeOpenAPIPath(req.Path)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
+		return
+	}
 	rootName, relPath := splitRootPath(cleanPath)
-	if rootName == "" || strings.TrimSpace(relPath) == "" {
+	if rootName == "" || relPath == "" {
 		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
 		return
 	}
@@ -771,20 +1026,42 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 		return
 	}
 
-	// 删除前判断目录/文件大小，供操作记录与索引清理使用
-	isDir := false
-	var fileSize int64
-	if st, ok := h.storageFor(rootName); ok {
-		if info, err := st.Stat(c.Request.Context(), strings.TrimPrefix(relPath, "/")); err == nil {
-			isDir = info.IsDir
-			if !isDir {
-				fileSize = info.Size
-			}
+	// 删除前判断目标类型与文件大小：类型决定所需 scope，大小供响应与索引清理使用。
+	st, ok := h.storageFor(rootName)
+	if !ok {
+		response.HandleNotFound(c, "根目录不存在: "+rootName)
+		return
+	}
+	info, err := st.Stat(c.Request.Context(), strings.TrimPrefix(relPath, "/"))
+	if err != nil {
+		if storage.IsNotExist(err) {
+			response.HandleNotFound(c, "文件或目录不存在: "+cleanPath)
+			return
 		}
+		response.HandleInternalServerError(c, "检查目标失败: "+err.Error())
+		return
+	}
+	isDir := info.IsDir
+	var fileSize int64
+	if !isDir {
+		fileSize = info.Size
+	}
+
+	// 文件与目录删除权限分开：目录递归删除风险更高，必须单独授权。
+	requiredScope := models.ScopeFilesDelete
+	targetKind := "文件"
+	if isDir {
+		requiredScope = models.ScopeFilesDeleteDir
+		targetKind = "目录"
+	}
+	if !hasContextScope(c, requiredScope) {
+		response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden,
+			fmt.Sprintf("权限不足：删除%s需要 scope: %s", targetKind, requiredScope))
+		return
 	}
 
 	if err := h.fileSvc.DeleteFile(cleanPath); err != nil {
-		response.HandleBadRequest(c, err.Error(), nil)
+		handleFileServiceError(c, err)
 		return
 	}
 
@@ -842,7 +1119,7 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 // UploadFile POST /api/open/v1/files/upload
 // 以 multipart/form-data 上传单个文件到指定公共目录：
 //   - file: 上传的文件（必填）
-//   - path: 目标目录，格式 /rootName[/subdir]，缺省为 /
+//   - path: 目标目录（必填），格式 /rootName[/subdir]
 //   - overwrite: 目标已存在时是否覆盖，需具备 open_api:files:overwrite 权限
 func (h *Handler) UploadFile(c *gin.Context) {
 	if !appconfig.GlobalConfig.Upload.Enabled {
@@ -867,9 +1144,15 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	targetDir := strings.TrimSpace(c.PostForm("path"))
 	if targetDir == "" {
-		targetDir = "/"
+		response.HandleBadRequest(c, "缺少目标目录 path", nil)
+		return
 	}
-	parts := splitPath(filepath.ToSlash(targetDir))
+	cleanTargetDir, err := normalizeOpenAPIPath(targetDir)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
+		return
+	}
+	parts := splitPath(cleanTargetDir)
 	if len(parts) == 0 {
 		response.HandleBadRequest(c, "path 格式错误: 需要 /rootName[/subdir]", nil)
 		return
@@ -883,12 +1166,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	if !appconfig.PublicDirUploadAllowed(rootName) {
 		response.HandleForbidden(c, "该目录不允许上传")
 		return
-	}
-	for _, p := range parts[1:] {
-		if p == "." || p == ".." {
-			response.HandleBadRequest(c, "path 不能包含 . 或 ..", nil)
-			return
-		}
 	}
 
 	filename := sanitizeUploadFileName(fileHeader.Filename)
@@ -937,14 +1214,19 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	overwrite := false
-	if v := strings.TrimSpace(c.PostForm("overwrite")); v != "" {
-		overwrite, _ = strconv.ParseBool(v)
+	overwrite, err := parseBoolForm(c, "overwrite")
+	if err != nil {
+		response.HandleBadRequest(c, "overwrite 仅支持 true / false", nil)
+		return
 	}
 	if existing {
-		if !overwrite || !hasContextScope(c, models.ScopeFilesOverwrite) {
+		if !overwrite {
 			response.HandleErrorCompat(c, http.StatusConflict,
-				"目标文件已存在；覆盖需传 overwrite=true 且具备 open_api:files:overwrite 权限", nil)
+				"目标文件已存在；如需覆盖请传 overwrite=true", nil)
+			return
+		}
+		if !hasContextScope(c, models.ScopeFilesOverwrite) {
+			response.HandleForbidden(c, "覆盖已有文件需要 open_api:files:overwrite 权限")
 			return
 		}
 	}
@@ -1069,11 +1351,11 @@ func (h *Handler) InitChunkUpload(c *gin.Context) {
 		return
 	}
 
-	targetDir := strings.TrimSpace(req.Path)
-	if targetDir == "" {
-		targetDir = "/"
+	if strings.TrimSpace(req.Path) == "" {
+		response.HandleBadRequest(c, "缺少目标目录 path", nil)
+		return
 	}
-	rootName, dir, ok := h.parseTargetDir(c, targetDir)
+	rootName, dir, ok := h.parseTargetDir(c, req.Path)
 	if !ok {
 		return
 	}
@@ -1085,6 +1367,11 @@ func (h *Handler) InitChunkUpload(c *gin.Context) {
 	}
 	if !pathutils.IsFileAllowed(appconfig.GlobalConfig.Storage.AllowedExtensions, filename) {
 		response.HandleBadRequest(c, "不允许的文件类型: "+filepath.Ext(filename), nil)
+		return
+	}
+	if maxSize := appconfig.GlobalConfig.Upload.MaxFileSize; maxSize > 0 && req.FileSize > maxSize {
+		response.HandleErrorCompat(c, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("文件大小超出限制（最大 %d 字节）", maxSize), nil)
 		return
 	}
 
@@ -1103,12 +1390,12 @@ func (h *Handler) InitChunkUpload(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusCreated, "会话创建成功", gin.H{
-		"uploadId":    session.ID,
-		"chunkSize":   session.ChunkSize,
-		"totalChunks": session.TotalChunks,
-		"expiredAt":   session.ExpiredAt,
-		"root":        rootName,
-		"path":        "/" + rootName + dir,
+		"upload_id":    session.ID,
+		"chunk_size":   session.ChunkSize,
+		"total_chunks": session.TotalChunks,
+		"expired_at":   session.ExpiredAt,
+		"root":         rootName,
+		"path":         "/" + rootName + dir,
 	})
 }
 
@@ -1126,8 +1413,18 @@ func (h *Handler) UploadFileChunk(c *gin.Context) {
 		response.HandleBadRequest(c, "无效的分片索引", nil)
 		return
 	}
+	checksum := strings.TrimSpace(c.PostForm("checksum"))
+	if !validChunkChecksum(checksum) {
+		response.HandleBadRequest(c, "checksum 必须为 1-16 位十六进制字符串", nil)
+		return
+	}
 
-	if _, ok := h.ownedUploadSession(c, uint(uploadID)); !ok {
+	session, ok := h.ownedUploadSession(c, uint(uploadID))
+	if !ok {
+		return
+	}
+	if chunkIndex >= session.TotalChunks {
+		response.HandleBadRequest(c, fmt.Sprintf("分片索引超出范围: 0-%d", session.TotalChunks-1), nil)
 		return
 	}
 
@@ -1144,6 +1441,18 @@ func (h *Handler) UploadFileChunk(c *gin.Context) {
 		response.HandleBadRequest(c, "未找到分片文件: "+err.Error(), nil)
 		return
 	}
+
+	// 预期分片大小：除最后一片外均为 chunk_size，超出直接拒绝，避免服务端多写后再回滚。
+	expectedChunkSize := session.ChunkSize
+	if chunkIndex == session.TotalChunks-1 {
+		expectedChunkSize = session.FileSize - int64(chunkIndex)*session.ChunkSize
+	}
+	if chunk.Size > expectedChunkSize {
+		response.HandleErrorCompat(c, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("分片大小 %d 超过限制 %d", chunk.Size, expectedChunkSize), nil)
+		return
+	}
+
 	src, err := chunk.Open()
 	if err != nil {
 		response.HandleInternalServerError(c, "打开分片文件失败: "+err.Error())
@@ -1156,13 +1465,13 @@ func (h *Handler) UploadFileChunk(c *gin.Context) {
 		ChunkIndex: chunkIndex,
 		ChunkData:  src,
 		ChunkSize:  chunk.Size,
-		Checksum:   c.PostForm("checksum"),
+		Checksum:   checksum,
 	}); err != nil {
-		response.HandleErrorCompat(c, http.StatusInternalServerError, err.Error(), nil)
+		handleUploadChunkError(c, err)
 		return
 	}
 
-	response.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunkIndex": chunkIndex})
+	response.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunk_index": chunkIndex})
 }
 
 // GetChunkUploadStatus GET /api/open/v1/files/upload/:id
@@ -1183,15 +1492,15 @@ func (h *Handler) GetChunkUploadStatus(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"uploadId":        status.ID,
-		"fileName":        status.FileName,
-		"fileSize":        status.FileSize,
-		"chunkSize":       status.ChunkSize,
-		"totalChunks":     status.TotalChunks,
-		"uploadedIndexes": status.UploadedIndexes,
-		"status":          status.Status,
-		"expired":         status.Expired,
-		"expiredAt":       status.ExpiredAt,
+		"upload_id":        status.ID,
+		"file_name":        status.FileName,
+		"file_size":        status.FileSize,
+		"chunk_size":       status.ChunkSize,
+		"total_chunks":     status.TotalChunks,
+		"uploaded_indexes": status.UploadedIndexes,
+		"status":           status.Status,
+		"expired":          status.Expired,
+		"expired_at":       status.ExpiredAt,
 	})
 }
 
@@ -1206,7 +1515,7 @@ type FinalizeChunkUploadRequest struct {
 func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 	var req FinalizeChunkUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.HandleBadRequest(c, "无效的会话ID: "+err.Error(), nil)
+		response.HandleBadRequest(c, "请求数据格式错误: uploadId 必填且为整数", nil)
 		return
 	}
 
@@ -1215,16 +1524,24 @@ func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 		return
 	}
 
-	if req.Overwrite && !hasContextScope(c, models.ScopeFilesOverwrite) {
-		response.HandleForbidden(c, "覆盖已有文件需要 open_api:files:overwrite 权限")
-		return
-	}
-
-	result, err := h.uploadSvc.Finalize(uint(req.UploadID), req.Overwrite)
+	// 仅在目标确实已存在时才需要覆盖权限：先按调用方声明与实际 scope 计算允许覆盖标志，
+	// 目标冲突时再根据是否声明覆盖给出 403/409，避免目标不存在时也要求覆盖权限。
+	canOverwrite := hasContextScope(c, models.ScopeFilesOverwrite)
+	result, err := h.uploadSvc.Finalize(uint(req.UploadID), req.Overwrite && canOverwrite)
 	if err != nil {
-		if errors.Is(err, services.ErrFileExists) {
+		switch {
+		case errors.Is(err, services.ErrFileExists):
+			if req.Overwrite && !canOverwrite {
+				response.HandleForbidden(c, "覆盖已有文件需要 open_api:files:overwrite 权限")
+			} else {
+				response.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在；如需覆盖请传 overwrite=true", nil)
+			}
+		case strings.Contains(err.Error(), "不存在"):
+			response.HandleNotFound(c, err.Error())
+		case strings.Contains(err.Error(), "分片未全部上传"), strings.Contains(err.Error(), "分片索引不完整"),
+			strings.Contains(err.Error(), "会话已过期"):
 			response.HandleErrorCompat(c, http.StatusConflict, err.Error(), nil)
-		} else {
+		default:
 			response.HandleErrorCompat(c, http.StatusInternalServerError, err.Error(), nil)
 		}
 		return
@@ -1234,18 +1551,24 @@ func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 	fileID, _ := h.resolvePublicFileID(session.TargetRoot, fullPath)
 
 	response.HandleSuccess(c, http.StatusOK, "文件上传完成", gin.H{
-		"id":        fileID,
-		"name":      result.FileName,
-		"path":      fullPath,
-		"full_path": fullPath,
-		"root":      session.TargetRoot,
-		"size":      session.FileSize,
+		"id":          fileID,
+		"name":        result.FileName,
+		"path":        fullPath,
+		"full_path":   fullPath,
+		"root":        session.TargetRoot,
+		"size":        session.FileSize,
+		"overwritten": result.Overwritten,
 	})
 }
 
 // parseTargetDir 解析 /rootName[/subdir] 目标目录，失败时写入错误响应并返回 false。
 func (h *Handler) parseTargetDir(c *gin.Context, targetDir string) (string, string, bool) {
-	parts := splitPath(filepath.ToSlash(targetDir))
+	cleanPath, err := normalizeOpenAPIPath(targetDir)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
+		return "", "", false
+	}
+	parts := splitPath(cleanPath)
 	if len(parts) == 0 {
 		response.HandleBadRequest(c, "path 格式错误: 需要 /rootName[/subdir]", nil)
 		return "", "", false
@@ -1258,12 +1581,6 @@ func (h *Handler) parseTargetDir(c *gin.Context, targetDir string) (string, stri
 	if !appconfig.PublicDirUploadAllowed(rootName) {
 		response.HandleForbidden(c, "该目录不允许上传")
 		return "", "", false
-	}
-	for _, p := range parts[1:] {
-		if p == "." || p == ".." {
-			response.HandleBadRequest(c, "path 不能包含 . 或 ..", nil)
-			return "", "", false
-		}
 	}
 	dir := ""
 	if len(parts) > 1 {

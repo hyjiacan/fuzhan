@@ -70,8 +70,9 @@ type UploadStatus struct {
 
 // FinalizeResult 完成上传结果
 type FinalizeResult struct {
-	TargetPath string `json:"targetPath"`
-	FileName   string `json:"fileName"`
+	TargetPath  string `json:"targetPath"`
+	FileName    string `json:"fileName"`
+	Overwritten bool   `json:"overwritten"`
 	// ShareCode 仅私有上传回填（作为分享/下载凭证）。公开上传为空。
 	ShareCode string `json:"shareCode,omitempty"`
 }

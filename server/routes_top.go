@@ -151,8 +151,9 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openAPI.GET("/files/duplicates", rt.rbacService.RequireScope(models.ScopeFilesDuplicates), rt.openAPIHandler.ListDuplicates)
 		// 文件重命名/移动 API（需认证，需要文件重命名权限；仅 writer/admin 层级覆盖）
 		openAPI.POST("/files/rename", rt.rbacService.RequireScope(models.ScopeFilesRename), rt.openAPIHandler.RenameFile)
-		// 文件删除 API（需认证，需要文件删除权限；仅 writer/admin 层级覆盖）
-		openAPI.DELETE("/files", rt.rbacService.RequireScope(models.ScopeFilesDelete), rt.openAPIHandler.DeleteFile)
+		// 文件删除 API（需认证）：删除文件需 open_api:files:delete，删除目录需 open_api:files:delete_dir；
+		// 路由层只做「二者具备其一」的粗粒度拦截，具体类型由 handler stat 目标后精确校验。
+		openAPI.DELETE("/files", openapi.RequireAnyScope(rt.rbacService, models.ScopeFilesDelete, models.ScopeFilesDeleteDir), rt.openAPIHandler.DeleteFile)
 		openAPI.GET("/docs", rt.openAPIHandler.GetDocsPage)
 	}
 

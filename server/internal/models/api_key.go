@@ -40,6 +40,7 @@ const (
 	ScopeFilesUpload     = "open_api:files:upload"
 	ScopeFilesOverwrite  = "open_api:files:overwrite"
 	ScopeFilesDelete     = "open_api:files:delete"
+	ScopeFilesDeleteDir  = "open_api:files:delete_dir"
 	ScopeFilesRename     = "open_api:files:rename"
 )
 
@@ -54,13 +55,14 @@ type ScopeCatalogItem struct {
 func OpenAPIScopeCatalog() []ScopeCatalogItem {
 	return []ScopeCatalogItem{
 		{ScopeOpenAPIReader, "读取类接口（列表 / 搜索 / 下载 / 详情 / 存在性查询）", "兼容权限"},
-		{ScopeOpenAPIWriter, "读写类接口（含上传、覆盖、删除、重命名）", "兼容权限"},
+		{ScopeOpenAPIWriter, "读写类接口（含上传、覆盖、删除文件/目录、重命名）", "兼容权限"},
 		{ScopeFilesDuplicates, "重复文件查询", "文件信息"},
 		{ScopeFilesInfo, "文件详情查询（含备注与依赖树）", "文件信息"},
 		{ScopeFilesExists, "文件存在性查询", "文件信息"},
 		{ScopeFilesUpload, "文件上传", "文件操作"},
 		{ScopeFilesOverwrite, "覆盖已有文件", "文件操作"},
 		{ScopeFilesDelete, "删除文件", "文件操作"},
+		{ScopeFilesDeleteDir, "删除目录（递归删除目录及其内容）", "文件操作"},
 		{ScopeFilesRename, "重命名/移动文件", "文件操作"},
 	}
 }
@@ -84,12 +86,12 @@ var scopeHierarchy = map[string][]string{
 	ScopeOpenAPIAdmin: {
 		ScopeOpenAPIReader, ScopeOpenAPIWriter, ScopeOpenAPIAdmin,
 		ScopeFilesDuplicates, ScopeFilesInfo, ScopeFilesExists,
-		ScopeFilesUpload, ScopeFilesOverwrite, ScopeFilesDelete, ScopeFilesRename,
+		ScopeFilesUpload, ScopeFilesOverwrite, ScopeFilesDelete, ScopeFilesDeleteDir, ScopeFilesRename,
 	},
 	ScopeOpenAPIWriter: {
 		ScopeOpenAPIReader, ScopeOpenAPIWriter,
 		ScopeFilesDuplicates, ScopeFilesInfo, ScopeFilesExists,
-		ScopeFilesUpload, ScopeFilesOverwrite, ScopeFilesDelete, ScopeFilesRename,
+		ScopeFilesUpload, ScopeFilesOverwrite, ScopeFilesDelete, ScopeFilesDeleteDir, ScopeFilesRename,
 	},
 	ScopeOpenAPIReader: {
 		ScopeOpenAPIReader, ScopeFilesDuplicates, ScopeFilesInfo, ScopeFilesExists,

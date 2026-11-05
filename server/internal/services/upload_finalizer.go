@@ -128,8 +128,9 @@ func (f *PublicFinalizer) Complete(session *models.UploadSession, targetPath str
 	}
 
 	return &FinalizeResult{
-		TargetPath: relativePath,
-		FileName:   session.FileName,
+		TargetPath:  relativePath,
+		FileName:    session.FileName,
+		Overwritten: session.Overwritten,
 	}, nil
 }
 
