@@ -256,6 +256,12 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.PUT("/auth/password", authHandler.ChangePassword)
 		protected.PUT("/auth/profile", authHandler.UpdateProfile)
 
+		// 完整运行时配置（业务配置 + 共享目录列表），面向所有登录用户。
+		// 放在受保护组内：强制登录下匿名请求由 LoginGate 拦截，
+		// 无需在 handler 内判断登录态即可安全下发全量配置。
+		// 路径避开管理员配置组 /config，避免语义混淆。
+		protected.GET("/runtime-config", configHandler.GetRuntimeConfig)
+
 		// 个人中心路由（登录记录 / 操作记录 / 存储统计）
 		protected.GET("/user/login-logs", rt.userHandler.GetLoginLogs)
 		protected.GET("/user/records", rt.userHandler.GetRecords)

@@ -724,8 +724,15 @@ export const SetupApi = {
 
 // ========== 系统 API ==========
 export const SystemApi = {
+  // 公开的最小配置（登录页所需）：站点名、账号开关、验证码状态、登录态判定
   getOptions() {
     return request.get('/options')
+  },
+
+  // 完整运行时配置（业务配置 + 共享目录），需登录。
+  // 与管理侧的 /config（管理配置）不同，此接口面向所有登录用户。
+  getConfig() {
+    return request.get('/runtime-config')
   },
 
   health() {

@@ -390,10 +390,11 @@ const handleReset = () => {
   loadConfig()
 }
 
-// 保存后刷新前端公共配置（webhook 开关不直接影响 store 字段，统一走 getOptions 刷新一次）
+// 保存后刷新前端公共配置（webhook 开关不直接影响 store 字段，统一走 getConfig 刷新一次）
 const refreshStoreOptions = async () => {
   try {
-    const optionsRes = await SystemApi.getOptions()
+    // 使用受保护的完整配置接口（/options 只含登录页最小字段）
+    const optionsRes = await SystemApi.getConfig()
     if (optionsRes.data) {
       store.setConfig({
         appName: optionsRes.data.app?.name || '',

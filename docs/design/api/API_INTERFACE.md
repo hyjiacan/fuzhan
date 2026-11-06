@@ -699,8 +699,12 @@
 
 - **URL**：`GET /api/v1/web/options`
 - **认证**：无需认证（匿名例外，强制登录模式下也可匿名访问）
-- **说明**：供前端加载时获取运行时配置（含 `account.requireLogin`，前端据此决定是否跳转登录页）
-- **响应**：
+- **说明**：供前端加载时获取运行时配置（含 `account.requireLogin`，前端据此决定是否跳转登录页）。
+  返回字段按登录态裁剪：**强制登录开启且请求未携带有效登录凭证时**只返回
+  `app.name`、`account.{allowRegistration,requireLogin,captcha}`、`authenticated=false`，
+  其余业务配置（存储开关、上传限制、下载限流、预览 MIME 表、FTP/WebDAV/OpenAPI 等）一律不下发；
+  未开启强制登录或已登录时返回完整配置。
+- **响应**（完整配置；未登录且强制登录时仅保留 `app`、`account`、`authenticated`）：
   ```json
   {
     "success": true,
@@ -710,14 +714,25 @@
       },
       "account": {
         "allowRegistration": false,
-        "requireLogin": false
+        "requireLogin": false,
+        "captcha": {
+          "mode": "disabled",
+          "triggerAfter": 3,
+          "required": false
+        }
       },
-      "temp": {
-        "enabled": true
+      "authenticated": true,
+      "privateStorage": { "enabled": false },
+      "tempFiles": { "enabled": true },
+      "ftp": { "enabled": false, "port": 2121 },
+      "ftps": { "enabled": false, "port": 0 },
+      "webdav": { "enabled": false, "publicUsername": "public" },
+      "upload": {
+        "chunkSize": 10485760,
+        "maxFileSize": 17179869184,
+        "urlUpload": { "enabled": false, "maxSize": 2147483648 }
       },
-      "tempFilesEnabled": true,
-      "chunkSize": 10485760,
-      "maxFileSize": 17179869184,
+      "download": { "rateLimit": { "windowMinutes": 0, "maxRequests": 0 } },
       "preview": {
         "enabled": true,
         "groups": {
@@ -736,7 +751,9 @@
           "document": { "enabled": true, "mimes": "application/pdf", "exts": "pdf" },
           "custom": { "enabled": false, "mimes": "", "exts": "" }
         }
-      }
+      },
+      "mimeTable": {},
+      "openApi": { "enabled": false }
     }
   }
   ```
@@ -757,6 +774,9 @@
 
 - **URL**：`GET /api/v1/web/setup/status`
 - **认证**：无需认证
+- **说明**：返回 `initialized` 布尔值。`rootDirs`（共享目录名称与是否允许上传）
+  仅在「未开启强制登录」或「请求携带有效登录凭证」时返回；
+  强制登录下未登录的匿名请求不返回该字段。
 
 ### 6. 保存初始配置
 

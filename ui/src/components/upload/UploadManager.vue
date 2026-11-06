@@ -398,7 +398,7 @@
 import { ref, reactive, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import store from '@/store'
-import { SetupApi } from '@/api'
+import { SystemApi } from '@/api'
 import { elTagType } from './constants'
 import { UploadIcon, DocumentIcon, MaximizeIcon, RestoreIcon } from './icons'
 import UploadQueue from './UploadQueue.vue'
@@ -815,7 +815,8 @@ const firstUploadableRoot = (opts) => opts.find(o => !o.disabled) || null
 
 const loadRootDirs = async () => {
   try {
-    const data = await SetupApi.getStatus()
+    // 共享目录随受保护的完整配置下发（/setup/status 仅返回 initialized）
+    const data = await SystemApi.getConfig()
     if (data.success && data.data?.rootDirs) {
       rootDirOptions.value = data.data.rootDirs.map(dir => ({
         label: dir.name,

@@ -499,9 +499,9 @@ func TestSaveConfig_PersistsURLUploadMaxSize(t *testing.T) {
 	}
 }
 
-// TestGetOptions_URLUploadExposesMaxSize 验证公开 options 的 upload.urlUpload.maxSize
+// TestGetRuntimeConfig_URLUploadExposesMaxSize 验证完整运行时配置的 upload.urlUpload.maxSize
 // 透出当前生效的服务器侧大小硬上限。
-func TestGetOptions_URLUploadExposesMaxSize(t *testing.T) {
+func TestGetRuntimeConfig_URLUploadExposesMaxSize(t *testing.T) {
 	prevCfg := appconfig.GlobalConfig
 	t.Cleanup(func() { appconfig.GlobalConfig = prevCfg })
 	appconfig.GlobalConfig = appconfig.Config{
@@ -512,8 +512,8 @@ func TestGetOptions_URLUploadExposesMaxSize(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest("GET", "/api/v1/web/options", nil)
-	(&Handler{}).GetOptions(c)
+	c.Request = httptest.NewRequest("GET", "/api/v1/web/runtime-config", nil)
+	(&Handler{}).GetRuntimeConfig(c)
 
 	var resp struct {
 		Data struct {
@@ -523,10 +523,10 @@ func TestGetOptions_URLUploadExposesMaxSize(t *testing.T) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("解析 options 响应失败: %v", err)
+		t.Fatalf("解析 runtime-config 响应失败: %v", err)
 	}
 	if got, ok := resp.Data.Upload.URLUpload["maxSize"].(float64); !ok || int64(got) != 2<<30 {
-		t.Errorf("options.upload.urlUpload.maxSize = %v, want %d", resp.Data.Upload.URLUpload["maxSize"], 2<<30)
+		t.Errorf("runtime-config.upload.urlUpload.maxSize = %v, want %d", resp.Data.Upload.URLUpload["maxSize"], 2<<30)
 	}
 }
 

@@ -31,50 +31,34 @@ initAnonymousId()
 
 // 先加载公开配置与初始化状态（在 mount 之前完成，确保首屏路由守卫能读到 requireLogin 等配置），
 // 因此「强制登录」模式下可正确将未登录用户重定向到登录页。
-// 登录态探测（HttpOnly Cookie）与配置并行，保证 mount 前恢复两端统一登录态。
+// 登录态探测（HttpOnly Cookie）依赖 options 返回的服务端判定，
+// 仅在判定为已登录时才请求 /auth/user 恢复用户信息。
 loadConfigAndCheckSetup()
 
 async function loadConfigAndCheckSetup() {
   try {
-    // 挂载前并行请求配置、初始化状态与登录态探测
+    // 并行请求配置与初始化状态。options 会返回服务端对本次请求的登录态判定
+    //（authenticated），且其字段随登录态裁剪，因此不能与登录态探测并行后各自使用。
     const [optionsRes, statusRes] = await Promise.all([
       SystemApi.getOptions(),
-      SetupApi.getStatus(),
-      validateTokenOnServer()
+      SetupApi.getStatus()
     ])
 
-    // 处理配置
+    // 处理公开的最小配置
     if (optionsRes.data) {
-      const d = optionsRes.data
-      // 更新 store 中的配置（仅写入后端返回的真实值，不引入前端兜底值）
-      store.setConfig({
-        appName: d.app?.name || '',
-        version: d.app?.version || '',
-        privateStorageEnabled: d.privateStorage?.enabled ?? false,
-        tempFilesEnabled: d.tempFiles?.enabled ?? false,
-        ftpEnabled: d.ftp?.enabled ?? false,
-        ftpPort: d.ftp?.port ?? null,
-        webdavEnabled: d.webdav?.enabled ?? false,
-        openApiEnabled: d.openApi?.enabled ?? false,
-        urlUploadEnabled: d.upload?.urlUpload?.enabled ?? false,
-        allowRegistration: d.account?.allowRegistration ?? false,
-        requireLogin: d.account?.requireLogin ?? false,
-        anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || '',
-        captchaMode: d.account?.captcha?.mode ?? 'disabled',
-        captchaTriggerAfter: d.account?.captcha?.triggerAfter ?? 3,
-        // 服务端按当前 IP 判定的是否需要验证码，用作登录页初始值；验证码错误时再动态置位
-        captchaRequired: d.account?.captcha?.required ?? false
-      })
-      store.setConfigLoaded(true)
-      // 更新页面标题
-      if (d.app?.name) {
-        document.title = d.app.name
-      }
-      // 加载预览配置（复用已获取的数据）
-      loadPreviewConfig(optionsRes.data)
+      applyConfig(optionsRes.data)
     } else {
       // 后端未返回配置数据，视为配置加载失败
       throw new Error('配置数据为空')
+    }
+
+    // 仅在服务端判定已登录时才请求 /auth/user 恢复用户信息，并加载完整配置；
+    // 未登录时这些请求必然 401，属无意义请求，直接清理本地残留登录态即可。
+    if (optionsRes.data.authenticated === true) {
+      await validateTokenOnServer()
+      await loadFullConfig()
+    } else {
+      clearStaleAuth()
     }
 
     // 检查初始化状态：只有后端明确返回「未初始化」（initialized === false）才跳转初始化页，
@@ -99,6 +83,56 @@ async function loadConfigAndCheckSetup() {
     // 未登录用户（含访问站点根路径 /）重定向到登录页。
     app.use(router)
     app.mount('#app')
+    // 登录态变化后重新加载配置：登录成功需补齐完整业务配置；
+    // 强制登录下登出需让 store 退回最小字段集（非强制登录时匿名访客仍需完整配置，
+    // 退出登录后保留即可，无需刷新）。此监听在挂载后注册，避免启动阶段的
+    // 登录态探测触发重复请求。
+    window.addEventListener('auth:changed', () => {
+      if (AuthApi.isLoggedIn() || store.state.config.requireLogin) loadFullConfig()
+    })
+  }
+}
+
+// 应用配置到 store。入参可能是公开的最小配置（/options）或完整配置（/config），
+// 缺失的业务字段按关闭处理，因此两种数据源可共用同一段映射逻辑。
+function applyConfig(d) {
+  store.setConfig({
+    appName: d.app?.name || '',
+    version: d.app?.version || '',
+    privateStorageEnabled: d.privateStorage?.enabled ?? false,
+    tempFilesEnabled: d.tempFiles?.enabled ?? false,
+    ftpEnabled: d.ftp?.enabled ?? false,
+    ftpPort: d.ftp?.port ?? null,
+    webdavEnabled: d.webdav?.enabled ?? false,
+    openApiEnabled: d.openApi?.enabled ?? false,
+    urlUploadEnabled: d.upload?.urlUpload?.enabled ?? false,
+    allowRegistration: d.account?.allowRegistration ?? false,
+    requireLogin: d.account?.requireLogin ?? false,
+    anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || '',
+    captchaMode: d.account?.captcha?.mode ?? 'disabled',
+    captchaTriggerAfter: d.account?.captcha?.triggerAfter ?? 3,
+    // 服务端按当前 IP 判定的是否需要验证码，用作登录页初始值；验证码错误时再动态置位
+    captchaRequired: d.account?.captcha?.required ?? false
+  })
+  store.setConfigLoaded(true)
+  // 更新页面标题
+  if (d.app?.name) {
+    document.title = d.app.name
+  }
+  // 加载预览配置（完整配置才含 preview/mimeTable；最小配置下为 no-op）
+  loadPreviewConfig(d)
+}
+
+// 加载完整运行时配置（业务配置 + 共享目录）：仅在已登录时调用。
+// 登录前 store 里是最小字段集，登录成功后需补齐私有存储/临时文件/上传/
+// FTP/WebDAV/OpenAPI/预览等配置；强制登录下登出后调用可让 store 退回最小集。
+async function loadFullConfig() {
+  try {
+    const res = await SystemApi.getConfig()
+    if (res?.data) applyConfig(res.data)
+  } catch (e) {
+    // 失败不阻断登录后的页面跳转，后续业务接口仍会各自校验登录态
+    console.error('加载完整配置失败:', e)
   }
 }
 

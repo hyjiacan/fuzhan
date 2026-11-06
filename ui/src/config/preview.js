@@ -135,7 +135,8 @@ export async function loadPreviewConfig(preloadedData) {
     if (preloadedData) {
       data = preloadedData
     } else {
-      const res = await SystemApi.getOptions()
+      // 预览配置只随完整运行时配置下发（公开的 /options 已不再包含 preview/mimeTable）
+      const res = await SystemApi.getConfig()
       if (!res.success) return
       data = res.data
     }

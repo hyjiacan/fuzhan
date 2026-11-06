@@ -16,7 +16,7 @@ import AppShell from '@/components/common/AppShell.vue'
 import StartupErrorPage from '@/components/common/StartupErrorPage.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue'
-import { setGlobalErrorHandler, SystemApi } from '@/api/index.js'
+import { setGlobalErrorHandler, SystemApi, AuthApi } from '@/api/index.js'
 import { useToast } from '@/composables/useToast.js'
 import { useLiteModeSuggestion } from '@/composables/useLiteModeSuggestion'
 import { useTheme } from '@/composables/useTheme'
@@ -63,6 +63,11 @@ onMounted(() => {
 
   // 启动级失败（后端不可用）时不再发起健康检查
   if (store.state.startupError) return
+
+  // 强制登录下未登录时用户只会停留在登录页（standalone 布局，无 header/footer），
+  // 页面不展示任何健康状态，健康检查属于无意义请求，跳过。
+  // 登录成功后 auth:changed 会触发配置刷新，但健康检查仅在下次页面加载时执行。
+  if (store.state.config.requireLogin && !AuthApi.isLoggedIn()) return
 
   // 健康检查延迟到浏览器空闲时执行（非首屏关键请求），避免与首屏关键请求争抢带宽。
   // requestIdleCallback 不支持的浏览器回退到 8 秒后执行。

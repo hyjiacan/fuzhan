@@ -385,29 +385,12 @@ const backToBrowse = () => {
 }
 
 onMounted(async () => {
-  // 本地已标记登录 → 直接离开登录页
-  if (AuthApi.isLoggedIn()) {
+  // 登录态在挂载前已由 main.js 结合 options 的服务端判定确定
+  //（已登录时才会请求 /auth/user 恢复用户信息），此处无需再次探测：
+  // 未登录时请求 /auth/user 必然 401，属无意义请求。
+  if (store.state.user.authenticated) {
     leaveLoginPage()
     return
-  }
-  // localStorage 无登录态时，仍可能持有后端 HttpOnly Cookie 会话
-  //（如 lite 端登录后打开 Vue 登录页的场景）。此时向服务端验证登录态，
-  // 通过则恢复前端登录态并自动回跳，避免停留在登录页。
-  try {
-    const data = await AuthApi.getUserInfo()
-    if (data.success && data.data) {
-      const userData = data.data
-      AuthApi.restoreSession(userData)
-      store.setAuthenticated(true)
-      if (userData.role) {
-        localStorage.setItem('userRole', userData.role)
-      }
-      window.dispatchEvent(new CustomEvent('auth:changed'))
-      leaveLoginPage()
-      return
-    }
-  } catch (e) {
-    // 无会话 / 会话失效 / 后端不可用：停留在登录页，不打断用户
   }
   loadOAuth2Status()
   // 聚焦用户名输入框

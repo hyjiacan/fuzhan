@@ -29,23 +29,13 @@ func NewSetupHandler() *SetupHandler {
 	return &SetupHandler{}
 }
 
-// IsInitialized 检查是否已初始化
+// IsInitialized 检查是否已初始化。
+// 该接口在强制登录白名单内、匿名可访问，只返回 initialized 布尔值
+// （前端启动流程与匿名访客仅依赖该字段）。共享目录等信息属于业务配置，
+// 由受保护的 GET /api/v1/web/config 下发。
 func (h *SetupHandler) IsInitialized(c *gin.Context) {
-	rootDirs := make([]gin.H, len(appconfig.GlobalConfig.Storage.Public.RootDirs))
-	for i, dir := range appconfig.GlobalConfig.Storage.Public.RootDirs {
-		// 从路径提取最后一段作为显示名称
-		name := dir.Path
-		if idx := strings.LastIndexAny(name, "/\\"); idx >= 0 {
-			name = name[idx+1:]
-		}
-		rootDirs[i] = gin.H{
-			"name":          name,
-			"uploadEnabled": dir.UploadAllowed(),
-		}
-	}
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"initialized": appconfig.GlobalConfig.App.Initialized,
-		"rootDirs":    rootDirs,
 	})
 }
 

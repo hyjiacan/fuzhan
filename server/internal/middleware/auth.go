@@ -369,6 +369,25 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 	}
 }
 
+// HasValidCredential 判断请求是否携带有效的登录凭证（Authorization 请求头或 HttpOnly Cookie 中的 JWT）。
+// 仅供公开接口按登录态裁剪返回字段使用：只做验签，不回源校验用户禁用状态，
+// 因此「已禁用用户」在此视为有凭证（其后续业务请求仍会被 LoginGate / AuthRequired 拦截）。
+// 强制登录的白名单接口（/options、/setup/status）不在 LoginGate 中注入用户上下文，
+// 需要自行判断登录态时使用本函数。
+func HasValidCredential(c *gin.Context) bool {
+	tokenString := c.GetHeader("Authorization")
+	if tokenString != "" {
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	} else {
+		tokenString = TokenFromCookie(c)
+	}
+	if tokenString == "" {
+		return false
+	}
+	_, err := jwt.ParseJWT(tokenString)
+	return err == nil
+}
+
 // hasTicketContext 判断请求是否已由 LoginGate 通过下载票据（URL 上 t=）鉴权并注入用户上下文。
 // 票据验签通过后 LoginGate 会注入 ContextKeyUserUUID 等上下文，AuthRequired 据此放行。
 func hasTicketContext(c *gin.Context) bool {

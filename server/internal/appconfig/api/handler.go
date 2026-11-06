@@ -26,25 +26,68 @@ func (h *Handler) ListPartitions(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", resource.ListPartitions())
 }
 
-// GetOptions 处理 /api/v1/web/options 接口（公开配置信息）
+// GetOptions 处理 /api/v1/web/options 接口（公开配置信息）。
+// 该接口在强制登录白名单内、匿名可访问，因此只下发登录页渲染所需的最小字段集：
+// 站点名称、注册/强制登录开关、验证码状态，以及服务端对本次请求的登录态判定。
+// 业务配置（存储开关、上传限制、下载限流、预览 MIME 表、FTP/WebDAV/OpenAPI 等）
+// 一律不在本接口下发，登录后由受保护的 GET /api/v1/web/config 按需获取。
 func (h *Handler) GetOptions(c *gin.Context) {
+	response.HandleSuccess(c, http.StatusOK, "", gin.H{
+		"app":     buildAppOptions(),
+		"account": buildAccountOptions(c),
+		// 登录态判定：前端据此决定是否还需请求 /auth/user 与 /config
+		//（未登录时 /auth/user 必然 401，属无意义请求）
+		"authenticated": middleware.HasValidCredential(c),
+	})
+}
+
+// buildAppOptions 站点基础信息（登录页展示用）
+func buildAppOptions() gin.H {
+	return gin.H{"name": appconfig.GetConfig().App.Name}
+}
+
+// buildAccountOptions 账号相关公开配置（登录/注册入口与验证码状态）。
+func buildAccountOptions(c *gin.Context) gin.H {
 	currentConfig := appconfig.GetConfig()
+	return gin.H{
+		// 注册开关：登录/注册入口据此决定是否展示「立即注册」
+		"allowRegistration": currentConfig.Account.AllowRegistration,
+		// 强制登录开关：前端据此决定首次加载前移登录页、路由守卫与下载链接是否附带 token
+		"requireLogin": currentConfig.Account.RequireLogin,
+		// 登录/注册图形验证码：mode/triggerAfter 为配置；required 按当前请求 IP 的失败次数动态计算
+		"captcha": gin.H{
+			"mode":         currentConfig.Account.Captcha.Mode,
+			"triggerAfter": currentConfig.Account.Captcha.TriggerAfter,
+			"required":     auth.CaptchaRequired(utils.GetClientIP(c)),
+		},
+	}
+}
+
+// GetRuntimeConfig 处理 GET /api/v1/web/runtime-config 接口（完整运行时配置）。
+// 该路由挂在需要登录的路由组下，由 LoginGate / AuthRequired 拦截，
+// 因此无需在 handler 内判断登录态，可安全下发全部业务配置。
+// 与管理员侧的 GET /api/v1/web/config（管理配置）不同，本接口面向所有登录用户。
+func (h *Handler) GetRuntimeConfig(c *gin.Context) {
+	currentConfig := appconfig.GetConfig()
+
+	// 共享目录列表（名称 + 是否允许上传），供上传面板选择目标目录
+	rootDirs := make([]gin.H, len(currentConfig.Storage.Public.RootDirs))
+	for i, dir := range currentConfig.Storage.Public.RootDirs {
+		// 从路径提取最后一段作为显示名称
+		name := dir.Path
+		if idx := strings.LastIndexAny(name, "/\\"); idx >= 0 {
+			name = name[idx+1:]
+		}
+		rootDirs[i] = gin.H{
+			"name":          name,
+			"uploadEnabled": dir.UploadAllowed(),
+		}
+	}
+
 	resp := gin.H{
-		"app": gin.H{
-			"name": currentConfig.App.Name,
-		},
-		"account": gin.H{
-			// 注册开关：登录/注册入口据此决定是否展示「立即注册」
-			"allowRegistration": currentConfig.Account.AllowRegistration,
-			// 强制登录开关：前端据此决定首次加载前移登录页、路由守卫与下载链接是否附带 token
-			"requireLogin": currentConfig.Account.RequireLogin,
-			// 登录/注册图形验证码：mode/triggerAfter 为配置；required 按当前请求 IP 的失败次数动态计算
-			"captcha": gin.H{
-				"mode":         currentConfig.Account.Captcha.Mode,
-				"triggerAfter": currentConfig.Account.Captcha.TriggerAfter,
-				"required":     auth.CaptchaRequired(utils.GetClientIP(c)),
-			},
-		},
+		"app":        buildAppOptions(),
+		"account":    buildAccountOptions(c),
+		"rootDirs":   rootDirs,
 		"privateStorage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
 		},
@@ -92,7 +135,7 @@ func (h *Handler) GetOptions(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "", resp)
 }
 
-// buildPreviewOptions 构造公开 options 的预览节点：全局开关 + 各分组生效配置（已解析默认值）
+// buildPreviewOptions 构造配置的预览节点：全局开关 + 各分组生效配置（已解析默认值）
 // + 内置默认表 defaults（供前端设置页「恢复默认」使用），与前端 config/preview.js 的消费结构保持一致。
 // 后端是预览类型默认值的唯一来源，前端不内置默认表。
 func buildPreviewOptions(p appconfig.PreviewConfig) gin.H {

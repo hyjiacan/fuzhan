@@ -794,7 +794,8 @@ const doSaveSettings = async () => {
     if (data.success) {
       message.success(data.message || '配置已保存并生效')
       try {
-        const optionsRes = await SystemApi.getOptions()
+        // 保存后刷新 store：使用受保护的完整配置接口（/options 只含登录页最小字段）
+        const optionsRes = await SystemApi.getConfig()
         if (optionsRes.data) {
           store.setConfig({
             appName: optionsRes.data.app?.name || '',
