@@ -1,6 +1,7 @@
 package lite
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -183,6 +184,17 @@ func browseTitle(head string, segs []string) string {
 	return head + " - " + liteName + " / " + strings.Join(segs, "/")
 }
 
+// displayNameKey 请求上下文中携带的用户展示名（昵称 > 姓名 > 用户名）
+type displayNameKey struct{}
+
+// WithDisplayName 将用户展示名写入请求上下文，供页面渲染使用
+func WithDisplayName(r *http.Request, name string) *http.Request {
+	if name == "" {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), displayNameKey{}, name))
+}
+
 // Handle 处理 /lite 服务器渲染浏览/检索请求
 func Handle(w http.ResponseWriter, r *http.Request, svc *services.SearchService, idx *search.SearchIndex) {
 	utils.PrintRequestInfo(r)
@@ -202,6 +214,10 @@ func Handle(w http.ResponseWriter, r *http.Request, svc *services.SearchService,
 	if claims, err := jwt.ParseJWT(middleware.TokenFromRequest(r)); err == nil {
 		page.LoggedIn = true
 		page.Username = claims.Username
+		// 优先使用调用方解析出的展示名（昵称 > 姓名 > 用户名）
+		if name, ok := r.Context().Value(displayNameKey{}).(string); ok && name != "" {
+			page.Username = name
+		}
 	}
 	page.ShowRegister = AllowRegistration()
 

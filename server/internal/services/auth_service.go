@@ -66,10 +66,12 @@ const authTokenTTLSeconds = 86400
 
 // AuthResponse 认证响应
 type AuthResponse struct {
-	Token     string `json:"token"`
-	UUID      string `json:"uuid"`
-	Username  string `json:"username"`
-	ExpiresIn int    `json:"expiresIn"`
+	Token       string `json:"token"`
+	UUID        string `json:"uuid"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Nickname    string `json:"nickname"`
+	ExpiresIn   int    `json:"expiresIn"`
 }
 
 // Register 用户注册
@@ -116,10 +118,12 @@ func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
 	}
 
 	return &AuthResponse{
-		Token:     token,
-		UUID:      uuid,
-		Username:  req.Username,
-		ExpiresIn: authTokenTTLSeconds,
+		Token:       token,
+		UUID:        uuid,
+		Username:    req.Username,
+		DisplayName: user.DisplayName,
+		Nickname:    user.Nickname,
+		ExpiresIn:   authTokenTTLSeconds,
 	}, nil
 }
 
@@ -205,10 +209,12 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 	}
 
 	return &AuthResponse{
-		Token:     token,
-		UUID:      user.UUID,
-		Username:  user.Username,
-		ExpiresIn: authTokenTTLSeconds,
+		Token:       token,
+		UUID:        user.UUID,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		Nickname:    user.Nickname,
+		ExpiresIn:   authTokenTTLSeconds,
 	}, nil
 }
 
@@ -230,10 +236,12 @@ func (s *AuthService) LoginByUser(user *models.User) (*AuthResponse, error) {
 		return nil, fmt.Errorf("生成令牌失败: %w", err)
 	}
 	return &AuthResponse{
-		Token:     token,
-		UUID:      user.UUID,
-		Username:  user.Username,
-		ExpiresIn: authTokenTTLSeconds,
+		Token:       token,
+		UUID:        user.UUID,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		Nickname:    user.Nickname,
+		ExpiresIn:   authTokenTTLSeconds,
 	}, nil
 }
 
@@ -294,6 +302,36 @@ func (s *AuthService) ChangePassword(uuid, oldPassword, newPassword string) erro
 	}
 
 	return nil
+}
+
+// UpdateProfile 更新当前用户资料（姓名、昵称）；用户名一经创建不可修改
+func (s *AuthService) UpdateProfile(uuid, displayName, nickname string) (*models.User, error) {
+	var user models.User
+	if err := s.db.Where("uuid = ?", uuid).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	displayName = strings.TrimSpace(displayName)
+	nickname = strings.TrimSpace(nickname)
+
+	if len([]rune(displayName)) > 64 {
+		return nil, errors.New("姓名过长")
+	}
+	if len([]rune(nickname)) > 32 {
+		return nil, errors.New("昵称过长")
+	}
+
+	user.DisplayName = displayName
+	user.Nickname = nickname
+
+	if err := s.db.Save(&user).Error; err != nil {
+		return nil, fmt.Errorf("保存用户资料失败: %w", err)
+	}
+
+	return &user, nil
 }
 
 // RefreshTokenIfNeeded 检查 token 是否快过期，如果是则返回新 token

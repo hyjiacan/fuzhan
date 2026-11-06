@@ -329,6 +329,15 @@ export const FileTypeUtils = {
   }
 }
 
+// 用户展示工具
+export const UserUtils = {
+  // 统一的用户展示名，优先级：昵称 > 姓名 > 用户名
+  displayLabel(user) {
+    if (!user) return ''
+    return user.nickname || user.displayName || user.username || ''
+  }
+}
+
 export default {
   StringUtils,
   NumberUtils,
@@ -340,5 +349,6 @@ export default {
   compareVersionParts,
   analyzeLatestVersions,
   TimeUtils,
-  FileTypeUtils
+  FileTypeUtils,
+  UserUtils
 }

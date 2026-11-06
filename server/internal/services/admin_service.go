@@ -27,6 +27,7 @@ type UserItem struct {
 	UUID        string    `json:"uuid"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"displayName"`
+	Nickname    string    `json:"nickname"`
 	Role        string    `json:"role"`
 	Disabled    bool      `json:"disabled"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -80,7 +81,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 	dbQuery := s.db.Model(&models.User{}).Where("role != ?", "admin")
 	if query != "" {
 		likeQuery := "%" + query + "%"
-		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ? OR display_name LIKE ?", likeQuery, likeQuery, likeQuery)
+		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ? OR display_name LIKE ? OR nickname LIKE ?", likeQuery, likeQuery, likeQuery, likeQuery)
 	}
 
 	dbQuery.Count(&total)
@@ -129,6 +130,7 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 			UUID:        u.UUID,
 			Username:    u.Username,
 			DisplayName: u.DisplayName,
+			Nickname:    u.Nickname,
 			Role:        u.Role,
 			Disabled:    u.Disabled,
 			CreatedAt:   u.CreatedAt,

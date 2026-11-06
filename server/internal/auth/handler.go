@@ -115,9 +115,11 @@ func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 // 凭证只由 HttpOnly Cookie 下发，响应体永远不回传 JWT。
 func authSessionResponse(resp *services.AuthResponse) gin.H {
 	return gin.H{
-		"uuid":      resp.UUID,
-		"username":  resp.Username,
-		"expiresIn": resp.ExpiresIn,
+		"uuid":        resp.UUID,
+		"username":    resp.Username,
+		"displayName": resp.DisplayName,
+		"nickname":    resp.Nickname,
+		"expiresIn":   resp.ExpiresIn,
 	}
 }
 
@@ -249,6 +251,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 	data := gin.H{
 		"uuid": user.UUID, "username": user.Username,
+		"displayName": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "createdAt": user.CreatedAt,
 	}
 	if newToken := h.refreshTokenIfNeeded(c); newToken != "" {
@@ -268,6 +271,7 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 	newToken := h.refreshTokenIfNeeded(c)
 	data := gin.H{
 		"uuid": user.UUID, "username": user.Username,
+		"displayName": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "createdAt": user.CreatedAt,
 	}
 	if newToken != "" {
@@ -304,6 +308,44 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 
 	middleware.LogOperation(c, "auth.change_password", user.Username, nil)
 	response.HandleSuccess(c, http.StatusOK, "密码修改成功", nil)
+}
+
+// UpdateProfileRequest 修改个人资料请求（用户名不可修改）
+type UpdateProfileRequest struct {
+	DisplayName string `json:"displayName" binding:"max=64"`
+	Nickname    string `json:"nickname" binding:"max=32"`
+}
+
+// UpdateProfile 修改当前用户资料（姓名、昵称）
+func (h *Handler) UpdateProfile(c *gin.Context) {
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
+		return
+	}
+
+	current, err := h.authService.GetCurrentUser(c)
+	if err != nil {
+		response.HandleUnauthorized(c, err.Error())
+		return
+	}
+
+	user, err := h.authService.UpdateProfile(current.UUID, req.DisplayName, req.Nickname)
+	if err != nil {
+		middleware.LogOperation(c, "auth.update_profile", current.Username, err)
+		response.HandleBadRequest(c, err.Error(), nil)
+		return
+	}
+
+	middleware.LogOperation(c, "auth.update_profile", user.Username, nil)
+	response.HandleSuccess(c, http.StatusOK, "资料已更新", gin.H{
+		"uuid":        user.UUID,
+		"username":    user.Username,
+		"displayName": user.DisplayName,
+		"nickname":    user.Nickname,
+		"role":        user.Role,
+		"createdAt":   user.CreatedAt,
+	})
 }
 
 // OAuth2Status 返回外部 OAuth2 认证的可用状态，供登录页决定是否展示入口。

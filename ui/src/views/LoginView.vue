@@ -303,6 +303,7 @@ const handleLogin = async () => {
           const userData = await AuthApi.getUserInfo()
           if (userData.success && userData.data) {
             localStorage.setItem('userRole', userData.data.role || 'user')
+            AuthApi.restoreSession(userData.data)
           }
         } catch (e) {
           // 角色获取失败不阻断登录
@@ -353,6 +354,7 @@ const handleRegister = async () => {
           const userData = await AuthApi.getUserInfo()
           if (userData.success && userData.data) {
             localStorage.setItem('userRole', userData.data.role || 'user')
+            AuthApi.restoreSession(userData.data)
           }
         } catch (e) {
           // 角色获取失败不阻断登录
@@ -395,7 +397,7 @@ onMounted(async () => {
     const data = await AuthApi.getUserInfo()
     if (data.success && data.data) {
       const userData = data.data
-      AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+      AuthApi.restoreSession(userData)
       store.setAuthenticated(true)
       if (userData.role) {
         localStorage.setItem('userRole', userData.role)

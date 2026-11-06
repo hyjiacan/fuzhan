@@ -168,7 +168,7 @@ async function validateTokenOnServer() {
     if (data.success && data.data) {
       // 后端以 Cookie 放行 → 恢复前端登录态（lite 端 Cookie 登录后打开 Vue 页的场景）
       const userData = data.data
-      AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+      AuthApi.restoreSession(userData)
       store.setAuthenticated(true)
       if (userData.role) {
         localStorage.setItem('userRole', userData.role)

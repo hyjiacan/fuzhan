@@ -34,7 +34,7 @@
         <div class="nav-mobile-auth">
           <ThemeToggle class="header-theme-toggle" />
           <template v-if="authState.isLoggedIn">
-            <span class="username">{{ authState.username }}</span>
+            <span class="username">{{ authDisplayName }}</span>
             <el-button
               link
               size="small"
@@ -67,7 +67,7 @@
       <div class="header-actions">
         <ThemeToggle class="header-theme-toggle" />
         <template v-if="authState.isLoggedIn">
-          <span class="username">{{ authState.username }}</span>
+          <span class="username">{{ authDisplayName }}</span>
           <el-button link size="small" class="logout-btn" @click="handleLogout"
             >退出</el-button
           >
@@ -355,8 +355,15 @@ const allowRegistration = computed(
 const authState = reactive({
   isLoggedIn: false,
   username: "",
+  displayName: "",
+  nickname: "",
   isAdmin: false,
 });
+
+// 展示名优先级：昵称 > 姓名 > 用户名
+const authDisplayName = computed(
+  () => authState.nickname || authState.displayName || authState.username
+);
 
 // Login modal
 const showLoginModal = ref(false);
@@ -430,7 +437,9 @@ const registerRules = {
 // Update auth state from localStorage
 const updateAuthState = () => {
   authState.isLoggedIn = AuthApi.isLoggedIn();
-  authState.username = localStorage.getItem("username") || "用户";
+  authState.username = localStorage.getItem("username") || "";
+  authState.displayName = localStorage.getItem("displayName") || "";
+  authState.nickname = localStorage.getItem("nickname") || "";
   authState.isAdmin = localStorage.getItem("userRole") === "admin";
 };
 
@@ -603,11 +612,12 @@ const handleLogin = async () => {
         // 凭证由后端写入 HttpOnly Cookie，本地仅标记登录态
         AuthApi.restoreSession(data.data);
 
-        // 获取用户信息并保存 role
+        // 获取用户信息并保存 role / 展示名
         try {
           const userData = await AuthApi.getUserInfo();
           if (userData.success && userData.data) {
             localStorage.setItem("userRole", userData.data.role || "user");
+            AuthApi.restoreSession(userData.data);
           }
         } catch (e) {
           console.error("获取用户信息失败", e);
@@ -658,11 +668,12 @@ const handleRegister = async () => {
         // 注册即登录（与轻量版一致）：服务端已签发 Cookie 会话，这里同步本地登录态
         AuthApi.restoreSession(data.data);
 
-        // 获取用户信息并保存 role
+        // 获取用户信息并保存 role / 展示名
         try {
           const userData = await AuthApi.getUserInfo();
           if (userData.success && userData.data) {
             localStorage.setItem("userRole", userData.data.role || "user");
+            AuthApi.restoreSession(userData.data);
           }
         } catch (e) {
           console.error("获取用户信息失败", e);

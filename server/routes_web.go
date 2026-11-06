@@ -254,6 +254,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.POST("/auth/refresh", authHandler.Refresh) // 仅刷新令牌，不校验密码与验证码
 		protected.GET("/auth/user", authHandler.GetCurrentUser)
 		protected.PUT("/auth/password", authHandler.ChangePassword)
+		protected.PUT("/auth/profile", authHandler.UpdateProfile)
 
 		// 个人中心路由（登录记录 / 操作记录 / 存储统计）
 		protected.GET("/user/login-logs", rt.userHandler.GetLoginLogs)

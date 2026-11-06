@@ -95,6 +95,8 @@ request.interceptors.response.use(
         localStorage.removeItem('token')
         localStorage.removeItem('uuid')
         localStorage.removeItem('username')
+        localStorage.removeItem('displayName')
+        localStorage.removeItem('nickname')
         localStorage.removeItem('userRole')
         window.dispatchEvent(new CustomEvent('auth:changed'))
       } else if (error.response.status === 403) {
@@ -134,6 +136,8 @@ export const AuthApi = {
     localStorage.setItem('token', '__cookie__')
     if (userData.uuid) localStorage.setItem('uuid', userData.uuid)
     if (userData.username) localStorage.setItem('username', userData.username)
+    localStorage.setItem('displayName', userData.displayName || '')
+    localStorage.setItem('nickname', userData.nickname || '')
   },
 
   // 登出：清除后端 HttpOnly Cookie（前端无法直接删除，必须请求后端）。
@@ -147,6 +151,8 @@ export const AuthApi = {
     localStorage.removeItem('token')
     localStorage.removeItem('uuid')
     localStorage.removeItem('username')
+    localStorage.removeItem('displayName')
+    localStorage.removeItem('nickname')
     localStorage.removeItem('userRole')
   },
 
@@ -173,6 +179,11 @@ export const AuthApi = {
 
   changePassword(oldPassword, newPassword) {
     return request.put('/auth/password', { oldPassword, newPassword }, { skipSuccessToast: true })
+  },
+
+  // 更新个人资料（姓名、昵称）；用户名不可修改
+  updateProfile(displayName, nickname) {
+    return request.put('/auth/profile', { displayName, nickname }, { skipSuccessToast: true })
   },
 
   // 外部 OAuth2/OIDC：登录页查询是否启用（不返回提供方等实现细节）

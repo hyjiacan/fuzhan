@@ -127,7 +127,7 @@
 import { ref, onMounted, onUnmounted, h } from 'vue'
 import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress } from 'element-plus'
 import { AuthApi, AdminApi } from '@/api'
-import { TableConst, TimeUtils } from '@/utils'
+import { TableConst, TimeUtils, UserUtils } from '@/utils'
 
 const RefreshIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 16, height: 16 }, [
   h('path', { d: 'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z' })
@@ -209,6 +209,13 @@ const columns = [
     minWidth: 120,
     flexGrow: 1,
     cellRenderer: ({ rowData: row }) => h('div', { title: row.displayName || '' }, row.displayName || '-')
+  },
+  {
+    title: '昵称',
+    key: 'nickname',
+    minWidth: 120,
+    flexGrow: 1,
+    cellRenderer: ({ rowData: row }) => h('div', { title: row.nickname || '' }, row.nickname || '-')
   },
   {
     title: '状态',
@@ -388,7 +395,7 @@ const handleResetPassword = async () => {
 const toggleUserDisabled = async (user) => {
   const action = user.disabled ? '启用' : '禁用'
   try {
-    await ElMessageBox.confirm(`确定要${action}用户 "${user.username}" 吗？`, `确认${action}`, {
+    await ElMessageBox.confirm(`确定要${action}用户 "${UserUtils.displayLabel(user)}" 吗？`, `确认${action}`, {
       type: 'warning',
       confirmButtonText: action,
       cancelButtonText: '取消'
@@ -412,7 +419,7 @@ const toggleUserDisabled = async (user) => {
 
 const confirmDeleteUser = async (user) => {
   try {
-    await ElMessageBox.confirm(`确定要删除用户 "${user.username}" 吗？此操作不可恢复。`, '确认删除', {
+    await ElMessageBox.confirm(`确定要删除用户 "${UserUtils.displayLabel(user)}" 吗？此操作不可恢复。`, '确认删除', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消'

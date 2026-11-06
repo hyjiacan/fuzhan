@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="header-left">
         <h2>个人信息</h2>
-        <p class="description">查看您的账号信息</p>
+        <p class="description">查看并修改您的账号信息</p>
       </div>
     </div>
 
@@ -16,6 +16,48 @@
         </el-descriptions-item>
         <el-descriptions-item label="用户名">
           {{ userInfo.username }}
+        </el-descriptions-item>
+        <el-descriptions-item label="姓名">
+          <span v-if="editingField === 'displayName'" class="inline-edit">
+            <el-input
+              ref="editInputRef"
+              v-model="editValue"
+              size="small"
+              :maxlength="64"
+              placeholder="用于对外显示，可留空"
+              @keyup.enter="handleSaveField"
+              @keyup.esc="cancelEdit"
+            />
+            <el-button size="small" type="primary" :loading="savingProfile" @click="handleSaveField">
+              保存
+            </el-button>
+            <el-button size="small" :disabled="savingProfile" @click="cancelEdit">取消</el-button>
+          </span>
+          <span v-else class="inline-view">
+            <span>{{ userInfo.displayName || '-' }}</span>
+            <el-button link type="primary" :icon="Edit" title="编辑姓名" @click="startEdit('displayName')" />
+          </span>
+        </el-descriptions-item>
+        <el-descriptions-item label="昵称">
+          <span v-if="editingField === 'nickname'" class="inline-edit">
+            <el-input
+              ref="editInputRef"
+              v-model="editValue"
+              size="small"
+              :maxlength="32"
+              placeholder="优先级最高的显示名，可留空"
+              @keyup.enter="handleSaveField"
+              @keyup.esc="cancelEdit"
+            />
+            <el-button size="small" type="primary" :loading="savingProfile" @click="handleSaveField">
+              保存
+            </el-button>
+            <el-button size="small" :disabled="savingProfile" @click="cancelEdit">取消</el-button>
+          </span>
+          <span v-else class="inline-view">
+            <span>{{ userInfo.nickname || '-' }}</span>
+            <el-button link type="primary" :icon="Edit" title="编辑昵称" @click="startEdit('nickname')" />
+          </span>
         </el-descriptions-item>
         <el-descriptions-item label="用户ID">
           {{ userInfo.uuid }}
@@ -72,13 +114,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Edit } from '@element-plus/icons-vue'
 import { AuthApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
 const userInfo = ref({
   username: '',
+  displayName: '',
+  nickname: '',
   uuid: '',
   role: 'user',
   createdAt: ''
@@ -86,12 +131,63 @@ const userInfo = ref({
 
 const formatDate = (dateStr) => TimeUtils.formatDateTime(dateStr)
 
+// 行内编辑：一次只编辑一个字段（displayName / nickname）
+const editingField = ref('')
+const editValue = ref('')
+const editInputRef = ref(null)
+const savingProfile = ref(false)
+
+const startEdit = async (field) => {
+  editingField.value = field
+  editValue.value = userInfo.value[field] || ''
+  await nextTick()
+  editInputRef.value?.focus()
+}
+
+const cancelEdit = () => {
+  editingField.value = ''
+  editValue.value = ''
+}
+
+const handleSaveField = async () => {
+  const field = editingField.value
+  if (!field) return
+
+  const value = editValue.value.trim()
+  const limits = { displayName: 64, nickname: 32 }
+  if (value.length > limits[field]) {
+    ElMessage.warning(field === 'displayName' ? '姓名不能超过64个字符' : '昵称不能超过32个字符')
+    return
+  }
+
+  savingProfile.value = true
+  try {
+    const displayName = field === 'displayName' ? value : (userInfo.value.displayName || '')
+    const nickname = field === 'nickname' ? value : (userInfo.value.nickname || '')
+    const data = await AuthApi.updateProfile(displayName, nickname)
+    if (data.success) {
+      ElMessage.success('资料已更新')
+      cancelEdit()
+      await loadUserInfo()
+    } else {
+      ElMessage.error(data.message || '资料更新失败')
+    }
+  } catch (error) {
+    ElMessage.error(error?.message || '资料更新失败')
+  } finally {
+    savingProfile.value = false
+  }
+}
+
 const loadUserInfo = async () => {
   try {
     const data = await AuthApi.getUserInfo()
     if (data.success && data.data) {
       userInfo.value = data.data
       localStorage.setItem('userRole', data.data.role || 'user')
+      // 同步本地展示名缓存，保证顶栏等处展示一致
+      AuthApi.restoreSession(data.data)
+      window.dispatchEvent(new CustomEvent('auth:changed'))
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
@@ -179,6 +275,30 @@ onMounted(() => {
 
   .card-header {
     font-weight: 600;
+  }
+
+  .inline-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: middle;
+
+    .el-button {
+      padding: 0;
+      height: auto;
+      vertical-align: middle;
+    }
+  }
+
+  .inline-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    vertical-align: middle;
+
+    .el-input {
+      width: 220px;
+    }
   }
 }
 </style>

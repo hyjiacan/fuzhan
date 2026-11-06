@@ -19,6 +19,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
+import { UserUtils } from '@/utils'
 import { executeLoginDownload } from '@/utils/download'
 
 const route = useRoute()
@@ -56,7 +57,7 @@ onMounted(async () => {
     return
   }
 
-  AuthApi.restoreSession({ uuid: userData.uuid, username: userData.username })
+  AuthApi.restoreSession(userData)
   localStorage.setItem('userRole', userData.role || 'user')
 
   try {
@@ -70,7 +71,7 @@ onMounted(async () => {
 
   status.value = 'success'
   title.value = '登录成功'
-  description.value = `欢迎回来，${userData.username || ''}`
+  description.value = `欢迎回来，${UserUtils.displayLabel(userData) || ''}`
 
   ElMessage.success('登录成功')
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/files'
