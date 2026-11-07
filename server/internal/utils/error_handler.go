@@ -108,9 +108,21 @@ func HandleBadRequest(c *gin.Context, message string, errors interface{}) {
 	HandleError(c, http.StatusBadRequest, CodeBadRequest, message, errors)
 }
 
-// HandleUnauthorized 处理401错误
+// HandleUnauthorized 处理401错误（凭证存在但无效/被篡改，属可疑，按 Warn 记录）
 func HandleUnauthorized(c *gin.Context, message string) {
 	Warn("认证失败",
+		String("path", c.Request.URL.Path),
+		String("method", c.Request.Method),
+		String("client_ip", GetClientIP(c)),
+		String("message", message))
+	HandleError(c, http.StatusUnauthorized, CodeUnauthorized, message, nil)
+}
+
+// HandleUnauthenticated 处理「未携带凭证 / 凭证已过期」的401错误。
+// 这属于正常的未登录访问（首屏、登录页轮询等），仅记录 Info 级别日志，
+// 不按「认证失败」异常计入后台。
+func HandleUnauthenticated(c *gin.Context, message string) {
+	Info("未登录访问受保护接口",
 		String("path", c.Request.URL.Path),
 		String("method", c.Request.Method),
 		String("client_ip", GetClientIP(c)),

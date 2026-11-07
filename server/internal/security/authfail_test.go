@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"fuzhan/internal/constants"
 	"fuzhan/internal/models"
 )
 
@@ -118,5 +119,39 @@ func TestEvaluateUnauthorized(t *testing.T) {
 				t.Fatalf("EvaluateUnauthorized(%s %s, guard=%s) = %v, want %v", tc.method, tc.path, tc.guard, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestIsBenignUnauthenticated(t *testing.T) {
+	for _, reason := range []string{constants.AuthFailureMissing, constants.AuthFailureExpired} {
+		if !IsBenignUnauthenticated(reason) {
+			t.Fatalf("%q 属于正常未登录，应判定为 benign", reason)
+		}
+	}
+	if IsBenignUnauthenticated(constants.AuthFailureInvalid) {
+		t.Fatal("伪造/无效凭证不属于 benign")
+	}
+}
+
+func TestNoteUnauthenticatedAccess_SingleAccessNotEvent(t *testing.T) {
+	ResetAuthFailureState()
+	if d := NoteUnauthenticatedAccess("198.51.100.30"); d != nil {
+		t.Fatalf("单次未登录访问不应构成安全事件，got %+v", d)
+	}
+}
+
+func TestNoteUnauthenticatedAccess_ThresholdAggregatesOnce(t *testing.T) {
+	ResetAuthFailureState()
+	const ip = "198.51.100.31"
+	var d *AuthEventDecision
+	for i := 0; i < unauthAccessLimit; i++ {
+		d = NoteUnauthenticatedAccess(ip)
+	}
+	if d == nil || d.EventType != models.EventAuthUnauthorized || d.Severity != models.SeverityMedium {
+		t.Fatalf("同 IP 未登录访问达阈值应聚合 1 条中危事件，got %+v", d)
+	}
+	// 同一窗口内后续访问不再重复入库
+	if d := NoteUnauthenticatedAccess(ip); d != nil {
+		t.Fatalf("阈值后同窗口不应重复入库，got %+v", d)
 	}
 }

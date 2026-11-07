@@ -153,6 +153,12 @@ func ParseJWT(tokenString string) (*Claims, error) {
 	return nil, err
 }
 
+// IsExpiredToken 判断解析错误是否为「令牌已过期」。
+// 过期属于登录态自然失效（凭证本身可信），与签名无效/伪造需区分处理。
+func IsExpiredToken(err error) bool {
+	return errors.Is(err, jwt.ErrTokenExpired)
+}
+
 func parseWithKey(tokenString string, secret []byte) (*Claims, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {

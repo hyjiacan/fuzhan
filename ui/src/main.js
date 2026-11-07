@@ -171,6 +171,8 @@ function cleanupNotificationPolling() {
 }
 
 async function pollNotifications() {
+  // 未登录时通知接口必然 401，本轮直接跳过（保留定时器，登录后可继续轮询）
+  if (!AuthApi.isLoggedIn()) return
   // 没有活跃上传任务时不轮询
   if (!store.state.activeUrlTasks) return
 

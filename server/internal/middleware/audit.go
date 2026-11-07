@@ -40,10 +40,15 @@ func AuditMiddleware() gin.HandlerFunc {
 		c.Next()
 
 		// 如果请求被中间件中止（如认证失败）且没有 handler 记录审计日志，
-		// 自动记录一条拒绝请求的审计日志
+		// 自动记录一条拒绝请求的审计日志。
+		// 例外：未带凭证 / 凭证过期的 401 属于正常未登录（首屏、登录页轮询），
+		// 不记为失败操作，避免后台被大量正常的未登录请求刷成异常。
 		if c.IsAborted() {
-			if _, logged := c.Get(auditKeyLogged); !logged {
-				statusCode := c.Writer.Status()
+			statusCode := c.Writer.Status()
+			// 401（XHR/API）与 302 跳登录页（浏览器导航）在无凭证/凭证过期时同属正常未登录
+			benignUnauthorized := (statusCode == http.StatusUnauthorized || statusCode == http.StatusFound) &&
+				security.IsBenignUnauthenticated(authFailureReason(c))
+			if _, logged := c.Get(auditKeyLogged); !logged && !benignUnauthorized {
 				LogOperation(c, "request.rejected",
 					fmt.Sprintf("%s %s", c.Request.Method, c.Request.URL.Path),
 					fmt.Errorf("status %d", statusCode))
@@ -241,6 +246,17 @@ func getDuration(c *gin.Context) int64 {
 	return 0
 }
 
+// authFailureReason 读取认证中间件在 abort 前写入的 401 原因。
+// 未标记时视为可疑凭证（invalid），与历史行为保持一致（宁多报不漏报）。
+func authFailureReason(c *gin.Context) string {
+	if v, exists := c.Get(string(constants.ContextKeyAuthFailureReason)); exists {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+	return constants.AuthFailureInvalid
+}
+
 // recordRejectedSecurityEvent 将被拒绝（abort）的越权/禁止/限流请求写入安全事件库。
 // 401 仅在越过认证边界时入库（未认证访问管理接口/写操作/非 Web 会话渠道）；
 // 普通读取请求的 401（令牌过期、未登录浏览）不构成安全事件。
@@ -262,6 +278,16 @@ func recordRejectedSecurityEvent(c *gin.Context) {
 	var eventType, severity, reason string
 	switch status {
 	case http.StatusUnauthorized:
+		// 区分 401 原因：无凭证 / 凭证过期属于正常未登录，不单次入库，
+		// 仅在按 IP 聚合达到阈值时才产生一条安全事件（保留批量枚举检测）。
+		if security.IsBenignUnauthenticated(authFailureReason(c)) {
+			decision := security.NoteUnauthenticatedAccess(utils.GetClientIP(c))
+			if decision == nil {
+				return
+			}
+			eventType, severity, reason = decision.EventType, decision.Severity, decision.Reason
+			break
+		}
 		relevant, why := security.EvaluateUnauthorized(c.Request.Method, c.Request.URL.Path, guard)
 		if !relevant {
 			return

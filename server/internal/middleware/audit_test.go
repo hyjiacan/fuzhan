@@ -32,6 +32,13 @@ func (f *auditFakeStore) CreateBatch(evs []*models.SecurityEvent) error {
 // markGuard=true 模拟 WebDAV 中间件 abort 前打上下文标记的行为。
 func collectRejected(t *testing.T, method, path string, markGuard bool, status int) []*models.SecurityEvent {
 	t.Helper()
+	return collectRejectedWith(t, method, path, markGuard, status, "")
+}
+
+// collectRejectedWith 在 collectRejected 基础上指定 401 原因（missing/expired/invalid），
+// 模拟认证中间件 abort 前写入 ContextKeyAuthFailureReason 的行为。
+func collectRejectedWith(t *testing.T, method, path string, markGuard bool, status int, reason string) []*models.SecurityEvent {
+	t.Helper()
 	store := &auditFakeStore{}
 	security.InitWriter(store, 1, 64)
 	gin.SetMode(gin.TestMode)
@@ -40,6 +47,9 @@ func collectRejected(t *testing.T, method, path string, markGuard bool, status i
 	h := func(c *gin.Context) {
 		if markGuard {
 			c.Set(string(constants.ContextKeySecurityGuard), models.GuardWebDAV)
+		}
+		if reason != "" {
+			c.Set(string(constants.ContextKeyAuthFailureReason), reason)
 		}
 		c.AbortWithStatus(status)
 	}
@@ -111,5 +121,57 @@ func TestAudit_GuardContextMarker_OverridesAuth(t *testing.T) {
 	}
 	if evs[0].Guard != models.GuardWebDAV {
 		t.Fatalf("上下文标记应覆盖缺省 guard，got %q", evs[0].Guard)
+	}
+}
+
+func TestAudit_MissingCredentialUnauthorized_NotRecorded(t *testing.T) {
+	// 未携带凭证（正常未登录）访问管理接口/写接口：日志降级，且不单次入库
+	security.ResetAuthFailureState()
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/v1/web/admin/users"},
+		{"POST", "/api/v1/web/private/uploads/session"},
+	} {
+		evs := collectRejectedWith(t, tc.method, tc.path, false, http.StatusUnauthorized, constants.AuthFailureMissing)
+		if len(evs) != 0 {
+			t.Fatalf("%s %s 未带凭证的 401 不应入库，got %+v", tc.method, tc.path, evs)
+		}
+	}
+}
+
+func TestAudit_ExpiredCredentialUnauthorized_NotRecorded(t *testing.T) {
+	// 凭证过期属于登录态自然失效，同样不单次入库
+	security.ResetAuthFailureState()
+	evs := collectRejectedWith(t, "GET", "/api/v1/web/admin/users", false, http.StatusUnauthorized, constants.AuthFailureExpired)
+	if len(evs) != 0 {
+		t.Fatalf("凭证过期的 401 不应入库，got %+v", evs)
+	}
+}
+
+func TestAudit_InvalidCredentialUnauthorized_Recorded(t *testing.T) {
+	// 携带伪造/篡改凭证的 401 属于可疑行为，单次即入库
+	security.ResetAuthFailureState()
+	evs := collectRejectedWith(t, "GET", "/api/v1/web/admin/users", false, http.StatusUnauthorized, constants.AuthFailureInvalid)
+	if len(evs) != 1 || evs[0].EventType != models.EventAuthUnauthorized {
+		t.Fatalf("伪造凭证的 401 应入库 1 条 auth.unauthorized，got %+v", evs)
+	}
+}
+
+func TestAudit_MissingCredentialThresholdAggregates(t *testing.T) {
+	// 未带凭证的 401 不逐条入库，但同一 IP 超阈值仍聚合 1 条，保留批量探测检测能力
+	security.ResetAuthFailureState()
+	var total int
+	var aggregated []*models.SecurityEvent
+	for i := 0; i < 80; i++ {
+		evs := collectRejectedWith(t, "GET", "/api/v1/files", false, http.StatusUnauthorized, constants.AuthFailureMissing)
+		total += len(evs)
+		if len(evs) > 0 {
+			aggregated = evs
+		}
+	}
+	if total != 1 {
+		t.Fatalf("同 IP 大量未登录访问应只聚合 1 条事件，got %d", total)
+	}
+	if aggregated[0].EventType != models.EventAuthUnauthorized || aggregated[0].Severity != models.SeverityMedium {
+		t.Fatalf("聚合事件类型/级别不符，got %+v", aggregated[0])
 	}
 }

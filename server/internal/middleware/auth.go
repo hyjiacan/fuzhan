@@ -127,7 +127,7 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 				c.Next()
 				return
 			}
-			utils.HandleUnauthorized(c, "缺少认证信息")
+			denyUnauthenticated(c, constants.AuthFailureMissing, "缺少认证信息")
 			c.Abort()
 			return
 		}
@@ -135,7 +135,7 @@ func (am *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 		// 验证token
 		claims, err := jwt.ParseJWT(tokenString)
 		if err != nil {
-			utils.HandleUnauthorized(c, "无效的认证令牌")
+			denyInvalidToken(c, err)
 			c.Abort()
 			return
 		}
@@ -339,7 +339,7 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 			tokenString = TokenFromCookie(c)
 		}
 		if tokenString == "" {
-			am.handleUnauthenticated(c)
+			am.handleUnauthenticated(c, constants.AuthFailureMissing)
 			c.Abort()
 			return
 		}
@@ -347,7 +347,7 @@ func (am *AuthMiddleware) LoginGate(whiteList ...func(*gin.Context) bool) gin.Ha
 		// 验证 token
 		claims, err := jwt.ParseJWT(tokenString)
 		if err != nil {
-			am.handleUnauthenticated(c)
+			am.handleUnauthenticated(c, authFailureReasonFor(err))
 			c.Abort()
 			return
 		}
@@ -402,9 +402,13 @@ func hasTicketContext(c *gin.Context) bool {
 //     /lite 前缀的请求跳转到轻量版自带的服务器渲染登录页（低版本/低性能设备兼容），
 //     其余跳转到 Vue 前端登录页。
 //   - 其余（前端 XHR/fetch/API）：返回 401 JSON，由前端统一跳转登录页
-func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
+//
+// reason 记录本次 401 的原因（missing/expired/invalid），供审计环节区分
+// 「正常未登录」与「可疑凭证」，避免前者被记为认证失败异常。
+func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context, reason string) {
+	markAuthFailureReason(c, reason)
 	if isCLINavigation(c) {
-		utils.HandleUnauthorized(c, "缺少认证信息或登录已失效，请先登录")
+		handleUnauthenticatedResponse(c, reason, "缺少认证信息或登录已失效，请先登录")
 		return
 	}
 	if isBrowserNavigation(c) {
@@ -418,7 +422,50 @@ func (am *AuthMiddleware) handleUnauthenticated(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/#/login?redirect="+redirect)
 		return
 	}
-	utils.HandleUnauthorized(c, "缺少认证信息或登录已失效")
+	handleUnauthenticatedResponse(c, reason, "缺少认证信息或登录已失效")
+}
+
+// denyUnauthenticated 以指定原因直接返回 401（不区分浏览器导航分流）。
+func denyUnauthenticated(c *gin.Context, reason, message string) {
+	markAuthFailureReason(c, reason)
+	handleUnauthenticatedResponse(c, reason, message)
+}
+
+// denyInvalidToken 处理凭证解析失败：过期属于登录态自然失效（降级为 Info），
+// 签名无效/伪造/篡改保留 Warn 并按可疑凭证处理。
+func denyInvalidToken(c *gin.Context, err error) {
+	reason := authFailureReasonFor(err)
+	if reason == constants.AuthFailureInvalid {
+		markAuthFailureReason(c, reason)
+		utils.HandleUnauthorized(c, "无效的认证令牌")
+		return
+	}
+	denyUnauthenticated(c, reason, "登录已失效，请重新登录")
+}
+
+// authFailureReasonFor 把 JWT 解析错误归类为 401 原因常量。
+func authFailureReasonFor(err error) string {
+	if jwt.IsExpiredToken(err) {
+		return constants.AuthFailureExpired
+	}
+	return constants.AuthFailureInvalid
+}
+
+// markAuthFailureReason 把本次 401 的原因写入上下文，供审计中间件读取。
+func markAuthFailureReason(c *gin.Context, reason string) {
+	if reason == "" {
+		reason = constants.AuthFailureInvalid
+	}
+	c.Set(string(constants.ContextKeyAuthFailureReason), reason)
+}
+
+// handleUnauthenticatedResponse 按原因选择日志级别并输出统一 401 响应。
+func handleUnauthenticatedResponse(c *gin.Context, reason, message string) {
+	if reason == constants.AuthFailureInvalid {
+		utils.HandleUnauthorized(c, message)
+		return
+	}
+	utils.HandleUnauthenticated(c, message)
 }
 
 // isCLINavigation 判断请求是否来自命令行工具（curl/wget）

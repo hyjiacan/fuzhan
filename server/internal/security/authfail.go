@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"fuzhan/internal/constants"
 	"fuzhan/internal/models"
 )
 
@@ -27,6 +28,9 @@ const (
 	authDistinctIPLimit     = 3                // 同一账号窗口内不同来源 IP 阈值（撞库）
 	authSuccessAfterFails   = 3                // 失败后成功判定所需的前置失败次数
 	authTrackerMaxEntries   = 10000            // 跟踪记录上限，保证内存有界
+
+	unauthAccessWindow = 10 * time.Minute // 同一 IP 未登录访问统计窗口
+	unauthAccessLimit  = 60               // 同一 IP 窗口内未登录访问阈值（正常刷页面远低于此值）
 )
 
 // AuthEventDecision 认证请求命中安全事件场景后的入库建议。
@@ -54,15 +58,23 @@ type accountAuthRecord struct {
 	adminEscalated bool
 }
 
+type unauthAccessRecord struct {
+	count    int
+	start    time.Time
+	reported bool
+}
+
 type authFailureTracker struct {
 	mu       sync.Mutex
 	ips      map[string]*ipAuthRecord
 	accounts map[string]*accountAuthRecord
+	unauth   map[string]*unauthAccessRecord
 }
 
 var authFailures = &authFailureTracker{
 	ips:      make(map[string]*ipAuthRecord),
 	accounts: make(map[string]*accountAuthRecord),
+	unauth:   make(map[string]*unauthAccessRecord),
 }
 
 // NoteLoginFailure 记录一次登录/注册/验证码失败，并返回是否命中安全事件场景。
@@ -211,6 +223,8 @@ func NoteLoginSuccess(ip, username, userAgent string) *AuthEventDecision {
 // 普通读取请求的 401（令牌过期、未登录浏览）不构成事件；
 // 仅在越过认证边界时成立：未认证访问管理接口、未认证写操作（会话维护接口除外），
 // 或 WebDAV/FTP 等非 Web 会话渠道认证失败。
+// 注意：未携带凭证 / 凭证过期的 401 应先经 IsBenignUnauthenticated 判定，
+// 走 NoteUnauthenticatedAccess 的阈值聚合，不在此单次入库。
 func EvaluateUnauthorized(method, path, guard string) (bool, string) {
 	if guard != "" && guard != models.GuardAuth {
 		return true, "非 Web 会话渠道认证失败"
@@ -226,6 +240,47 @@ func EvaluateUnauthorized(method, path, guard string) (bool, string) {
 		return true, "未认证的写操作请求"
 	}
 	return false, ""
+}
+
+// IsBenignUnauthenticated 判断 401 原因是否为「正常未登录」：
+// 请求未携带凭证，或凭证已过期，都属于登录态自然失效，不属于可疑凭证。
+// 这类 401 不单次写入安全事件，仅按 IP 做阈值聚合（见 NoteUnauthenticatedAccess）。
+func IsBenignUnauthenticated(reason string) bool {
+	return reason == constants.AuthFailureMissing || reason == constants.AuthFailureExpired
+}
+
+// NoteUnauthenticatedAccess 记录一次「正常未登录」的 401 访问，仅在命中以下场景时
+// 返回入库建议，用于保留批量探测能力而不把日常未登录访问记为异常：
+//   - 同一 IP 在窗口内未登录访问达阈值（疑似批量探测/枚举受保护接口）。
+//
+// 同一窗口内同一 IP 只聚合一条事件，避免刷屏。
+func NoteUnauthenticatedAccess(ip string) *AuthEventDecision {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return nil
+	}
+
+	authFailures.mu.Lock()
+	defer authFailures.mu.Unlock()
+	now := time.Now()
+	authFailures.prune(now)
+
+	rec, ok := authFailures.unauth[ip]
+	if !ok || now.Sub(rec.start) > unauthAccessWindow {
+		rec = &unauthAccessRecord{start: now}
+		authFailures.unauth[ip] = rec
+	}
+	rec.count++
+
+	if !rec.reported && rec.count >= unauthAccessLimit {
+		rec.reported = true
+		return &AuthEventDecision{
+			EventType: models.EventAuthUnauthorized,
+			Severity:  models.SeverityMedium,
+			Reason:    "同一 IP 在窗口内大量未登录访问受保护接口，疑似批量探测/接口枚举",
+		}
+	}
+	return nil
 }
 
 // isAdminPath 判断是否为管理接口路径。
@@ -251,9 +306,15 @@ func (s *authFailureTracker) prune(now time.Time) {
 			delete(s.accounts, key)
 		}
 	}
-	if len(s.ips)+len(s.accounts) > authTrackerMaxEntries {
+	for ip, rec := range s.unauth {
+		if now.Sub(rec.start) > unauthAccessWindow {
+			delete(s.unauth, ip)
+		}
+	}
+	if len(s.ips)+len(s.accounts)+len(s.unauth) > authTrackerMaxEntries {
 		s.ips = make(map[string]*ipAuthRecord)
 		s.accounts = make(map[string]*accountAuthRecord)
+		s.unauth = make(map[string]*unauthAccessRecord)
 	}
 }
 
@@ -263,4 +324,5 @@ func ResetAuthFailureState() {
 	defer authFailures.mu.Unlock()
 	authFailures.ips = make(map[string]*ipAuthRecord)
 	authFailures.accounts = make(map[string]*accountAuthRecord)
+	authFailures.unauth = make(map[string]*unauthAccessRecord)
 }

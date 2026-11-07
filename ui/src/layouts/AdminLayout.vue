@@ -59,7 +59,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { safeStorage } from '@/utils/storage'
-import { SecurityApi } from '@/api'
+import { SecurityApi, AuthApi } from '@/api'
 import store from '@/store'
 import {
   Setting, DataBoard, Folder, UploadFilled, List, CopyDocument, Clock, User, Key, Monitor, Odometer, TrendCharts, Warning, Close, Document, Bell, Grid
@@ -72,16 +72,6 @@ const collapsed = ref(false)
 // 窄屏宽屏提示（可关闭，持久化到本地）
 const WIDE_TIP_KEY = 'admin_wide_tip_closed'
 const showWideTip = ref(true)
-
-onMounted(() => {
-  showWideTip.value = !safeStorage.get(WIDE_TIP_KEY)
-  loadSecurityUnread()
-  securityTimer = setInterval(loadSecurityUnread, 60000)
-})
-
-onUnmounted(() => {
-  if (securityTimer) clearInterval(securityTimer)
-})
 
 const dismissWideTip = () => {
   showWideTip.value = false
@@ -132,7 +122,12 @@ const securityUnread = computed(() => store.state.securityUnread)
 let securityTimer = null
 
 // 加载未读安全事件数（供侧边栏红点）
+// 未登录（含登录态失效）时不再发起请求，并停止轮询，避免持续产生必然 401。
 const loadSecurityUnread = async () => {
+  if (!AuthApi.isLoggedIn()) {
+    stopSecurityPolling()
+    return
+  }
   try {
     const res = await SecurityApi.unreadSummary()
     if (res.success && res.data) {
@@ -142,6 +137,34 @@ const loadSecurityUnread = async () => {
     // 拉取失败时保留上次数值，静默处理
   }
 }
+
+const stopSecurityPolling = () => {
+  if (securityTimer) {
+    clearInterval(securityTimer)
+    securityTimer = null
+  }
+}
+
+// 登录态失效（如 401 触发 auth:changed）后停止轮询
+const handleAuthChanged = () => {
+  if (!AuthApi.isLoggedIn()) stopSecurityPolling()
+  else if (!securityTimer) securityTimer = setInterval(loadSecurityUnread, 60000)
+}
+
+onMounted(() => {
+  showWideTip.value = !safeStorage.get(WIDE_TIP_KEY)
+  // 仅在已登录时启动轮询（未登录访问管理端会必然 401）
+  if (AuthApi.isLoggedIn()) {
+    loadSecurityUnread()
+    securityTimer = setInterval(loadSecurityUnread, 60000)
+  }
+  window.addEventListener('auth:changed', handleAuthChanged)
+})
+
+onUnmounted(() => {
+  stopSecurityPolling()
+  window.removeEventListener('auth:changed', handleAuthChanged)
+})
 
 // 进入安全事件页或标记已读后刷新，保证红点实时一致
 watch(
