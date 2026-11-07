@@ -180,7 +180,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 临时文件分片上传路由
 	tempUploads := web.Group("/temp/upload")
 	{
-		tempUploads.POST("/session", middleware.UploadRateLimit(), tempHandler.CreateTempSessionHandler)
+		tempUploads.POST("/session", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), tempHandler.CreateTempSessionHandler)
 		tempUploads.GET("/session/:uploadId", tempHandler.GetTempSessionHandler)
 		tempUploads.POST("/session/:uploadId/resume", tempHandler.ResumeTempSessionHandler)
 		tempUploads.DELETE("/session/:uploadId", tempHandler.CancelTempSessionHandler)
@@ -255,6 +255,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.GET("/auth/user", authHandler.GetCurrentUser)
 		protected.PUT("/auth/password", authHandler.ChangePassword)
 		protected.PUT("/auth/profile", authHandler.UpdateProfile)
+		protected.DELETE("/auth/account", authHandler.DeleteAccount)
 
 		// 完整运行时配置（业务配置 + 共享目录列表），面向所有登录用户。
 		// 放在受保护组内：强制登录下匿名请求由 LoginGate 拦截，

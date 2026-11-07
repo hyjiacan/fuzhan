@@ -709,6 +709,11 @@ func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename strin
 			ExpiredAt: utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour),
 		}
 
+		// 记录登录用户归属，供注销账号时精确清理该用户的临时文件
+		if task, err := h.urlTaskRepo.GetByID(taskID); err == nil && task != nil && task.UserID != nil {
+			tempFile.UserID = *task.UserID
+		}
+
 		if err := h.db.Create(tempFile).Error; err != nil {
 			os.Remove(tempFilePath)
 			*urlTaskUpdated = true

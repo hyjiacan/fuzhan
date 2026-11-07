@@ -10,6 +10,7 @@ import (
 	"time"
 
 	configPkg "fuzhan/internal/appconfig"
+	"fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
@@ -18,6 +19,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// currentUserUUID 取当前登录用户 UUID（临时上传为可选鉴权，匿名上传返回空串）。
+func currentUserUUID(c *gin.Context) string {
+	v, ok := c.Get(string(constants.ContextKeyUserUUID))
+	if !ok {
+		return ""
+	}
+	uuid, _ := v.(string)
+	return uuid
+}
 
 // verifyTempSession 解析会话ID并校验归属：仅限临时类型且绑定创建者 IP，
 // 防止凭自增ID越权访问他人上传会话。
@@ -112,6 +123,7 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 		Dir:              req.Dir,
 		RootName:         "temp",
 		TargetType:       models.TargetTypeTemp,
+		UserID:           currentUserUUID(c),
 		ClientIP:         ip,
 		Code:             code,
 		DeleteOnDownload: req.DeleteOnDownload,

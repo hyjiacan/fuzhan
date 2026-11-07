@@ -53,6 +53,7 @@
 | FilePath | string(512) | json:"-" | 存储路径 (内部使用) |
 | Dir | string(512) | - | 存储目录 |
 | ClientIP | string(45) | index | 上传者IP |
+| UserID | string(64) | index | 上传者用户UUID（匿名上传为空），用于注销账号时精确清理 |
 | DownloadCount | int | default: 0 | 下载次数 |
 | NeverExpire | bool | default: false | 是否永不过期 |
 | ExpiredAt | time.Time | index | 过期时间 |

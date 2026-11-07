@@ -67,6 +67,7 @@ func (f *Finalizer) Complete(session *models.UploadSession, targetPath string) (
 		FileSize:         session.FileSize,
 		FilePath:         targetPath,
 		ClientIP:         session.ClientIP,
+		UserID:           session.UserID,
 		Dir:              cleanDir,
 		DeleteOnDownload: session.DeleteOnDownload,
 		ExpiredAt:        expiredAt,

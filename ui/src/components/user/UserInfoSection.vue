@@ -110,15 +110,44 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <el-card v-if="userInfo.role !== 'admin'" class="danger-card">
+      <template #header>
+        <div class="card-header danger-title">注销账户</div>
+      </template>
+      <p class="danger-desc">
+        注销后账号将无法恢复，您的私有文件与临时文件将被永久删除；登录记录与操作记录会作为审计数据保留。
+      </p>
+      <el-form ref="deleteFormRef" :model="deleteForm" :rules="deleteRules" label-width="96">
+        <el-form-item label="当前密码" prop="password">
+          <el-input
+            v-model="deleteForm.password"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="请输入当前密码以确认注销"
+            autocomplete="current-password"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="danger" :loading="deletingAccount" @click="handleDeleteAccount">
+            注销账户
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, nextTick, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import { AuthApi } from '@/api'
 import { TimeUtils } from '@/utils'
+
+const router = useRouter()
 
 const userInfo = ref({
   username: '',
@@ -255,6 +284,49 @@ const handleChangePassword = async () => {
 onMounted(() => {
   loadUserInfo()
 })
+
+// 注销账户：双重确认 + 当前密码校验
+const deleteFormRef = ref(null)
+const deletingAccount = ref(false)
+const deleteForm = reactive({ password: '' })
+const deleteRules = {
+  password: [{ required: true, message: '请输入当前密码', trigger: 'blur' }]
+}
+
+const handleDeleteAccount = async () => {
+  try {
+    await deleteFormRef.value?.validate()
+  } catch {
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '注销后账号无法恢复，您的私有文件与临时文件将被永久删除，确定继续吗？',
+      '注销账户',
+      { type: 'warning', confirmButtonText: '确定注销', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch {
+    return
+  }
+
+  deletingAccount.value = true
+  try {
+    const data = await AuthApi.deleteAccount(deleteForm.password)
+    if (data.success) {
+      ElMessage.success('账号已注销')
+      AuthApi.clearAuth()
+      window.dispatchEvent(new CustomEvent('auth:changed'))
+      router.push({ name: 'login' })
+    } else {
+      ElMessage.error(data.message || '注销失败')
+    }
+  } catch (error) {
+    ElMessage.error(error?.message || '注销失败')
+  } finally {
+    deletingAccount.value = false
+  }
+}
 </script>
 
 <style lang="less" scoped>
@@ -264,17 +336,34 @@ onMounted(() => {
   padding: @container-padding;
 
   .info-card,
-  .password-card {
+  .password-card,
+  .danger-card {
     max-width: 600px;
 
     + .info-card,
-    + .password-card {
+    + .password-card,
+    + .danger-card {
       margin-top: 16px;
     }
   }
 
   .card-header {
     font-weight: 600;
+  }
+
+  .danger-card {
+    border-color: var(--el-color-danger-light-5);
+
+    .danger-title {
+      color: var(--el-color-danger);
+    }
+
+    .danger-desc {
+      margin: 0 0 16px;
+      color: var(--el-text-color-secondary);
+      font-size: 13px;
+      line-height: 1.6;
+    }
   }
 
   .inline-view {

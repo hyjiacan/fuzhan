@@ -310,6 +310,36 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "密码修改成功", nil)
 }
 
+// DeleteAccountRequest 注销账号请求（需再次输入当前密码确认）
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required"`
+}
+
+// DeleteAccount 注销当前登录账号，连带清除该用户的私有/临时文件存储
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求数据格式错误", err.Error())
+		return
+	}
+
+	user, err := h.authService.GetCurrentUser(c)
+	if err != nil {
+		response.HandleUnauthorized(c, err.Error())
+		return
+	}
+
+	if err := h.authService.DeleteAccount(user.UUID, req.Password); err != nil {
+		response.HandleBadRequest(c, err.Error(), nil)
+		return
+	}
+
+	middleware.InvalidateUserDisabledCache(user.UUID)
+	middleware.LogOperation(c, "auth.delete_account", user.Username, nil)
+	middleware.ClearAuthCookie(c)
+	response.HandleSuccess(c, http.StatusOK, "账号已注销", nil)
+}
+
 // UpdateProfileRequest 修改个人资料请求（用户名不可修改）
 type UpdateProfileRequest struct {
 	DisplayName string `json:"displayName" binding:"max=64"`

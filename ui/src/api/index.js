@@ -186,6 +186,11 @@ export const AuthApi = {
     return request.put('/auth/profile', { displayName, nickname }, { skipSuccessToast: true })
   },
 
+  // 注销账号：需再次输入当前密码确认；成功后服务端会清除该用户的私有/临时文件
+  deleteAccount(password) {
+    return request.delete('/auth/account', { data: { password }, skipSuccessToast: true })
+  },
+
   // 外部 OAuth2/OIDC：登录页查询是否启用（不返回提供方等实现细节）
   oauth2Status() {
     return request.get('/auth/oauth2/status')

@@ -10,6 +10,7 @@ type TempFile struct {
 	FileSize         int64     `gorm:"not null" json:"fileSize"`                // 文件大小
 	FilePath         string    `gorm:"size:512" json:"-"`                       // 存储路径（内部使用）
 	ClientIP         string    `gorm:"size:45;index" json:"clientIP"`           // 上传者IP
+	UserID           string    `gorm:"size:64;index" json:"userID,omitempty"`   // 上传者用户UUID，匿名上传为空，用于注销时清理
 	Dir              string    `gorm:"size:512;index" json:"dir"`               // 上传时指定的子目录
 	DownloadCount    int       `gorm:"default:0" json:"downloadCount"`          // 下载次数
 	Downloaded       bool      `gorm:"default:false" json:"downloaded"`         // 是否已下载

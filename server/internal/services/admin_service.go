@@ -313,6 +313,11 @@ func (s *AdminService) DeleteUser(uuid string) error {
 	}
 
 	username := user.Username
+	// 先清理该用户的私有/临时文件与关联数据，再删除用户行
+	if err := CleanupUserAssets(s.db, &user); err != nil {
+		utils.Error("删除用户失败: 清理用户文件失败", utils.String("uuid", uuid), utils.Err(err))
+		return fmt.Errorf("清理用户文件失败: %w", err)
+	}
 	if err := s.db.Delete(&user).Error; err != nil {
 		utils.Error("删除用户失败: 数据库错误", utils.String("uuid", uuid), utils.Err(err))
 		return fmt.Errorf("删除用户失败: %w", err)

@@ -304,6 +304,39 @@ func (s *AuthService) ChangePassword(uuid, oldPassword, newPassword string) erro
 	return nil
 }
 
+// DeleteAccount 自助注销当前账号：校验密码后清除该用户的私有/临时文件与关联数据，
+// 最后删除用户行。登录日志与操作记录作为审计数据保留。
+func (s *AuthService) DeleteAccount(uuid, password string) error {
+	var user models.User
+	if err := s.db.Where("uuid = ?", uuid).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("用户不存在")
+		}
+		return fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	if user.Role == "admin" {
+		return errors.New("管理员账号不支持自助注销")
+	}
+
+	// LDAP 用户没有本地密码，无法二次确认身份
+	if user.PasswordHash == "" {
+		return errors.New("该用户通过 LDAP 认证，无法自助注销")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return errors.New("密码错误")
+	}
+
+	if err := CleanupUserAssets(s.db, &user); err != nil {
+		return err
+	}
+	if err := s.db.Delete(&user).Error; err != nil {
+		return fmt.Errorf("删除用户失败: %w", err)
+	}
+	utils.Info("用户已注销", utils.String("username", user.Username), utils.String("uuid", user.UUID))
+	return nil
+}
+
 // UpdateProfile 更新当前用户资料（姓名、昵称）；用户名一经创建不可修改
 func (s *AuthService) UpdateProfile(uuid, displayName, nickname string) (*models.User, error) {
 	var user models.User
