@@ -73,7 +73,7 @@ onMounted(async () => {
   title.value = '登录成功'
   description.value = `欢迎回来，${UserUtils.displayLabel(userData) || ''}`
 
-  ElMessage.success('登录成功')
+  ElMessage.success({ message: '登录成功', duration: 1000 })
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/files'
   setTimeout(async () => {
     // 下载类 redirect（后端 302 携带）：换一次性票据后整页跳转执行下载，

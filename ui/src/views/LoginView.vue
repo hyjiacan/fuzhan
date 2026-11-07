@@ -256,7 +256,7 @@ const isPageRedirect = (p) => {
 
 const finishAuth = async () => {
   window.dispatchEvent(new CustomEvent('auth:changed'))
-  ElMessage.success('登录成功')
+  ElMessage.success({ message: '登录成功', duration: 1000 })
   // 登录后回到发起页面（默认文件页）
   const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
     ? route.query.redirect

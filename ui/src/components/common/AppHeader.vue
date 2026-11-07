@@ -630,7 +630,7 @@ const handleLogin = async () => {
           // 合并失败不影响登录流程
         }
 
-        ElMessage.success("登录成功");
+        ElMessage.success({ message: "登录成功", duration: 1000 });
         showLoginModal.value = false;
         loginForm.username = "";
         loginForm.password = "";
