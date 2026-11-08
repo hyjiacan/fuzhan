@@ -59,6 +59,11 @@ async function loadConfigAndCheckSetup() {
       await loadFullConfig()
     } else {
       clearStaleAuth()
+      // 未开启强制登录时，匿名访客仍可匿名访问完整运行时配置，
+      // 需据此获得共享目录列表与业务开关（上传目录选择、URL 上传、预览 MIME 表等）。
+      if (!store.state.config.requireLogin) {
+        await loadFullConfig()
+      }
     }
 
     // 检查初始化状态：只有后端明确返回「未初始化」（initialized === false）才跳转初始化页，

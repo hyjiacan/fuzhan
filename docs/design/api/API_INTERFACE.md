@@ -714,12 +714,10 @@
 
 - **URL**：`GET /api/v1/web/options`
 - **认证**：无需认证（匿名例外，强制登录模式下也可匿名访问）
-- **说明**：供前端加载时获取运行时配置（含 `account.requireLogin`，前端据此决定是否跳转登录页）。
-  返回字段按登录态裁剪：**强制登录开启且请求未携带有效登录凭证时**只返回
-  `app.name`、`account.{allowRegistration,requireLogin,captcha}`、`authenticated=false`，
-  其余业务配置（存储开关、上传限制、下载限流、预览 MIME 表、FTP/WebDAV/OpenAPI 等）一律不下发；
-  未开启强制登录或已登录时返回完整配置。
-- **响应**（完整配置；未登录且强制登录时仅保留 `app`、`account`、`authenticated`）：
+- **说明**：供前端启动时获取最小公开配置（站点名、账号开关、验证码状态）与服务端登录态判定。
+  业务配置（存储开关、上传限制、下载限流、预览 MIME 表、FTP/WebDAV/OpenAPI 等）
+  一律不在本接口下发，由 `GET /api/v1/web/runtime-config` 获取。
+- **响应**：
   ```json
   {
     "success": true,
@@ -736,7 +734,38 @@
           "required": false
         }
       },
-      "authenticated": true,
+      "authenticated": true
+    }
+  }
+  ```
+
+### 2. 获取完整运行时配置
+
+- **URL**：`GET /api/v1/web/runtime-config`
+- **认证**：未开启强制登录时匿名可访问；开启强制登录后需登录（由 LoginGate 拦截匿名请求）
+- **说明**：下发全部业务配置与共享目录列表（`rootDirs`，含显示名称与是否允许上传），
+  供上传面板选择上传目录、URL 上传开关、预览 MIME 判定等使用。
+  未开启强制登录时匿名访客同样需要该数据（匿名上传/预览能力依赖它）。
+- **响应**：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "app": {
+        "name": "浮栈"
+      },
+      "account": {
+        "allowRegistration": false,
+        "requireLogin": false,
+        "captcha": {
+          "mode": "disabled",
+          "triggerAfter": 3,
+          "required": false
+        }
+      },
+      "rootDirs": [
+        { "name": "共享文件", "uploadEnabled": true }
+      ],
       "privateStorage": { "enabled": false },
       "tempFiles": { "enabled": true },
       "ftp": { "enabled": false, "port": 2121 },
@@ -773,27 +802,25 @@
   }
   ```
 
-### 2. 获取完整配置（需管理员）
+### 3. 获取完整配置（需管理员）
 
 - **URL**：`GET /api/v1/web/config`
 
-### 3. 保存配置（需管理员）
+### 4. 保存配置（需管理员）
 
 - **URL**：`POST /api/v1/web/config`
 
-### 4. 重新加载配置（需管理员）
+### 5. 重新加载配置（需管理员）
 
 - **URL**：`POST /api/v1/web/config/reload`
 
-### 5. 初始化状态
+### 6. 初始化状态
 
 - **URL**：`GET /api/v1/web/setup/status`
 - **认证**：无需认证
-- **说明**：返回 `initialized` 布尔值。`rootDirs`（共享目录名称与是否允许上传）
-  仅在「未开启强制登录」或「请求携带有效登录凭证」时返回；
-  强制登录下未登录的匿名请求不返回该字段。
+- **说明**：仅返回 `initialized` 布尔值；共享目录等信息由 `GET /api/v1/web/runtime-config` 下发。
 
-### 6. 保存初始配置
+### 7. 保存初始配置
 
 - **URL**：`POST /api/v1/web/setup/save`
 - **认证**：无需认证（首次配置）

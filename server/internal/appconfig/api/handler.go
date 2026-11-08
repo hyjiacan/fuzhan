@@ -64,9 +64,10 @@ func buildAccountOptions(c *gin.Context) gin.H {
 }
 
 // GetRuntimeConfig 处理 GET /api/v1/web/runtime-config 接口（完整运行时配置）。
-// 该路由挂在需要登录的路由组下，由 LoginGate / AuthRequired 拦截，
-// 因此无需在 handler 内判断登录态，可安全下发全部业务配置。
-// 与管理员侧的 GET /api/v1/web/config（管理配置）不同，本接口面向所有登录用户。
+// 该路由挂载在 web 组（组级 LoginGate）：强制登录开启时匿名请求已被拦截，
+// 未开启强制登录时匿名访客同样需要该配置（上传目录选择、URL 上传、预览等），
+// 因此 handler 内无需判断登录态。
+// 与管理员侧的 GET /api/v1/web/config（管理配置）不同，本接口面向 Web 界面所有访问者。
 func (h *Handler) GetRuntimeConfig(c *gin.Context) {
 	currentConfig := appconfig.GetConfig()
 

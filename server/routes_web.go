@@ -61,6 +61,12 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 系统选项路由（无需认证，供前端加载时使用）
 	web.GET("/options", configHandler.GetOptions)
 
+	// 完整运行时配置（业务配置 + 共享目录列表）：面向 Web 界面所有访问者。
+	// 强制登录开启时，组级 LoginGate 已拦截匿名请求；未开启强制登录时匿名访客
+	// 同样需要共享目录列表与业务开关（上传目录选择、URL 上传、预览 MIME 表等），
+	// 因此不挂 AuthRequired，仅做可选认证。
+	web.GET("/runtime-config", authMiddleware.AuthOptional(), configHandler.GetRuntimeConfig)
+
 	// 认证路由（无需认证）
 	auth := web.Group("/auth")
 	{
@@ -256,12 +262,6 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.PUT("/auth/password", authHandler.ChangePassword)
 		protected.PUT("/auth/profile", authHandler.UpdateProfile)
 		protected.DELETE("/auth/account", authHandler.DeleteAccount)
-
-		// 完整运行时配置（业务配置 + 共享目录列表），面向所有登录用户。
-		// 放在受保护组内：强制登录下匿名请求由 LoginGate 拦截，
-		// 无需在 handler 内判断登录态即可安全下发全量配置。
-		// 路径避开管理员配置组 /config，避免语义混淆。
-		protected.GET("/runtime-config", configHandler.GetRuntimeConfig)
 
 		// 个人中心路由（登录记录 / 操作记录 / 存储统计）
 		protected.GET("/user/login-logs", rt.userHandler.GetLoginLogs)

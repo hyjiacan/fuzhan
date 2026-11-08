@@ -32,6 +32,7 @@
 
 ### 修复
 
+- 修复未开启强制登录且未登录时，上传弹窗无法选择共享根目录的问题：完整运行时配置接口 `GET /api/v1/web/runtime-config` 改为可选认证（未开启强制登录时匿名可访问，开启后仍由 LoginGate 拦截匿名请求），前端匿名访客启动时一并加载该配置，共享目录列表与 URL 上传/预览等业务开关恢复正常。(hyjiacan, 2026-11-08)
 - 修复健康检查 `GET /api/v1/web/health` 匿名泄露运行细节的问题：响应移除 `goVersion`、`goroutines` 与存储目录绝对路径等字段，仅保留 `healthy`/`version`/`checks`/`timestamp`，避免向外暴露 Go 运行时信息与服务器目录结构。(hyjiacan, 2026-10-31)
 - 修复 `GET /api/v1/open/v1/openapi.json` 与数据接口安全边界割裂的问题：原先走 `LoginRequiredWhenForced` 守卫但受 OpenAPI 文档功能开关（`open_api.enabled`）整体控制，开启文档时接口匿名可达、与强制登录策略不一致；现文档路由改用独立守卫，强制登录开启且认证模式要求 API Key/JWT 时未认证访问返回 401。(hyjiacan, 2026-10-31)
 - 修复保存配置时同 goroutine 自死锁：`SaveConfig` 持有配置写锁期间执行热更新钩子，而钩子内部经 `GetConfig` 再次申请读锁，导致保存请求永久挂起、后续所有读取配置的请求被阻塞；现配置落盘后先释放写锁再执行钩子。(hyjiacan, 2026-10-19)

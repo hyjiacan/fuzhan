@@ -734,8 +734,9 @@ export const SystemApi = {
     return request.get('/options')
   },
 
-  // 完整运行时配置（业务配置 + 共享目录），需登录。
-  // 与管理侧的 /config（管理配置）不同，此接口面向所有登录用户。
+  // 完整运行时配置（业务配置 + 共享目录）：未开启强制登录时匿名可访问，
+  // 开启强制登录后需登录（由后端 LoginGate 拦截）。
+  // 与管理侧的 /config（管理配置）不同，此接口面向 Web 界面所有访问者。
   getConfig() {
     return request.get('/runtime-config')
   },
