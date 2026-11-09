@@ -122,93 +122,134 @@ func NewMonitorService(recordRepo repositories.AuditStore, db *gorm.DB) *Monitor
 }
 
 // GetHotDownloads 获取热门下载文件
+//
+// 统计口径与「文件下载次数」「行为分析」保持一致，全部基于写时物化的下载签名列：
+//   - dl_event=1：仅公开来源的下载事件（download / download-by-hash），私有、临时下载一律不计；
+//   - dl_ok=1：仅成功下载，失败/异常记录不计入热度；
+//   - dl_counted=1：仅计一次新下载（排除断点续传/分段延续），与 file_records_public.download_count 同口径。
+//
+// 分组按文件身份（已关联的用 file_record_id，历史无关联记录回退完整路径），
+// 避免覆盖上传导致同一文件按大小拆成多行；展示信息（名称/路径/备注/上传时间）
+// 以索引表为权威来源按身份回填，保证移动/重命名后仍指向当前路径。
 func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult, error) {
-	type fileDownloadCount struct {
-		FileName   string
-		FilePath   string
-		FullPath   string
-		RootName   string
-		FileSize   int64
-		UploadTime string
-		Count      int
+	type hotRow struct {
+		// 聚合列 MAX() 在 MySQL/PostgreSQL 下返回 int64，统一用 int64 接收，
+		// 避免各驱动把无符号列扫进 uint 时的差异。
+		FileRecordID int64
+		FileName     string
+		FilePath     string
+		FullPath     string
+		RootName     string
+		FileSize     int64
+		Count        int64
 	}
-	var downloadCounts []fileDownloadCount
+
+	const hotCond = "dl_event = 1 AND dl_ok = 1 AND dl_counted = 1"
+	// 分组键：拼接统一用 CONCAT（SQLite / MySQL / PostgreSQL 通用），
+	// 不用 `||`（MySQL 会按逻辑 OR 解析）。
+	groupKey := `(CASE WHEN file_record_id > 0
+		THEN CONCAT('f', file_record_id)
+		ELSE CONCAT('p', COALESCE(full_path, ''))
+		END)`
+
+	base := func() *gorm.DB {
+		return repositories.ApplyExistingFileFilter(
+			s.db.Model(&models.OperationRecord{}).Where(hotCond),
+		)
+	}
 
 	// 统计总分组数
 	var total int64
-	totalQuery := repositories.ApplyExistingFileFilter(
-		s.db.Model(&models.OperationRecord{}).
-			Select("1").
-			Where("action = ?", "download"),
-	)
-	subQuery := totalQuery.Group("file_name, file_path, full_path, root_name, file_size")
-	s.db.Table("(?) AS grouped", subQuery).Count(&total)
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	pagedQuery := s.db.Model(&models.OperationRecord{}).
-		Select("file_name, file_path, full_path, root_name, file_size, MAX(created_at) as upload_time, COUNT(*) as count").
-		Where("action = ?", "download")
-	pagedQuery = repositories.ApplyExistingFileFilter(pagedQuery)
-	if err := pagedQuery.
-		Group("file_name, file_path, full_path, root_name, file_size").
-		Order("count DESC").
-		Limit(pageSize).Offset(offset).
-		Find(&downloadCounts).Error; err != nil {
+	if err := s.db.Table("(?) AS grouped", base().Select("1").Group(groupKey)).Count(&total).Error; err != nil {
 		return nil, err
 	}
 
-	result := make([]HotDownloadStat, 0, len(downloadCounts))
-	fullPathIndex := make(map[string]int, len(downloadCounts))
-	for _, d := range downloadCounts {
-		var uploadTime time.Time
-		if d.UploadTime != "" {
-			// created_at 存量库存在两种序列化格式：结构体写入的空格偏移格式与参数绑定的 RFC3339，
-			// 两种都解析，任一命中即生效；避免仅按单一 layout 解析导致上传时间为空。
-			for _, layout := range []string{"2006-01-02 15:04:05.999999999-07:00", time.RFC3339Nano} {
-				if t, err := time.Parse(layout, d.UploadTime); err == nil {
-					uploadTime = t
-					break
+	// 分页查询；count 相同则按身份排序，保证 LIMIT/OFFSET 跨页稳定（不重复、不漏项）
+	var rows []hotRow
+	offset := (page - 1) * pageSize
+	if err := base().
+		Select("MAX(file_record_id) AS file_record_id, MAX(file_name) AS file_name, " +
+			"MAX(file_path) AS file_path, MAX(full_path) AS full_path, MAX(root_name) AS root_name, " +
+			"MAX(file_size) AS file_size, COUNT(*) AS count").
+		Group(groupKey).
+		Order("COUNT(*) DESC").
+		Order(groupKey + " ASC").
+		Limit(pageSize).Offset(offset).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]HotDownloadStat, 0, len(rows))
+	byID := make(map[uint]int, len(rows))
+	byPath := make(map[string]int, len(rows))
+	for _, r := range rows {
+		fullPath := r.FullPath
+		if fullPath == "" && r.RootName != "" {
+			fullPath = "/" + r.RootName + "/" + strings.TrimPrefix(r.FilePath, "/")
+		}
+		idx := len(result)
+		result = append(result, HotDownloadStat{
+			FileName: r.FileName,
+			FilePath: r.FilePath,
+			FullPath: fullPath,
+			RootName: r.RootName,
+			FileSize: r.FileSize,
+			Count:    int(r.Count),
+		})
+		if r.FileRecordID > 0 {
+			byID[uint(r.FileRecordID)] = idx
+		} else if fullPath != "" {
+			byPath[fullPath] = idx
+		}
+	}
+
+	// 按索引记录 ID 回填（主路径：移动/重命名后仍指向当前路径）
+	if len(byID) > 0 {
+		ids := make([]uint, 0, len(byID))
+		for id := range byID {
+			ids = append(ids, id)
+		}
+		var fres []models.FileRecordPublic
+		if err := s.db.Where("id IN ?", ids).Find(&fres).Error; err == nil {
+			for i := range fres {
+				if idx, ok := byID[fres[i].ID]; ok {
+					result[idx] = hotStatFromRecord(fres[i], result[idx].Count)
 				}
 			}
 		}
-		fullPath := d.FullPath
-		if fullPath == "" {
-			fullPath = "/" + d.RootName + "/" + strings.TrimPrefix(d.FilePath, "/")
-		}
-		fullPathIndex[fullPath] = len(result)
-		result = append(result, HotDownloadStat{
-			FileName:   d.FileName,
-			FilePath:   d.FilePath,
-			FullPath:   fullPath,
-			RootName:   d.RootName,
-			FileSize:   d.FileSize,
-			UploadTime: uploadTime,
-			Count:      d.Count,
-		})
 	}
 
-	// 按完整路径回填当前文件的备注与真实上传时间（从权威索引表读取，
-	// 保证移动/重命名后仍能关联最新备注；索引表的 created_at 才是文件上传时间，
-	// 而下载记录里的 created_at 是最新一次下载时间）
-	if len(fullPathIndex) > 0 {
-		paths := make([]string, 0, len(fullPathIndex))
-		for p := range fullPathIndex {
+	// 历史记录（未建立身份关联）回退按完整路径回填
+	if len(byPath) > 0 {
+		paths := make([]string, 0, len(byPath))
+		for p := range byPath {
 			paths = append(paths, p)
 		}
 		var fres []models.FileRecordPublic
-		if err := s.db.Where("full_path IN ? AND status = ? AND deleted_at IS NULL",
-			paths, models.FileStatusActive).Find(&fres).Error; err == nil {
-			for _, f := range fres {
-				if idx, ok := fullPathIndex[f.FullPath]; ok {
-					result[idx].Notes = f.Notes
-					result[idx].UploadTime = f.CreatedAt
+		if err := s.db.Where("full_path IN ? AND status = ?", paths, models.FileStatusActive).Find(&fres).Error; err == nil {
+			for i := range fres {
+				if idx, ok := byPath[fres[i].FullPath]; ok {
+					result[idx] = hotStatFromRecord(fres[i], result[idx].Count)
 				}
 			}
 		}
 	}
 
 	return &HotDownloadResult{Records: result, Total: int(total), Page: page, PageSize: pageSize}, nil
+}
+
+// hotStatFromRecord 用索引表（当前权威路径/名称/备注/上传时间）覆盖统计行。
+func hotStatFromRecord(rec models.FileRecordPublic, count int) HotDownloadStat {
+	return HotDownloadStat{
+		FileName:   rec.FileName,
+		FilePath:   rec.FilePath,
+		FullPath:   rec.FullPath,
+		RootName:   rec.RootName,
+		FileSize:   rec.FileSize,
+		UploadTime: rec.CreatedAt,
+		Count:      count,
+		Notes:      rec.Notes,
+	}
 }
 
 // GetStorageStats 获取存储统计
@@ -411,40 +452,48 @@ func (s *MonitorService) GetAccessStats() (*AccessStats, error) {
 	}, nil
 }
 
-// GetKeywords 获取关键词统计
+// 热门搜索关键词的统计窗口与条数上限。
+// 搜索记录按请求逐条落库，若不加时间窗口就只能统计"最近 N 条记录"里的词频，
+// 热点词一旦滑出窗口就消失，且计数与真实搜索量无关；这里改为按近 N 天聚合。
+const (
+	keywordWindowDays = 7
+	keywordMaxLimit   = 50
+)
+
+// GetKeywords 获取热门搜索关键词（近 keywordWindowDays 天，按出现次数降序）
+// 计数相同的词按关键词升序排列，保证结果稳定。
 func (s *MonitorService) GetKeywords(limit int) ([]KeywordStat, error) {
-	recent, err := s.recordRepo.GetRecentSearches(limit * 5)
-	if err != nil {
-		recent = []models.OperationRecord{}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > keywordMaxLimit {
+		limit = keywordMaxLimit
 	}
 
-	wordCount := make(map[string]int)
-	for _, r := range recent {
-		if r.SearchQuery != "" {
-			wordCount[r.SearchQuery]++
-		}
-	}
-
-	type wordStat struct {
+	type keywordRow struct {
 		Word  string
-		Count int
+		Count int64
 	}
-	stats := make([]wordStat, 0, len(wordCount))
-	for word, count := range wordCount {
-		stats = append(stats, wordStat{Word: word, Count: count})
+	var rows []keywordRow
+	// 按小写分组：MySQL 默认排序规则大小写不敏感，而 SQLite/PostgreSQL 敏感，
+	// 直接 GROUP BY search_query 会让三库的分组结果不一致。展示词取 MIN 保证确定性。
+	err := s.db.Model(&models.OperationRecord{}).
+		Select("MIN(LOWER(search_query)) AS word, COUNT(*) AS count").
+		Where("action = ? AND search_query IS NOT NULL AND search_query <> ''", "search").
+		Where("created_at >= ?", utils.Now().AddDate(0, 0, -keywordWindowDays)).
+		Group("LOWER(search_query)").
+		Order("COUNT(*) DESC").
+		Order("MIN(LOWER(search_query)) ASC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Count > stats[j].Count
-	})
 
-	result := make([]KeywordStat, 0, limit)
-	for i, s := range stats {
-		if i >= limit {
-			break
-		}
-		result = append(result, KeywordStat{Word: s.Word, Count: s.Count})
+	result := make([]KeywordStat, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, KeywordStat{Word: r.Word, Count: int(r.Count)})
 	}
-
 	return result, nil
 }
 
