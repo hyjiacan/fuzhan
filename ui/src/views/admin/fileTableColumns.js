@@ -163,6 +163,13 @@ export const buildFileColumns = ({
     },
     { title: '大小', key: 'size', width: 150, cellRenderer: ({ rowData: row }) => formatSize(row.size) },
     {
+      // 上传者IP：仅管理员接口返回；手动放入存储目录/扫描入库的文件没有记录，留空
+      title: '上传 IP',
+      key: 'uploaderIp',
+      width: 140,
+      cellRenderer: ({ rowData: row }) => row.uploaderIp || ''
+    },
+    {
       title: '修改时间',
       key: 'modifiedTime',
       width: 200,

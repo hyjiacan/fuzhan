@@ -74,6 +74,7 @@ type FileRecordInfo struct {
 	RootName      string `json:"rootName"`
 	DownloadCount int64  `json:"downloadCount"`
 	CanManage     bool   `json:"canManage"` // 当前请求者能否管理（管理员，或上传者IP一致）
+	UploaderIP    string `json:"uploaderIp,omitempty"` // 上传者IP，仅管理员请求时返回
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）
@@ -220,6 +221,11 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 			modifiedTime = r.ModTime.Format("2006-01-02T15:04:05")
 		}
 		canManage := isAdmin
+		uploaderIP := ""
+		if isAdmin {
+			// 上传者IP仅对管理员返回，避免公开浏览时泄露
+			uploaderIP = r.UploaderIP
+		}
 		result = append(result, FileRecordInfo{
 			Name:          r.FileName,
 			Type:          fileType,
@@ -235,6 +241,7 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 			RootName:      r.RootName,
 			DownloadCount: r.DownloadCount,
 			CanManage:     canManage,
+			UploaderIP:    uploaderIP,
 		})
 	}
 	return result, nil
