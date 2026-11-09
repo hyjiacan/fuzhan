@@ -74,7 +74,7 @@ lightshare/
 1. **阶段1 配置加载**：`appconfig.DoInitWithConfig(webAssets, configPath)`（创建/读取配置、展开 `${work_dir}`、建 data 目录、初始化日志）。
 2. **阶段2 数据库**：`appconfig.InitDB(&cfg.Database)` → `SetDB`；初始化 JWT 密钥（`jwt.SetJWTSecretGetter` 每次从 `GlobalConfig` 读；未配置则生成并持久化）；设置安全配置 getter。
 3. **AutoMigrate**（`bootstrap.go:85`，模型清单见 §6）+ 索引保障：`EnsureFileRecordIndexes`、`EnsureOperationRecordIndexes`、`CleanupOperationRecordIndexes`、`EnsureSecurityEventIndexes`。
-4. **历史数据回填（幂等）**：`BackfillPublicDownloadCounts`、`BackfillFileRecordIDs`、`BackfillOperationRecordSource`、`BackfillDownloadSignature`、`BackfillDownloadCounted`（有补齐时再 `RecountAllPublicDownloadCounts`）。
+4. **历史数据回填（幂等）**：`DedupePublicFileRecords`（收敛同一路径的重复索引记录）、`BackfillPublicDownloadCounts`、`BackfillFileRecordIDs`、`BackfillOperationRecordSource`、`BackfillDownloadSignature`、`BackfillDownloadCounted`（有补齐时再 `RecountAllPublicDownloadCounts`）。
 5. `utils.InitMetrics()`；`createAdmin` 非空则创建管理员后返回。
 6. **阶段3 服务初始化**：`buildPublicStorages`（rootName → `storage.Storage`，本地后端可不注入）→ 按顺序构造 service / handler（列表见 §5.2）。
 7. **阶段4**：汇总为 `*runCtx` 返回，进入 `rt.run()`。
@@ -91,7 +91,7 @@ lightshare/
 | cleanup | `runCleanupWorker` | 启动即跑一次 + cron |
 | index-scan | `runIndexScanWorker` | 延迟后按 scope（public/temp）检查并触发初始扫描；私有元数据由 DB 维护不扫描 |
 | scan-timer | `runScanTimerWorker` | 等初始扫描结束 → 定时扫描 + 文件监听 + 注册热更新钩子 |
-| consistency-check | `runConsistencyCheckWorker` | 等初始扫描结束 → cron 一致性校验 |
+| consistency-check | `runConsistencyCheckWorker` | 等初始扫描结束 → cron 一致性校验（结束后兜底收敛重复索引记录） |
 | search-reconcile | `runSearchReconcileWorker` | 等初始扫描结束 → cron 检索索引对齐 |
 | resource-monitor | `resourceCollector.Run` | 资源采样 |
 | storage-alert | `storageAlertService.Run` | 非 nil 才启动 |
@@ -374,8 +374,9 @@ API Key / 索引记录 / Open API / 日志 / 资源
 ### 9.2 索引与检索
 
 - 双写：SQL 索引表（`file_records_*`）+ Bluge 全文检索索引。
+- 增量同步：`SyncFile` 持有 `lockWrite` 串行化“查-建”，写库后调用 `collapsePublicRecordDuplicates` 收敛同路径重复行；SQLite/PostgreSQL 另建部分唯一索引 `idx__file_records_public__active_path`（`WHERE status='active'`）兜底，MySQL 依赖应用层锁。
 - 哈希：xxh3 哈希 worker 在“文件落盘稳定”后计算，通过 `FileSettledGate` / `WriteGate` / `FileGate` 串行化写入与哈希，避免读到未完成文件。
-- 一致性：`consistency.go` 周期比对文件系统与索引表；`snapshot`/`duplicates`/`dependencies` 供后台页面使用。
+- 一致性：`consistency.go` 周期比对文件系统与索引表，结束后调用 `DedupePublicFileRecords` 兜底收敛同一路径重复记录（保留最早行、合并 uploader_ip/哈希/备注/下载次数、重定向 operation_records/file_dependencies 引用后软删）；`snapshot`/`duplicates`/`dependencies` 供后台页面使用。
 - 检索对齐：`ReconcileIndex` 输出 `IndexedTotal` / `MissingIndexed` / `OrphansRemoved`。
 - 搜索接口：全文（`/search/*query`，最多 1000 条）、联想（`search-suggest`）、纠错（`search-spellcheck`）、相关词（`search-related`）。
 

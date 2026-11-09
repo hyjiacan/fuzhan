@@ -79,6 +79,9 @@ func (c *ConsistencyChecker) RunCheck(ctx context.Context) (*ConsistencyReport, 
 		}
 	}
 
+	// 兜底：收敛历史遗留或异常并发产生的同一路径重复记录（幂等，无重复时不写库）
+	DedupePublicFileRecords(c.db)
+
 	report.Duration = time.Since(startTime)
 	utils.Info("一致性校验完成",
 		utils.Int("missing_in_fs", len(report.MissingInFS)),

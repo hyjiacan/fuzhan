@@ -84,6 +84,10 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
 	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{}, &models.AlertMessage{})
 
+	// 收敛公共文件索引表中同一路径的重复记录（启动时幂等执行）。
+	// 必须先于 EnsureFileRecordIndexes，否则"活跃路径唯一索引"会因存量重复而创建失败
+	index.DedupePublicFileRecords(db)
+
 	// 为 file_records_public/temp/private 统一创建索引（命名格式：idx__{table}__{col1}_{col2}_...）
 	models.EnsureFileRecordIndexes(db)
 	// 为操作记录表创建组合索引（最近/热门列表按 action + created_at 过滤排序）

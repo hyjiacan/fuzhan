@@ -167,6 +167,24 @@ func EnsureFileRecordIndexes(db *gorm.DB) {
 	// 私有表额外建 share_code 唯一索引（分享下载按码直接反查）。
 	// 空的 share_code（存量未迁移记录）在 SQLite 唯一索引下按 NULL 处理，多行互不冲突。
 	createIndexIfMissing(db, &FileRecordPrivate{}, "idx__"+FileRecordPrivate{}.TableName()+"__share_code", true, "share_code")
+
+	// 同一路径只允许一条 active 记录：并发"先查再建"的数据库级兜底。
+	// 条件用 status='active' 而不是 deleted_at IS NULL：历史状态为 deleted 的行（deleted_at 为空）
+	// 仍要保留给"删除记录"页面展示，不能参与冲突，否则文件恢复后再建索引会插入失败。
+	// SQLite/PostgreSQL 支持部分唯一索引；MySQL 无部分索引，退化为应用层
+	// lockWrite 串行化 + 写后收敛（collapsePublicRecordDuplicates）。
+	if name := db.Dialector.Name(); name == "sqlite" || name == "postgres" {
+		idx := "idx__" + FileRecordPublic{}.TableName() + "__active_path"
+		if !db.Migrator().HasIndex(&FileRecordPublic{}, idx) {
+			stmt := "CREATE UNIQUE INDEX IF NOT EXISTS " + idx +
+				" ON " + FileRecordPublic{}.TableName() +
+				" (root_name, file_path) WHERE status = '" + string(FileStatusActive) + "'"
+			if err := db.Exec(stmt).Error; err != nil {
+				// 存量仍有重复时建索引会失败；启动时的去重会先清掉，下次启动自动补建
+				db.Logger.Warn(nil, "创建活跃路径唯一索引失败（存量存在重复记录时去重后再重试）: %v", err)
+			}
+		}
+	}
 }
 
 // EnsureOperationRecordIndexes 为操作记录表创建组合索引（单列索引由 GORM 自动迁移创建）。

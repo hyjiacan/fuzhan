@@ -124,11 +124,19 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
 	// 记录 ID（新增或更新后），事务提交后同步检索索引
 	var fileID int64
 
+	// 串行化"查-建"：与扫描/哈希/一致性共用同一把后台写锁，避免同一路径
+	// 被并发写入方各插一条（锁只包住写库，不包住上面的 stat）
+	release := lockWrite()
+	defer release()
+
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		// === 写入 file_records_public ===
 		var record models.FileRecordPublic
-		result := tx.Where("root_name = ? AND file_path = ?",
-			rootName, dbPath).First(&record)
+		// 优先命中 active 行：状态为 deleted 的历史行（deleted_at 为空）也会被默认作用域查到，
+		// 若其 id 更小就会被 First 选中，再置为 active 会与"活跃路径唯一索引"冲突
+		result := tx.Where("root_name = ? AND file_path = ?", rootName, dbPath).
+			Order("CASE WHEN status = '" + string(models.FileStatusActive) + "' THEN 0 ELSE 1 END, id ASC").
+			First(&record)
 
 		if result.Error != nil {
 			if result.Error == gorm.ErrRecordNotFound {
@@ -174,6 +182,25 @@ func (s *Syncer) syncFileOnce(rootName, filePath string) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	// 收敛同路径重复行：历史上已产生的重复（或存在其他实例/写入方时）在同步后也只保留一条，
+	// 并把 uploader_ip/哈希/备注等有效字段合并到保留行
+	if keeperID, removed, cerr := collapsePublicRecordDuplicates(s.db, rootName, dbPath); cerr != nil {
+		utils.Warn("索引同步后收敛重复记录失败",
+			utils.String("root", rootName),
+			utils.String("path", dbPath),
+			utils.Err(cerr))
+	} else {
+		if removed > 0 {
+			utils.Info("索引同步收敛重复记录",
+				utils.String("root", rootName),
+				utils.String("path", dbPath),
+				utils.Int("removed", removed))
+		}
+		if keeperID > 0 {
+			fileID = int64(keeperID)
+		}
 	}
 
 	// 索引同步（幂等，按 fileID 覆盖）；未注入 notifier 时无副作用
