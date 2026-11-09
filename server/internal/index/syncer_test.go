@@ -50,7 +50,7 @@ func newSyncerEnv(t *testing.T) (*Syncer, string, *memoNotifier) {
 	t.Helper()
 	db := setupTestDB(t)
 	root := t.TempDir()
-	svc := NewService(db, map[string]string{"docs": root}, "", "")
+	svc := NewService(db, map[string]string{"docs": root})
 	n := newMemoNotifier()
 	svc.SetFileIndexNotifier(n)
 	// 读取内部 syncer（测试同包内可直接访问）

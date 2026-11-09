@@ -15,7 +15,7 @@ func (s *Service) StartScan() error {
 
 // StartScanByScope 启动指定 scope 的全量扫描
 // 扫描完成后自动触发哈希计算
-// 注意：临时文件不建立索引，直接跳过（在 Scanner.StartScanScope 中处理）
+// 注意：临时/私有文件元数据由数据库维护，直接跳过（在 Scanner.StartScanScope 中处理）
 func (s *Service) StartScanByScope(scope ScanScope, trigger string) error {
 	// 使用独立的 Background Context，不绑定 HTTP 请求生命周期
 	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
@@ -71,7 +71,7 @@ func (s *Service) GetHashProgress() HashProgress {
 // ScannedStats 返回所有 scope 的扫描状态摘要
 func (s *Service) ScannedStats() map[ScanScope]string {
 	stats := make(map[ScanScope]string)
-	for _, scope := range []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate} {
+	for _, scope := range []ScanScope{ScanScopePublic, ScanScopeTemp} {
 		p := s.scanner.GetScopeProgress(scope)
 		stats[scope] = string(p.Status)
 	}
@@ -120,8 +120,6 @@ func (s *Service) IsScopeEmpty(scope ScanScope) (bool, error) {
 		err = s.db.Model(&models.FileRecordPublic{}).Count(&count).Error
 	case ScanScopeTemp:
 		err = s.db.Model(&models.FileRecordTemp{}).Count(&count).Error
-	case ScanScopePrivate:
-		err = s.db.Model(&models.FileRecordPrivate{}).Count(&count).Error
 	}
 
 	if err != nil {

@@ -122,7 +122,7 @@ func (h *Handler) GetScanStatus(c *gin.Context) {
 func (h *Handler) TriggerFullScan(c *gin.Context) {
 	// 检查是否有正在进行的扫描
 	runningScopes := []string{}
-	for _, scope := range []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate} {
+	for _, scope := range []ScanScope{ScanScopePublic, ScanScopeTemp} {
 		progress := h.svc.GetScanProgressByScope(scope)
 		if progress.Status == ScanStatusRunning {
 			runningScopes = append(runningScopes, string(scope))
@@ -143,7 +143,7 @@ func (h *Handler) TriggerFullScan(c *gin.Context) {
 			}
 		}()
 
-		scopes := []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate}
+		scopes := []ScanScope{ScanScopePublic, ScanScopeTemp}
 		for _, scope := range scopes {
 			progress := h.svc.GetScanProgressByScope(scope)
 			if progress.Status == ScanStatusRunning {
@@ -167,7 +167,7 @@ func (h *Handler) TriggerFullScan(c *gin.Context) {
 		}
 	}()
 
-	response.HandleSuccess(c, http.StatusOK, "全量扫描已启动 (public → temp → private)", nil)
+	response.HandleSuccess(c, http.StatusOK, "全量扫描已启动 (public → temp)", nil)
 }
 
 // TriggerConsistencyCheck 触发一致性校验

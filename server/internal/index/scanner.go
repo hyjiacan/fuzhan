@@ -15,30 +15,26 @@ import (
 const scanBatchFlushInterval = 3 * time.Second
 
 // Scanner 全量扫描器
-// 负责对公开/临时/私有文件进行全量扫描, 为每个文件建立索引记录。
-// 扫描逻辑: 遍历文件系统/数据库, 新增不存在的记录。
-// 支持多 scope 扫描，每个 scope 独立进度跟踪。
+// 负责公开文件的文件系统全量扫描，为每个文件建立索引记录。
+// 临时/私有文件的元数据由数据库维护，不扫描文件系统。
+// 支持多 scope 进度跟踪。
 type Scanner struct {
-	db           *gorm.DB
-	rootNames    map[string]string
-	storages     map[string]storage.Storage // rootName → Storage（远端后端注入）
-	tempFilePath string
-	privatePath  string
-	progresses   map[ScanScope]*ScanProgress // 每个 scope 独立进度
-	mu           sync.Mutex
-	batchSize    int
-	taskService  TaskRecorder // 可选，用于记录扫描任务到 task_records
+	db          *gorm.DB
+	rootNames   map[string]string
+	storages    map[string]storage.Storage  // rootName → Storage（远端后端注入）
+	progresses  map[ScanScope]*ScanProgress // 每个 scope 独立进度
+	mu          sync.Mutex
+	batchSize   int
+	taskService TaskRecorder // 可选，用于记录扫描任务到 task_records
 }
 
 // NewScanner 创建全量扫描器
-func NewScanner(db *gorm.DB, rootNames map[string]string, tempFilePath, privatePath string) *Scanner {
+func NewScanner(db *gorm.DB, rootNames map[string]string) *Scanner {
 	return &Scanner{
-		db:           db,
-		rootNames:    rootNames,
-		tempFilePath: tempFilePath,
-		privatePath:  privatePath,
-		progresses:   make(map[ScanScope]*ScanProgress),
-		batchSize:    500,
+		db:         db,
+		rootNames:  rootNames,
+		progresses: make(map[ScanScope]*ScanProgress),
+		batchSize:  500,
 	}
 }
 
@@ -84,12 +80,10 @@ func (s *Scanner) StartScanScope(ctx context.Context, scope ScanScope, trigger s
 	switch scope {
 	case ScanScopePublic:
 		go s.runScan(ctx, trigger)
-	case ScanScopeTemp:
-		// 临时文件不建立索引，直接标记完成
+	default:
+		// 临时/私有文件的元数据由数据库维护，无需扫描文件系统
 		progress.SetTotalFiles(0)
 		progress.SetStatus(ScanStatusCompleted)
-	case ScanScopePrivate:
-		go s.runPrivateScan(ctx)
 	}
 	return nil
 }

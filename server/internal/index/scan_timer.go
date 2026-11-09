@@ -138,9 +138,9 @@ func (s *Service) runScanTimer(schedule cron.Schedule, cronExpr string) {
 	}
 }
 
-// runScheduledScan 执行一次完整的定时扫描（public → temp → private）
+// runScheduledScan 执行一次完整的定时扫描（public → temp）
 func (s *Service) runScheduledScan() {
-	scopes := []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate}
+	scopes := []ScanScope{ScanScopePublic, ScanScopeTemp}
 
 	for _, scope := range scopes {
 		// 按配置跳过未启用的范围
@@ -148,11 +148,6 @@ func (s *Service) runScheduledScan() {
 		case ScanScopeTemp:
 			if !appconfig.GetConfig().Storage.Temp.Enabled {
 				utils.Info("定时扫描跳过临时文件范围（临时文件功能未启用）")
-				continue
-			}
-		case ScanScopePrivate:
-			if !appconfig.GetConfig().Storage.Private.Enabled {
-				utils.Info("定时扫描跳过私有文件范围（私有存储功能未启用）")
 				continue
 			}
 		}
@@ -229,7 +224,7 @@ func (s *Service) GetScanStatus() ScanStatusResponse {
 	isScanning := false
 	scope := ""
 	var processed, total int64
-	for _, sc := range []ScanScope{ScanScopePublic, ScanScopeTemp, ScanScopePrivate} {
+	for _, sc := range []ScanScope{ScanScopePublic, ScanScopeTemp} {
 		p := s.scanner.GetScopeProgress(sc)
 		if p.Status == ScanStatusRunning {
 			isScanning = true

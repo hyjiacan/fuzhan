@@ -850,9 +850,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	if appconfig.GlobalConfig.Storage.Private.Enabled && appconfig.GlobalConfig.Storage.Private.Path != "" {
 		for _, dir := range []string{
 			appconfig.GlobalConfig.Storage.Private.Path,
-			filepath.Join(appconfig.GlobalConfig.Storage.Private.Path, "files"),
 			filepath.Join(appconfig.GlobalConfig.Storage.Private.Path, "users"),
-			filepath.Join(appconfig.GlobalConfig.Storage.Private.Path, "metadata"),
 		} {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				utils.Warn("创建私有存储目录失败", utils.String("dir", dir), utils.Err(err))

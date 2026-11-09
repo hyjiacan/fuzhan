@@ -89,7 +89,7 @@ lightshare/
 | http | 内联 | `http.Server`，10s 优雅关闭，超时强制 `Close()`（SSE 长连接） |
 | ftp | `runFTPWorker` | FTP/FTPS |
 | cleanup | `runCleanupWorker` | 启动即跑一次 + cron |
-| index-scan | `runIndexScanWorker` | 延迟后按 scope 检查并触发初始扫描 |
+| index-scan | `runIndexScanWorker` | 延迟后按 scope（public/temp）检查并触发初始扫描；私有元数据由 DB 维护不扫描 |
 | scan-timer | `runScanTimerWorker` | 等初始扫描结束 → 定时扫描 + 文件监听 + 注册热更新钩子 |
 | consistency-check | `runConsistencyCheckWorker` | 等初始扫描结束 → cron 一致性校验 |
 | search-reconcile | `runSearchReconcileWorker` | 等初始扫描结束 → cron 检索索引对齐 |
@@ -354,7 +354,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
 |---|---|---|
 | `runCronJob` | 通用 cron 执行器，仅 5 段解析；表达式空/非法回退默认值；每 30s 唤醒以响应取消 | — |
 | `runCleanupWorker` | 启动立即清理 + 周期清理：公开/私有/临时上传会话 + 过期临时文件；写 `cleanup` 任务记录 | `0 * * * *` |
-| `runIndexScanWorker` | 延迟 `scan_start_delay_seconds`（≤0 用 10s）后，按 public/temp/private 检查；temp/private 未启用则跳过；进行中跳过 | 启动一次 |
+| `runIndexScanWorker` | 延迟 `scan_start_delay_seconds`（≤0 用 10s）后，按 public/temp 检查；temp 未启用则跳过；进行中跳过。私有文件元数据由数据库维护，不做文件系统扫描 | 启动一次 |
 | `runScanTimerWorker` | 轮询（5s）等初始扫描结束 → `StartScanTimer` + `StartWatcher`，并注册配置保存钩子重启 | — |
 | `runConsistencyCheckWorker` | 等扫描结束 → 全量扫描进行中则跳过 → `RunConsistencyCheck` | `0 3 * * *` |
 | `runSearchReconcileWorker` | 等扫描结束 → `idxSearch` 为 nil 则不启动 → `ReconcileIndex` 并记录任务进度/详情 | `0 5 * * *` |

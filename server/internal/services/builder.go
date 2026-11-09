@@ -26,19 +26,15 @@ type ServiceDependencies struct {
 // ServiceBuilder 服务构建器
 // 确保服务按正确的依赖顺序创建
 type ServiceBuilder struct {
-	deps        ServiceDependencies
-	tempPath    string
-	privatePath string
+	deps ServiceDependencies
 }
 
 // NewServiceBuilder 创建服务构建器
-func NewServiceBuilder(db *gorm.DB, tempPath, privatePath string) *ServiceBuilder {
+func NewServiceBuilder(db *gorm.DB) *ServiceBuilder {
 	return &ServiceBuilder{
 		deps: ServiceDependencies{
 			DB: db,
 		},
-		tempPath:    tempPath,
-		privatePath: privatePath,
 	}
 }
 
@@ -50,7 +46,7 @@ func (sb *ServiceBuilder) WithRecordRepository() *ServiceBuilder {
 
 // WithIndexService 设置索引服务（需在 FileService 之前创建）
 func (sb *ServiceBuilder) WithIndexService(rootNames map[string]string) *ServiceBuilder {
-	sb.deps.IndexService = index.NewService(sb.deps.DB, rootNames, sb.tempPath, sb.privatePath)
+	sb.deps.IndexService = index.NewService(sb.deps.DB, rootNames)
 	return sb
 }
 
@@ -105,14 +101,14 @@ func (sb *ServiceBuilder) Build() *ServiceDependencies {
 }
 
 // BuildAll 按正确顺序构建所有核心服务
-func BuildAllServices(db *gorm.DB, rootNames map[string]string, tempPath, privatePath string, publicStorages map[string]storage.Storage) *ServiceDependencies {
+func BuildAllServices(db *gorm.DB, rootNames map[string]string, publicStorages map[string]storage.Storage) *ServiceDependencies {
 	deps := &ServiceDependencies{DB: db, PublicStorages: publicStorages}
 
 	// 1. 先创建仓库
 	deps.RecordRepo = repositories.NewRecordRepository(db)
 
 	// 2. 创建索引服务
-	deps.IndexService = index.NewService(db, rootNames, tempPath, privatePath)
+	deps.IndexService = index.NewService(db, rootNames)
 
 	// 3. 基于索引服务创建文件服务
 	deps.FileService = NewFileService(publicStorages)

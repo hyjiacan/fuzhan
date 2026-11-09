@@ -53,7 +53,7 @@ func createTestRecord(db *gorm.DB, name, path, root, hash string, size int64) ui
 
 func TestListDuplicateGroups_NoDuplicates(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	// 创建两个不同哈希的文件
 	createTestRecord(db, "f1.txt", "/f1.txt", "docs", "hash1", 100)
@@ -76,7 +76,7 @@ func TestListDuplicateGroups_NoDuplicates(t *testing.T) {
 func TestKeepDuplicate_UpdatesListTotal(t *testing.T) {
 	root := t.TempDir()
 	db := setupTestDB(t)
-	svc := NewService(db, map[string]string{"docs": root}, "", "")
+	svc := NewService(db, map[string]string{"docs": root})
 
 	id1 := createTestRecord(db, "a.txt", "/a.txt", "docs", "samehash", 100)
 	createTestRecord(db, "b.txt", "/b.txt", "docs", "samehash", 100)
@@ -112,7 +112,7 @@ func TestKeepDuplicate_UpdatesListTotal(t *testing.T) {
 
 func TestListDuplicateGroups_WithDuplicates(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	// 创建三个相同哈希的文件
 	createTestRecord(db, "original.txt", "/original.txt", "docs", "samehash", 100)
@@ -139,7 +139,7 @@ func TestListDuplicateGroups_WithDuplicates(t *testing.T) {
 
 func TestListDuplicateGroups_ExcludesDeletedAndDirs(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	createTestRecord(db, "active.txt", "/active.txt", "docs", "samehash", 100)
 	createTestRecord(db, "copy.txt", "/copy.txt", "docs", "samehash", 100)
@@ -176,7 +176,7 @@ func TestListDuplicateGroups_ExcludesDeletedAndDirs(t *testing.T) {
 
 func TestListDuplicateGroups_ExcludesEmptyHash(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	// 空哈希的文件不应计入重复分组
 	createTestRecord(db, "a.txt", "/a.txt", "docs", "", 100)
@@ -196,7 +196,7 @@ func TestListDuplicateGroups_ExcludesEmptyHash(t *testing.T) {
 
 func TestListDuplicateGroups_MinSize(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	createTestRecord(db, "small1.txt", "/small1.txt", "docs", "hash_small", 50)
 	createTestRecord(db, "small2.txt", "/small2.txt", "docs", "hash_small", 50)
@@ -234,7 +234,7 @@ func TestListDuplicateGroups_MinSize(t *testing.T) {
 
 func TestListDuplicateGroups_Pagination(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	// 创建多组重复（每组的文件数不同）
 	createTestRecord(db, "a1.txt", "/a1.txt", "docs", "hash_a", 100)
@@ -259,7 +259,7 @@ func TestListDuplicateGroups_Pagination(t *testing.T) {
 
 func TestListDuplicateGroups_MultipleHashes(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	// 两个不同的哈希值，每组 5 个文件
 	for i := 0; i < 5; i++ {
@@ -288,7 +288,7 @@ func TestListDuplicateGroups_MultipleHashes(t *testing.T) {
 
 func TestUpdateNotes_Success(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	id := createTestRecord(db, "test.txt", "/test.txt", "docs", "hash", 100)
 
@@ -306,7 +306,7 @@ func TestUpdateNotes_Success(t *testing.T) {
 
 func TestUpdateNotes_EmptyNotes(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	id := createTestRecord(db, "test.txt", "/test.txt", "docs", "hash", 100)
 
@@ -326,7 +326,7 @@ func TestUpdateNotes_EmptyNotes(t *testing.T) {
 
 func TestUpdateNotes_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	err := svc.UpdateNotes(99999, "notes")
 	if err == nil {
@@ -336,7 +336,7 @@ func TestUpdateNotes_NotFound(t *testing.T) {
 
 func TestUpdateNotes_MultipleRecords(t *testing.T) {
 	db := setupTestDB(t)
-	svc := NewService(db, nil, "", "")
+	svc := NewService(db, nil)
 
 	id1 := createTestRecord(db, "a.txt", "/a.txt", "docs", "hash_a", 100)
 	id2 := createTestRecord(db, "b.txt", "/b.txt", "docs", "hash_b", 200)

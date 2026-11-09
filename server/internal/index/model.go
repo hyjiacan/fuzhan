@@ -14,8 +14,6 @@ const (
 	ScanScopePublic ScanScope = "public"
 	// ScanScopeTemp 临时文件索引
 	ScanScopeTemp ScanScope = "temp"
-	// ScanScopePrivate 私有文件索引
-	ScanScopePrivate ScanScope = "private"
 )
 
 // ScanStatus 扫描状态

@@ -382,11 +382,9 @@ func initTempDirectories(isSetup bool) {
 		return
 	}
 
-	// 创建必要的子目录
+	// 创建必要的子目录（文件元数据由数据库维护，仅保留用户目录）
 	directories := []string{
-		filepath.Join(GlobalConfig.Storage.Private.Path, "files"),    // 存储完整文件
-		filepath.Join(GlobalConfig.Storage.Private.Path, "users"),    // 用户目录
-		filepath.Join(GlobalConfig.Storage.Private.Path, "metadata"), // 元数据目录
+		filepath.Join(GlobalConfig.Storage.Private.Path, "users"), // 用户目录
 	}
 
 	for _, dir := range directories {

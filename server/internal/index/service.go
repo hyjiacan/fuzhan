@@ -89,11 +89,11 @@ func (s *Service) SetFileIndexNotifier(n FileIndexNotifier) {
 }
 
 // NewService 创建索引服务
-func NewService(db *gorm.DB, rootNames map[string]string, tempFilePath, privatePath string) *Service {
+func NewService(db *gorm.DB, rootNames map[string]string) *Service {
 	s := &Service{
 		db:             db,
 		rootNames:      rootNames,
-		scanner:        NewScanner(db, rootNames, tempFilePath, privatePath),
+		scanner:        NewScanner(db, rootNames),
 		syncer:         NewSyncer(db, rootNames),
 		checker:        NewConsistencyChecker(db, rootNames),
 		hashWorker:     NewHashWorker(db, rootNames),

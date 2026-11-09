@@ -140,8 +140,6 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	serviceDeps := services.BuildAllServices(
 		db,
 		appconfig.RootNames,
-		cfg.Storage.Temp.Path,
-		cfg.Storage.Private.Path,
 		publicStorages,
 	)
 

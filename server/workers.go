@@ -141,7 +141,6 @@ func (rt *runCtx) runIndexScanWorker(ctx context.Context) {
 	}{
 		{index.ScanScopePublic, "公开文件"},
 		{index.ScanScopeTemp, "临时文件"},
-		{index.ScanScopePrivate, "私有文件"},
 	}
 
 	for _, s := range scopes {
@@ -150,11 +149,6 @@ func (rt *runCtx) runIndexScanWorker(ctx context.Context) {
 		case index.ScanScopeTemp:
 			if !appconfig.GetConfig().Storage.Temp.Enabled {
 				utils.Info("临时文件索引扫描已跳过（临时文件功能未启用）")
-				continue
-			}
-		case index.ScanScopePrivate:
-			if !appconfig.GetConfig().Storage.Private.Enabled {
-				utils.Info("私有文件索引扫描已跳过（私有存储功能未启用）")
 				continue
 			}
 		}
