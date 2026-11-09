@@ -86,6 +86,7 @@ docs/
 
 ## 开发文档（development/）
 
+- [项目上下文](./development/project-context.md) — 单文件项目全貌（启动链路、配置、分层、模型、全量路由、worker、前端、构建、约定），供新会话免读代码库
 - [开发指南](./development/development-guide.md) — 环境配置、开发命令、构建部署、测试、代码规范
 
 ---
@@ -126,10 +127,10 @@ cd server && go run .
 # 或使用 Air: cd server && air
 
 # 前端
-cd ui && npm run dev
+cd ui && yarn dev
 ```
 
-访问：前端 `http://localhost:5173`，后端 `http://localhost:8080`。
+访问：前端 `http://localhost:3000`（Vite 代理 /api、/download、/share 到后端），后端 `http://localhost:8888`。
 环境要求与构建部署详见[开发指南](./development/development-guide.md)。
 
 ---
