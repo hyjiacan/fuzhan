@@ -122,7 +122,7 @@ function Build-Platforms {
             $exitCode = -1
             $env:GOOS = $OS
             $env:GOARCH = $ARCH
-            go build -ldflags "-s -w" -o "$binDir/$EXE_NAME" .
+            go build -ldflags "-s -w -X fuzhan/internal/version.Version=$VERSION" -o "$binDir/$EXE_NAME" .
             $exitCode = $LASTEXITCODE
         } finally {
             Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue

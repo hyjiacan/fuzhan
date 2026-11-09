@@ -7,6 +7,7 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/utils"
+	"fuzhan/internal/version"
 	"fuzhan/pkg/response"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -128,7 +129,7 @@ func (hh *HealthHandler) Health(c *gin.Context) {
 
 	resp := HealthCheckResponse{
 		Status:    overallStatus,
-		Version:   "1.0.0",
+		Version:   version.Version,
 		Checks:    checks,
 		Timestamp: utils.Now().Format(time.RFC3339),
 	}
@@ -185,7 +186,7 @@ func (hh *HealthHandler) Ready(c *gin.Context) {
 	resp := ReadyResponse{
 		Status:  status,
 		Checks:  checks,
-		Version: "1.0.0",
+		Version: version.Version,
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "就绪检查完成", resp)

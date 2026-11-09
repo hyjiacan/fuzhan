@@ -87,7 +87,7 @@ docs/
 ## 开发文档（development/）
 
 - [项目上下文](./development/project-context.md) — 单文件项目全貌（启动链路、配置、分层、模型、全量路由、worker、前端、构建、约定），供新会话免读代码库
-- [开发指南](./development/development-guide.md) — 环境配置、开发命令、构建部署、测试、代码规范
+- [开发指南](./development/development-guide.md) — 环境配置、开发命令、构建部署、版本发布、测试、代码规范
 
 ---
 

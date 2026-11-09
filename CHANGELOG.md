@@ -21,6 +21,7 @@
 
 ### 更改
 
+- **版本号注入与发布流程规范**：构建脚本通过 `-ldflags -X fuzhan/internal/version.Version=<version>` 把发布版本注入二进制，`/api/v1/web/health`、`/api/v1/web/ready` 与 OpenAPI `info.version` 不再硬编码 `1.0.0`，与实际发布版本一致；发布流程（SemVer 版本号、CHANGELOG 定稿、打包、打标签、双远端推送与 Releases 回验）已写入开发指南。(hyjiacan, 2026-11-09)
 - **就绪检查移入受保护范围**：`GET /api/v1/ready` 迁移为 `GET /api/v1/web/ready`，改由登录守卫（LoginGate）保护；强制登录开启后未登录访问返回 401，避免就绪探测绕过登录边界。前端页脚健康状态、健康检查 `/api/v1/web/health` 仍保持匿名。(hyjiacan, 2026-10-31)
 - **公开选项移除 URL 上传内网放行网段**：公开接口 `GET /api/v1/web/options` 不再返回 `upload.urlUpload.allowedIPRanges`（仅管理员经 `GET/POST /api/v1/web/config` 查看与维护，后端 URL 上传 SSRF 白名单仍按该配置生效），避免把敏感内网网段泄露给匿名调用方。(hyjiacan, 2026-10-31)
 - **设置页防浏览器密码自动填充**：LDAP 绑定密码、OAuth2 Client Secret、MySQL/PostgreSQL 密码等输入框统一设置 `autocomplete="new-password"`，相邻用户名/绑定 DN 字段设置 `autocomplete="off"`，从源头阻断密码管理器自动填充误触发「配置变更」提示。(hyjiacan, 2026-10-19)

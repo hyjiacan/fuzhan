@@ -11,6 +11,7 @@
 - [快速开始](#快速开始)
 - [开发命令](#开发命令)
 - [构建部署](#构建部署)
+- [版本发布](#版本发布)
 - [配置说明](#配置说明)
 - [常见任务](#常见任务)
 - [测试](#测试)
@@ -238,7 +239,80 @@ cd ui
 yarn build
 ```
 
-构建产物输出到 `ui/dist/`，会被嵌入到后端二进制文件中。
+构建产物输出到 `server/web/`（`ui/vite.config.js` 的 `build.outDir`），会被嵌入到后端二进制文件中。
+
+### 版本发布
+
+> 版本规则：遵循 SemVer，Git 标签为 `x.y.z`（不带 `v` 前缀）；变更记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+
+#### 1. 确定版本号
+
+| 变更类型 | 递增位 | 示例 |
+|---|---|---|
+| 不兼容的接口或行为变更 | major | `1.2.0` → `2.0.0` |
+| 向下兼容的新功能 | minor | `2.0.0` → `2.1.0` |
+| 向下兼容的问题修复 | patch | `2.1.0` → `2.1.1` |
+
+该版本号同时用于 Git 标签、CHANGELOG 小节标题和打包文件名。
+
+#### 2. 定稿 CHANGELOG
+
+1. 把 `## [未发布]` 改为 `## [x.y.z] - YYYY-MM-DD`（日期取发布当天，UTC）。
+2. 在文件顶部重新插入空的 `## [未发布]` 骨架，保留 `新增 / 更改 / 修复 / 移除` 四个小节。
+3. 核对条目格式为 `- 描述。(作者, YYYY-MM-DD)`；破坏性变更必须在「更改」中写明影响范围。
+
+#### 3. 发布前校验
+
+```powershell
+cd server; go test ./...    # 后端全量测试必须通过
+cd ui; yarn build           # 前端必须可构建（产物会被 embed 进二进制）
+```
+
+#### 4. 构建与打包
+
+```powershell
+# Windows
+.\build.ps1 -v x.y.z -p
+
+# Linux/macOS
+./build.sh -v x.y.z -p
+```
+
+- 不带 `-p` 只产出可执行文件；带 `-p` 额外生成 zip 并删除中间二进制。
+- 平台固定 `windows/amd64`、`linux/amd64`；单独构建用 `.\build.ps1 server w|l -v x.y.z -p`。
+- **正式发布必须显式传 `-v`**：省略时版本取当天日期 `yyyy.MM.dd`，与 SemVer 标签不一致。
+- 前端构建失败会中止打包；`server/scalar/scalar.html` 已存在时跳过 scalar 重建（scalar 源码有更新需先 `yarn build:scalar`）。
+- 构建脚本通过 `-ldflags "-X fuzhan/internal/version.Version=<version>"` 把版本号注入二进制，`/health`、`/ready` 与 OpenAPI `info.version` 均取自该值；未经构建脚本编译（`go run` / `go test`）时回退为 `dev`。
+
+产物清单（`bin/`）：
+
+```
+fuzhan-x.y.z-windows-amd64.zip
+fuzhan-x.y.z-linux-amd64.zip
+```
+
+#### 5. 提交与打标签
+
+```powershell
+git add CHANGELOG.md
+git commit -m "chore(release): x.y.z"
+git tag x.y.z    # 轻量标签，与现有 1.0.0 / 1.2.0 / 2.0.0 保持一致
+```
+
+#### 6. 推送与发布
+
+```powershell
+git push origin main --follow-tags    # Gitee（主渠道）
+git push github main --follow-tags    # GitHub（同步）
+```
+
+在 Gitee Releases 创建 `x.y.z` 发布：说明直接取 CHANGELOG 对应小节，附件上传上述两个 zip；GitHub Releases 同步一份。
+
+#### 7. 发布后回验
+
+- 解压并启动任一产物，访问 `GET /api/v1/web/health`，确认返回的 `version` 与本次发布版本一致；
+- 核对 zip 内可执行文件名为 `fuzhan.exe`（Windows）/ `fuzhan`（Linux）；
+- 核对 Releases 附件齐全、标签名与 CHANGELOG 小节标题一致。
 
 ---
 

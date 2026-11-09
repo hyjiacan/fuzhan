@@ -1,5 +1,7 @@
 package openapi
 
+import "fuzhan/internal/version"
+
 // GenerateOpenAPISpec 生成 OpenAPI 3.x 规范文档
 func GenerateOpenAPISpec() map[string]interface{} {
 	return map[string]interface{}{
@@ -25,7 +27,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"- `403`：scope 不足（简单结构），或上传关闭/目录不允许上传等业务拒绝（信封结构）。\n" +
 				"- `404`：功能未开启（信封结构），或文件/记录/会话不存在（信封结构）。\n" +
 				"- `429`：触发频率限制（信封结构，带 `Retry-After` 与 `X-RateLimit-Limit` 响应头）。",
-			"version": "1.0.0",
+			"version": version.Version,
 		},
 		"servers": []map[string]interface{}{
 			{"url": "/api/open/v1", "description": "Open API v1"},

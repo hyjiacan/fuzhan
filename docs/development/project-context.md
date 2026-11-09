@@ -441,7 +441,8 @@ API Key / 索引记录 / Open API / 日志 / 资源
 .\build.ps1 -v 2026.11.08   # 指定版本（默认当天日期）
 ```
 
-- 后端命令：`go build -ldflags "-s -w" -o bin/fuzhan[.exe] .`（`cwd=server`）。
+- 后端命令：`go build -ldflags "-s -w -X fuzhan/internal/version.Version=<version>" -o bin/fuzhan[.exe] .`（`cwd=server`）；版本号由 `server/internal/version` 提供，`/health`、`/ready`、OpenAPI `info.version` 共用。
+- 正式发布的完整流程（SemVer 版本号、CHANGELOG 定稿、打包、打标签、Gitee/GitHub Releases、回验）见 `docs/development/development-guide.md#版本发布`。
 - 前端失败会中止后端构建（显式检查 `$LASTEXITCODE`）。
 - `assets.go` 的 `//go:embed` 依赖 `server/web/index.html`、`web/assets`、`fuzhan.sample.yaml`、`scalar/scalar.html`、`scalar/assets`；**缺失任一目录会导致编译失败**，需先构建前端。
 

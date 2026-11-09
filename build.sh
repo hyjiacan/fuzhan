@@ -112,7 +112,7 @@ build_server() {
         # 临时构建到统一名称
         TEMP_OUTPUT="$SCRIPT_DIR/bin/$EXE_NAME"
 
-        if GOOS="$OS" GOARCH="$ARCH" go build -ldflags "-s -w" -o "$TEMP_OUTPUT" .; then
+        if GOOS="$OS" GOARCH="$ARCH" go build -ldflags "-s -w -X fuzhan/internal/version.Version=$VERSION" -o "$TEMP_OUTPUT" .; then
             if [ "$PACK" = true ]; then
                 # 创建 zip 包
                 ZIP_NAME="$PROJECT_NAME-$VERSION-$OS-$ARCH.zip"
