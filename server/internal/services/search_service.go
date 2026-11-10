@@ -177,7 +177,8 @@ const depCountBatchSize = 500
 
 // LoadDependencyCounts 批量统计一组文件记录的依赖条数（上游 + 下游）。
 //
-// 口径与依赖树一致：对端记录缺失或非 active 的依赖不计入，避免数字大于弹窗实际展示条数。
+// 口径与依赖树一致：只要对端记录存在且未被软删除就计入，不看 status
+// （依赖树仅判断 TargetFile/SourceFile 是否为 nil，status=deleted 但记录仍在的照常展示）。
 // 传入空列表时直接返回空映射，不产生查询。
 func (s *SearchService) LoadDependencyCounts(ids []uint) (map[uint]int64, error) {
 	if s.db == nil || len(ids) == 0 {
@@ -204,8 +205,7 @@ func (s *SearchService) LoadDependencyCounts(ids []uint) (map[uint]int64, error)
 			Where("file_record_id IN ?", batch).
 			Where("EXISTS (?)", s.db.Model(&models.FileRecordPublic{}).
 				Select("1").
-				Where("file_records_public.id = file_dependencies.depends_on_id").
-				Where("file_records_public.status = ?", models.FileStatusActive)).
+				Where("file_records_public.id = file_dependencies.depends_on_id")).
 			Group("file_record_id").
 			Scan(&upstream).Error; err != nil {
 			return nil, err
@@ -218,8 +218,7 @@ func (s *SearchService) LoadDependencyCounts(ids []uint) (map[uint]int64, error)
 			Where("depends_on_id IN ?", batch).
 			Where("EXISTS (?)", s.db.Model(&models.FileRecordPublic{}).
 				Select("1").
-				Where("file_records_public.id = file_dependencies.file_record_id").
-				Where("file_records_public.status = ?", models.FileStatusActive)).
+				Where("file_records_public.id = file_dependencies.file_record_id")).
 			Group("depends_on_id").
 			Scan(&downstream).Error; err != nil {
 			return nil, err

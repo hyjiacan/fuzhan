@@ -97,7 +97,7 @@ func TestLoadDependencyCounts(t *testing.T) {
 		t.Fatalf("子集计数不符: %+v", subset)
 	}
 
-	// 对端记录被删除后不计入，保持与依赖树展示口径一致
+	// 对端记录被软删除后不计入，保持与依赖树展示口径一致
 	if err := db.Delete(&models.FileRecordPublic{}, b).Error; err != nil {
 		t.Fatalf("删除记录失败: %v", err)
 	}
@@ -107,6 +107,19 @@ func TestLoadDependencyCounts(t *testing.T) {
 	}
 	if counts[a] != 1 || counts[c] != 2 {
 		t.Fatalf("对端删除后计数不符: %+v", counts)
+	}
+
+	// 对端 status=deleted 但记录仍存在时照常计入（依赖树不看 status，只判断记录是否存在）
+	if err := db.Model(&models.FileRecordPublic{}).Where("id = ?", d).
+		Update("status", models.FileStatusDeleted).Error; err != nil {
+		t.Fatalf("更新状态失败: %v", err)
+	}
+	counts, err = svc.LoadDependencyCounts([]uint{c})
+	if err != nil {
+		t.Fatalf("统计失败: %v", err)
+	}
+	if counts[c] != 2 {
+		t.Fatalf("对端非 active 时计数不符: %+v", counts)
 	}
 
 	// 空入参不产生查询

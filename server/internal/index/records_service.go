@@ -335,12 +335,14 @@ func (s *Service) FindRecordByPath(fileName, rootName, filePath string) (*models
 }
 
 // SearchFileRecords 搜索文件记录（用于 autocomplete）
+// 仅返回 active 记录：该接口供"添加上游依赖"选择目标文件，已删除的文件不应再作为可选项。
 func (s *Service) SearchFileRecords(query string, limit int) ([]models.FileRecordPublic, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	var records []models.FileRecordPublic
 	if err := s.db.Where("file_name LIKE ?", "%"+query+"%").
+		Where("status = ?", models.FileStatusActive).
 		Order("file_size DESC").
 		Limit(limit).
 		Find(&records).Error; err != nil {

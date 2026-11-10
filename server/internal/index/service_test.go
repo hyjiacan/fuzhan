@@ -174,6 +174,29 @@ func TestListDuplicateGroups_ExcludesDeletedAndDirs(t *testing.T) {
 	}
 }
 
+func TestSearchFileRecords_ExcludesDeleted(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+
+	createTestRecord(db, "cherry-setup.exe", "/cherry-setup.exe", "docs", "h1", 100)
+	delRec := models.FileRecordPublic{
+		FileRecordBase: models.FileRecordBase{
+			FileName: "cherry-old.exe", FilePath: "/cherry-old.exe", RootName: "docs",
+			FileSize: 100, Status: models.FileStatusDeleted, ModTime: time.Now(),
+		},
+	}
+	db.Create(&delRec)
+
+	// 已删除的文件不应出现在依赖选择的候选中
+	records, err := svc.SearchFileRecords("cherry", 20)
+	if err != nil {
+		t.Fatalf("搜索失败: %v", err)
+	}
+	if len(records) != 1 || records[0].FileName != "cherry-setup.exe" {
+		t.Fatalf("期望只返回 active 记录，实际: %+v", records)
+	}
+}
+
 func TestListDuplicateGroups_ExcludesEmptyHash(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewService(db, nil)

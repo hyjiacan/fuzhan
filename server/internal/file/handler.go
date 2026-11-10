@@ -259,8 +259,9 @@ func (fh *FileHandlers) directChildrenQuery(rootName, prefix string) *gorm.DB {
 }
 
 // loadDependencyCounts 统计目录内每个文件的依赖条数（上游 + 下游各一次聚合）。
-// 计数口径与依赖树一致：对端文件记录缺失或非 active 的依赖不计入，避免出现
-// 数字大于弹窗实际展示条数的情况。
+// 计数口径与依赖树（buildUpstreamTree/buildDownstream）一致：只要对端记录存在且
+// 未被软删除就计入，不看 status——依赖树仅判断 TargetFile/SourceFile 是否为 nil，
+// 索引里 status=deleted 但记录仍在的文件照样会展示。
 func (fh *FileHandlers) loadDependencyCounts(rootName, prefix string) (map[uint]int64, error) {
 	if fh.DB == nil {
 		return nil, nil
@@ -290,8 +291,7 @@ func (fh *FileHandlers) loadDependencyCounts(rootName, prefix string) (map[uint]
 		Where("file_record_id IN (?)", dirIDs()).
 		Where("EXISTS (?)", fh.DB.Model(&models.FileRecordPublic{}).
 			Select("1").
-			Where("file_records_public.id = file_dependencies.depends_on_id").
-			Where("file_records_public.status = ?", models.FileStatusActive)).
+			Where("file_records_public.id = file_dependencies.depends_on_id")).
 		Group("file_record_id").
 		Scan(&upstream).Error; err != nil {
 		return nil, err
@@ -305,8 +305,7 @@ func (fh *FileHandlers) loadDependencyCounts(rootName, prefix string) (map[uint]
 		Where("depends_on_id IN (?)", dirIDs()).
 		Where("EXISTS (?)", fh.DB.Model(&models.FileRecordPublic{}).
 			Select("1").
-			Where("file_records_public.id = file_dependencies.file_record_id").
-			Where("file_records_public.status = ?", models.FileStatusActive)).
+			Where("file_records_public.id = file_dependencies.file_record_id")).
 		Group("depends_on_id").
 		Scan(&downstream).Error; err != nil {
 		return nil, err
