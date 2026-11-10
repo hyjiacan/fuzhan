@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -143,6 +144,103 @@ func TestParseSearchExtensionsRejectsIllegalValues(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != "pdf" || got[1] != "docx" {
 		t.Fatalf("扩展名解析不符合预期: %#v", got)
+	}
+}
+
+func TestListFilesAppliesAllowedPaths(t *testing.T) {
+	db := setupOpenAPIHandlerDB(t)
+	h := NewHandler(db, nil, nil, map[string]string{"docs": "", "other": ""}, nil, nil, nil, nil, 0)
+
+	records := []models.FileRecordPublic{
+		{FileRecordBase: models.FileRecordBase{FileName: "sub", FilePath: "/sub", FullPath: "/docs/sub", RootName: "docs", IsDir: true, Status: models.FileStatusActive}},
+		{FileRecordBase: models.FileRecordBase{FileName: "a.txt", FilePath: "/sub/a.txt", FullPath: "/docs/sub/a.txt", RootName: "docs", FileSize: 10, Status: models.FileStatusActive}},
+		{FileRecordBase: models.FileRecordBase{FileName: "b.txt", FilePath: "/b.txt", FullPath: "/docs/b.txt", RootName: "docs", FileSize: 20, Status: models.FileStatusActive}},
+		{FileRecordBase: models.FileRecordBase{FileName: "c.txt", FilePath: "/c.txt", FullPath: "/other/c.txt", RootName: "other", FileSize: 30, Status: models.FileStatusActive}},
+	}
+	if err := db.Create(&records).Error; err != nil {
+		t.Fatalf("写入测试记录失败: %v", err)
+	}
+
+	pathsOf := func(t *testing.T, target string, allowed string) (int, []string) {
+		t.Helper()
+		c, w := newTestContext(http.MethodGet, target, nil)
+		c.Set(allowedPathsContextKey, allowed)
+		h.ListFiles(c)
+		if w.Code != http.StatusOK {
+			return w.Code, nil
+		}
+		var body struct {
+			Data struct {
+				Files []struct {
+					Path string `json:"path"`
+				} `json:"files"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("解析响应失败: %v", err)
+		}
+		paths := make([]string, 0, len(body.Data.Files))
+		for _, f := range body.Data.Files {
+			paths = append(paths, f.Path)
+		}
+		return w.Code, paths
+	}
+
+	code, paths := pathsOf(t, "/", "/docs/sub")
+	if code != http.StatusOK || len(paths) != 2 {
+		t.Fatalf("根目录列表应裁剪到允许路径: code=%d paths=%v", code, paths)
+	}
+
+	code, paths = pathsOf(t, "/?path=/docs", "/docs/sub")
+	if code != http.StatusOK || len(paths) != 2 {
+		t.Fatalf("上级目录列表应只返回允许范围: code=%d paths=%v", code, paths)
+	}
+
+	if code, _ = pathsOf(t, "/?path=/other", "/docs/sub"); code != http.StatusForbidden {
+		t.Fatalf("允许范围外目录应返回 403，实际 %d", code)
+	}
+
+	code, paths = pathsOf(t, "/?path=/docs", "")
+	if code != http.StatusOK || len(paths) != 3 {
+		t.Fatalf("未配置允许路径时应返回全部记录: code=%d paths=%v", code, paths)
+	}
+}
+
+func TestGetFileInfoHidesOutOfScopeExistence(t *testing.T) {
+	db := setupOpenAPIHandlerDB(t)
+	h := NewHandler(db, nil, nil, map[string]string{"docs": "", "other": ""}, nil, nil, nil, nil, 0)
+
+	records := []models.FileRecordPublic{
+		{FileRecordBase: models.FileRecordBase{FileName: "a.txt", FilePath: "/a.txt", FullPath: "/docs/a.txt", RootName: "docs", FileSize: 10, Status: models.FileStatusActive}},
+		{FileRecordBase: models.FileRecordBase{FileName: "c.txt", FilePath: "/c.txt", FullPath: "/other/c.txt", RootName: "other", FileSize: 30, Status: models.FileStatusActive}},
+	}
+	if err := db.Create(&records).Error; err != nil {
+		t.Fatalf("写入测试记录失败: %v", err)
+	}
+	outsideID := records[1].ID
+
+	// 范围外路径：无论是否存在都返回 403，不产生存在性差异。
+	c, w := newTestContext(http.MethodGet, "/?path=/other/c.txt", nil)
+	c.Set(allowedPathsContextKey, "/docs")
+	h.GetFileInfo(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("范围外路径应返回 403，实际 %d", w.Code)
+	}
+
+	// 范围外 ID：与“记录不存在”保持一致，返回 404。
+	c, w = newTestContext(http.MethodGet, fmt.Sprintf("/?id=%d", outsideID), nil)
+	c.Set(allowedPathsContextKey, "/docs")
+	h.GetFileInfo(c)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("范围外 ID 应返回 404，实际 %d", w.Code)
+	}
+
+	// 范围内路径正常返回。
+	c, w = newTestContext(http.MethodGet, "/?path=/docs/a.txt", nil)
+	c.Set(allowedPathsContextKey, "/docs")
+	h.GetFileInfo(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("范围内路径应返回 200，实际 %d", w.Code)
 	}
 }
 

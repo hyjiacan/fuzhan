@@ -192,6 +192,8 @@ LoginLog, AlertMessage
 
 DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask, FileRecord×3, FileDependency, ApiKey, OAuthClient, AuthRecord, ResourceMetric`。
 
+`ApiKey` 额外包含 `AllowedPaths`（换行分隔的 `/rootName[/sub]` 前缀，空或 `*` 表示所有路径），用于 Open API 公开目录操作的路径授权；校验通过后写入上下文 `auth.ContextAllowedPaths`。
+
 ### 6.1 文件索引记录（`file_record.go`，public/temp/private 三表共用字段）
 
 | 字段 | 说明 |
@@ -345,6 +347,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
   - `GET /files/info`、`POST /files/exists`、`POST /files/upload`、`POST /files/upload/init|chunk|finalize`、`GET /files/upload/:id`
   - `GET /files/duplicates`、`POST /files/rename`、`DELETE /files`（任意 delete scope）
   - `GET /docs`、`GET /openapi.json`
+  - API Key 的 `allowedPaths` 路径授权：越界操作 403；列表/搜索/重复文件按允许路径裁剪（搜索建议词在启用路径限制时为空）；Web 会话不受限制
 
 ---
 

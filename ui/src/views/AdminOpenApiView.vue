@@ -85,6 +85,17 @@
             列表 / 搜索 / 下载 / 详情属于读取类接口，勾选「读取」即可全部授权；上传需勾选「写入」或「文件上传」。
           </div>
         </el-form-item>
+        <el-form-item label="允许路径" prop="allowedPaths">
+          <el-input
+            v-model="createForm.allowedPaths"
+            type="textarea"
+            :rows="3"
+            placeholder="每行一个路径，如 /docs 或 /docs/public；留空或 * 表示所有路径"
+          />
+          <div class="field-hint">
+            仅约束公开目录操作（列表、搜索、下载、详情、存在性、重复文件、上传、重命名、删除）；配置为目录时包含其所有子路径。
+          </div>
+        </el-form-item>
         <el-form-item label="过期时间" prop="expiresIn">
           <el-select v-model="createForm.expiresIn" placeholder="选择过期时间">
             <el-option
@@ -232,6 +243,7 @@ const currentUserId = ref(0)
 const createForm = ref({
   name: '',
   scopes: [],
+  allowedPaths: '',
   expiresIn: 0
 })
 
@@ -365,6 +377,14 @@ const columns = computed(() => [
         key: s,
         type: s === 'open_api:admin' ? 'warning' : (s === 'open_api:reader' || s === 'open_api:writer' ? 'success' : 'info')
       }, () => scopeLabel(s))))
+  },
+  {
+    title: '允许路径', key: 'allowedPaths', width: 220,
+    cellRenderer: ({ rowData: row }) => {
+      const paths = (row.allowedPaths || '').split('\n').filter(Boolean)
+      const text = paths.length ? paths.join(', ') : '所有路径'
+      return h('div', { title: text, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, text)
+    }
   },
   {
     title: '状态', key: 'status', width: 80,
@@ -526,6 +546,7 @@ async function handleCreate() {
       name: createForm.value.name,
       userId: currentUserId.value || 1,
       scopes: createForm.value.scopes.join(','),
+      allowedPaths: createForm.value.allowedPaths.trim(),
       expiresIn: createForm.value.expiresIn
     })
     if (res.success) {
@@ -534,7 +555,7 @@ async function handleCreate() {
       rawKey.value = res.data?.rawKey || ''
       showRawKeyModal.value = true
       loadApiKeys()
-      createForm.value = { name: '', scopes: [], expiresIn: 0 }
+      createForm.value = { name: '', scopes: [], allowedPaths: '', expiresIn: 0 }
     } else {
       ElMessage.error(res.message || '创建失败')
     }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -16,11 +17,22 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrInvalidAllowedPaths 允许路径配置非法（客户端错误）
+var ErrInvalidAllowedPaths = errors.New("允许路径配置非法")
+
 // apiKeyCacheEntry 一次成功的 API Key 校验结果缓存
 type apiKeyCacheEntry struct {
-	userID uint
-	scopes string
-	at     time.Time
+	userID       uint
+	scopes       string
+	allowedPaths string
+	at           time.Time
+}
+
+// ApiKeyIdentity 校验通过的 API Key 身份信息
+type ApiKeyIdentity struct {
+	UserID       uint
+	Scopes       string
+	AllowedPaths string // 换行分隔的允许路径；空表示所有路径
 }
 
 // ApiKeyService API Key 管理服务
@@ -52,10 +64,11 @@ func NewApiKeyService(db *gorm.DB) *ApiKeyService {
 
 // CreateApiKeyRequest 创建 API Key 请求
 type CreateApiKeyRequest struct {
-	Name      string `json:"name" binding:"required,max=128"`
-	UserID    uint   `json:"userId" binding:"required"`
-	Scopes    string `json:"scopes"`
-	ExpiresIn int    `json:"expiresIn"` // 过期时间（秒），0 表示永不过期
+	Name         string `json:"name" binding:"required,max=128"`
+	UserID       uint   `json:"userId" binding:"required"`
+	Scopes       string `json:"scopes"`
+	AllowedPaths string `json:"allowedPaths"` // 允许操作的公开目录路径（换行/逗号分隔，空或 * 表示所有）
+	ExpiresIn    int    `json:"expiresIn"`    // 过期时间（秒），0 表示永不过期
 }
 
 // CreateApiKeyResponse 创建 API Key 响应
@@ -93,14 +106,21 @@ func (s *ApiKeyService) CreateApiKey(req CreateApiKeyRequest) (*CreateApiKeyResp
 		return nil, err
 	}
 
+	// 规范化允许操作路径：空 / * 表示所有公开目录；非法路径直接拒绝。
+	allowedPaths, err := models.NormalizeAllowedPaths(req.AllowedPaths)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidAllowedPaths, err)
+	}
+
 	apiKey := models.ApiKey{
-		KeyID:     keyID,
-		ApiKey:    hashedKey,
-		Name:      req.Name,
-		UserID:    req.UserID,
-		Scopes:    scopes,
-		Status:    "active",
-		ExpiresAt: expiresAt,
+		KeyID:        keyID,
+		ApiKey:       hashedKey,
+		Name:         req.Name,
+		UserID:       req.UserID,
+		Scopes:       scopes,
+		AllowedPaths: allowedPaths,
+		Status:       "active",
+		ExpiresAt:    expiresAt,
 	}
 
 	if err := s.db.Create(&apiKey).Error; err != nil {
@@ -108,7 +128,8 @@ func (s *ApiKeyService) CreateApiKey(req CreateApiKeyRequest) (*CreateApiKeyResp
 		return nil, fmt.Errorf("创建 API Key 失败: %w", err)
 	}
 
-	utils.Info("创建 API Key 成功", utils.String("name", req.Name), utils.String("key_id", keyID), utils.Int("user_id", int(req.UserID)), utils.String("scopes", scopes))
+	utils.Info("创建 API Key 成功", utils.String("name", req.Name), utils.String("key_id", keyID), utils.Int("user_id", int(req.UserID)),
+		utils.String("scopes", scopes), utils.String("allowed_paths", allowedPaths))
 	return &CreateApiKeyResponse{
 		ApiKey: apiKey,
 		RawKey: fmt.Sprintf("%s:%s", keyID, rawKey), // keyID:rawKey 格式
@@ -140,19 +161,19 @@ func normalizeScopes(scopes string) (string, error) {
 	return strings.Join(out, ","), nil
 }
 
-// ValidateApiKey 验证 API Key 并返回对应的 scope
-func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
+// ValidateApiKey 验证 API Key 并返回身份信息（用户、scope、允许路径）
+func (s *ApiKeyService) ValidateApiKey(rawKey string) (*ApiKeyIdentity, error) {
 	// 格式: keyID:rawSecret (keyID 为 8 字符 hex，rawSecret 为 64 字符 hex，加上冒号共 73 字符)
 	if len(rawKey) < 73 || !strings.Contains(rawKey, ":") {
 		utils.Warn("API Key 认证失败: 无效的格式", utils.String("key_length", fmt.Sprintf("%d", len(rawKey))))
-		return 0, "", fmt.Errorf("无效的 API Key 格式")
+		return nil, fmt.Errorf("无效的 API Key 格式")
 	}
 
 	// 命中缓存直接返回，跳过 bcrypt 与查库
 	s.cacheMu.Lock()
 	if e, ok := s.cache[rawKey]; ok && time.Since(e.at) < s.cacheTTL {
 		s.cacheMu.Unlock()
-		return e.userID, e.scopes, nil
+		return &ApiKeyIdentity{UserID: e.userID, Scopes: e.scopes, AllowedPaths: e.allowedPaths}, nil
 	}
 	s.cacheMu.Unlock()
 
@@ -160,7 +181,7 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 	parts := strings.SplitN(rawKey, ":", 2)
 	if len(parts) != 2 {
 		utils.Warn("API Key 认证失败: 格式错误（缺少分隔符）")
-		return 0, "", fmt.Errorf("无效的 API Key 格式")
+		return nil, fmt.Errorf("无效的 API Key 格式")
 	}
 	keyID := parts[0]
 	secret := parts[1]
@@ -169,19 +190,19 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 	var key models.ApiKey
 	if err := s.db.Where("key_id = ? AND status = ?", keyID, "active").First(&key).Error; err != nil {
 		utils.Warn("API Key 认证失败: Key 无效或已禁用", utils.String("key_id", keyID))
-		return 0, "", fmt.Errorf("API Key 无效或已过期")
+		return nil, fmt.Errorf("API Key 无效或已过期")
 	}
 
 	// 检查是否过期
 	if key.ExpiresAt != nil && key.ExpiresAt.Before(utils.Now()) {
 		utils.Warn("API Key 认证失败: Key 已过期", utils.String("key_id", keyID), zap.Time("expired_at", *key.ExpiresAt))
-		return 0, "", fmt.Errorf("API Key 已过期")
+		return nil, fmt.Errorf("API Key 已过期")
 	}
 
 	// 使用 bcrypt 验证哈希
 	if err := bcrypt.CompareHashAndPassword([]byte(key.ApiKey), []byte(secret)); err != nil {
 		utils.Warn("API Key 认证失败: 密钥不匹配", utils.String("key_id", keyID))
-		return 0, "", fmt.Errorf("API Key 无效")
+		return nil, fmt.Errorf("API Key 无效")
 	}
 
 	// 更新最后使用时间（节流异步：仅当距上次更新超过 touchTTL 才起协程写库）
@@ -207,11 +228,12 @@ func (s *ApiKeyService) ValidateApiKey(rawKey string) (uint, string, error) {
 
 	// 缓存成功结果
 	s.cacheMu.Lock()
-	s.cache[rawKey] = apiKeyCacheEntry{userID: key.UserID, scopes: key.Scopes, at: utils.Now()}
+	s.cache[rawKey] = apiKeyCacheEntry{userID: key.UserID, scopes: key.Scopes, allowedPaths: key.AllowedPaths, at: utils.Now()}
 	s.cacheMu.Unlock()
 
-	utils.Info("API Key 认证成功", utils.String("key_id", keyID), utils.String("scopes", key.Scopes), utils.Int("user_id", int(key.UserID)))
-	return key.UserID, key.Scopes, nil
+	utils.Info("API Key 认证成功", utils.String("key_id", keyID), utils.String("scopes", key.Scopes),
+		utils.String("allowed_paths", key.AllowedPaths), utils.Int("user_id", int(key.UserID)))
+	return &ApiKeyIdentity{UserID: key.UserID, Scopes: key.Scopes, AllowedPaths: key.AllowedPaths}, nil
 }
 
 // ListApiKeys 分页查询 API Key 列表

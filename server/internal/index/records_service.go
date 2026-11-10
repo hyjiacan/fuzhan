@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fuzhan/internal/models"
 	"fuzhan/internal/utils"
@@ -155,6 +156,7 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 	if query.MinSize > 0 {
 		totalDup = totalDup.Where("file_size >= ?", query.MinSize)
 	}
+	totalDup = applyDuplicatePathScopes(totalDup, query.PathScopes)
 	totalDup = totalDup.Group("xxh3_hash").Having("COUNT(*) > 1")
 	var total int64
 	if err := s.db.Table("(?) AS t", totalDup).Count(&total).Error; err != nil {
@@ -187,6 +189,7 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 	if query.MinSize > 0 {
 		countQuery = countQuery.Where("file_size >= ?", query.MinSize)
 	}
+	countQuery = applyDuplicatePathScopes(countQuery, query.PathScopes)
 
 	offset := (query.Page - 1) * query.PageSize
 	if err := countQuery.Group("xxh3_hash").
@@ -216,6 +219,7 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 	if query.MinSize > 0 {
 		detailQuery = detailQuery.Where("file_size >= ?", query.MinSize)
 	}
+	detailQuery = applyDuplicatePathScopes(detailQuery, query.PathScopes)
 	if err := detailQuery.Order("file_path ASC").Find(&allFiles).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询重复分组文件详情失败: %w", err)
 	}
@@ -247,6 +251,48 @@ func (s *Service) ListDuplicateGroups(query DuplicateQuery) ([]DuplicateGroup, i
 	}
 
 	return groups, total, nil
+}
+
+// applyDuplicatePathScopes 把路径范围条件下推到重复文件查询，
+// 保证 total、分组统计与详情查询的过滤口径完全一致。
+func applyDuplicatePathScopes(db *gorm.DB, scopes []PathScope) *gorm.DB {
+	if len(scopes) == 0 {
+		return db
+	}
+	conds := make([]string, 0, len(scopes))
+	args := make([]interface{}, 0, len(scopes)*3)
+	for _, scope := range scopes {
+		if scope.Root == "" {
+			continue
+		}
+		prefix := strings.TrimSuffix(filepath.ToSlash(scope.Prefix), "/")
+		if prefix == "" || prefix == "/" {
+			conds = append(conds, "root_name = ?")
+			args = append(args, scope.Root)
+			continue
+		}
+		conds = append(conds, "(root_name = ? AND (file_path = ? OR file_path LIKE ? ESCAPE '\\'))")
+		args = append(args, scope.Root, prefix, escapeLikePattern(prefix)+"/%")
+	}
+	if len(conds) == 0 {
+		return db
+	}
+	return db.Where("("+strings.Join(conds, " OR ")+")", args...)
+}
+
+// escapeLikePattern 转义 LIKE 通配符（% _ 及转义符自身），须配合 SQL 的 ESCAPE '\' 使用。
+func escapeLikePattern(s string) string {
+	if !strings.ContainsAny(s, `\%_`) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\\' || r == '%' || r == '_' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // UpdateNotes 更新文件备注

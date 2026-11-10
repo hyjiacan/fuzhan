@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -29,6 +30,10 @@ func (h *ApiKeyHandler) CreateApiKey(c *gin.Context) {
 
 	resp, err := h.svc.CreateApiKey(req)
 	if err != nil {
+		if errors.Is(err, ErrInvalidAllowedPaths) {
+			response.HandleBadRequest(c, "创建失败: "+err.Error(), nil)
+			return
+		}
 		response.HandleInternalServerError(c, "创建失败: "+err.Error())
 		return
 	}

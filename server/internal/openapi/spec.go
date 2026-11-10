@@ -14,6 +14,12 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"- **API Key（推荐）**：通过 `Authorization: Bearer <keyId>:<secret>` 请求头传递，需具备对应接口的 scope。\n" +
 				"- **Web 会话**：浏览器已登录时自动携带 `fuzhan_token` Cookie。仅 `auth_mode=none` 时生效，通过后按 `open_api:writer` 兼容层级授权，可访问全部数据端点（与加固前的公开行为一致）；" +
 				"`auth_mode=api_key` 下 Web 会话无效，必须使用 API Key。\n\n" +
+				"## 路径授权\n\n" +
+				"API Key 除 scope 外还可配置「允许路径」，进一步限定可操作的公开目录范围：\n\n" +
+				"- 路径格式为 `/rootName[/subdir]`，配置为目录时包含其所有子路径；可配置单条或多条。\n" +
+				"- 未配置允许路径（或配置为 `*`）表示允许所有公开目录路径。\n" +
+				"- 越界操作返回 `403`；列表/搜索/重复文件查询会自动裁剪到允许范围内，搜索结果建议词在启用路径限制时为空。\n" +
+				"- Web 会话不受路径限制。\n\n" +
 				"## 响应格式\n\n" +
 				"- 业务成功/失败使用统一信封：`{success, code, message, data}` / `{success, code, message, errors}`。\n" +
 				"- 响应数据字段统一使用 `snake_case`（如 `file_size`、`page_size`、`upload_id`）。\n" +
@@ -24,7 +30,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"- 路径参数会规范化为 `/rootName[/sub]`，包含 `.` 或 `..` 片段时返回 `400`。\n\n" +
 				"## 通用拒绝响应\n\n" +
 				"- `401`：缺少或无效凭证（简单结构）。\n" +
-				"- `403`：scope 不足（简单结构），或上传关闭/目录不允许上传等业务拒绝（信封结构）。\n" +
+				"- `403`：scope 不足、路径不在 API Key 允许范围内（简单结构），或上传关闭/目录不允许上传等业务拒绝（信封结构）。\n" +
 				"- `404`：功能未开启（信封结构），或文件/记录/会话不存在（信封结构）。\n" +
 				"- `429`：触发频率限制（信封结构，带 `Retry-After` 与 `X-RateLimit-Limit` 响应头）。",
 			"version": version.Version,

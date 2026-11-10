@@ -553,8 +553,13 @@ Content-Type: application/json
 
 {
   "name": "my-app-key",
+  "scopes": "open_api:reader,open_api:writer",
+  "allowedPaths": "/docs\n/docs/public",
   "expiresIn": 86400  // 秒，0 表示不过期
 }
+
+// allowedPaths：允许操作的公开目录路径，换行或逗号分隔；留空或 * 表示所有路径。
+// 配置为目录时包含其所有子路径；越界操作返回 403，列表/搜索/重复文件查询会自动裁剪。
 
 // 响应
 {

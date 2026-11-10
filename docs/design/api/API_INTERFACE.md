@@ -661,9 +661,14 @@
   ```json
   {
     "name": "应用名称",
+    "scopes": "open_api:reader",
+    "allowedPaths": "/docs",
     "expiresIn": 86400
   }
   ```
+
+  `allowedPaths` 用于限定可操作的公开目录路径（换行/逗号分隔，留空或 `*` 表示所有路径；
+  配置为目录时包含其所有子路径），越界操作返回 403。
 
 ### 3. 删除 API Key
 

@@ -100,15 +100,15 @@ func TestValidateApiKey_Success(t *testing.T) {
 		Scopes: "open_api:reader",
 	})
 
-	userID, scopes, err := svc.ValidateApiKey(resp.RawKey)
+	identity, err := svc.ValidateApiKey(resp.RawKey)
 	if err != nil {
 		t.Fatalf("验证 API Key 失败: %v", err)
 	}
-	if userID != 1 {
-		t.Errorf("用户 ID 不匹配: %d", userID)
+	if identity.UserID != 1 {
+		t.Errorf("用户 ID 不匹配: %d", identity.UserID)
 	}
-	if scopes != "open_api:reader" {
-		t.Errorf("Scope 不匹配: %s", scopes)
+	if identity.Scopes != "open_api:reader" {
+		t.Errorf("Scope 不匹配: %s", identity.Scopes)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestValidateApiKey_InvalidKey(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewApiKeyService(db)
 
-	_, _, err := svc.ValidateApiKey("invalid_key_format")
+	_, err := svc.ValidateApiKey("invalid_key_format")
 	if err == nil {
 		t.Fatal("期望无效密钥验证失败")
 	}
@@ -126,7 +126,7 @@ func TestValidateApiKey_WrongFormat(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewApiKeyService(db)
 
-	_, _, err := svc.ValidateApiKey("ab")
+	_, err := svc.ValidateApiKey("ab")
 	if err == nil {
 		t.Fatal("期望短密钥格式验证失败")
 	}
@@ -148,7 +148,7 @@ func TestUpdateApiKeyStatus(t *testing.T) {
 	}
 
 	// 验证禁用后不能使用
-	_, _, err := svc.ValidateApiKey(resp.RawKey)
+	_, err := svc.ValidateApiKey(resp.RawKey)
 	if err == nil {
 		t.Error("禁用后验证应失败")
 	}
@@ -329,11 +329,11 @@ func TestExpiredApiKey(t *testing.T) {
 	})
 
 	// 正常 key 应可用
-	userID, scopes, err := svc.ValidateApiKey(resp.RawKey)
+	identity, err := svc.ValidateApiKey(resp.RawKey)
 	if err != nil {
 		t.Errorf("正常 key 验证失败: %v", err)
 	} else {
-		if userID != 1 || scopes != "open_api:reader" {
+		if identity.UserID != 1 || identity.Scopes != "open_api:reader" {
 			t.Error("正常 key 返回信息不正确")
 		}
 	}

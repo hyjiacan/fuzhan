@@ -1,6 +1,8 @@
 package models
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -9,17 +11,20 @@ import (
 //
 // 用于第三方系统集成认证，管理员后台生成，绑定权限范围。
 type ApiKey struct {
-	ID         uint       `gorm:"primaryKey" json:"id"`
-	KeyID      string     `gorm:"size:32;uniqueIndex;not null" json:"keyId"`  // 唯一标识
-	ApiKey     string     `gorm:"size:256;uniqueIndex;not null" json:"-"`     // API Key 密钥（bcrypt 哈希存储）
-	Name       string     `gorm:"size:128;not null" json:"name"`              // 应用/密钥名称
-	UserID     uint       `gorm:"not null;index" json:"userId"`               // 所属用户 ID
-	Scopes     string     `gorm:"size:512;not null" json:"scopes"`            // 权限范围（逗号分隔: open_api:reader,open_api:writer）
-	Status     string     `gorm:"size:20;default:active;index" json:"status"` // active / disabled
-	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`                       // 最后使用时间
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`                        // 过期时间（nil 表示永不过期）
-	CreatedAt  time.Time  `json:"createdAt"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	KeyID  string `gorm:"size:32;uniqueIndex;not null" json:"keyId"` // 唯一标识
+	ApiKey string `gorm:"size:256;uniqueIndex;not null" json:"-"`    // API Key 密钥（bcrypt 哈希存储）
+	Name   string `gorm:"size:128;not null" json:"name"`             // 应用/密钥名称
+	UserID uint   `gorm:"not null;index" json:"userId"`              // 所属用户 ID
+	Scopes string `gorm:"size:512;not null" json:"scopes"`           // 权限范围（逗号分隔: open_api:reader,open_api:writer）
+	// AllowedPaths 允许操作的公开目录路径（换行分隔的 /rootName[/sub] 前缀）；
+	// 空值或 "*" 表示所有路径。仅对 Open API 的公开目录操作生效。
+	AllowedPaths string     `gorm:"size:4096" json:"allowedPaths"`
+	Status       string     `gorm:"size:20;default:active;index" json:"status"` // active / disabled
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`                       // 最后使用时间
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`                        // 过期时间（nil 表示永不过期）
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
 // TableName 指定表名
@@ -126,6 +131,120 @@ func ScopeContains(scopes, required string) bool {
 // HasScope 检查是否拥有指定 scope（包含层级关系）
 func (k *ApiKey) HasScope(scope string) bool {
 	return ScopeContains(k.Scopes, scope)
+}
+
+// NormalizeAllowedPaths 校验并规范化 API Key 的允许路径配置。
+// 支持换行或逗号分隔的多条路径；空值、"*"、"/" 表示允许所有公开目录路径。
+// 路径统一为 /rootName[/sub] 形式，拒绝包含 . 或 .. 的片段。
+func NormalizeAllowedPaths(raw string) (string, error) {
+	entries := splitAllowedPathEntries(raw)
+	if len(entries) == 0 {
+		return "", nil
+	}
+	out := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if entry == "*" || entry == "/" {
+			return "", nil
+		}
+		p, ok := normalizeAllowedPath(entry)
+		if !ok {
+			return "", fmt.Errorf("允许路径格式非法: %s", entry)
+		}
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return "", nil
+	}
+	return strings.Join(out, "\n"), nil
+}
+
+// ParseAllowedPaths 解析允许路径配置并返回规范化条目；nil 表示所有路径。
+// 传入值应已由 NormalizeAllowedPaths 规范化，非法条目在此静默忽略。
+func ParseAllowedPaths(raw string) []string {
+	entries := splitAllowedPathEntries(raw)
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if entry == "*" || entry == "/" {
+			return nil
+		}
+		p, ok := normalizeAllowedPath(entry)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// AllowsPath 判断目标路径（/rootName[/sub]）是否在允许范围内；未配置允许路径时始终允许。
+func AllowsPath(raw, cleanPath string) bool {
+	entries := ParseAllowedPaths(raw)
+	if len(entries) == 0 {
+		return true
+	}
+	p, ok := normalizeAllowedPath(cleanPath)
+	if !ok || p == "/" {
+		return false
+	}
+	for _, entry := range entries {
+		if p == entry || strings.HasPrefix(p, entry+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// splitAllowedPathEntries 拆分允许路径配置（换行或逗号分隔，去空白，忽略空项）。
+func splitAllowedPathEntries(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ','
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if v := strings.TrimSpace(f); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// normalizeAllowedPath 把路径规范化为 /rootName[/sub]；包含 . 或 .. 时返回 ok=false。
+func normalizeAllowedPath(raw string) (string, bool) {
+	p := filepath.ToSlash(strings.TrimSpace(raw))
+	if p == "" {
+		return "", false
+	}
+	parts := make([]string, 0, 8)
+	for _, part := range strings.Split(p, "/") {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			return "", false
+		default:
+			parts = append(parts, part)
+		}
+	}
+	if len(parts) == 0 {
+		return "/", true
+	}
+	return "/" + strings.Join(parts, "/"), true
 }
 
 // OAuthClient OAuth 2.0 客户端注册

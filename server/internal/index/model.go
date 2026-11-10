@@ -257,6 +257,12 @@ type DuplicateFileItem struct {
 	ModTime  time.Time `json:"modTime"`
 }
 
+// PathScope 限定文件查询的目录范围：Root 为根目录名，Prefix 为以 / 开头的相对目录路径（空表示整个根目录）。
+type PathScope struct {
+	Root   string
+	Prefix string
+}
+
 // DuplicateQuery 重复文件查询参数
 type DuplicateQuery struct {
 	MinSize  int64  `form:"minSize"`
@@ -264,6 +270,8 @@ type DuplicateQuery struct {
 	PageSize int    `form:"pageSize"`
 	Sort     string `form:"sort"` // size / count / hash
 	Order    string `form:"order"`
+	// PathScopes 限定统计范围（为空表示不限制），用于 Open API 的 API Key 路径授权
+	PathScopes []PathScope `form:"-"`
 }
 
 // Normalize 规范化查询参数

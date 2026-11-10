@@ -266,6 +266,15 @@ func (h *Handler) ListFiles(c *gin.Context) {
 	dbQuery := h.db.Model(&models.FileRecordPublic{}).
 		Where("status = ?", models.FileStatusActive)
 
+	// 路径授权：允许列出允许范围的上级目录，但只返回允许范围内的条目。
+	allowedPaths := allowedPathEntries(c)
+	if !pathRelatedToAllowed(allowedPaths, cleanPath) {
+		response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden,
+			"API Key 无权访问该路径: "+cleanPath)
+		return
+	}
+	dbQuery = applyAllowedPathFilter(dbQuery, allowedPaths)
+
 	if cleanPath != "/" {
 		parts := splitPath(cleanPath)
 		if len(parts) > 0 {
@@ -358,6 +367,10 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 	dbQuery := h.db.Model(&models.FileRecordPublic{}).
 		Where("status = ?", models.FileStatusActive)
 
+	// 路径授权：搜索结果只包含允许范围内的文件。
+	allowedPaths := allowedPathEntries(c)
+	dbQuery = applyAllowedPathFilter(dbQuery, allowedPaths)
+
 	// 逐个关键词 AND 匹配文件名/备注，形成模糊搜索语义
 	for _, kw := range keywords {
 		pattern := "%" + escapeLike(kw) + "%"
@@ -408,9 +421,15 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 		})
 	}
 
+	// 搜索建议来自全局索引，无法按路径裁剪；启用路径限制时不返回建议词，避免泄露范围外文件名。
+	suggestions := []string{}
+	if len(allowedPaths) == 0 {
+		suggestions = h.buildSearchSuggestions(rawQuery, 10)
+	}
+
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"results":     files,
-		"suggestions": h.buildSearchSuggestions(rawQuery, 10),
+		"suggestions": suggestions,
 		"pagination": gin.H{
 			"page":      page,
 			"page_size": pageSize,
@@ -526,6 +545,9 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
 		return
 	}
+	if !requirePathAllowed(c, cleanPath) {
+		return
+	}
 
 	rootName := parts[0]
 	relPath := "/" + strings.Join(parts[1:], "/")
@@ -627,9 +649,10 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 	}
 
 	query := index.DuplicateQuery{
-		MinSize:  minSize,
-		Page:     int(page),
-		PageSize: int(pageSize),
+		MinSize:    minSize,
+		Page:       int(page),
+		PageSize:   int(pageSize),
+		PathScopes: duplicatePathScopes(allowedPathEntries(c)),
 	}
 
 	groups, total, err := h.indexSvc.ListDuplicateGroups(query)
@@ -740,6 +763,11 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 			response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
 			return
 		}
+		// 路径授权：ID 无法在查询前判断，越权时与不存在保持一致的响应，避免暴露记录存在性。
+		if !pathWithinAllowed(allowedPathEntries(c), record.FullPath) {
+			response.HandleNotFound(c, "文件记录不存在")
+			return
+		}
 	} else {
 		cleanPath, err := normalizeOpenAPIPath(pathStr)
 		if err != nil {
@@ -749,6 +777,10 @@ func (h *Handler) GetFileInfo(c *gin.Context) {
 		parts := splitPath(cleanPath)
 		if len(parts) < 2 {
 			response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+			return
+		}
+		// 路径授权：在查询前校验，范围外无论是否存在都返回 403。
+		if !requirePathAllowed(c, cleanPath) {
 			return
 		}
 		rootName := parts[0]
@@ -831,8 +863,9 @@ func (h *Handler) CheckFilesExist(c *gin.Context) {
 	}
 
 	var records []models.FileRecordPublic
-	if err := h.db.Where("status = ? AND is_dir = ? AND xxh3_hash IN ?",
-		models.FileStatusActive, false, hashes).Order("id ASC").Find(&records).Error; err != nil {
+	if err := applyAllowedPathFilter(h.db.Where("status = ? AND is_dir = ? AND xxh3_hash IN ?",
+		models.FileStatusActive, false, hashes), allowedPathEntries(c)).
+		Order("id ASC").Find(&records).Error; err != nil {
 		response.HandleInternalServerError(c, "查询文件存在性失败: "+err.Error())
 		return
 	}
@@ -937,6 +970,22 @@ func (h *Handler) RenameFile(c *gin.Context) {
 		return
 	}
 
+	// 路径授权：源路径与目标路径都必须在 API Key 允许范围内。
+	if !requirePathAllowed(c, oldPath) {
+		return
+	}
+	if newPath != "" {
+		if !requirePathAllowed(c, newPath) {
+			return
+		}
+	} else if root, rel := splitRootPath(oldPath); root != "" {
+		target := "/" + root + "/" + strings.TrimPrefix(
+			filepath.ToSlash(filepath.Join(filepath.Dir(rel), newName)), "/")
+		if !requirePathAllowed(c, target) {
+			return
+		}
+	}
+
 	if newPath != "" {
 		if err := h.fileSvc.MoveFile(oldPath, newPath); err != nil {
 			handleFileServiceError(c, err)
@@ -1019,6 +1068,9 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 	rootName, relPath := splitRootPath(cleanPath)
 	if rootName == "" || relPath == "" {
 		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+		return
+	}
+	if !requirePathAllowed(c, cleanPath) {
 		return
 	}
 	if h.fileSvc == nil {
@@ -1155,6 +1207,9 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	parts := splitPath(cleanTargetDir)
 	if len(parts) == 0 {
 		response.HandleBadRequest(c, "path 格式错误: 需要 /rootName[/subdir]", nil)
+		return
+	}
+	if !requirePathAllowed(c, cleanTargetDir) {
 		return
 	}
 
@@ -1568,6 +1623,9 @@ func (h *Handler) parseTargetDir(c *gin.Context, targetDir string) (string, stri
 		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
 		return "", "", false
 	}
+	if !requirePathAllowed(c, cleanPath) {
+		return "", "", false
+	}
 	parts := splitPath(cleanPath)
 	if len(parts) == 0 {
 		response.HandleBadRequest(c, "path 格式错误: 需要 /rootName[/subdir]", nil)
@@ -1599,6 +1657,10 @@ func (h *Handler) ownedUploadSession(c *gin.Context, uploadID uint) (*models.Upl
 	identity := h.uploadIdentity(c)
 	if identity == "" || session.UserID != identity {
 		response.HandleForbidden(c, "无权操作该上传会话")
+		return nil, false
+	}
+	// 路径授权：会话目标目录必须在允许范围内（防止借用 Web 会话创建的任务越权落盘）。
+	if !requirePathAllowed(c, "/"+strings.TrimPrefix(session.TargetRoot+session.TargetPath, "/")) {
 		return nil, false
 	}
 	return &session, true

@@ -20,6 +20,9 @@ func NewRBACService(apiKeySvc *ApiKeyService) *RBACService {
 	return &RBACService{apiKeySvc: apiKeySvc}
 }
 
+// ContextAllowedPaths 存放 API Key 允许操作的公开目录路径（换行分隔，空表示所有路径）。
+const ContextAllowedPaths = "allowedPaths"
+
 // RequireScope 检查请求是否有指定的 scope 权限
 func (s *RBACService) RequireScope(requiredScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -55,7 +58,7 @@ func (s *RBACService) RequireScope(requiredScope string) gin.HandlerFunc {
 		}
 
 		// 验证 API Key
-		userID, scopes, err := s.apiKeySvc.ValidateApiKey(token)
+		identity, err := s.apiKeySvc.ValidateApiKey(token)
 		if err != nil {
 			response.HandleCustomError(c, http.StatusUnauthorized, response.CodeUnauthorized, "API Key 无效: "+err.Error())
 			c.Abort()
@@ -63,15 +66,16 @@ func (s *RBACService) RequireScope(requiredScope string) gin.HandlerFunc {
 		}
 
 		// 检查 scope 权限
-		if !s.hasRequiredScope(scopes, requiredScope) {
+		if !s.hasRequiredScope(identity.Scopes, requiredScope) {
 			response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden, "权限不足，需要 scope: "+requiredScope)
 			c.Abort()
 			return
 		}
 
 		// 设置用户信息到上下文
-		c.Set("userID", userID)
-		c.Set("scopes", scopes)
+		c.Set("userID", identity.UserID)
+		c.Set("scopes", identity.Scopes)
+		c.Set(ContextAllowedPaths, identity.AllowedPaths)
 		c.Set("authType", "api_key")
 
 		c.Next()
@@ -101,10 +105,11 @@ func (s *RBACService) RequireScopeOptional(requiredScope string) gin.HandlerFunc
 			token = authHeader
 		}
 
-		userID, scopes, err := s.apiKeySvc.ValidateApiKey(token)
-		if err == nil && s.hasRequiredScope(scopes, requiredScope) {
-			c.Set("userID", userID)
-			c.Set("scopes", scopes)
+		identity, err := s.apiKeySvc.ValidateApiKey(token)
+		if err == nil && s.hasRequiredScope(identity.Scopes, requiredScope) {
+			c.Set("userID", identity.UserID)
+			c.Set("scopes", identity.Scopes)
+			c.Set(ContextAllowedPaths, identity.AllowedPaths)
 			c.Set("authType", "api_key")
 		}
 
@@ -132,10 +137,10 @@ func (s *RBACService) scopeContains(scopes, scope string) bool {
 	return false
 }
 
-// ValidateAPIKey 校验 API Key 并返回所属用户与 scope（供 Open API 鉴权闸门复用）。
-func (s *RBACService) ValidateAPIKey(rawKey string) (uint, string, error) {
+// ValidateAPIKey 校验 API Key 并返回身份信息（供 Open API 鉴权闸门复用）。
+func (s *RBACService) ValidateAPIKey(rawKey string) (*ApiKeyIdentity, error) {
 	if s == nil || s.apiKeySvc == nil {
-		return 0, "", fmt.Errorf("API Key 服务未初始化")
+		return nil, fmt.Errorf("API Key 服务未初始化")
 	}
 	return s.apiKeySvc.ValidateApiKey(rawKey)
 }

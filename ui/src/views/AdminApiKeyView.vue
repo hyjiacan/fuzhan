@@ -90,6 +90,15 @@
           <span class="field-hint">open_api:reader - 读取文件列表、搜索、下载、详情、存在性查询<br>
             open_api:writer - 额外包含上传、覆盖、删除、重命名（备注与依赖树已并入文件详情）</span>
         </el-form-item>
+        <el-form-item label="允许路径" prop="allowedPaths">
+          <el-input
+            v-model="createForm.allowedPaths"
+            type="textarea"
+            :rows="3"
+            placeholder="每行一个路径，如 /docs；留空或 * 表示所有路径"
+          />
+          <span class="field-hint">仅约束公开目录操作；配置为目录时包含其所有子路径</span>
+        </el-form-item>
         <el-form-item label="过期时间" prop="expiresIn">
           <el-select v-model="createForm.expiresIn" placeholder="选择过期时间" style="width: 100%;">
             <el-option
@@ -174,6 +183,7 @@ const currentUserId = ref(0)
 const createForm = ref({
   name: '',
   scopes: 'open_api:reader',
+  allowedPaths: '',
   expiresIn: 0
 })
 
@@ -236,6 +246,14 @@ const columns = [
     key: 'scopes', title: '权限', width: 160,
     cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
       () => row.scopes)
+  },
+  {
+    key: 'allowedPaths', title: '允许路径', width: 180,
+    cellRenderer: ({ rowData: row }) => {
+      const paths = (row.allowedPaths || '').split('\n').filter(Boolean)
+      const text = paths.length ? paths.join(', ') : '所有路径'
+      return h('div', { title: text, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, text)
+    }
   },
   {
     key: 'status', title: '状态', width: 80,
@@ -336,6 +354,7 @@ async function handleCreate() {
       name: createForm.value.name,
       userId: currentUserId.value || 1,
       scopes: createForm.value.scopes,
+      allowedPaths: createForm.value.allowedPaths.trim(),
       expiresIn: createForm.value.expiresIn
     })
     if (res.success) {
@@ -345,7 +364,7 @@ async function handleCreate() {
       showRawKeyModal.value = true
       loadApiKeys()
       // 重置表单
-      createForm.value = { name: '', scopes: 'open_api:reader', expiresIn: 0 }
+      createForm.value = { name: '', scopes: 'open_api:reader', allowedPaths: '', expiresIn: 0 }
     } else {
       ElMessage.error(res.message || '创建失败')
     }

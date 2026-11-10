@@ -29,6 +29,8 @@ const (
 	scopesContextKey   = "scopes"
 	authTypeContextKey = "authType"
 	userIDContextKey   = "userID"
+	// allowedPathsContextKey 允许操作的公开目录路径（换行分隔，空表示所有路径）
+	allowedPathsContextKey = auth.ContextAllowedPaths
 )
 
 // cacheControlNoStore 鉴权失败/拒绝响应统一使用的禁缓存头，避免凭证态响应被中间层缓存。
@@ -77,7 +79,7 @@ func AuthGateMiddleware(authMW *middleware.AuthMiddleware, rbac *auth.RBACServic
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "缺少 API Key"})
 				return
 			}
-			userID, scopes, err := rbac.ValidateAPIKey(token)
+			identity, err := rbac.ValidateAPIKey(token)
 			if err != nil {
 				utils.Warn("Open API API Key 鉴权失败",
 					utils.String("path", c.Request.URL.Path),
@@ -87,9 +89,10 @@ func AuthGateMiddleware(authMW *middleware.AuthMiddleware, rbac *auth.RBACServic
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API Key 无效或已禁用"})
 				return
 			}
-			c.Set(userIDContextKey, userID)
+			c.Set(userIDContextKey, identity.UserID)
 			c.Set(authTypeContextKey, AuthModeAPIKey)
-			c.Set(scopesContextKey, splitScopes(scopes))
+			c.Set(scopesContextKey, splitScopes(identity.Scopes))
+			c.Set(allowedPathsContextKey, identity.AllowedPaths)
 			c.Next()
 
 		default:
@@ -130,10 +133,11 @@ func requireWebSession(c *gin.Context, authMW *middleware.AuthMiddleware, rbac *
 		}
 		// 仅在形如 keyID:secret 的凭证上尝试 API Key 校验
 		if rbac != nil && strings.Contains(token, ":") {
-			if userID, scopes, err := rbac.ValidateAPIKey(token); err == nil {
-				c.Set(userIDContextKey, userID)
+			if identity, err := rbac.ValidateAPIKey(token); err == nil {
+				c.Set(userIDContextKey, identity.UserID)
 				c.Set(authTypeContextKey, AuthModeAPIKey)
-				c.Set(scopesContextKey, splitScopes(scopes))
+				c.Set(scopesContextKey, splitScopes(identity.Scopes))
+				c.Set(allowedPathsContextKey, identity.AllowedPaths)
 				return true
 			}
 		}
@@ -153,6 +157,7 @@ func injectWebSession(c *gin.Context, claims *jwt.Claims) {
 	c.Set(userIDContextKey, 0)
 	c.Set(authTypeContextKey, AuthModeNone)
 	c.Set(scopesContextKey, []string{models.ScopeOpenAPIWriter})
+	c.Set(allowedPathsContextKey, "") // Web 会话不受路径限制
 }
 
 // LoginRequiredWhenForced OpenAPI 文档（/openapi.json、/docs）专用守卫。

@@ -468,6 +468,9 @@ ftp://localhost:2121
 - **API Key 限制**：创建 Key 时按接口分组勾选权限（兼容权限 / 文件信息 / 文件操作），
   至少选择一项；Open API 所有接口都需要凭证——列表 / 搜索 / 下载 / 详情需读取类权限，
   上传需写入类权限。`open_api:reader` / `open_api:writer` 合并权限继续兼容（writer 额外含上传）。
+- **允许路径**：创建 Key 时可同时限定可操作的公开目录路径（如 `/docs`、`/docs/public`，
+  每行一个，留空或 `*` 表示所有路径）；目录配置包含其所有子路径，越界操作返回 403，
+  列表 / 搜索 / 重复文件查询会自动裁剪到允许范围内。
 - **分片上传**：大文件可使用 `/files/upload/init` 创建会话，再逐片调用 `/files/upload/chunk`，
   最后调用 `/files/upload/finalize` 合并；`GET /files/upload/{id}` 可查询已上传分片用于断点续传。
 - **完整端点**：参见 [API 接口文档](../design/api/api-contracts.md)。
