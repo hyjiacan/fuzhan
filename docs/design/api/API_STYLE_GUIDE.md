@@ -50,7 +50,7 @@
 | PUT 更新（涉及路径时） | 参数 `path` | — |
 | DELETE 删除 | query `path` | `DELETE /api/v1/open/files?path=/docs/a.txt` |
 
-- `*path` 始终以 `/` 开头并包含根目录名：`/files/info/docs/a.txt` 解析为 `/docs/a.txt`。
+- `*path` 捕获值以 `/` 开头并包含根目录名：请求 `/files/info/docs/a.txt` 时捕获为 `/docs/a.txt`；URL 中的路径段本身不要再加前导斜杠（避免出现 `//` 与误导示例）。
 - 根目录列举用结尾斜杠：`GET /files/list/`。
 - 写操作的目标路径用 `new_path` / `target_path`，不得复用 `path`。
 - 禁止新增 `?path=` 形式的 GET 文件定位参数。

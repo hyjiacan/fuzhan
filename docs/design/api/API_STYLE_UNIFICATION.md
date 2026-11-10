@@ -118,7 +118,7 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 |---|---|---|---|
 | GET | `/api/open/v1/files/list?path=` | `/api/v1/open/files/list/*path` | 根目录 `/files/list/` |
 | GET | `/api/open/v1/files/search` | `/api/v1/open/files/search` | `query/ext/root` 保留 query |
-| GET | `/api/open/v1/files/download?path=` | `/api/v1/open/files/download/*path` | 路径段带前导 `/` |
+| GET | `/api/open/v1/files/download?path=` | `/api/v1/open/files/download/*path` | URL 路径段不带前导 `/`，捕获值以 `/` 开头 |
 | GET | `/api/open/v1/files/info?path=` | `/api/v1/open/files/info/*path` | 取消上一版 `type/value` |
 | POST | `/api/open/v1/files/exists` | `/api/v1/open/files/exists` | body `hashes` 不变 |
 | POST | `/api/open/v1/files/upload` | `/api/v1/open/files/upload` | 表单 `file/path/overwrite`，`path` 为目标目录 |

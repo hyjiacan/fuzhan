@@ -58,12 +58,12 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/list/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件列表",
-					"description":      "基于文件索引表，以分页方式获取指定目录的文件列表。路径写在 URL 中，始终以 `/` 开头并包含根目录名；根目录使用 `/files/list/`。\n\n所需 scope：`open_api:reader`",
+					"description":      "基于文件索引表，以分页方式获取指定目录的文件列表。路径写在 URL 路径段中（不带前导 `/`），服务端捕获后为 `/rootName/...`；根目录使用 `/files/list/`。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "目录路径：`/` 列出所有根目录；`/rootName` 列出根目录；`/rootName/subdir` 列出子目录", "schema": map[string]interface{}{"type": "string", "default": "/", "example": "/docs"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "目录路径（URL 路径段，不带前导 `/`）：留空列出所有根目录；`rootName` 列出该根目录；`rootName/subdir` 列出子目录", "schema": map[string]interface{}{"type": "string", "default": "", "example": "docs"}},
 						{"name": "page", "in": "query", "description": "页码，从 1 开始；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "default": 1}},
 						{"name": "page_size", "in": "query", "description": "每页数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
 						{"name": "sort", "in": "query", "description": "排序字段；提供非法值返回 400", "schema": map[string]interface{}{"type": "string", "enum": []string{"name", "time", "size"}, "default": "name"}},
@@ -114,12 +114,12 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/download/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件下载",
-					"description":      "通过 URL 路径下载文件，路径格式为 `/rootName/path/to/file`（带前导 `/`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
+					"description":      "通过 URL 路径下载文件，路径段格式为 `rootName/path/to/file`（不带前导 `/`；服务端捕获后为 `/rootName/path/to/file`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件完整路径（URL 路径段，不带前导 `/`）：`rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "docs/report.pdf"}},
 						{"name": "disposition", "in": "query", "description": "下载方式；危险类型会被强制改为 attachment", "schema": map[string]interface{}{"type": "string", "enum": []string{"attachment", "inline"}, "default": "attachment"}},
 					},
 					"responses": map[string]interface{}{
@@ -144,12 +144,12 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/info/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件详情",
-					"description":      "通过 URL 路径（`/rootName/path/to/file`）查询单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
+					"description":      "通过 URL 路径（`rootName/path/to/file`，不带前导 `/`）查询单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:info",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件/目录完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件/目录完整路径（URL 路径段，不带前导 `/`）：`rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "docs/report.pdf"}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("文件详情", schemaRef("FileDetail")),
