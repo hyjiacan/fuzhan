@@ -25,6 +25,9 @@ type FileInfo struct {
 	Notes         string `json:"notes,omitempty"`
 	DownloadCount int64  `json:"downloadCount,omitempty"`
 	RecordID      uint   `json:"recordId,omitempty"`
+	// DependencyCount 该文件的依赖条数（上游 + 下游），仅数据库索引搜索结果填充。
+	// 不省略 0 值：前端按该字段判断是否显示"依赖 (n)"，缺字段与计数为 0 语义不同。
+	DependencyCount int64 `json:"dependencyCount"`
 }
 
 // APPConfig 独立的 APP 配置结构体

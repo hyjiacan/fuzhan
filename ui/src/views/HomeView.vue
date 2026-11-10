@@ -87,7 +87,7 @@
       </div>
     </div>
 
-    <dependency-tree-dialog ref="depTreeDialogRef" />
+    <dependency-tree-dialog ref="depTreeDialogRef" @changed="refreshListDebounced" />
     <!-- 备注编辑弹窗 -->
     <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px" :class="notesMaximized ? 'preview-maximized' : ''">
       <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="4096" placeholder="输入备注内容..." />
@@ -276,15 +276,15 @@ const downloadFile = async (file) => {
   if (file?.path) {
     const fullPath = file.path
     const ok = await downloadWithTicket(`/download/${PathUtils.encodeFilePath(fullPath)}`)
-    if (ok) refreshAfterDownload()
+    if (ok) refreshListDebounced()
   }
 }
 
-// 下载后刷新文件列表，让下载次数列更新（搜索模式重新搜索）
-let downloadRefreshTimer = null
-const refreshAfterDownload = () => {
-  clearTimeout(downloadRefreshTimer)
-  downloadRefreshTimer = setTimeout(() => {
+// 防抖刷新文件列表：下载后更新下载次数，依赖增删后更新依赖计数（搜索模式重新搜索）
+let refreshTimer = null
+const refreshListDebounced = () => {
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
     if (isSearching.value || searchCompleted.value) {
       if (searchQuery.value.trim()) {
         store.actions.searchFiles(searchQuery.value)
@@ -322,7 +322,7 @@ const columns = createColumns({
   previewFile,
   openNotesEditor,
   openDepTree,
-  refreshAfterDownload
+  refreshListDebounced
 })
 
 const onUploadSuccess = () => {

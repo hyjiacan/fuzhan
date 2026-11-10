@@ -127,6 +127,16 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 		return nil, fmt.Errorf("数据库搜索查询失败: %w", err)
 	}
 
+	// 依赖条数：单次批量聚合，失败不影响搜索结果返回
+	ids := make([]uint, 0, len(records))
+	for _, record := range records {
+		ids = append(ids, record.ID)
+	}
+	depCounts, err := s.LoadDependencyCounts(ids)
+	if err != nil {
+		utils.Warn("统计搜索结果依赖数量失败", utils.Err(err))
+	}
+
 	results := make([]appconfig.FileInfo, 0, len(records))
 	for _, record := range records {
 		fileType := "file"
@@ -134,16 +144,17 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 			fileType = "directory"
 		}
 		results = append(results, appconfig.FileInfo{
-			Name:          record.FileName,
-			Type:          fileType,
-			Path:          record.FullPath,
-			ModifiedTime:  record.ModTime.Format("2006-01-02T15:04:05"),
-			Size:          record.FileSize,
-			RootName:      record.RootName,
-			Xxh3Hash:      record.Xxh3Hash,
-			Notes:         record.Notes,
-			DownloadCount: record.DownloadCount,
-			RecordID:      record.ID,
+			Name:            record.FileName,
+			Type:            fileType,
+			Path:            record.FullPath,
+			ModifiedTime:    record.ModTime.Format("2006-01-02T15:04:05"),
+			Size:            record.FileSize,
+			RootName:        record.RootName,
+			Xxh3Hash:        record.Xxh3Hash,
+			Notes:           record.Notes,
+			DownloadCount:   record.DownloadCount,
+			RecordID:        record.ID,
+			DependencyCount: depCounts[record.ID],
 		})
 	}
 
@@ -158,6 +169,71 @@ func (s *SearchService) SearchFiles(query string, rootDirs []appconfig.Directory
 // Close 关闭搜索服务（释放资源）
 func (s *SearchService) Close() error {
 	return nil
+}
+
+// depCountBatchSize 依赖计数按 ID 分块的大小。
+// 规避 SQLite 等方言的占位符数量上限（老版本 999），同时避免生成过长的 SQL。
+const depCountBatchSize = 500
+
+// LoadDependencyCounts 批量统计一组文件记录的依赖条数（上游 + 下游）。
+//
+// 口径与依赖树一致：对端记录缺失或非 active 的依赖不计入，避免数字大于弹窗实际展示条数。
+// 传入空列表时直接返回空映射，不产生查询。
+func (s *SearchService) LoadDependencyCounts(ids []uint) (map[uint]int64, error) {
+	if s.db == nil || len(ids) == 0 {
+		return map[uint]int64{}, nil
+	}
+
+	type countRow struct {
+		ID  uint
+		Cnt int64
+	}
+
+	counts := make(map[uint]int64, len(ids))
+	for start := 0; start < len(ids); start += depCountBatchSize {
+		end := start + depCountBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+
+		// 上游：该文件依赖了谁
+		var upstream []countRow
+		if err := s.db.Model(&models.FileDependency{}).
+			Select("file_record_id AS id, COUNT(*) AS cnt").
+			Where("file_record_id IN ?", batch).
+			Where("EXISTS (?)", s.db.Model(&models.FileRecordPublic{}).
+				Select("1").
+				Where("file_records_public.id = file_dependencies.depends_on_id").
+				Where("file_records_public.status = ?", models.FileStatusActive)).
+			Group("file_record_id").
+			Scan(&upstream).Error; err != nil {
+			return nil, err
+		}
+
+		// 下游：谁依赖了该文件
+		var downstream []countRow
+		if err := s.db.Model(&models.FileDependency{}).
+			Select("depends_on_id AS id, COUNT(*) AS cnt").
+			Where("depends_on_id IN ?", batch).
+			Where("EXISTS (?)", s.db.Model(&models.FileRecordPublic{}).
+				Select("1").
+				Where("file_records_public.id = file_dependencies.file_record_id").
+				Where("file_records_public.status = ?", models.FileStatusActive)).
+			Group("depends_on_id").
+			Scan(&downstream).Error; err != nil {
+			return nil, err
+		}
+
+		for _, row := range upstream {
+			counts[row.ID] += row.Cnt
+		}
+		for _, row := range downstream {
+			counts[row.ID] += row.Cnt
+		}
+	}
+
+	return counts, nil
 }
 
 // GetFileHashByPath 根据文件路径查询 xxh3 哈希值

@@ -73,8 +73,10 @@ type FileRecordInfo struct {
 	IsDir         bool   `json:"isDir"`
 	RootName      string `json:"rootName"`
 	DownloadCount int64  `json:"downloadCount"`
-	CanManage     bool   `json:"canManage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
-	UploaderIP    string `json:"uploaderIp,omitempty"` // 上传者IP，仅管理员请求时返回
+	// DependencyCount 该文件相关的依赖条数（上游 + 下游）
+	DependencyCount int64  `json:"dependencyCount"`
+	CanManage       bool   `json:"canManage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
+	UploaderIP      string `json:"uploaderIp,omitempty"` // 上传者IP，仅管理员请求时返回
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）
@@ -182,26 +184,17 @@ func (fh *FileHandlers) getRootNameList() []string {
 // listDirectChildren 列出指定目录下的直接子项（文件和子目录）
 // prefix 为空时列出根级直接子项；isAdmin 为 true 时所有条目均可管理
 func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string, isAdmin bool) ([]FileRecordInfo, error) {
-	query := fh.DB.Model(&models.FileRecordPublic{}).
-		Where("root_name = ? AND status = ?", rootName, models.FileStatusActive)
-
-	if prefix == "" {
-		// 根级：文件路径不包含额外 "/"（只有前导 /）
-		// 示例：/file.txt 匹配，/dir/file.txt 不匹配
-		query = query.Where("file_path NOT LIKE ?", "/%/%")
-	} else {
-		// 子目录：路径以 /prefix/ 开头，但不包含更深层级
-		// 示例：prefix=subdir，/subdir/file.txt 匹配，/subdir/nested/file.txt 不匹配
-		cleanPrefix := strings.TrimRight(prefix, "/")
-		query = query.Where(
-			"file_path LIKE ? AND file_path NOT LIKE ?",
-			"/"+cleanPrefix+"/%", "/"+cleanPrefix+"/%/%",
-		)
+	var records []models.FileRecordPublic
+	if err := fh.directChildrenQuery(rootName, prefix).
+		Order("is_dir DESC, file_name ASC").Find(&records).Error; err != nil {
+		return nil, err
 	}
 
-	var records []models.FileRecordPublic
-	if err := query.Order("is_dir DESC, file_name ASC").Find(&records).Error; err != nil {
-		return nil, err
+	// 依赖条数：单次聚合统计本目录所有文件，失败不影响列表返回
+	depCounts, err := fh.loadDependencyCounts(rootName, prefix)
+	if err != nil {
+		utils.Warn("统计文件依赖数量失败",
+			utils.String("root", rootName), utils.String("path", prefix), utils.Err(err))
 	}
 
 	// 可管理：管理员，或上传者IP与当前请求者IP一致
@@ -222,24 +215,105 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 			uploaderIP = r.UploaderIP
 		}
 		result = append(result, FileRecordInfo{
-			Name:          r.FileName,
-			Type:          fileType,
-			Path:          r.FullPath,
-			FullPath:      r.FullPath,
-			ModifiedTime:  modifiedTime,
-			Size:          r.FileSize,
-			Notes:         r.Notes,
-			Xxh3Hash:      r.Xxh3Hash,
-			HashStatus:    r.HashStatus,
-			RecordID:      r.ID,
-			IsDir:         r.IsDir,
-			RootName:      r.RootName,
-			DownloadCount: r.DownloadCount,
-			CanManage:     canManage,
-			UploaderIP:    uploaderIP,
+			Name:            r.FileName,
+			Type:            fileType,
+			Path:            r.FullPath,
+			FullPath:        r.FullPath,
+			ModifiedTime:    modifiedTime,
+			Size:            r.FileSize,
+			Notes:           r.Notes,
+			Xxh3Hash:        r.Xxh3Hash,
+			HashStatus:      r.HashStatus,
+			RecordID:        r.ID,
+			IsDir:           r.IsDir,
+			RootName:        r.RootName,
+			DownloadCount:   r.DownloadCount,
+			DependencyCount: depCounts[r.ID],
+			CanManage:       canManage,
+			UploaderIP:      uploaderIP,
 		})
 	}
 	return result, nil
+}
+
+// directChildrenQuery 构造"某目录直接子项"的基础查询。
+// 列表查询与依赖计数子查询共用同一筛选口径，避免两处条件漂移导致计数与列表不一致。
+func (fh *FileHandlers) directChildrenQuery(rootName, prefix string) *gorm.DB {
+	query := fh.DB.Model(&models.FileRecordPublic{}).
+		Where("root_name = ? AND status = ?", rootName, models.FileStatusActive)
+
+	if prefix == "" {
+		// 根级：文件路径不包含额外 "/"（只有前导 /）
+		// 示例：/file.txt 匹配，/dir/file.txt 不匹配
+		query = query.Where("file_path NOT LIKE ?", "/%/%")
+	} else {
+		// 子目录：路径以 /prefix/ 开头，但不包含更深层级
+		// 示例：prefix=subdir，/subdir/file.txt 匹配，/subdir/nested/file.txt 不匹配
+		cleanPrefix := strings.TrimRight(prefix, "/")
+		query = query.Where(
+			"file_path LIKE ? AND file_path NOT LIKE ?",
+			"/"+cleanPrefix+"/%", "/"+cleanPrefix+"/%/%",
+		)
+	}
+	return query
+}
+
+// loadDependencyCounts 统计目录内每个文件的依赖条数（上游 + 下游各一次聚合）。
+// 计数口径与依赖树一致：对端文件记录缺失或非 active 的依赖不计入，避免出现
+// 数字大于弹窗实际展示条数的情况。
+func (fh *FileHandlers) loadDependencyCounts(rootName, prefix string) (map[uint]int64, error) {
+	if fh.DB == nil {
+		return nil, nil
+	}
+
+	type countRow struct {
+		ID  uint
+		Cnt int64
+	}
+
+	// 目录内直接子项的记录 ID，条件与列表查询完全一致
+	dirIDs := func() *gorm.DB {
+		return fh.directChildrenQuery(rootName, prefix).Select("id")
+	}
+
+	counts := make(map[uint]int64)
+	appendCounts := func(rows []countRow) {
+		for _, row := range rows {
+			counts[row.ID] += row.Cnt
+		}
+	}
+
+	// 上游：该文件依赖了谁
+	var upstream []countRow
+	if err := fh.DB.Model(&models.FileDependency{}).
+		Select("file_record_id AS id, COUNT(*) AS cnt").
+		Where("file_record_id IN (?)", dirIDs()).
+		Where("EXISTS (?)", fh.DB.Model(&models.FileRecordPublic{}).
+			Select("1").
+			Where("file_records_public.id = file_dependencies.depends_on_id").
+			Where("file_records_public.status = ?", models.FileStatusActive)).
+		Group("file_record_id").
+		Scan(&upstream).Error; err != nil {
+		return nil, err
+	}
+	appendCounts(upstream)
+
+	// 下游：谁依赖了该文件
+	var downstream []countRow
+	if err := fh.DB.Model(&models.FileDependency{}).
+		Select("depends_on_id AS id, COUNT(*) AS cnt").
+		Where("depends_on_id IN (?)", dirIDs()).
+		Where("EXISTS (?)", fh.DB.Model(&models.FileRecordPublic{}).
+			Select("1").
+			Where("file_records_public.id = file_dependencies.file_record_id").
+			Where("file_records_public.status = ?", models.FileStatusActive)).
+		Group("depends_on_id").
+		Scan(&downstream).Error; err != nil {
+		return nil, err
+	}
+	appendCounts(downstream)
+
+	return counts, nil
 }
 
 // requesterIsAdmin 判断请求者是否为管理员

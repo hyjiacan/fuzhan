@@ -87,7 +87,7 @@ const props = defineProps({
   recordInfo: { type: Object, default: null }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'changed'])
 const message = ElMessage
 const dialog = {
   warning: (opts) => ElMessageBox.confirm(opts.content, opts.title, {
@@ -270,6 +270,7 @@ const deleteDependency = async (depId) => {
         const res = await DependencyApi.deletePublic(depId)
         if (res.success) {
           message.success('依赖已移除')
+          emit('changed')
           await loadTree(currentRecordId.value)
         }
       } catch (err) {
@@ -320,6 +321,7 @@ const handleAdd = async () => {
       searchName.value = ''
       descValue.value = ''
       autocompleteOptions.value = []
+      emit('changed')
       loadTree(currentRecordId.value)
     }
   } catch (err) {

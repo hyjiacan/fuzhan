@@ -32,7 +32,7 @@ export function createColumns(ctx) {
     previewFile,
     openNotesEditor,
     openDepTree,
-    refreshAfterDownload
+    refreshListDebounced
   } = ctx
 
   // 文件名单元格（复用搜索高亮逻辑）
@@ -76,7 +76,7 @@ export function createColumns(ctx) {
             // 非预览：换一次性票据后新标签原生下载（登录凭证不放 URL，故不能直接 href）
             e.preventDefault()
             downloadWithTicket(`/download/${PathUtils.encodeFilePath(downloadFullPath)}`)
-              .then(() => refreshAfterDownload())
+              .then(() => refreshListDebounced())
           }
         }, highlight(fileName))
     ]
@@ -125,7 +125,7 @@ export function createColumns(ctx) {
               }
               e.preventDefault()
               downloadWithTicket(`/download/${PathUtils.encodeFilePath(downloadFullPath)}`)
-                .then(() => refreshAfterDownload())
+                .then(() => refreshListDebounced())
             }
           }, highlight(fileName))
       ])
@@ -179,7 +179,9 @@ export function createColumns(ctx) {
       cellRenderer: ({ rowData: row }) => {
         // 目录：不显示管理操作（公开文件的管理已迁移至管理员页面）
         if (isDir(row)) return null
-        return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) }, () => '依赖')
+        const count = row.dependencyCount || 0
+        return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) },
+          () => (count > 0 ? `依赖 (${count})` : '依赖'))
       }
     }
   ]
