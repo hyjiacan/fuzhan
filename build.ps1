@@ -81,17 +81,31 @@ function Build-Frontend {
             Write-Host "Frontend build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
             exit 1
         }
-        # scalar 按需构建：产物已存在则跳过，缺失才生成（存在性判定用 Test-Path，不用 js）
+        # scalar 按需构建：产物缺失或任一源码比产物新时重新生成，
+        # 避免改了 scalar 源码后仍复用旧产物（旧块内地址会导致文档页 404）
         $scalarFile = Join-Path $rootDir "server\scalar\scalar.html"
-        if (Test-Path $scalarFile) {
-            Write-Host "scalar.html 已存在，跳过 scalar 构建" -ForegroundColor Gray
-        } else {
-            Write-Host "scalar.html 缺失，构建 scalar..." -ForegroundColor Yellow
+        $scalarSources = @(
+            (Join-Path $uiDir "scalar.html"),
+            (Join-Path $uiDir "scalar.vite.config.js"),
+            (Join-Path $uiDir "src\scalar-entry.js"),
+            (Join-Path $uiDir "package.json"),
+            (Join-Path $uiDir "yarn.lock")
+        ) | Where-Object { Test-Path $_ }
+
+        $needScalar = -not (Test-Path $scalarFile)
+        if (-not $needScalar) {
+            $scalarTime = (Get-Item $scalarFile).LastWriteTimeUtc
+            $needScalar = [bool]($scalarSources | Where-Object { (Get-Item $_).LastWriteTimeUtc -gt $scalarTime } | Select-Object -First 1)
+        }
+        if ($needScalar) {
+            Write-Host "scalar 产物缺失或源码有更新，构建 scalar..." -ForegroundColor Yellow
             & yarn.cmd build:scalar
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "Scalar build FAILED (exit code $LASTEXITCODE)" -ForegroundColor Red
                 exit 1
             }
+        } else {
+            Write-Host "scalar 产物已是最新，跳过 scalar 构建" -ForegroundColor Gray
         }
     } finally {
         Pop-Location
