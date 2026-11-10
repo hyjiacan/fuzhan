@@ -108,7 +108,7 @@ func TestEvaluateUnauthorized(t *testing.T) {
 	}{
 		{"普通读取不构成事件", http.MethodGet, "/api/v1/files", models.GuardAuth, false},
 		{"未认证访问管理接口", http.MethodGet, "/api/v1/web/admin/users", models.GuardAuth, true},
-		{"未认证写操作", http.MethodPost, "/api/v1/web/private/uploads/session", models.GuardAuth, true},
+		{"未认证写操作", http.MethodPost, "/api/v1/web/private/uploads/sessions", models.GuardAuth, true},
 		{"会话维护接口豁免", http.MethodPost, "/api/v1/web/auth/refresh", models.GuardAuth, false},
 		{"WebDAV 认证失败", http.MethodGet, "/api/v1/webdav/x", models.GuardWebDAV, true},
 	}

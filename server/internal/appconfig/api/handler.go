@@ -86,9 +86,9 @@ func (h *Handler) GetRuntimeConfig(c *gin.Context) {
 	}
 
 	resp := gin.H{
-		"app":        buildAppOptions(),
-		"account":    buildAccountOptions(c),
-		"rootDirs":   rootDirs,
+		"app":      buildAppOptions(),
+		"account":  buildAccountOptions(c),
+		"rootDirs": rootDirs,
 		"privateStorage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
 		},

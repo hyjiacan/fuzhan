@@ -32,9 +32,10 @@ import (
 type UploadFromURLRequest struct {
 	URL         string `json:"url" binding:"required"`
 	Filename    string `json:"filename"`
-	Dir         string `json:"dir"`
-	RootName    string `json:"rootName"`
-	StorageType string `json:"storageType"`
+	Path        string `json:"path"` // 目标目录：regular 为 /rootName[/subdir]，temp/private 为子目录
+	StorageType string `json:"storage_type"`
+	Dir         string `json:"-"`
+	RootName    string `json:"-"`
 }
 
 const (
@@ -55,6 +56,17 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
 		return
+	}
+
+	if req.StorageType == "" || req.StorageType == storageTypeRegular {
+		rootName, dir, pathErr := splitUploadTargetPath(req.Path)
+		if pathErr != nil {
+			utils.HandleBadRequest(c, pathErr.Error(), nil)
+			return
+		}
+		req.RootName, req.Dir = rootName, dir
+	} else {
+		req.Dir = strings.TrimSpace(strings.ReplaceAll(req.Path, "\\", "/"))
 	}
 
 	// 检查公共目录上传开关（regular 和空 TargetType 视为公共上传）
@@ -281,9 +293,10 @@ func probeRemoteFileInfo(downloadURL string, urlCfg utils.URLUploadConfig, prefe
 // URLProbeRequest 批量探测请求
 type URLProbeRequest struct {
 	URLs        []string `json:"urls" binding:"required"`
-	Dir         string   `json:"dir"`
-	RootName    string   `json:"rootName"`
-	StorageType string   `json:"storageType"`
+	Path        string   `json:"path"` // 目标目录：regular 为 /rootName[/subdir]，temp/private 为子目录
+	StorageType string   `json:"storage_type"`
+	Dir         string   `json:"-"`
+	RootName    string   `json:"-"`
 }
 
 // ProbeURLs 批量探测 URL：串行 HEAD 取文件名/大小，并检查目标文件是否已存在、
@@ -299,6 +312,16 @@ func (h *UploadSessionHandler) ProbeURLs(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
 		return
+	}
+	if req.StorageType == "" || req.StorageType == storageTypeRegular {
+		rootName, dir, pathErr := splitUploadTargetPath(req.Path)
+		if pathErr != nil {
+			utils.HandleBadRequest(c, pathErr.Error(), nil)
+			return
+		}
+		req.RootName, req.Dir = rootName, dir
+	} else {
+		req.Dir = strings.TrimSpace(strings.ReplaceAll(req.Path, "\\", "/"))
 	}
 	if len(req.URLs) == 0 {
 		utils.HandleBadRequest(c, "请至少提供一个 URL", nil)
@@ -412,7 +435,7 @@ func (h *UploadSessionHandler) probeTargetPath(targetType models.TargetType, fil
 
 // GetURLTask 获取 URL 下载任务进度
 func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
-	taskID := c.Param("taskId")
+	taskID := c.Param("id")
 	if taskID == "" {
 		utils.HandleBadRequest(c, "无效的任务ID", nil)
 		return
@@ -566,7 +589,7 @@ func writeURLTaskFrame(c *gin.Context, flusher http.Flusher, tasks []gin.H) bool
 
 // CancelURLTask 取消 URL 下载任务
 func (h *UploadSessionHandler) CancelURLTask(c *gin.Context) {
-	taskID := c.Param("taskId")
+	taskID := c.Param("id")
 	if taskID == "" {
 		utils.HandleBadRequest(c, "无效的任务ID", nil)
 		return
@@ -628,7 +651,7 @@ func (h *UploadSessionHandler) checkTaskOwnership(c *gin.Context, task *models.U
 func (h *UploadSessionHandler) ListURLTasks(c *gin.Context) {
 	storageType := c.Query("type")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
 
 	if page < 1 {
 		page = 1
@@ -688,7 +711,7 @@ func (h *UploadSessionHandler) ListURLTasks(c *gin.Context) {
 
 // RetryURLTask 重试失败或已取消的 URL 下载任务
 func (h *UploadSessionHandler) RetryURLTask(c *gin.Context) {
-	taskID := c.Param("taskId")
+	taskID := c.Param("id")
 	if taskID == "" {
 		utils.HandleBadRequest(c, "无效的任务ID", nil)
 		return
@@ -776,7 +799,7 @@ func (h *UploadSessionHandler) removeTargetIfOwned(task *models.URLDownloadTask)
 
 // DeleteURLTask 删除 URL 下载任务
 func (h *UploadSessionHandler) DeleteURLTask(c *gin.Context) {
-	taskID := c.Param("taskId")
+	taskID := c.Param("id")
 	if taskID == "" {
 		utils.HandleBadRequest(c, "无效的任务ID", nil)
 		return
@@ -821,7 +844,7 @@ var supportedChecksumAlgorithms = map[string]func() hash.Hash{
 // ComputeURLTaskChecksum 计算已完成 URL 上传任务的校验值（md5/sha1/sha256，可多选）。
 // 文件已落盘在服务器，按所选算法单次流式读取计算；结果仅返回给调用方，不落库。
 func (h *UploadSessionHandler) ComputeURLTaskChecksum(c *gin.Context) {
-	taskID := c.Param("taskId")
+	taskID := c.Param("id")
 	if taskID == "" {
 		utils.HandleBadRequest(c, "无效的任务ID", nil)
 		return

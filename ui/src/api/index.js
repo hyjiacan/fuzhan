@@ -38,6 +38,27 @@ function notifyWriteSuccess(method, config, response) {
 // 导出 request 实例供需要动态 URL 的组件使用（如 UploadManager）
 export { request }
 
+// 将文件/目录路径编码为 URL 路径段；根目录返回带结尾斜杠的形式（如 /files/list/）
+function fileUrl(base, path = '') {
+  const seg = String(path)
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/')
+  return seg ? `${base}/${seg}` : `${base}/`
+}
+
+// 将前端 camelCase 查询参数转换为后端 snake_case（仅用于透传 params 的接口）
+function snakeParams(obj = {}) {
+  const out = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null || v === '') continue
+    const key = k === 'q' ? 'query' : k.replace(/[A-Z]/g, m => '_' + m.toLowerCase())
+    out[key] = v
+  }
+  return out
+}
+
 // 错误处理回调（可在应用初始化时设置）
 let globalErrorHandler = null
 
@@ -169,21 +190,21 @@ export const AuthApi = {
   // 一次性验证码校验失败后必须重新 getCaptcha 刷新
   register(username, password, captchaId = '', captchaAnswer = '') {
     // 注册反馈由组件内显式提示（含后续引导文案），跳过拦截器自动 toast 避免重复
-    return request.post('/auth/register', { username, password, captchaId, captchaAnswer }, { skipSuccessToast: true })
+    return request.post('/auth/register', { username, password, captcha_id: captchaId, captcha_answer: captchaAnswer }, { skipSuccessToast: true })
   },
 
   login(username, password, captchaId = '', captchaAnswer = '') {
     // 登录成功的反馈由组件内显式提示，跳过拦截器自动 toast 避免重复
-    return request.post('/auth/login', { username, password, captchaId, captchaAnswer }, { skipSuccessToast: true })
+    return request.post('/auth/login', { username, password, captcha_id: captchaId, captcha_answer: captchaAnswer }, { skipSuccessToast: true })
   },
 
   changePassword(oldPassword, newPassword) {
-    return request.put('/auth/password', { oldPassword, newPassword }, { skipSuccessToast: true })
+    return request.put('/auth/password', { old_password: oldPassword, new_password: newPassword }, { skipSuccessToast: true })
   },
 
   // 更新个人资料（姓名、昵称）；用户名不可修改
   updateProfile(displayName, nickname) {
-    return request.put('/auth/profile', { displayName, nickname }, { skipSuccessToast: true })
+    return request.put('/auth/profile', { display_name: displayName, nickname }, { skipSuccessToast: true })
   },
 
   // 注销账号：需再次输入当前密码确认；成功后服务端会清除该用户的私有/临时文件
@@ -242,26 +263,22 @@ export const ResourceApi = {
   },
 
   history(scope, range) {
-    return request.get('/admin/resource/history', { params: { scope, range } })
+    return request.get('/admin/resource/history', { params: snakeParams({ scope, range }) })
   }
 }
 
 // ========== 文件 API ==========
 export const FileApi = {
   list(path = '') {
-    return request.get('/files/list', { params: { path } })
+    return request.get(fileUrl('/files/list', path))
   },
 
   recent(page = 1, pageSize = 20, action = 'upload') {
-    return request.get('/files/recent', { params: { page, pageSize, action } })
+    return request.get('/files/recent', { params: { page, page_size: pageSize, action } })
   },
 
   recentCarousel() {
     return request.get('/files/recent/carousel')
-  },
-
-  getInfo(path) {
-    return request.get('/get_file_info', { params: { path } })
   },
 
   preview(path) {
@@ -274,7 +291,7 @@ export const FileApi = {
     return request.get(`/files/preview-chunk/${encodedPath}`, { params: { chunk: chunkIndex } })
   },
 
-  // 计算已上传文件校验值（由服务器对已存储文件计算；payload 含 storageType 及对应定位字段与 algorithms）
+  // 计算已上传文件校验值（由服务器对已存储文件计算；payload 含 storage_type 及对应定位字段与 algorithms）
   computeChecksum(payload) {
     return request.post('/files/checksum', payload, { skipSuccessToast: true })
   }
@@ -283,66 +300,66 @@ export const FileApi = {
 // ========== 上传 API ==========
 export const UploadApi = {
   getUrlInfo(url) {
-    return request.post('/uploads/url_info', { url })
+    return request.post('/uploads/url-info', { url })
   },
 
-  uploadFromUrl(url, filename, dir = '', storageType = '') {
-    const data = { url, filename, dir }
+  uploadFromUrl(url, filename, path = '', storageType = '') {
+    const data = { url, filename, path }
     if (storageType) {
-      data.storageType = storageType
+      data.storage_type = storageType
     }
-    return request.post('/uploads/url', data)
+    return request.post('/uploads/url-tasks', data)
   },
 
-  uploadFromUrlLocal(url, filename, dir, rootName) {
-    return request.post('/uploads/url', { url, filename, dir, rootName })
+  uploadFromUrlLocal(url, filename, path) {
+    return request.post('/uploads/url-tasks', { url, filename, path })
   },
 
   // 批量探测 URL：返回文件名/大小、目标是否已存在、该 URL 是否已成功上传过
-  probeUrls(urls, dir = '', rootName = '', storageType = '') {
-    return request.post('/uploads/url-probe', { urls, dir, rootName, storageType }, { skipSuccessToast: true })
+  probeUrls(urls, path = '', storageType = '') {
+    return request.post('/uploads/url-tasks/probe', { urls, path, storage_type: storageType }, { skipSuccessToast: true })
   },
 
   // 分片上传
   session: {
     create(data) {
-      return request.post('/uploads/session', data)
+      return request.post('/uploads/sessions', data)
     },
     get(id) {
-      return request.get(`/uploads/session/${id}`)
+      return request.get(`/uploads/sessions/${id}`)
     },
     resume(id) {
-      return request.post(`/uploads/session/${id}/resume`)
+      return request.post(`/uploads/sessions/${id}/resume`)
     },
     cancel(id) {
-      return request.delete(`/uploads/session/${id}`, { skipSuccessToast: true })
+      return request.delete(`/uploads/sessions/${id}`, { skipSuccessToast: true })
     }
   },
 
   chunk: {
     upload(formData) {
-      return request.post('/uploads/chunk', formData, {
+      return request.post('/uploads/chunks', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
     }
   },
 
   finalize(uploadId) {
-    return request.post('/uploads/finalize', { uploadId })
+    return request.post('/uploads/finalize', { upload_id: uploadId })
   },
 
   // URL 上传任务进度查询
   getURLTask(taskId) {
-    return request.get(`/uploads/url-task/${taskId}`)
+    return request.get(`/uploads/url-tasks/${taskId}`)
   },
 
   // 当前用户上传状态/会话
   listSessions(type, page = 1, pageSize = 50) {
-    return request.get('/uploads/sessions', { params: { type, page, pageSize } })
+    return request.get('/uploads/sessions', { params: { type, page, page_size: pageSize } })
   },
 
   listURLTasks(type, page = 1, pageSize = 50) {
-    return request.get('/uploads/url-tasks', { params: { type, page, pageSize } })
+    return request.get('/uploads/url-tasks', { params: { type, page, page_size: pageSize } })
   },
 
   cancelURLTask(taskId) {
@@ -363,7 +380,7 @@ export const UploadApi = {
 export const IndexApi = {
   // 查询索引记录
   listRecords(params = {}) {
-    return request.get('/admin/index/records', { params })
+    return request.get('/admin/index/records', { params: snakeParams(params) })
   },
 
   // 获取索引统计
@@ -402,7 +419,7 @@ export const IndexApi = {
   },
   // 搜索文件记录（用于 autocomplete）
   searchRecords(query) {
-    return request.get('/files/search-records', { params: { q: query } })
+    return request.get('/files/search-records', { params: { query } })
   },
 
   // 删除索引记录
@@ -412,7 +429,7 @@ export const IndexApi = {
 
   // 查询重复文件
   listDuplicates(params = {}) {
-    return request.get('/admin/index/duplicates', { params })
+    return request.get('/admin/index/duplicates', { params: snakeParams(params) })
   },
 
   // 保留指定文件，自动删除同哈希的其他重复文件
@@ -425,7 +442,7 @@ export const IndexApi = {
 export const DependencyApi = {
   create(fileRecordId, dependsOnId, relation, description) {
     return request.post('/admin/index/dependencies', {
-      fileRecordId, dependsOnId, relation, description
+      file_record_id: fileRecordId, depends_on_id: dependsOnId, relation, description
     })
   },
   delete(id) {
@@ -440,7 +457,7 @@ export const DependencyApi = {
   // 公开创建（无需 admin）
   createPublic(fileRecordId, dependsOnId, relation, description) {
     return request.post('/files/dependencies', {
-      fileRecordId, dependsOnId, relation, description
+      file_record_id: fileRecordId, depends_on_id: dependsOnId, relation, description
     })
   },
   // 公开删除（无需 admin）
@@ -456,15 +473,15 @@ export const SearchApi = {
   },
   // 文件名检索：自动补全（搜索框实时联想）
   autocomplete(query, limit = 10) {
-    return request.get('/search-suggest', { params: { q: query, limit } })
+    return request.get('/search-suggest', { params: { query, limit } })
   },
   // 文件名检索：拼写纠错（输入错误时给推荐）
   spellcheck(query, limit = 5) {
-    return request.get('/search-spellcheck', { params: { q: query, limit } })
+    return request.get('/search-spellcheck', { params: { query, limit } })
   },
   // 文件名检索：相关词推荐（输入空格后给出下一段候选）
   related(query, limit = 10) {
-    return request.get('/search-related', { params: { q: query, limit } })
+    return request.get('/search-related', { params: { query, limit } })
   }
 }
 
@@ -480,26 +497,27 @@ export const FileRecordApi = {
   },
   // 搜索文件记录（用于 autocomplete）
   searchFiles(query) {
-    return request.get('/files/search-records', { params: { q: query } })
+    return request.get('/files/search-records', { params: { query } })
   },
   // 根据路径查找文件记录
   findRecord(fileName, rootName, filePath) {
-    return request.get('/files/record', { params: { fileName, rootName, filePath } })
+    const rel = filePath.startsWith('/') ? filePath : `/${filePath}`
+    return request.get(fileUrl('/files/record', `/${rootName}${rel}`))
   }
 }
 
 // ========== 管理员 API ==========
 export const AdminApi = {
   getUsers(page = 1, pageSize = 20, query = '') {
-    return request.get('/admin/users', { params: { page, pageSize, query } })
+    return request.get('/admin/users', { params: { page, page_size: pageSize, query } })
   },
 
   createUser(username, displayName, password, role = 'user') {
-    return request.post('/admin/users', { username, displayName, password, role }, { skipSuccessToast: true })
+    return request.post('/admin/users', { username, display_name: displayName, password, role }, { skipSuccessToast: true })
   },
 
   resetPassword(uuid, newPassword) {
-    return request.put(`/admin/users/${uuid}/reset-password`, { newPassword }, { skipSuccessToast: true })
+    return request.put(`/admin/users/${uuid}/reset-password`, { new_password: newPassword }, { skipSuccessToast: true })
   },
 
   setUserDisabled(uuid, disabled) {
@@ -511,11 +529,11 @@ export const AdminApi = {
   },
 
   getSessions(page = 1, pageSize = 20) {
-    return request.get('/admin/sessions', { params: { page, pageSize } })
+    return request.get('/admin/sessions', { params: { page, page_size: pageSize } })
   },
 
   cleanupSessions(sessionIds) {
-    return request.post('/admin/sessions/cleanup', { sessionIds }, { skipSuccessToast: true })
+    return request.post('/admin/sessions/cleanup', { session_ids: sessionIds }, { skipSuccessToast: true })
   },
 
   // 一键清理全部僵尸（过期/待处理/上传中）会话——由后端重新查询决定清理哪些
@@ -525,16 +543,16 @@ export const AdminApi = {
 
   // 当前在线 IP（与登录无关，依据最近请求判定）——统一分页模式
   getOnlineIps(page = 1, pageSize = 20) {
-    return request.get('/admin/online-ips', { params: { page, pageSize } })
+    return request.get('/admin/online-ips', { params: { page, page_size: pageSize } })
   },
 
   // 文件管理
   listFiles(path = '') {
-    return request.get('/admin/files/list', { params: { path } })
+    return request.get(fileUrl('/admin/files/list', path))
   },
 
   move(oldPath, newPath) {
-    return request.post('/admin/files/move', { oldPath, newPath }, { skipSuccessToast: true })
+    return request.post('/admin/files/move', { path: oldPath, target_path: newPath }, { skipSuccessToast: true })
   },
 
   delete(path) {
@@ -543,7 +561,7 @@ export const AdminApi = {
 
   // URL 上传任务管理
   getURLTasks(page = 1, pageSize = 20, status = '') {
-    const params = { page, pageSize }
+    const params = { page, page_size: pageSize }
     if (status) params.status = status
     return request.get('/admin/url-tasks', { params })
   },
@@ -562,7 +580,7 @@ export const AdminApi = {
   },
 
   getTaskHistory(type = '', page = 1, pageSize = 20) {
-    const params = { page, pageSize }
+    const params = { page, page_size: pageSize }
     if (type) params.type = type
     return request.get('/admin/tasks/history', { params })
   },
@@ -604,7 +622,7 @@ export const AdminApi = {
 // ========== 私有存储 API ==========
 export const PrivateApi = {
   list(dir = '') {
-    return request.get('/private/files', { params: { path: dir || undefined } })
+    return request.get(fileUrl('/private/files', dir))
   },
 
   delete(code) {
@@ -618,29 +636,29 @@ export const PrivateApi = {
   // 分片上传
   session: {
     create(data) {
-      return request.post('/private/uploads/session', data)
+      return request.post('/private/uploads/sessions', data)
     },
     get(id) {
-      return request.get(`/private/uploads/session/${id}`)
+      return request.get(`/private/uploads/sessions/${id}`)
     },
     resume(id) {
-      return request.post(`/private/uploads/session/${id}/resume`)
+      return request.post(`/private/uploads/sessions/${id}/resume`)
     },
     cancel(id) {
-      return request.delete(`/private/uploads/session/${id}`)
+      return request.delete(`/private/uploads/sessions/${id}`)
     }
   },
 
   chunk: {
     upload(formData) {
-      return request.post('/private/uploads/chunk', formData, {
+      return request.post('/private/uploads/chunks', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
     }
   },
 
   finalize(uploadId) {
-    return request.post('/private/uploads/finalize', { uploadId })
+    return request.post('/private/uploads/finalize', { upload_id: uploadId })
   },
 
   download(code) {
@@ -652,7 +670,7 @@ export const PrivateApi = {
 // ========== 临时文件 API (基于IP，无需认证) ==========
 export const TempApi = {
   list(dir = '') {
-    return request.get('/temp/list', { params: { path: dir || undefined } })
+    return request.get(fileUrl('/temp/list', dir))
   },
 
   getQuota() {
@@ -678,29 +696,29 @@ export const TempApi = {
   // 分片上传
   session: {
     create(data) {
-      return request.post('/temp/upload/session', data)
+      return request.post('/temp/uploads/sessions', data)
     },
     get(id) {
-      return request.get(`/temp/upload/session/${id}`)
+      return request.get(`/temp/uploads/sessions/${id}`)
     },
     resume(id) {
-      return request.post(`/temp/upload/session/${id}/resume`)
+      return request.post(`/temp/uploads/sessions/${id}/resume`)
     },
     cancel(id) {
-      return request.delete(`/temp/upload/session/${id}`)
+      return request.delete(`/temp/uploads/sessions/${id}`)
     }
   },
 
   chunk: {
     upload(formData) {
-      return request.post('/temp/upload/chunk', formData, {
+      return request.post('/temp/uploads/chunks', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
     }
   },
 
   finalize(uploadId) {
-    return request.post('/temp/upload/finalize', { uploadId })
+    return request.post('/temp/uploads/finalize', { upload_id: uploadId })
   }
 }
 
@@ -754,7 +772,7 @@ export const SystemApi = {
   uploadCert(file) {
     const formData = new FormData()
     formData.append('file', file)
-    return request.post('/admin/upload-cert', formData, {
+    return request.post('/admin/tls/certificate', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
@@ -763,7 +781,7 @@ export const SystemApi = {
   uploadKey(file) {
     const formData = new FormData()
     formData.append('file', file)
-    return request.post('/admin/upload-key', formData, {
+    return request.post('/admin/tls/private-key', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
@@ -797,38 +815,38 @@ export const MonitorApi = {
   },
 
   getHotDownloads(page = 1, pageSize = 20) {
-    return request.get('/monitor/hot-downloads', { params: { page, pageSize } })
+    return request.get('/monitor/hot-downloads', { params: { page, page_size: pageSize } })
   }
 }
 
 // ========== 行为分析 API ==========
 export const BehaviorAnalyticsApi = {
   getSummary(params) {
-    return request.get('/admin/behavior-analytics/summary', { params })
+    return request.get('/admin/behavior-analytics/summary', { params: snakeParams(params) })
   },
   getTrend(params) {
-    return request.get('/admin/behavior-analytics/trend', { params })
+    return request.get('/admin/behavior-analytics/trend', { params: snakeParams(params) })
   },
   getTopFiles(params) {
-    return request.get('/admin/behavior-analytics/top-files', { params })
+    return request.get('/admin/behavior-analytics/top-files', { params: snakeParams(params) })
   },
   getSources(params) {
-    return request.get('/admin/behavior-analytics/sources', { params })
+    return request.get('/admin/behavior-analytics/sources', { params: snakeParams(params) })
   },
   getFailures(params) {
-    return request.get('/admin/behavior-analytics/failures', { params })
+    return request.get('/admin/behavior-analytics/failures', { params: snakeParams(params) })
   },
   getFileDetail(params) {
-    return request.get('/admin/behavior-analytics/file', { params })
+    return request.get('/admin/behavior-analytics/file', { params: snakeParams(params) })
   },
   getHeatmap(params) {
-    return request.get('/admin/behavior-analytics/heatmap', { params })
+    return request.get('/admin/behavior-analytics/heatmap', { params: snakeParams(params) })
   },
   getAggregate(params) {
-    return request.get('/admin/behavior-analytics/aggregate', { params })
+    return request.get('/admin/behavior-analytics/aggregate', { params: snakeParams(params) })
   },
   getLifecycle(params) {
-    return request.get('/admin/behavior-analytics/lifecycle', { params })
+    return request.get('/admin/behavior-analytics/lifecycle', { params: snakeParams(params) })
   }
 }
 
@@ -850,7 +868,7 @@ export const NotificationApi = {
 // ========== API Key 管理 API ==========
 export const ApiKeyApi = {
   list(page = 1, pageSize = 20) {
-    return request.get('/admin/api-keys', { params: { page, pageSize } })
+    return request.get('/admin/api-keys', { params: { page, page_size: pageSize } })
   },
 
   get(id) {
@@ -879,12 +897,12 @@ export const ApiKeyApi = {
 export const PersonalApi = {
   // 个人登录记录；filters 支持 method/status/keyword/from/to
   getLoginLogs(page = 1, pageSize = 20, filters = {}) {
-    return request.get('/user/login-logs', { params: { page, pageSize, ...filters } })
+    return request.get('/user/login-logs', { params: { page, page_size: pageSize, ...snakeParams(filters) } })
   },
 
-  // 个人操作记录；filters 支持 action/sourceType/status/keyword/from/to
+  // 个人操作记录；filters 支持 action/source_type/status/keyword/from/to
   getRecords(page = 1, pageSize = 20, filters = {}) {
-    return request.get('/user/records', { params: { page, pageSize, ...filters } })
+    return request.get('/user/records', { params: { page, page_size: pageSize, ...snakeParams(filters) } })
   },
 
   // 个人上传文件统计（公共文件）
@@ -895,9 +913,9 @@ export const PersonalApi = {
 
 // ========== 安全事件 API ==========
 export const SecurityApi = {
-  // 分页查询安全事件（支持 severity/eventType/clientIP/identity/result/guard/unread/from/to/q 过滤）
+  // 分页查询安全事件（支持 severity/event_type/client_ip/identity/result/guard/unread/from/to/query 过滤）
   list(params = {}) {
-    return request.get('/admin/security/events', { params })
+    return request.get('/admin/security/events', { params: snakeParams(params) })
   },
 
   // 未读汇总（管理端入口红点与登录强提醒的数据源）
@@ -924,7 +942,7 @@ export const SecurityApi = {
 // ========== 存储告警消息 API（仅管理员） ==========
 export const AlertApi = {
   listMessages(params = {}) {
-    return request.get('/admin/alert-messages', { params })
+    return request.get('/admin/alert-messages', { params: snakeParams(params) })
   },
   unreadCount() {
     return request.get('/admin/alert-messages/unread-count')

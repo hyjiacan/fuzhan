@@ -5,7 +5,7 @@ import '@scalar/api-reference/vue-styles.css'
 
 // 离线环境配置：禁用所有需要互联网的功能
 createApiReference('#scalar-root', {
-  url: '/api/open/v1/openapi.json',
+  url: '/api/v1/open/openapi.json',
   darkMode: true,
   // 禁用默认字体（不加载 Google Fonts）
   withDefaultFonts: false,

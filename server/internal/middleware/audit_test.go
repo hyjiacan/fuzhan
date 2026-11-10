@@ -129,7 +129,7 @@ func TestAudit_MissingCredentialUnauthorized_NotRecorded(t *testing.T) {
 	security.ResetAuthFailureState()
 	for _, tc := range []struct{ method, path string }{
 		{"GET", "/api/v1/web/admin/users"},
-		{"POST", "/api/v1/web/private/uploads/session"},
+		{"POST", "/api/v1/web/private/uploads/sessions"},
 	} {
 		evs := collectRejectedWith(t, tc.method, tc.path, false, http.StatusUnauthorized, constants.AuthFailureMissing)
 		if len(evs) != 0 {

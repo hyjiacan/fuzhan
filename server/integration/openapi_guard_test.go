@@ -22,14 +22,14 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-const openAPIDocPath = "/api/open/v1/openapi.json"
+const openAPIDocPath = "/api/v1/open/openapi.json"
 
 // newOpenAPIDocRouter 构造只挂守卫生效链路的最小引擎：功能开关 + LoginRequiredWhenForced + 桩 handler。
 // 不构造整个 runCtx，测试聚焦守卫语义（限流/统计/响应包装与本任务无关）。
 // authMW 可为 nil（仅验签放行）；需要验证禁用态校验时传入带 users 表的真实 AuthMiddleware。
 func newOpenAPIDocRouter(authMW *middleware.AuthMiddleware, rbac *auth.RBACService) *gin.Engine {
 	router := gin.New()
-	doc := router.Group("/api/open/v1")
+	doc := router.Group("/api/v1/open")
 	doc.Use(
 		openapi.FeatureGateMiddleware(true),
 		openapi.LoginRequiredWhenForced(authMW, rbac),

@@ -50,7 +50,7 @@ yarn test:e2e    # E2E 测试（需先启动后端服务）
 
 ## 后端 API
 
-界面调用的 API 统一位于 `/api/v1/web/` 前缀下（CLI 为 `/api/v1/cli`、WebDAV 为 `/api/v1/webdav`、第三方为 `/api/open/v1`），需要后端服务（8080 端口）运行中。
+界面调用的 API 统一位于 `/api/v1/web/` 前缀下（CLI 为 `/api/v1/cli`、WebDAV 为 `/api/v1/webdav`、第三方为 `/api/v1/open`），需要后端服务（8080 端口）运行中。
 
 ## 构建说明
 

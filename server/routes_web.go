@@ -45,7 +45,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 就绪探针统一收敛到 LoginGate，强制登录开启后不再匿名可访问
 	web.GET("/ready", healthHandler.Ready)
 	// 监控指标路由（需要认证，防止信息泄露）
-	api.GET("/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())
+	web.GET("/monitor/metrics", authMiddleware.AuthRequired(), middleware.PrometheusHandler())
 
 	// 系统监测路由
 	// 存储与访问统计是重查询（整盘 Walk / operation_records 计数），仅管理面板使用，
@@ -91,18 +91,18 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	private := web.Group("/private")
 	private.Use(authMiddleware.AuthRequired(), middleware.TokenRefreshMiddleware(rt.authService), middleware.ResponseWrapperMiddleware())
 	{
-		private.GET("/files", privateStorageHandler.List)
+		private.GET("/files/*path", privateStorageHandler.List)
 		private.GET("/quota", privateUploadHandler.QuotaHandler)
 		private.DELETE("/files/:code", privateStorageHandler.Delete)
 
 		// 私有存储分片上传路由
 		privateUploads := private.Group("/uploads")
 		{
-			privateUploads.POST("/session", privateUploadHandler.CreateSession)
-			privateUploads.GET("/session/:id", privateUploadHandler.GetSession)
-			privateUploads.POST("/session/:id/resume", privateUploadHandler.ResumeSession)
-			privateUploads.DELETE("/session/:id", privateUploadHandler.CancelSession)
-			privateUploads.POST("/chunk", privateUploadHandler.UploadChunk)
+			privateUploads.POST("/sessions", privateUploadHandler.CreateSession)
+			privateUploads.GET("/sessions/:id", privateUploadHandler.GetSession)
+			privateUploads.POST("/sessions/:id/resume", privateUploadHandler.ResumeSession)
+			privateUploads.DELETE("/sessions/:id", privateUploadHandler.CancelSession)
+			privateUploads.POST("/chunks", privateUploadHandler.UploadChunk)
 			privateUploads.POST("/finalize", privateUploadHandler.FinalizeSession)
 		}
 	}
@@ -174,7 +174,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	// 临时文件路由（基于IP，无需认证）
 	temp := web.Group("/temp")
 	{
-		temp.GET("/list", tempHandler.ListHandler)
+		temp.GET("/list/*path", tempHandler.ListHandler)
 		temp.GET("/quota", tempHandler.QuotaHandler)
 		temp.GET("/client-ip", tempHandler.ClientIPHandler)
 		temp.GET("/:code", tempHandler.InfoHandler)
@@ -184,43 +184,43 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 	}
 
 	// 临时文件分片上传路由
-	tempUploads := web.Group("/temp/upload")
+	tempUploads := web.Group("/temp/uploads")
 	{
-		tempUploads.POST("/session", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), tempHandler.CreateTempSessionHandler)
-		tempUploads.GET("/session/:uploadId", tempHandler.GetTempSessionHandler)
-		tempUploads.POST("/session/:uploadId/resume", tempHandler.ResumeTempSessionHandler)
-		tempUploads.DELETE("/session/:uploadId", tempHandler.CancelTempSessionHandler)
-		tempUploads.POST("/chunk", tempHandler.UploadTempChunkHandler)
+		tempUploads.POST("/sessions", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), tempHandler.CreateTempSessionHandler)
+		tempUploads.GET("/sessions/:id", tempHandler.GetTempSessionHandler)
+		tempUploads.POST("/sessions/:id/resume", tempHandler.ResumeTempSessionHandler)
+		tempUploads.DELETE("/sessions/:id", tempHandler.CancelTempSessionHandler)
+		tempUploads.POST("/chunks", tempHandler.UploadTempChunkHandler)
 		tempUploads.POST("/finalize", middleware.UploadRateLimit(), tempHandler.FinalizeTempUploadHandler)
 	}
 
 	// 上传会话路由（无需认证，支持断点续传）
 	uploads := web.Group("/uploads")
 	{
-		uploads.POST("/session", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.CreateSession)
-		uploads.GET("/session/:id", uploadSessionHandler.GetSession)
-		uploads.POST("/session/:id/resume", uploadSessionHandler.ResumeSession)
-		uploads.DELETE("/session/:id", uploadSessionHandler.CancelSession)
-		uploads.POST("/chunk", uploadSessionHandler.UploadChunk)
+		uploads.POST("/sessions", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.CreateSession)
+		uploads.GET("/sessions/:id", uploadSessionHandler.GetSession)
+		uploads.POST("/sessions/:id/resume", uploadSessionHandler.ResumeSession)
+		uploads.DELETE("/sessions/:id", uploadSessionHandler.CancelSession)
+		uploads.POST("/chunks", uploadSessionHandler.UploadChunk)
 		uploads.POST("/finalize", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.FinalizeSession)
-		uploads.POST("/url", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL) // 从URL上传（入队，后台队列调度）
-		uploads.POST("/url-probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs)                             // 批量探测URL（文件名/存在性/历史）
-		uploads.GET("/url-task/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.GetURLTask)                      // URL任务进度查询
-		uploads.POST("/url_info", func(c *gin.Context) {
+		uploads.POST("/url-tasks", middleware.UploadRateLimit(), authMiddleware.AuthOptional(), uploadSessionHandler.UploadFromURL) // 从URL上传（入队，后台队列调度）
+		uploads.POST("/url-tasks/probe", authMiddleware.AuthOptional(), uploadSessionHandler.ProbeURLs)                             // 批量探测URL（文件名/存在性/历史）
+		uploads.GET("/url-tasks/:id", authMiddleware.AuthOptional(), uploadSessionHandler.GetURLTask)                               // URL任务进度查询
+		uploads.POST("/url-info", func(c *gin.Context) {
 			file.GetFileInfoFromURL(c.Writer, c.Request)
 		})
 		uploads.GET("/sessions", authMiddleware.AuthOptional(), uploadSessionHandler.ListUploadSessions)
 		uploads.GET("/url-tasks", authMiddleware.AuthOptional(), uploadSessionHandler.ListURLTasks)
-		// SSE 实时进度推送：前端 fetch 流式解析；失败时回退到 /url-task/:taskId 轮询
+		// SSE 实时进度推送：前端 fetch 流式解析；失败时回退到 /url-tasks/:id 轮询
 		uploads.GET("/url-tasks/stream", authMiddleware.AuthOptional(), uploadSessionHandler.StreamURLTasks)
-		uploads.POST("/url-tasks/:taskId/cancel", authMiddleware.AuthOptional(), uploadSessionHandler.CancelURLTask)
-		uploads.POST("/url-tasks/:taskId/retry", authMiddleware.AuthOptional(), uploadSessionHandler.RetryURLTask)
-		uploads.POST("/url-tasks/:taskId/checksum", authMiddleware.AuthOptional(), uploadSessionHandler.ComputeURLTaskChecksum) // 计算已完成任务的校验值（md5/sha1/sha256）
-		uploads.DELETE("/url-tasks/:taskId", authMiddleware.AuthOptional(), uploadSessionHandler.DeleteURLTask)
+		uploads.POST("/url-tasks/:id/cancel", authMiddleware.AuthOptional(), uploadSessionHandler.CancelURLTask)
+		uploads.POST("/url-tasks/:id/retry", authMiddleware.AuthOptional(), uploadSessionHandler.RetryURLTask)
+		uploads.POST("/url-tasks/:id/checksum", authMiddleware.AuthOptional(), uploadSessionHandler.ComputeURLTaskChecksum) // 计算已完成任务的校验值（md5/sha1/sha256）
+		uploads.DELETE("/url-tasks/:id", authMiddleware.AuthOptional(), uploadSessionHandler.DeleteURLTask)
 	}
 
-	// 无需认证的文件路由
-	web.GET("/files/list", fileHandlers.ListDirectories)
+	// 无需认证的文件路由（GET 用 URL 路径段定位目录）
+	web.GET("/files/list/*path", fileHandlers.ListDirectories)
 	web.GET("/files/depends/:id", depHandler.GetDependencyTree)
 
 	// 下载路由（无需认证；/download/*path 根级别名指向同一 handler）
@@ -240,7 +240,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		files.GET("/records/:id/notes", indexHandler.PublicGetNotes)
 		files.POST("/dependencies", depHandler.CreateDependencyPublic)
 		files.DELETE("/dependencies/:id", depHandler.DeleteDependencyPublic)
-		files.GET("/record", indexHandler.FindFileRecord)
+		files.GET("/record/*path", indexHandler.FindFileRecord)
 		files.GET("/scan/status", indexHandler.GetScanStatus) // Footer 扫描状态
 
 		// 搜索路由（无需认证）
@@ -269,7 +269,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.GET("/user/stats", rt.userHandler.GetStats)
 
 		// 文件管理路由已全部迁移至 admin 组（仅管理员可操作公开文件）
-		protected.GET("/get_file_info", func(c *gin.Context) {
+		protected.POST("/files/url-info", func(c *gin.Context) {
 			file.GetFileInfoFromURL(c.Writer, c.Request)
 		})
 		// 数据绑定示例路由

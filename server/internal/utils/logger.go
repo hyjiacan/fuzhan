@@ -421,7 +421,7 @@ func IsAPIPath(path string) bool {
 // IsOpenAPIPath 判断请求路径是否属于开放 API 渠道（同样以 /api/ 开头，
 // 调用方需在 IsWebDAVPath 之后、IsAPIPath 之前判定）。
 func IsOpenAPIPath(path string) bool {
-	return strings.HasPrefix(path, constants.OpenAPIPathPrefix)
+	return path == constants.OpenAPIPathPrefix || strings.HasPrefix(path, constants.OpenAPIPathPrefix+"/")
 }
 
 // Debug 调试日志

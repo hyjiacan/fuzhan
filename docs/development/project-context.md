@@ -38,7 +38,7 @@ lightshare/
 │   ├── router.go               newRouter()：FTP Handler + Gin Engine + 中间件 + 分组
 │   ├── routes_web.go           所有非管理后台接口（含 web 分组）
 │   ├── routes_admin.go         管理后台接口
-│   ├── routes_top.go           顶层路由：/cli /download /lite /api/open/v1 + WebDAV
+│   ├── routes_top.go           顶层路由：/cli /download /lite /api/v1/open + WebDAV
 │   ├── workers.go              后台 worker（cron / 扫描 / 清理 / 一致性 / 检索对齐）
 │   ├── assets.go               go:embed 前端与 scalar 资源
 │   ├── fuzhan.sample.yaml      配置模板（带注释，字段语义以此为准）
@@ -230,7 +230,7 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 基础与监控
 
 - `GET /health`、`GET /ready`
-- `GET /api/v1/metrics`（AuthRequired + Prometheus）
+- `GET /monitor/metrics`（AuthRequired + Prometheus）
 - `GET /monitor/storage|access`（AuthRequired+RequireAdmin）、`/monitor/keywords|recent|rankings|hot-downloads`
 - `GET /options`、`GET /runtime-config`（AuthOptional）
 
@@ -247,8 +247,8 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 
 私有存储 `/private`
 
-- `GET /private/files`、`GET /private/quota`、`DELETE /private/files/:code`
-- `/private/uploads`：`POST /session`、`GET /session/:id`、`POST /session/:id/resume`、`DELETE /session/:id`、`POST /chunk`、`POST /finalize`
+- `GET /private/files/*path`、`GET /private/quota`、`DELETE /private/files/:code`
+- `/private/uploads`：`POST /sessions`、`GET /sessions/:id`、`POST /sessions/:id/resume`、`DELETE /sessions/:id`、`POST /chunks`、`POST /finalize`
 
 索引扫描
 
@@ -268,23 +268,23 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 
 临时分享 `/temp`
 
-- `GET /list|/quota|/client-ip`、`GET /:code`、`GET|HEAD /:code/download`、`DELETE /:code`
-- `/temp/upload`：`POST /session`、`GET /session/:uploadId`、`POST /session/:uploadId/resume`、`DELETE /session/:uploadId`、`POST /chunk`、`POST /finalize`
+- `GET /temp/list/*path|/quota|/client-ip`、`GET /:code`、`GET|HEAD /:code/download`、`DELETE /:code`
+- `/temp/uploads`：`POST /sessions`、`GET /sessions/:id`、`POST /sessions/:id/resume`、`DELETE /sessions/:id`、`POST /chunks`、`POST /finalize`
 
 公开上传 `/uploads`
 
-- `POST /session`、`GET /session/:id`、`POST /session/:id/resume`、`DELETE /session/:id`、`POST /chunk`、`POST /finalize`
-- URL 上传：`POST /url`、`POST /url-probe`、`GET /url-task/:taskId`、`POST /url_info`
-- 会话/任务：`GET /sessions`、`GET /url-tasks`、`GET /url-tasks/stream`（SSE）、`POST /url-tasks/:taskId/cancel|retry|checksum`、`DELETE /url-tasks/:taskId`
+- `POST /sessions`、`GET /sessions/:id`、`POST /sessions/:id/resume`、`DELETE /sessions/:id`、`POST /chunks`、`POST /finalize`
+- URL 上传：`POST /url-tasks`、`POST /url-tasks/probe`、`GET /url-tasks/:id`、`POST /url-info`
+- 会话/任务：`GET /sessions`、`GET /url-tasks`、`GET /url-tasks/stream`（SSE）、`POST /url-tasks/:id/cancel|retry|checksum`、`DELETE /url-tasks/:id`
 
 公开文件 `/files`
 
-- `GET /files/list`、`GET /files/depends/:id`
+- `GET /files/list/*path`、`GET /files/depends/:id`
 - `GET /files/recent`、`GET /files/recent/carousel`
 - `GET /files/preview/*path`、`GET /files/preview-chunk/*path`、`POST /files/checksum`
 - `GET|PUT /files/records/:id/notes`
 - `POST /files/dependencies`、`DELETE /files/dependencies/:id`
-- `GET /files/record`、`GET /files/scan/status`
+- `GET /files/record/*path`、`GET /files/scan/status`
 
 搜索
 
@@ -294,7 +294,7 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 
 - `POST /auth/refresh`、`GET /auth/user`、`PUT /auth/password`、`PUT /auth/profile`、`DELETE /auth/account`
 - `GET /user/login-logs`、`GET /user/records`、`GET /user/stats`
-- `GET /get_file_info`
+- `POST /files/url-info`
 - `/examples`：`POST /upload`、`POST /rename`、`POST /validation/upload`
 
 WebDAV / CLI
@@ -307,7 +307,7 @@ WebDAV / CLI
 索引/任务/用户
 
 - `POST /admin/index/scan`、`POST /admin/index/scan/trigger`
-- `GET|POST /admin/users`、`PUT /admin/users/:uuid/reset-password`、`PUT /admin/users/:uuid/disabled`、`DELETE /admin/users/:uuid`
+- `GET|POST /admin/users`、`PUT /admin/users/:id/reset-password`、`PUT /admin/users/:id/disabled`、`DELETE /admin/users/:id`
 - `GET /admin/sessions`、`POST /admin/sessions/cleanup`、`POST /admin/sessions/cleanup-all`
 - `GET /admin/online-ips`
 - `POST /admin/records/clear`、`POST /admin/records/delete`
@@ -320,8 +320,8 @@ WebDAV / CLI
 
 证书/网络/文件
 
-- `POST /admin/upload-cert`、`POST /admin/upload-key`、`GET /admin/network-interfaces`
-- `GET /admin/files/list`、`POST /admin/files/move`、`DELETE /admin/files`
+- `POST /admin/tls/certificate`、`POST /admin/tls/private-key`、`GET /admin/network-interfaces`
+- `GET /admin/files/list/*path`、`POST /admin/files/move`、`DELETE /admin/files`
 
 URL 任务/后台任务
 
@@ -342,9 +342,9 @@ API Key / 索引记录 / Open API / 日志 / 资源
 - `/download/*path`：`GET|HEAD`
 - WebDAV 顶层别名：`constants.WebDAVAliasPathPrefix`
 - `/lite`：`GET|POST /*path`（老旧浏览器轻量页面；IE 访问 SPA 会 302 到 `/lite`）
-- `/api/open/v1`（scope 校验）：
-  - `GET /files/list`、`GET /files/search`、`GET /files/download`（Reader scope）
-  - `GET /files/info`、`POST /files/exists`、`POST /files/upload`、`POST /files/upload/init|chunk|finalize`、`GET /files/upload/:id`
+- `/api/v1/open`（scope 校验）：
+  - `GET /files/list/*path`、`GET /files/search`、`GET /files/download/*path`（Reader scope）
+  - `GET /files/info/*path`、`POST /files/exists`、`POST /files/upload`、`POST /files/upload/init|chunk|finalize`、`GET /files/upload/:id`
   - `GET /files/duplicates`、`POST /files/rename`、`DELETE /files`（任意 delete scope）
   - `GET /docs`（301 → `/scalar.html`）、`GET /openapi.json`：独立分组，走 `LoginRequiredWhenForced`，未开启强制登录时匿名可读，开启后需凭证，不做 scope 校验
   - API Key 的 `allowedPaths` 路径授权：越界操作 403；列表/搜索/重复文件按允许路径裁剪（搜索建议词在启用路径限制时为空）；Web 会话不受限制
@@ -370,7 +370,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
 ### 9.1 分片上传（统一抽象）
 
 - `services.UploadSessionService` + `UploadStorage` + `UploadFinalizer` 策略化，公开 / 私有 / 临时三套 handler 共用流程。
-- 接口序列：`POST /session`（创建，含配额/限流校验）→ `POST /chunk`（分片，不受频繁限流）→ `POST /finalize`（合并、写索引、算哈希）→ 失败可 `GET /session/:id` + `POST /session/:id/resume` 续传，或 `DELETE` 取消。
+- 接口序列：`POST /uploads/sessions`（创建，含配额/限流校验）→ `POST /uploads/chunks`（分片，不受频繁限流）→ `POST /uploads/finalize`（合并、写索引、算哈希）→ 失败可 `GET /uploads/sessions/:id` + `POST /uploads/sessions/:id/resume` 续传，或 `DELETE` 取消。
 - 分片大小：`upload.chunk_size`（默认 10M）；单文件上限 `upload.max_file_size`（默认 16G）。
 - 公开上传的根目录选择与存储后端由 `publicStorages` 决定（本地物理路径 / 远端对象存储）。
 
@@ -391,8 +391,8 @@ API Key / 索引记录 / Open API / 日志 / 资源
 
 ### 9.4 URL 下载
 
-- 提交 `POST /uploads/url` 入队；调度器 `NewURLDownloadDispatcher` 按 `max_concurrent` 并发、`max_retries` 重试；SSRF 防护（默认拒绝内网/回环/保留地址）。
-- 进度：`GET /uploads/url-tasks/stream`（SSE）或 `GET /upload/url-task/:taskId`。
+- 提交 `POST /uploads/url-tasks` 入队；调度器 `NewURLDownloadDispatcher` 按 `max_concurrent` 并发、`max_retries` 重试；SSRF 防护（默认拒绝内网/回环/保留地址）。
+- 进度：`GET /uploads/url-tasks/stream`（SSE）或 `GET /uploads/url-tasks/:id`。
 
 ---
 
@@ -477,7 +477,7 @@ cd ui; yarn dev
 6. **大小/配额字符串**用 `ParseQuotaString`（B/K/M/G/T，含 KB 等写法）。
 7. **路径**：所有用户可配置路径走 `${work_dir}` 展开；数据/日志固定在 `<work_dir>/data`、`<work_dir>/logs`。
 8. **前端构建产物不提交语义**：产物写入 `server/web`、`server/scalar`，属于 build 输出；改动前端后必须重新 `yarn build` 才能被后端 embed 到。
-9. **限流分层**：Captcha / Upload（仅控制面：session、finalize、url）/ Ticket / Download；分片 `/chunk` 不限流。
+9. **限流分层**：Captcha / Upload（仅控制面：session、finalize、url-tasks）/ Ticket / Download；分片 `/uploads/chunks` 不限流。
 10. **cli 脚本白名单**：`/cli/install.sh`、`/cli/fuzhan.sh` 恒匿名可下载。
 11. **IE 兜底**：SPA 导航与 NoRoute 时 302 到 `/lite`。
 12. **config 保存钩子**：`server.go`（JWT/日志/重启信号）与 `runScanTimerWorker`（扫描定时器/监听器重启）两处，新增热配置项时确认是否需要钩子。

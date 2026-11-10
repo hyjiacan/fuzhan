@@ -123,7 +123,7 @@ func (s *DependencyService) DeleteDependency(depID uint) error {
 // ListDependencies 分页查询所有依赖关系
 type DependencyListQuery struct {
 	Page     int `form:"page"`
-	PageSize int `form:"pageSize"`
+	PageSize int `form:"page_size"`
 }
 
 func (q *DependencyListQuery) Normalize() {
@@ -174,7 +174,7 @@ func (s *DependencyService) GetDependencyTree(fileRecordID uint) (*DependencyTre
 		FullPath:    src.FullPath,
 		RootName:    src.RootName,
 		FileSize:    src.FileSize,
-		DownloadURL: fmt.Sprintf("/download/%s/%s", src.RootName, url.PathEscape(src.FilePath)),
+		DownloadURL: fmt.Sprintf("/api/v1/web/download/%s/%s", src.RootName, url.PathEscape(src.FilePath)),
 	}
 
 	// 递归构建上游依赖树
@@ -232,7 +232,7 @@ func (s *DependencyService) buildUpstreamTree(fileRecordID uint, visited map[uin
 			FileSize:     dep.TargetFile.FileSize,
 			IsDir:        dep.TargetFile.IsDir,
 			Relation:     dep.Relation,
-			DownloadURL:  fmt.Sprintf("/download/%s/%s", dep.TargetFile.RootName, url.PathEscape(dep.TargetFile.FilePath)),
+			DownloadURL:  fmt.Sprintf("/api/v1/web/download/%s/%s", dep.TargetFile.RootName, url.PathEscape(dep.TargetFile.FilePath)),
 		}
 
 		// 递归查询上游的上游
@@ -283,7 +283,7 @@ func (s *DependencyService) buildDownstream(fileRecordID uint) ([]*DependencyTre
 			FileSize:     dep.SourceFile.FileSize,
 			IsDir:        dep.SourceFile.IsDir,
 			Relation:     dep.Relation,
-			DownloadURL:  fmt.Sprintf("/download/%s/%s", dep.SourceFile.RootName, url.PathEscape(dep.SourceFile.FilePath)),
+			DownloadURL:  fmt.Sprintf("/api/v1/web/download/%s/%s", dep.SourceFile.RootName, url.PathEscape(dep.SourceFile.FilePath)),
 			Children:     make([]*DependencyTreeNode, 0),
 		}
 		nodes = append(nodes, node)

@@ -41,7 +41,7 @@ func (h *URLDownloadHandler) SetTaskHooks(notify func(), cancel func(taskID stri
 // ListURLTasks 获取 URL 下载任务列表
 func (h *URLDownloadHandler) ListURLTasks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status := c.Query("status")
 	if page < 1 {
 		page = 1

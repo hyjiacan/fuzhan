@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -241,11 +240,15 @@ func (h *Handler) UpdateNotes(c *gin.Context) {
 // FindFileRecord 根据路径查找文件记录
 // GET /api/v1/web/files/record?fileName=xxx&rootName=xxx&filePath=xxx
 func (h *Handler) FindFileRecord(c *gin.Context) {
-	fileName := c.Query("fileName")
-	rootName := c.Query("rootName")
-	filePath := c.Query("filePath")
-	// URL 解码，处理中文和特殊字符
-	filePath, _ = url.QueryUnescape(filePath)
+	cleanPath := strings.Trim(strings.ReplaceAll(c.Param("path"), "\\", "/"), "/")
+	parts := strings.Split(cleanPath, "/")
+	if len(parts) < 2 {
+		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+		return
+	}
+	rootName := parts[0]
+	fileName := parts[len(parts)-1]
+	filePath := "/" + strings.Join(parts[1:], "/")
 
 	record, err := h.svc.FindRecordByPath(fileName, rootName, filePath)
 	if err != nil {
@@ -265,7 +268,7 @@ func (h *Handler) FindFileRecord(c *gin.Context) {
 // SearchFileRecords 搜索文件记录（用于 autocomplete）
 // GET /api/v1/web/files/search-records?q=xxx
 func (h *Handler) SearchFileRecords(c *gin.Context) {
-	query := c.Query("q")
+	query := c.Query("query")
 	// 限制搜索词长度
 	if len(query) > 200 {
 		query = strings.ToValidUTF8(query[:200], "")

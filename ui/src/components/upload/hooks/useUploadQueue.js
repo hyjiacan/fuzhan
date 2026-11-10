@@ -171,7 +171,7 @@ export function useUploadQueue({
       message.warning('该文件暂不支持计算校验值')
       return
     }
-    const payload = { storageType: item.checksumStorageType, algorithms }
+    const payload = { storage_type: item.checksumStorageType, algorithms }
     if (item.checksumStorageType === 'public') {
       payload.rootName = item.checksumRootName
       payload.path = item.checksumPath
@@ -406,10 +406,10 @@ export function useUploadQueue({
     // Step 1: Create upload session（或跳过如果已存在）
     const uploadId = savedUploadId || await (async () => {
       const createSessionBody = isPrivate
-        ? { filename: name, fileSize: size, dir: itemUploadDir || '' }
+        ? { filename: name, file_size: size, path: itemUploadDir || '' }
         : needsRootSelection.value
-          ? { filename: name, fileSize: size, dir: itemUploadDir || '/', rootName: itemRootName || '_apps', targetType: 'local' }
-          : { filename: name, fileSize: size, dir: itemUploadDir || '', deleteOnDownload: props.deleteOnDownload }
+          ? { filename: name, file_size: size, path: `/${itemRootName || '_apps'}${itemUploadDir && itemUploadDir !== '/' ? '/' + itemUploadDir.replace(/^\/+/, '') : ''}`, target_type: 'local' }
+          : { filename: name, file_size: size, path: itemUploadDir || '', delete_on_download: props.deleteOnDownload }
 
       const response = await request.post(createSessionUrl, createSessionBody, {
         baseURL: '',

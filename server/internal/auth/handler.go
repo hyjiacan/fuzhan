@@ -283,8 +283,8 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
-	OldPassword string `json:"oldPassword" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required,min=8"`
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
 // ChangePassword 修改用户密码
@@ -342,7 +342,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 
 // UpdateProfileRequest 修改个人资料请求（用户名不可修改）
 type UpdateProfileRequest struct {
-	DisplayName string `json:"displayName" binding:"max=64"`
+	DisplayName string `json:"display_name" binding:"max=64"`
 	Nickname    string `json:"nickname" binding:"max=32"`
 }
 

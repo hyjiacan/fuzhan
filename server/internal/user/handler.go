@@ -39,7 +39,7 @@ func pageParams(c *gin.Context) (int, int) {
 	if page < 1 {
 		page = 1
 	}
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
@@ -124,7 +124,7 @@ func (h *Handler) GetRecords(c *gin.Context) {
 
 	filter := repositories.RecordFilter{
 		Action:     strings.TrimSpace(c.Query("action")),
-		SourceType: strings.TrimSpace(c.Query("sourceType")),
+		SourceType: strings.TrimSpace(c.Query("source_type")),
 		Status:     strings.TrimSpace(c.Query("status")),
 		Keyword:    strings.TrimSpace(c.Query("keyword")),
 		StartTime:  parseTimeParam(c.Query("from")),

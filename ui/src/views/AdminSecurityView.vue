@@ -267,7 +267,7 @@ const buildParams = () => {
   if (filters.value.clientIP) p.clientIP = filters.value.clientIP
   if (filters.value.identity) p.identity = filters.value.identity
   if (filters.value.q) p.q = filters.value.q
-  if (filters.value.unread) p.unread = '1'
+  if (filters.value.unread) p.unread = 'true'
   if (dateRange.value && dateRange.value.length === 2) {
     p.from = dateRange.value[0]
     p.to = dateRange.value[1]

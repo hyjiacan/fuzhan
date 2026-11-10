@@ -65,10 +65,10 @@ func NewApiKeyService(db *gorm.DB) *ApiKeyService {
 // CreateApiKeyRequest 创建 API Key 请求
 type CreateApiKeyRequest struct {
 	Name         string `json:"name" binding:"required,max=128"`
-	UserID       uint   `json:"userId" binding:"required"`
+	UserID       uint   `json:"user_id" binding:"required"`
 	Scopes       string `json:"scopes"`
-	AllowedPaths string `json:"allowedPaths"` // 允许操作的公开目录路径（换行/逗号分隔，空或 * 表示所有）
-	ExpiresIn    int    `json:"expiresIn"`    // 过期时间（秒），0 表示永不过期
+	AllowedPaths string `json:"allowed_paths"` // 允许操作的公开目录路径（换行/逗号分隔，空或 * 表示所有）
+	ExpiresIn    int    `json:"expires_in"`    // 过期时间（秒），0 表示永不过期
 }
 
 // CreateApiKeyResponse 创建 API Key 响应

@@ -115,7 +115,10 @@ export function useUrlBatchUpload({
     try {
       const dir = form.uploadDir || ''
       const rootName = needsRootSelection.value ? (form.rootName || '') : ''
-      const res = await UploadApi.probeUrls(unique, dir, rootName, storageType.value)
+      const targetPath = rootName
+        ? `/${rootName}${dir && dir !== '/' ? '/' + dir.replace(/^\/+/, '') : ''}`
+        : dir
+      const res = await UploadApi.probeUrls(unique, targetPath, storageType.value)
       const got = res?.data?.items || []
       let added = 0
       for (const it of got) {
@@ -201,7 +204,10 @@ export function useUrlBatchUpload({
     try {
       let data
       if (needsRootSelection.value) {
-        data = await UploadApi.uploadFromUrlLocal(item.url, item.fileName, form.uploadDir || '/', form.rootName || '_apps')
+        const rootName = form.rootName || '_apps'
+        const dir = form.uploadDir || '/'
+        const targetPath = `/${rootName}${dir && dir !== '/' ? '/' + dir.replace(/^\/+/, '') : ''}`
+        data = await UploadApi.uploadFromUrlLocal(item.url, item.fileName, targetPath)
       } else {
         data = await UploadApi.uploadFromUrl(item.url, item.fileName, form.uploadDir || '', storageType.value)
       }

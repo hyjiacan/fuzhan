@@ -73,19 +73,14 @@ type FileRecordInfo struct {
 	IsDir         bool   `json:"isDir"`
 	RootName      string `json:"rootName"`
 	DownloadCount int64  `json:"downloadCount"`
-	CanManage     bool   `json:"canManage"` // 当前请求者能否管理（管理员，或上传者IP一致）
+	CanManage     bool   `json:"canManage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
 	UploaderIP    string `json:"uploaderIp,omitempty"` // 上传者IP，仅管理员请求时返回
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）
+// GET /api/v1/web/files/list/*path
 func (fh *FileHandlers) ListDirectories(c *gin.Context) {
-	var req models.ListDirectoriesRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		utils.HandleBadRequest(c, "请求参数格式错误", err.Error())
-		return
-	}
-
-	path := strings.ReplaceAll(req.Path, "\\", "/")
+	path := strings.ReplaceAll(c.Param("path"), "\\", "/")
 	path = strings.Trim(path, "/")
 
 	// 根目录：返回所有激活的根目录列表
@@ -276,38 +271,32 @@ func (fh *FileHandlers) canManagePublic(c *gin.Context, fullPath string) bool {
 }
 
 // RenamePublicFileHandler 重命名公开文件（管理员，或上传者IP一致）
-// 兼容请求体 { oldPath, newName } 与 { path, newName }
 func (fh *FileHandlers) RenamePublicFileHandler(c *gin.Context) {
 	var req struct {
-		OldPath string `json:"oldPath"`
 		Path    string `json:"path"`
-		NewName string `json:"newName"`
+		NewName string `json:"new_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误", err.Error())
 		return
 	}
-	oldPath := req.OldPath
-	if oldPath == "" {
-		oldPath = req.Path
-	}
-	if oldPath == "" || req.NewName == "" {
+	if req.Path == "" || req.NewName == "" {
 		utils.HandleBadRequest(c, "路径和新文件名不能为空", nil)
 		return
 	}
 
-	if !fh.canManagePublic(c, oldPath) {
+	if !fh.canManagePublic(c, req.Path) {
 		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
 		return
 	}
 
-	if err := fh.FileService.RenameFile(oldPath, req.NewName); err != nil {
-		middleware.LogOperation(c, "file.rename", oldPath+" -> "+req.NewName, err)
+	if err := fh.FileService.RenameFile(req.Path, req.NewName); err != nil {
+		middleware.LogOperation(c, "file.rename", req.Path+" -> "+req.NewName, err)
 		utils.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
-	middleware.LogOperation(c, "file.rename", oldPath+" -> "+req.NewName, nil)
-	if rootName, rel := splitPath(oldPath); rootName != "" {
+	middleware.LogOperation(c, "file.rename", req.Path+" -> "+req.NewName, nil)
+	if rootName, rel := splitPath(req.Path); rootName != "" {
 		fh.syncIndexMove(rootName, rel, rootName, path.Join(path.Dir(rel), req.NewName))
 	}
 	utils.HandleSuccess(c, http.StatusOK, "重命名成功", nil)
@@ -321,21 +310,21 @@ func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
 		return
 	}
 
-	if !fh.canManagePublic(c, req.OldPath) {
+	if !fh.canManagePublic(c, req.Path) {
 		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
 		return
 	}
 
 	// 执行移动
-	if err := fh.FileService.MoveFile(req.OldPath, req.NewPath); err != nil {
-		middleware.LogOperation(c, "file.move", req.OldPath+" -> "+req.NewPath, err)
+	if err := fh.FileService.MoveFile(req.Path, req.TargetPath); err != nil {
+		middleware.LogOperation(c, "file.move", req.Path+" -> "+req.TargetPath, err)
 		utils.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
 
-	middleware.LogOperation(c, "file.move", req.OldPath+" -> "+req.NewPath, nil)
-	if oldRoot, oldRel := splitPath(req.OldPath); oldRoot != "" {
-		if newRoot, newRel := splitPath(req.NewPath); newRoot != "" {
+	middleware.LogOperation(c, "file.move", req.Path+" -> "+req.TargetPath, nil)
+	if oldRoot, oldRel := splitPath(req.Path); oldRoot != "" {
+		if newRoot, newRel := splitPath(req.TargetPath); newRoot != "" {
 			fh.syncIndexMove(oldRoot, oldRel, newRoot, newRel)
 		}
 	}

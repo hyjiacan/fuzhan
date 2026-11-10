@@ -76,11 +76,11 @@ func (h *PrivateUploadHandler) getAndVerifySession(c *gin.Context, userID string
 	switch {
 	case c.Param("id") != "":
 		uploadIDStr = c.Param("id")
-	case c.PostForm("uploadId") != "":
-		uploadIDStr = c.PostForm("uploadId")
+	case c.PostForm("upload_id") != "":
+		uploadIDStr = c.PostForm("upload_id")
 	default:
 		var body struct {
-			UploadID string `json:"uploadId"`
+			UploadID string `json:"upload_id"`
 		}
 		if err := c.ShouldBindJSON(&body); err == nil && body.UploadID != "" {
 			uploadIDStr = body.UploadID
@@ -115,8 +115,8 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 
 	var req struct {
 		Filename string `json:"filename" binding:"required"`
-		FileSize int64  `json:"fileSize" binding:"required,min=1"`
-		Dir      string `json:"dir"`
+		FileSize int64  `json:"file_size" binding:"required,min=1"`
+		Path     string `json:"path"` // 目标目录（可选，相对私有根目录）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "请求数据格式错误: "+err.Error(), nil)
@@ -137,8 +137,9 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 		}
 	}
 
-	if req.Dir != "" {
-		cleanDir := filepath.Clean(filepath.FromSlash(req.Dir))
+	dir := strings.TrimSpace(strings.ReplaceAll(req.Path, "\\", "/"))
+	if dir != "" {
+		cleanDir := filepath.Clean(filepath.FromSlash(dir))
 		if strings.HasPrefix(cleanDir, "..") || strings.HasPrefix(cleanDir, "/") || strings.HasPrefix(cleanDir, "\\") || filepath.IsAbs(cleanDir) {
 			utils.HandleBadRequest(c, "不允许的路径", nil)
 			return
@@ -148,7 +149,7 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 	cs, err := h.service.CreateSession(&services.CreateSessionReq{
 		Filename:   req.Filename,
 		FileSize:   req.FileSize,
-		Dir:        req.Dir,
+		Dir:        dir,
 		RootName:   userID,
 		TargetType: models.TargetTypePrivate,
 		UserID:     userID,
@@ -247,8 +248,8 @@ func (h *PrivateUploadHandler) UploadChunk(c *gin.Context) {
 		return
 	}
 
-	uploadIDStr := c.PostForm("uploadId")
-	chunkIndexStr := c.PostForm("chunkIndex")
+	uploadIDStr := c.PostForm("upload_id")
+	chunkIndexStr := c.PostForm("chunk_index")
 	checksum := c.PostForm("checksum")
 
 	uploadID, err := strconv.ParseUint(uploadIDStr, 10, 64)

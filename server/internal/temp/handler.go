@@ -95,16 +95,14 @@ func (h *Handler) ListHandler(c *gin.Context) {
 		return
 	}
 
-	downloadCode := c.Query("downloadCode")
+	downloadCode := c.Query("download_code")
 	if downloadCode != "" && !validateCode(downloadCode) {
 		utils.HandleBadRequest(c, "无效的下载码格式", nil)
 		return
 	}
 
 	ip := h.getClientIP(c)
-	dirPath := c.Query("path")
-	// URL 解码，处理中文和特殊字符
-	dirPath, _ = url.QueryUnescape(dirPath)
+	dirPath := c.Param("path")
 
 	result, err := h.tempService.List(ip, downloadCode, dirPath)
 	if err != nil {

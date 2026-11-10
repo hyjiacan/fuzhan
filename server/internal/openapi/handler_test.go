@@ -48,11 +48,10 @@ func TestListFilesRejectsInvalidParams(t *testing.T) {
 	invalid := []string{
 		"/?page=0",
 		"/?page=abc",
-		"/?pageSize=0",
-		"/?pageSize=101",
+		"/?page_size=0",
+		"/?page_size=101",
 		"/?sort=foo",
 		"/?order=bad",
-		"/?path=/docs/../other",
 	}
 	for _, target := range invalid {
 		c, w := newTestContext(http.MethodGet, target, nil)
@@ -62,13 +61,31 @@ func TestListFilesRejectsInvalidParams(t *testing.T) {
 		}
 	}
 
-	valid := []string{"/", "/?page=1&pageSize=10&sort=size&order=desc", "/?path=/docs"}
+	// 路径来自 URL 路径段，非法值应被拒绝
+	for _, raw := range []string{"/docs/../other"} {
+		c, w := newTestContext(http.MethodGet, "/", nil)
+		c.Params = gin.Params{{Key: "path", Value: raw}}
+		h.ListFiles(c)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("路径 %s: 期望 400，实际 %d，响应 %s", raw, w.Code, w.Body.String())
+		}
+	}
+
+	valid := []string{"/", "/?page=1&page_size=10&sort=size&order=desc"}
 	for _, target := range valid {
 		c, w := newTestContext(http.MethodGet, target, nil)
 		h.ListFiles(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("目标 %s: 期望 200，实际 %d，响应 %s", target, w.Code, w.Body.String())
 		}
+	}
+
+	// 合法路径段
+	c, w := newTestContext(http.MethodGet, "/", nil)
+	c.Params = gin.Params{{Key: "path", Value: "/docs"}}
+	h.ListFiles(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("路径 /docs: 期望 200，实际 %d，响应 %s", w.Code, w.Body.String())
 	}
 }
 
@@ -108,10 +125,10 @@ func TestOptionalIntQueryRejectsIllegalValues(t *testing.T) {
 		min  int64
 		max  int64
 	}{
-		{"minSize", "-1", 0, 0, 0},
+		{"min_size", "-1", 0, 0, 0},
 		{"page", "0", 1, 1, 0},
-		{"pageSize", "101", 50, 1, 100},
-		{"pageSize", "abc", 50, 1, 100},
+		{"page_size", "101", 50, 1, 100},
+		{"page_size", "abc", 50, 1, 100},
 	}
 	for _, tc := range cases {
 		c, w := newTestContext(http.MethodGet, "/?"+tc.name+"="+tc.raw, nil)
@@ -124,8 +141,8 @@ func TestOptionalIntQueryRejectsIllegalValues(t *testing.T) {
 	}
 
 	c, _ := newTestContext(http.MethodGet, "/", nil)
-	if v, ok := optionalIntQuery(c, "minSize", 0, 0, 0); !ok || v != 0 {
-		t.Fatalf("缺省 minSize 应返回默认值 0，实际 %d，ok=%v", v, ok)
+	if v, ok := optionalIntQuery(c, "min_size", 0, 0, 0); !ok || v != 0 {
+		t.Fatalf("缺省 min_size 应返回默认值 0，实际 %d，ok=%v", v, ok)
 	}
 }
 
@@ -160,9 +177,10 @@ func TestListFilesAppliesAllowedPaths(t *testing.T) {
 		t.Fatalf("写入测试记录失败: %v", err)
 	}
 
-	pathsOf := func(t *testing.T, target string, allowed string) (int, []string) {
+	pathsOf := func(t *testing.T, pathParam string, allowed string) (int, []string) {
 		t.Helper()
-		c, w := newTestContext(http.MethodGet, target, nil)
+		c, w := newTestContext(http.MethodGet, "/", nil)
+		c.Params = gin.Params{{Key: "path", Value: pathParam}}
 		c.Set(allowedPathsContextKey, allowed)
 		h.ListFiles(c)
 		if w.Code != http.StatusOK {
@@ -190,16 +208,16 @@ func TestListFilesAppliesAllowedPaths(t *testing.T) {
 		t.Fatalf("根目录列表应裁剪到允许路径: code=%d paths=%v", code, paths)
 	}
 
-	code, paths = pathsOf(t, "/?path=/docs", "/docs/sub")
+	code, paths = pathsOf(t, "/docs", "/docs/sub")
 	if code != http.StatusOK || len(paths) != 2 {
 		t.Fatalf("上级目录列表应只返回允许范围: code=%d paths=%v", code, paths)
 	}
 
-	if code, _ = pathsOf(t, "/?path=/other", "/docs/sub"); code != http.StatusForbidden {
+	if code, _ = pathsOf(t, "/other", "/docs/sub"); code != http.StatusForbidden {
 		t.Fatalf("允许范围外目录应返回 403，实际 %d", code)
 	}
 
-	code, paths = pathsOf(t, "/?path=/docs", "")
+	code, paths = pathsOf(t, "/docs", "")
 	if code != http.StatusOK || len(paths) != 3 {
 		t.Fatalf("未配置允许路径时应返回全部记录: code=%d paths=%v", code, paths)
 	}
@@ -218,7 +236,8 @@ func TestGetFileInfoHidesOutOfScopeExistence(t *testing.T) {
 	}
 
 	// 范围外路径：无论是否存在都返回 403，不产生存在性差异。
-	c, w := newTestContext(http.MethodGet, "/?path=/other/c.txt", nil)
+	c, w := newTestContext(http.MethodGet, "/", nil)
+	c.Params = gin.Params{{Key: "path", Value: "/other/c.txt"}}
 	c.Set(allowedPathsContextKey, "/docs")
 	h.GetFileInfo(c)
 	if w.Code != http.StatusForbidden {
@@ -226,7 +245,8 @@ func TestGetFileInfoHidesOutOfScopeExistence(t *testing.T) {
 	}
 
 	// 范围内路径正常返回。
-	c, w = newTestContext(http.MethodGet, "/?path=/docs/a.txt", nil)
+	c, w = newTestContext(http.MethodGet, "/", nil)
+	c.Params = gin.Params{{Key: "path", Value: "/docs/a.txt"}}
 	c.Set(allowedPathsContextKey, "/docs")
 	h.GetFileInfo(c)
 	if w.Code != http.StatusOK {

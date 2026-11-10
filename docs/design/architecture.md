@@ -450,11 +450,11 @@ sessionId   chunkIndex   merge files
 前端: 计算分片 + xxh3 校验
      │
      ▼
-POST /uploads/session (创建会话)
+POST /uploads/sessions (创建会话)
      │
      ▼
 循环上传分片:
-  POST /uploads/chunk (含校验和)
+  POST /uploads/chunks (含校验和)
      │
      ▼
 POST /uploads/finalize (合并文件 + 原子重命名)
@@ -491,7 +491,7 @@ GET /search/关键词 (SSE)
 用户提交 URL
      │
      ▼
-POST /uploads/url (创建下载任务)
+POST /uploads/url-tasks (创建下载任务)
      │
      ▼
 后端异步下载:

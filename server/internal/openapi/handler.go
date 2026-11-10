@@ -235,10 +235,10 @@ func handleUploadChunkError(c *gin.Context, err error) {
 
 // ==================== FR-3.1: 文件列表 API ====================
 
-// ListFiles GET /api/open/v1/files/list
+// ListFiles GET /api/v1/open/files/list/*path
 func (h *Handler) ListFiles(c *gin.Context) {
 	cleanPath := "/"
-	if raw := strings.TrimSpace(c.Query("path")); raw != "" {
+	if raw := strings.TrimSpace(c.Param("path")); raw != "" {
 		var err error
 		if cleanPath, err = normalizeOpenAPIPath(raw); err != nil {
 			response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
@@ -250,7 +250,7 @@ func (h *Handler) ListFiles(c *gin.Context) {
 	if !ok {
 		return
 	}
-	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	pageSize, ok := optionalIntQuery(c, "page_size", 50, 1, 100)
 	if !ok {
 		return
 	}
@@ -340,7 +340,7 @@ func (h *Handler) ListFiles(c *gin.Context) {
 
 // ==================== FR-3.2: 文件搜索 API ====================
 
-// SearchFiles GET /api/open/v1/files/search
+// SearchFiles GET /api/v1/open/files/search
 // 支持多关键词模糊匹配（空格分隔，全部命中）、扩展名过滤，并返回与 Web 端一致的搜索建议词。
 func (h *Handler) SearchFiles(c *gin.Context) {
 	rawQuery := c.Query("query")
@@ -354,7 +354,7 @@ func (h *Handler) SearchFiles(c *gin.Context) {
 	if !ok {
 		return
 	}
-	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	pageSize, ok := optionalIntQuery(c, "page_size", 50, 1, 100)
 	if !ok {
 		return
 	}
@@ -516,11 +516,11 @@ func (h *Handler) buildSearchSuggestions(q string, limit int) []string {
 
 // ==================== FR-3.3: 文件下载 API ====================
 
-// DownloadFile GET /api/open/v1/files/download?path=/rootName/path/to/file
+// DownloadFile GET /api/v1/open/files/download/*path
 func (h *Handler) DownloadFile(c *gin.Context) {
-	pathStr := strings.TrimSpace(c.Query("path"))
+	pathStr := strings.TrimSpace(c.Param("path"))
 	if pathStr == "" {
-		response.HandleBadRequest(c, "缺少查询条件: path 必填", nil)
+		response.HandleBadRequest(c, "缺少路径参数", nil)
 		return
 	}
 	cleanPath, err := normalizeOpenAPIPath(pathStr)
@@ -627,9 +627,9 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 // ==================== FR-3.5: 重复文件查询 API ====================
 
-// ListDuplicates GET /api/open/v1/files/duplicates
+// ListDuplicates GET /api/v1/open/files/duplicates
 func (h *Handler) ListDuplicates(c *gin.Context) {
-	minSize, ok := optionalIntQuery(c, "minSize", 0, 0, 0)
+	minSize, ok := optionalIntQuery(c, "min_size", 0, 0, 0)
 	if !ok {
 		return
 	}
@@ -637,7 +637,7 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 	if !ok {
 		return
 	}
-	pageSize, ok := optionalIntQuery(c, "pageSize", 50, 1, 100)
+	pageSize, ok := optionalIntQuery(c, "page_size", 50, 1, 100)
 	if !ok {
 		return
 	}
@@ -727,12 +727,12 @@ func dependencyTreeJSON(node *index.DependencyTreeNode) gin.H {
 
 // ==================== 文件详情 API ====================
 
-// GetFileInfo GET /api/open/v1/files/info?path=/rootName/path/to/file
+// GetFileInfo GET /api/v1/open/files/info/*path
 // 按完整路径查询单个文件/目录的详细信息，响应同时包含 notes 备注与 depends 依赖树。
 func (h *Handler) GetFileInfo(c *gin.Context) {
-	pathStr := strings.TrimSpace(c.Query("path"))
+	pathStr := strings.TrimSpace(c.Param("path"))
 	if pathStr == "" {
-		response.HandleBadRequest(c, "缺少查询条件: path 必填", nil)
+		response.HandleBadRequest(c, "缺少路径参数", nil)
 		return
 	}
 	cleanPath, err := normalizeOpenAPIPath(pathStr)
@@ -800,7 +800,7 @@ type CheckFilesExistRequest struct {
 	Xxh3 []string `json:"xxh3" binding:"required,min=1,max=100"`
 }
 
-// CheckFilesExist POST /api/open/v1/files/exists
+// CheckFilesExist POST /api/v1/open/files/exists
 // 按一组 xxh3 哈希批量查询文件是否存在，并返回每个哈希对应的路径。
 func (h *Handler) CheckFilesExist(c *gin.Context) {
 	var req CheckFilesExistRequest
@@ -883,12 +883,12 @@ func (h *Handler) CheckFilesExist(c *gin.Context) {
 // RenameFileRequest 重命名或移动文件请求
 type RenameFileRequest struct {
 	Path    string `json:"path" binding:"required"`
-	NewName string `json:"newName"` // 仅修改文件名（同目录）
-	NewPath string `json:"newPath"` // 修改完整路径（可跨目录）
+	NewName string `json:"new_name"` // 仅修改文件名（同目录）
+	NewPath string `json:"new_path"` // 修改完整路径（可跨目录）
 }
 
-// RenameFile POST /api/open/v1/files/rename
-// 支持仅修改文件名（newName）或修改完整路径（newPath），二者至少提供一个。
+// RenameFile POST /api/v1/open/files/rename
+// 支持仅修改文件名（new_name）或修改完整路径（new_path），二者至少提供一个。
 func (h *Handler) RenameFile(c *gin.Context) {
 	var req RenameFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -908,22 +908,22 @@ func (h *Handler) RenameFile(c *gin.Context) {
 	newName := strings.TrimSpace(req.NewName)
 	newPathRaw := strings.TrimSpace(req.NewPath)
 	if newName == "" && newPathRaw == "" {
-		response.HandleBadRequest(c, "newName 或 newPath 至少需要提供一项", nil)
+		response.HandleBadRequest(c, "new_name 或 new_path 至少需要提供一项", nil)
 		return
 	}
 	if newName != "" && len(newName) > 255 {
-		response.HandleBadRequest(c, "newName 长度不能超过 255", nil)
+		response.HandleBadRequest(c, "new_name 长度不能超过 255", nil)
 		return
 	}
 	newPath := ""
 	if newPathRaw != "" {
 		newPath, err = normalizeOpenAPIPath(newPathRaw)
 		if err != nil {
-			response.HandleBadRequest(c, "newPath 参数非法: "+err.Error(), nil)
+			response.HandleBadRequest(c, "new_path 参数非法: "+err.Error(), nil)
 			return
 		}
 		if len(splitPath(newPath)) < 2 {
-			response.HandleBadRequest(c, "newPath 格式错误: 需要 /rootName/path/to/file", nil)
+			response.HandleBadRequest(c, "new_path 格式错误: 需要 /rootName/path/to/file", nil)
 			return
 		}
 	}
@@ -933,7 +933,7 @@ func (h *Handler) RenameFile(c *gin.Context) {
 	}
 
 	if newPath != "" && newName != "" && filepath.Base(newPath) != newName {
-		response.HandleBadRequest(c, "newName 与 newPath 的文件名不一致", nil)
+		response.HandleBadRequest(c, "new_name 与 new_path 的文件名不一致", nil)
 		return
 	}
 
@@ -1019,7 +1019,7 @@ type DeleteFileQuery struct {
 	Path string `form:"path" binding:"required"`
 }
 
-// DeleteFile DELETE /api/open/v1/files?path=/rootName/path/to/file
+// DeleteFile DELETE /api/v1/open/files?path=/rootName/path/to/file
 // 删除文件或目录（目录会递归删除），并同步清理索引记录。
 func (h *Handler) DeleteFile(c *gin.Context) {
 	var req DeleteFileQuery
@@ -1135,7 +1135,7 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 
 // ==================== 文件上传 API ====================
 
-// UploadFile POST /api/open/v1/files/upload
+// UploadFile POST /api/v1/open/files/upload
 // 以 multipart/form-data 上传单个文件到指定公共目录：
 //   - file: 上传的文件（必填）
 //   - path: 目标目录（必填），格式 /rootName[/subdir]
@@ -1356,11 +1356,11 @@ func (h *Handler) UploadFile(c *gin.Context) {
 // InitChunkUploadRequest 创建分片上传会话请求
 type InitChunkUploadRequest struct {
 	Filename string `json:"filename" binding:"required,max=255"`
-	FileSize int64  `json:"fileSize" binding:"required,min=1"`
+	FileSize int64  `json:"file_size" binding:"required,min=1"`
 	Path     string `json:"path"` // 目标目录，格式 /rootName[/subdir]
 }
 
-// InitChunkUpload POST /api/open/v1/files/upload/init
+// InitChunkUpload POST /api/v1/open/files/upload/init
 func (h *Handler) InitChunkUpload(c *gin.Context) {
 	if !appconfig.GlobalConfig.Upload.Enabled {
 		response.HandleForbidden(c, "公共目录上传功能已关闭")
@@ -1421,16 +1421,16 @@ func (h *Handler) InitChunkUpload(c *gin.Context) {
 	})
 }
 
-// UploadFileChunk POST /api/open/v1/files/upload/chunk
-// multipart/form-data: uploadId、chunkIndex、chunk、checksum（可选，MD5/大小校验由服务端处理）
+// UploadFileChunk POST /api/v1/open/files/upload/chunk
+// multipart/form-data: upload_id、chunk_index、chunk、checksum（可选，MD5/大小校验由服务端处理）
 func (h *Handler) UploadFileChunk(c *gin.Context) {
-	uploadIDStr := c.PostForm("uploadId")
+	uploadIDStr := c.PostForm("upload_id")
 	uploadID, err := strconv.ParseUint(uploadIDStr, 10, 64)
 	if err != nil || uploadID == 0 {
 		response.HandleBadRequest(c, "无效的会话ID", nil)
 		return
 	}
-	chunkIndex, err := strconv.Atoi(c.PostForm("chunkIndex"))
+	chunkIndex, err := strconv.Atoi(c.PostForm("chunk_index"))
 	if err != nil || chunkIndex < 0 {
 		response.HandleBadRequest(c, "无效的分片索引", nil)
 		return
@@ -1496,7 +1496,7 @@ func (h *Handler) UploadFileChunk(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunk_index": chunkIndex})
 }
 
-// GetChunkUploadStatus GET /api/open/v1/files/upload/:id
+// GetChunkUploadStatus GET /api/v1/open/files/upload/:id
 func (h *Handler) GetChunkUploadStatus(c *gin.Context) {
 	uploadID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || uploadID == 0 {
@@ -1528,16 +1528,16 @@ func (h *Handler) GetChunkUploadStatus(c *gin.Context) {
 
 // FinalizeChunkUploadRequest 完成分片上传请求
 type FinalizeChunkUploadRequest struct {
-	UploadID uint64 `json:"uploadId" binding:"required"`
+	UploadID uint64 `json:"upload_id" binding:"required"`
 	// Overwrite 目标文件已存在时是否覆盖，需具备 open_api:files:overwrite 权限
 	Overwrite bool `json:"overwrite"`
 }
 
-// FinalizeChunkUpload POST /api/open/v1/files/upload/finalize
+// FinalizeChunkUpload POST /api/v1/open/files/upload/finalize
 func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 	var req FinalizeChunkUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.HandleBadRequest(c, "请求数据格式错误: uploadId 必填且为整数", nil)
+		response.HandleBadRequest(c, "请求数据格式错误: upload_id 必填且为整数", nil)
 		return
 	}
 
@@ -1711,13 +1711,13 @@ func (h *Handler) callerUserUUID(c *gin.Context) string {
 
 // ==================== FR-3.10: OpenAPI 文档 ====================
 
-// GetOpenAPISpec GET /api/open/v1/openapi.json
+// GetOpenAPISpec GET /api/v1/open/openapi.json
 func (h *Handler) GetOpenAPISpec(c *gin.Context) {
 	spec := GenerateOpenAPISpec()
 	c.JSON(http.StatusOK, spec)
 }
 
-// GetDocsPage GET /api/open/v1/docs
+// GetDocsPage GET /api/v1/open/docs
 func (h *Handler) GetDocsPage(c *gin.Context) {
 	c.Redirect(http.StatusMovedPermanently, "/scalar.html")
 }

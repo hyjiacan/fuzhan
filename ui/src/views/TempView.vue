@@ -295,11 +295,11 @@ const navigateToDir = (dir) => {
 // 上传 API
 const tempUploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/web/temp/upload/session',
-  getSession: (uploadId) => `/api/v1/web/temp/upload/session/${uploadId}`,
-  cancel: (uploadId) => `/api/v1/web/temp/upload/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/web/temp/upload/chunk',
-  finalize: () => '/api/v1/web/temp/upload/finalize'
+  createSession: () => '/api/v1/web/temp/uploads/sessions',
+  getSession: (uploadId) => `/api/v1/web/temp/uploads/sessions/${uploadId}`,
+  cancel: (uploadId) => `/api/v1/web/temp/uploads/sessions/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/temp/uploads/chunks',
+  finalize: () => '/api/v1/web/temp/uploads/finalize'
 }
 
 const onUploadSuccess = () => {

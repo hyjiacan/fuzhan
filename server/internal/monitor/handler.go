@@ -26,7 +26,7 @@ func NewHandler(monitorService *services.MonitorService) *Handler {
 // HotDownloads 获取热门下载文件
 func (h *Handler) HotDownloads(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
 		page = 1
 	}

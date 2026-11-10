@@ -153,7 +153,7 @@
       <el-form label-width="120px">
         <el-form-item label="启用 Open API">
           <el-switch v-model="configDraft.enabled" />
-          <div class="field-hint">开启后可通过 /api/open/v1 端点提供文件访问 API</div>
+          <div class="field-hint">开启后可通过 /api/v1/open 端点提供文件访问 API</div>
         </el-form-item>
         <el-form-item label="鉴权方式">
           <el-radio-group v-model="configDraft.authMode">
@@ -271,9 +271,9 @@ const openConfigModal = () => {
   showConfigModal.value = true
 }
 
-// 在新标签页打开 OpenAPI 文档页（/api/open/v1/docs 会重定向到 Scalar 页面）
+// 在新标签页打开 OpenAPI 文档页（/api/v1/open/docs 会重定向到 Scalar 页面）
 const openDocs = () => {
-  window.open('/api/open/v1/docs', '_blank', 'noopener,noreferrer')
+  window.open('/api/v1/open/docs', '_blank', 'noopener,noreferrer')
 }
 
 const domainWhitelistDisplay = computed({
@@ -544,10 +544,10 @@ async function handleCreate() {
   try {
     const res = await ApiKeyApi.create({
       name: createForm.value.name,
-      userId: currentUserId.value || 1,
+      user_id: currentUserId.value || 1,
       scopes: createForm.value.scopes.join(','),
-      allowedPaths: createForm.value.allowedPaths.trim(),
-      expiresIn: createForm.value.expiresIn
+      allowed_paths: createForm.value.allowedPaths.trim(),
+      expires_in: createForm.value.expiresIn
     })
     if (res.success) {
       ElMessage.success('API Key 创建成功')

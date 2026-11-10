@@ -63,7 +63,7 @@ func (h *Handler) OnlineIPs(c *gin.Context) {
 	entries := online.Default.Snapshot(now)
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
 		page = 1
 	}
@@ -95,7 +95,7 @@ func (h *Handler) OnlineIPs(c *gin.Context) {
 // UsersHandler 处理获取用户列表
 func (h *Handler) UsersHandler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	query := c.Query("query")
 
 	result, err := h.adminService.ListUsers(page, pageSize, query)
@@ -112,7 +112,7 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 func (h *Handler) CreateUserHandler(c *gin.Context) {
 	var req struct {
 		Username    string `json:"username" binding:"required,min=3,max=32"`
-		DisplayName string `json:"displayName"`
+		DisplayName string `json:"display_name"`
 		Password    string `json:"password" binding:"required,min=8,max=128"`
 		Role        string `json:"role"`
 	}
@@ -146,7 +146,7 @@ func (h *Handler) CreateUserHandler(c *gin.Context) {
 
 // ResetPasswordHandler 处理重置用户密码
 func (h *Handler) ResetPasswordHandler(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("id")
 	if uuid == "" {
 		middleware.LogOperation(c, "admin.user.reset_password", uuid, fmt.Errorf("uuid empty"))
 		response.HandleBadRequest(c, "用户ID不能为空", nil)
@@ -154,7 +154,7 @@ func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 	}
 
 	var req struct {
-		NewPassword string `json:"newPassword" binding:"required,min=8"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.user.reset_password", uuid, err)
@@ -181,7 +181,7 @@ func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 
 // SetUserDisabledHandler 处理禁用/启用用户
 func (h *Handler) SetUserDisabledHandler(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("id")
 	if uuid == "" {
 		middleware.LogOperation(c, "admin.user.set_disabled", uuid, fmt.Errorf("uuid empty"))
 		response.HandleBadRequest(c, "用户ID不能为空", nil)
@@ -223,7 +223,7 @@ func (h *Handler) SetUserDisabledHandler(c *gin.Context) {
 
 // DeleteUserHandler 处理删除用户
 func (h *Handler) DeleteUserHandler(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("id")
 	if uuid == "" {
 		middleware.LogOperation(c, "admin.user.delete", uuid, fmt.Errorf("uuid empty"))
 		response.HandleBadRequest(c, "用户ID不能为空", nil)
@@ -251,7 +251,7 @@ func (h *Handler) DeleteUserHandler(c *gin.Context) {
 // SessionsHandler 处理获取上传会话列表
 func (h *Handler) SessionsHandler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
 	result, err := h.adminService.ListSessions(page, pageSize)
 	if err != nil {
@@ -266,7 +266,7 @@ func (h *Handler) SessionsHandler(c *gin.Context) {
 // CleanupSessionsHandler 清理指定的会话
 func (h *Handler) CleanupSessionsHandler(c *gin.Context) {
 	var req struct {
-		SessionIDs []uint `json:"sessionIds" binding:"required"`
+		SessionIDs []uint `json:"session_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.LogOperation(c, "admin.session.cleanup", fmt.Sprintf("%v", req.SessionIDs), err)

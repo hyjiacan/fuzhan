@@ -58,7 +58,7 @@ func (rt *runCtx) buildWebDAVHandler(prefix string) (http.Handler, webdav.UserAu
 	return searchable, authenticate
 }
 
-// registerTopLevelRoutes 注册顶层快捷入口（/cli、/download、/webdav）与 Open API 路由组（/api/open/v1）
+// registerTopLevelRoutes 注册顶层快捷入口（/cli、/download、/webdav）与 Open API 路由组（/api/v1/open）
 func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// CLI 路由别名（开启「强制登录」时需认证；/cli 作为 /api/v1/cli 的快捷入口，安装/升级脚本保持匿名）
 	cliAlias := r.Group("/cli")
@@ -121,7 +121,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openapi.RateLimitMiddleware(rt.openAPIRateLimiter),
 	}
 
-	openAPI := r.Group("/api/open/v1")
+	openAPI := r.Group("/api/v1/open")
 	openAPI.Use(openAPICommonMW...)
 	openAPI.Use(
 		openapi.AuthGateMiddleware(rt.authMiddleware, rt.rbacService),
@@ -130,14 +130,14 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	)
 	{
 		// FR-3.1: 文件列表 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
-		openAPI.GET("/files/list", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.ListFiles)
+		openAPI.GET("/files/list/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.ListFiles)
 		// FR-3.2: 文件搜索 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/search", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.SearchFiles)
 		// FR-3.3: 文件下载 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
-		openAPI.GET("/files/download", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
+		openAPI.GET("/files/download/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
 		// 文件详情 API（需认证，需要文件详情查询权限；reader/writer 层级同样覆盖）
 		// 备注与依赖树已并入详情响应，不再提供独立接口
-		openAPI.GET("/files/info", rt.rbacService.RequireScope(models.ScopeFilesInfo), rt.openAPIHandler.GetFileInfo)
+		openAPI.GET("/files/info/*path", rt.rbacService.RequireScope(models.ScopeFilesInfo), rt.openAPIHandler.GetFileInfo)
 		// 文件存在性查询 API（需认证，需要文件存在性查询权限；reader/writer 层级同样覆盖）
 		openAPI.POST("/files/exists", rt.rbacService.RequireScope(models.ScopeFilesExists), rt.openAPIHandler.CheckFilesExist)
 		// 文件上传 API（需认证，需要文件上传权限；仅 writer/admin 层级覆盖）
@@ -159,7 +159,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 	// OpenAPI 文档：从组级 AuthGate 中单独抽出，改走 LoginRequiredWhenForced。
 	// 未开启强制登录时匿名可读（与 /scalar.html 一致）；开启强制登录后需有效凭证。
 	// /docs 只是 301 到 /scalar.html，与 /openapi.json 同属文档端点，同样不要求 API Key scope。
-	openapiDoc := r.Group("/api/open/v1")
+	openapiDoc := r.Group("/api/v1/open")
 	openapiDoc.Use(openAPICommonMW...)
 	openapiDoc.Use(
 		openapi.LoginRequiredWhenForced(rt.authMiddleware, rt.rbacService),

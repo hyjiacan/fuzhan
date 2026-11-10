@@ -200,14 +200,14 @@ type ConsistencyDiff struct {
 // ListRecordsQuery 文件记录列表查询参数
 type ListRecordsQuery struct {
 	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
-	Query    string `form:"query"`    // 文件名模糊搜索
-	RootName string `form:"rootName"` // 根目录过滤
-	OwnerID  string `form:"ownerID"`  // 所有者过滤（temp 用 IP，private 用 用户ID）
-	Status   string `form:"status"`   // active / deleted / all
-	Sort     string `form:"sort"`     // name / size / time
-	Order    string `form:"order"`    // asc / desc
-	Table    string `form:"table"`    // 索引表: file_records(默认) / file_records_public / file_records_temp / file_records_private
+	PageSize int    `form:"page_size"`
+	Query    string `form:"query"`     // 文件名模糊搜索
+	RootName string `form:"root_name"` // 根目录过滤
+	OwnerID  string `form:"owner_id"`  // 所有者过滤（temp 用 IP，private 用 用户ID）
+	Status   string `form:"status"`    // active / deleted / all
+	Sort     string `form:"sort"`      // name / size / time
+	Order    string `form:"order"`     // asc / desc
+	Table    string `form:"table"`     // 索引表: file_records(默认) / file_records_public / file_records_temp / file_records_private
 }
 
 // DefaultPage 默认页码
@@ -265,9 +265,9 @@ type PathScope struct {
 
 // DuplicateQuery 重复文件查询参数
 type DuplicateQuery struct {
-	MinSize  int64  `form:"minSize"`
+	MinSize  int64  `form:"min_size"`
 	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
+	PageSize int    `form:"page_size"`
 	Sort     string `form:"sort"` // size / count / hash
 	Order    string `form:"order"`
 	// PathScopes 限定统计范围（为空表示不限制），用于 Open API 的 API Key 路径授权

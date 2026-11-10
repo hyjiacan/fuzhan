@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	configPkg "fuzhan/internal/appconfig"
@@ -71,14 +72,16 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 
 	var req struct {
 		Filename         string `json:"filename" binding:"required"`
-		FileSize         int64  `json:"fileSize" binding:"required"`
-		Dir              string `json:"dir"`
-		DeleteOnDownload bool   `json:"deleteOnDownload"`
+		FileSize         int64  `json:"file_size" binding:"required"`
+		Path             string `json:"path"` // 目标子目录（可选）
+		DeleteOnDownload bool   `json:"delete_on_download"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "参数错误", err)
 		return
 	}
+
+	dir := strings.TrimSpace(strings.ReplaceAll(req.Path, "\\", "/"))
 
 	ip := h.getClientIP(c)
 
@@ -100,8 +103,8 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 	}
 
 	// 验证 Dir 路径安全性
-	if req.Dir != "" {
-		cleanDir := filepath.Clean(req.Dir)
+	if dir != "" {
+		cleanDir := filepath.Clean(dir)
 		target := filepath.Join(h.config.Path, cleanDir)
 		if !isPathWithinRoot(h.config.Path, target) {
 			utils.HandleBadRequest(c, "不允许的路径", nil)
@@ -120,7 +123,7 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 	cs, err := h.uploadSvc.CreateSession(&services.CreateSessionReq{
 		Filename:         req.Filename,
 		FileSize:         req.FileSize,
-		Dir:              req.Dir,
+		Dir:              dir,
 		RootName:         "temp",
 		TargetType:       models.TargetTypeTemp,
 		UserID:           currentUserUUID(c),
@@ -149,7 +152,7 @@ func (h *Handler) GetTempSessionHandler(c *gin.Context) {
 		return
 	}
 
-	session, err := h.verifyTempSession(c, c.Param("uploadId"))
+	session, err := h.verifyTempSession(c, c.Param("id"))
 	if err != nil {
 		handleTempSessionErr(c, err)
 		return
@@ -188,8 +191,8 @@ func (h *Handler) UploadTempChunkHandler(c *gin.Context) {
 		return
 	}
 
-	uploadID := c.PostForm("uploadId")
-	chunkIndexStr := c.PostForm("chunkIndex")
+	uploadID := c.PostForm("upload_id")
+	chunkIndexStr := c.PostForm("chunk_index")
 	checksum := c.PostForm("checksum")
 
 	if uploadID == "" || chunkIndexStr == "" {
@@ -251,7 +254,7 @@ func (h *Handler) ResumeTempSessionHandler(c *gin.Context) {
 		return
 	}
 
-	session, err := h.verifyTempSession(c, c.Param("uploadId"))
+	session, err := h.verifyTempSession(c, c.Param("id"))
 	if err != nil {
 		handleTempSessionErr(c, err)
 		return
@@ -285,7 +288,7 @@ func (h *Handler) CancelTempSessionHandler(c *gin.Context) {
 		return
 	}
 
-	session, err := h.verifyTempSession(c, c.Param("uploadId"))
+	session, err := h.verifyTempSession(c, c.Param("id"))
 	if err != nil {
 		handleTempSessionErr(c, err)
 		return
@@ -296,7 +299,7 @@ func (h *Handler) CancelTempSessionHandler(c *gin.Context) {
 		return
 	}
 
-	middleware.LogOperation(c, "temp.upload.session.cancel", c.Param("uploadId"), nil)
+	middleware.LogOperation(c, "temp.upload.session.cancel", c.Param("id"), nil)
 	utils.HandleSuccess(c, http.StatusOK, "会话已取消", nil)
 }
 
@@ -307,11 +310,11 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 		return
 	}
 
-	uploadID := c.PostForm("uploadId")
+	uploadID := c.PostForm("upload_id")
 	if uploadID == "" {
 		// 前端 UploadManager 发送 JSON body，尝试解析
 		var body struct {
-			UploadID string `json:"uploadId"`
+			UploadID string `json:"upload_id"`
 		}
 		if err := c.ShouldBindJSON(&body); err == nil && body.UploadID != "" {
 			uploadID = body.UploadID

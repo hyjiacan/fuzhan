@@ -11,17 +11,22 @@ import (
 func TestRouteConflictCandidates(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
-	t.Run("openapi_files 静态接口", func(t *testing.T) {
+	t.Run("openapi_files 动作段通配", func(t *testing.T) {
 		r := gin.New()
-		v1 := r.Group("/api/open/v1")
+		v1 := r.Group("/api/v1/open")
 		f := v1.Group("/files")
-		f.GET("/download", dummy)
-		f.GET("/info", dummy)
+		f.GET("/download/*path", dummy)
+		f.GET("/info/*path", dummy)
+		f.GET("/list/*path", dummy)
+		f.GET("/search", dummy)
+		f.GET("/duplicates", dummy)
+		f.GET("/upload/:id", dummy)
 		f.POST("/exists", dummy)
 		f.POST("/rename", dummy)
 		f.DELETE("", dummy)
-		assertRoutes(t, r, "/api/open/v1/files/download", "/api/open/v1/files/info",
-			"/api/open/v1/files/exists", "/api/open/v1/files/rename", "/api/open/v1/files")
+		assertRoutes(t, r, "/api/v1/open/files/download/*path", "/api/v1/open/files/info/*path",
+			"/api/v1/open/files/list/*path", "/api/v1/open/files/search",
+			"/api/v1/open/files/exists", "/api/v1/open/files/rename", "/api/v1/open/files")
 	})
 
 	t.Run("temp :code参数+upload静态", func(t *testing.T) {
@@ -32,9 +37,9 @@ func TestRouteConflictCandidates(t *testing.T) {
 		temp.GET("/:code", dummy)
 		temp.GET("/:code/download", dummy)
 		temp.DELETE("/:code", dummy)
-		up := web.Group("/temp/upload")
-		up.GET("/session/:uploadId", dummy)
-		assertRoutes(t, r, "/api/v1/web/temp/:code", "/api/v1/web/temp/:code/download", "/api/v1/web/temp/upload/session/:uploadId")
+		up := web.Group("/temp/uploads")
+		up.GET("/sessions/:id", dummy)
+		assertRoutes(t, r, "/api/v1/web/temp/:code", "/api/v1/web/temp/:code/download", "/api/v1/web/temp/uploads/sessions/:id")
 	})
 
 	t.Run("files 静态多段子树通配符", func(t *testing.T) {

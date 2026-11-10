@@ -352,10 +352,10 @@ async function handleCreate() {
   try {
     const res = await ApiKeyApi.create({
       name: createForm.value.name,
-      userId: currentUserId.value || 1,
+      user_id: currentUserId.value || 1,
       scopes: createForm.value.scopes,
-      allowedPaths: createForm.value.allowedPaths.trim(),
-      expiresIn: createForm.value.expiresIn
+      allowed_paths: createForm.value.allowedPaths.trim(),
+      expires_in: createForm.value.expiresIn
     })
     if (res.success) {
       ElMessage.success('API Key 创建成功')

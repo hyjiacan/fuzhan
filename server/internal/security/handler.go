@@ -33,7 +33,7 @@ func NewHandler(repo SecurityEventStore) *Handler {
 // parseFilter 解析通用分页/过滤参数
 func parseFilter(c *gin.Context) (repositories.SecurityEventFilter, int, int, error) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
 		page = 1
 	}
@@ -43,13 +43,13 @@ func parseFilter(c *gin.Context) (repositories.SecurityEventFilter, int, int, er
 
 	f := repositories.SecurityEventFilter{
 		Severity:   c.Query("severity"),
-		EventType:  c.Query("eventType"),
-		ClientIP:   c.Query("clientIP"),
+		EventType:  c.Query("event_type"),
+		ClientIP:   c.Query("client_ip"),
 		Identity:   c.Query("identity"),
 		Result:     c.Query("result"),
 		Guard:      c.Query("guard"),
-		Q:          c.Query("q"),
-		UnreadOnly: c.Query("unread") == "1",
+		Q:          c.Query("query"),
+		UnreadOnly: c.Query("unread") == "true",
 	}
 	if from := c.Query("from"); from != "" {
 		t, err := parseDate(from)

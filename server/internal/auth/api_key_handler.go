@@ -45,7 +45,7 @@ func (h *ApiKeyHandler) CreateApiKey(c *gin.Context) {
 // GET /api/v1/web/admin/api-keys
 func (h *ApiKeyHandler) ListApiKeys(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
 	keys, total, err := h.svc.ListApiKeys(page, pageSize)
 	if err != nil {

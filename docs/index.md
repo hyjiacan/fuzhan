@@ -63,6 +63,8 @@ docs/
 
 - [API 接口文档](./design/api/api-contracts.md) — 所有 API 端点详解（含通知、API Key 管理）
 - [API_INTERFACE.md](./design/api/API_INTERFACE.md) — API 接口定义汇总
+- [API 风格规范](./design/api/API_STYLE_GUIDE.md) — URL/参数/响应/鉴权统一规范（新增接口必读）
+- [API 风格统一迁移清单](./design/api/API_STYLE_UNIFICATION.md) — 存量接口现状与目标路径对照
 
 ### 设计方案（design/proposals/）
 

@@ -2,6 +2,8 @@
 
 **动手前先读 [`docs/development/project-context.md`](docs/development/project-context.md)**（启动链路、配置体系、后端分层、数据模型、全量路由、worker、前端、构建、约定与陷阱都在里面）。
 
+**新增/修改 HTTP API 时，同时遵守 [`docs/design/api/API_STYLE_GUIDE.md`](docs/design/api/API_STYLE_GUIDE.md)**（命名空间、URL、参数、响应、别名规则）。
+
 除非该文件明确未覆盖，否则不要为"了解项目结构"而通读 `server/`、`ui/`。
 
 ## 修改后必须同步更新上下文文件

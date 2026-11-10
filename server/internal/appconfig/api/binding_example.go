@@ -48,7 +48,7 @@ func (beh *BindingExampleHandler) RenameFileWithBinding(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "重命名请求处理成功", map[string]interface{}{
-		"oldPath": req.OldPath,
-		"newName": req.NewName,
+		"path":     req.Path,
+		"new_name": req.NewName,
 	})
 }

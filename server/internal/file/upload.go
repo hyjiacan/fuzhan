@@ -99,10 +99,23 @@ func (h *UploadSessionHandler) SetDispatcher(d *URLDownloadDispatcher) {
 // CreateSessionRequest 创建会话请求
 type CreateSessionRequest struct {
 	Filename   string            `json:"filename" binding:"required,max=255"`
-	FileSize   int64             `json:"fileSize" binding:"required,min=1"`
-	Dir        string            `json:"dir" binding:"required,max=1024"`
-	RootName   string            `json:"rootName" binding:"required,max=255"`
-	TargetType models.TargetType `json:"targetType"`
+	FileSize   int64             `json:"file_size" binding:"required,min=1"`
+	Path       string            `json:"path" binding:"required,max=1024"` // 目标目录 /rootName[/subdir]
+	TargetType models.TargetType `json:"target_type"`
+}
+
+// splitUploadTargetPath 拆解上传目标目录 /rootName[/subdir] 为根目录名与子目录。
+func splitUploadTargetPath(target string) (string, string, error) {
+	clean := strings.Trim(strings.ReplaceAll(strings.TrimSpace(target), "\\", "/"), "/")
+	parts := strings.SplitN(clean, "/", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "", "", fmt.Errorf("path 格式错误: 需要 /rootName[/subdir]")
+	}
+	dir := ""
+	if len(parts) == 2 && parts[1] != "" {
+		dir = "/" + parts[1]
+	}
+	return parts[0], dir, nil
 }
 
 // CreateSession 创建上传会话
@@ -113,6 +126,12 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
+	rootName, dir, pathErr := splitUploadTargetPath(req.Path)
+	if pathErr != nil {
+		utils.HandleBadRequest(c, pathErr.Error(), nil)
+		return
+	}
+
 	// 检查公共目录上传开关（非临时/私有文件）
 	if req.TargetType != models.TargetTypeTemp && req.TargetType != models.TargetTypePrivate {
 		if !appconfig.GlobalConfig.Upload.Enabled {
@@ -120,7 +139,7 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 			return
 		}
 		// 按目录检查：允许单独为某个共享目录关闭上传
-		if !appconfig.PublicDirUploadAllowed(req.RootName) {
+		if !appconfig.PublicDirUploadAllowed(rootName) {
 			utils.HandleErrorCompat(c, http.StatusForbidden, "该共享目录不允许上传文件", nil)
 			return
 		}
@@ -130,7 +149,7 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 	targetExists := false
 	if req.TargetType != models.TargetTypeTemp && req.TargetType != models.TargetTypePrivate {
 		// 路径安全校验：防止 .. 穿越
-		if strings.Contains(req.Dir, "..") {
+		if strings.Contains(dir, "..") {
 			utils.HandleBadRequest(c, "路径不能包含 ..", nil)
 			return
 		}
@@ -138,8 +157,8 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 		req.Filename = strings.ReplaceAll(req.Filename, "/", "")
 		req.Filename = strings.ReplaceAll(req.Filename, "\\", "")
 		req.Filename = strings.ReplaceAll(req.Filename, "\x00", "")
-		if rootDir, ok := appconfig.RootNames[req.RootName]; ok {
-			cleanDir := filepath.Clean(req.Dir)
+		if rootDir, ok := appconfig.RootNames[rootName]; ok {
+			cleanDir := filepath.Clean(dir)
 			if cleanDir == "." || cleanDir == "/" {
 				cleanDir = ""
 			}
@@ -155,7 +174,7 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 				if cleanDir != "" {
 					indexFilePath = "/" + cleanDir + "/" + req.Filename
 				}
-				record, lookupErr := h.indexSvc.FindRecordByPath(req.Filename, req.RootName, indexFilePath)
+				record, lookupErr := h.indexSvc.FindRecordByPath(req.Filename, rootName, indexFilePath)
 				if lookupErr == nil && record != nil {
 					targetExists = true
 				}
@@ -169,14 +188,14 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 			// 非管理员：仅当上传者IP与现有文件的上传者IP一致时允许覆盖
 			clientIP := utils.GetClientIP(c)
 			indexFilePath := "/" + req.Filename
-			if cleanDir := strings.Trim(strings.TrimSuffix(req.Dir, "/"), "/"); cleanDir != "" {
+			if cleanDir := strings.Trim(strings.TrimSuffix(dir, "/"), "/"); cleanDir != "" {
 				indexFilePath = "/" + cleanDir + "/" + req.Filename
 			}
 			if clientIP == "" || h.indexSvc == nil {
 				utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
 				return
 			}
-			rec, lookupErr := h.indexSvc.FindRecordByPath(req.Filename, req.RootName, indexFilePath)
+			rec, lookupErr := h.indexSvc.FindRecordByPath(req.Filename, rootName, indexFilePath)
 			if lookupErr != nil || rec == nil || rec.UploaderIP == "" || rec.UploaderIP != clientIP {
 				utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
 				return
@@ -189,8 +208,8 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 	session, err := h.service.CreateSession(&services.CreateSessionReq{
 		Filename:   req.Filename,
 		FileSize:   req.FileSize,
-		Dir:        req.Dir,
-		RootName:   req.RootName,
+		Dir:        dir,
+		RootName:   rootName,
 		TargetType: req.TargetType,
 		UserID:     utils.GetClientIP(c),
 		ClientIP:   utils.GetClientIP(c),
@@ -298,8 +317,8 @@ func (h *UploadSessionHandler) CancelSession(c *gin.Context) {
 
 // UploadChunk 上传分片
 func (h *UploadSessionHandler) UploadChunk(c *gin.Context) {
-	uploadIDStr := c.PostForm("uploadId")
-	chunkIndexStr := c.PostForm("chunkIndex")
+	uploadIDStr := c.PostForm("upload_id")
+	chunkIndexStr := c.PostForm("chunk_index")
 
 	uploadID, err := strconv.ParseUint(uploadIDStr, 10, 64)
 	if err != nil {
@@ -350,7 +369,7 @@ func (h *UploadSessionHandler) UploadChunk(c *gin.Context) {
 // FinalizeSession 完成上传
 func (h *UploadSessionHandler) FinalizeSession(c *gin.Context) {
 	var req struct {
-		UploadID uint64 `json:"uploadId" binding:"required"`
+		UploadID uint64 `json:"upload_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.HandleBadRequest(c, "无效的会话ID: "+err.Error(), nil)
@@ -389,7 +408,7 @@ func (h *UploadSessionHandler) CleanupExpiredSessions() (int, error) {
 func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 	sessionType := c.Query("type")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
 
 	if page < 1 {
 		page = 1

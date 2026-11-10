@@ -156,7 +156,7 @@ func TestAdminURLDownloadHandler_ListPagination(t *testing.T) {
 	router.GET("/admin/url-tasks", handler.ListURLTasks)
 
 	// 每页 2 条
-	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&pageSize=2", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&page_size=2", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

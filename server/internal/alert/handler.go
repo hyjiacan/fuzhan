@@ -24,8 +24,8 @@ func NewHandler(svc *services.StorageAlertService) *Handler {
 // List GET /api/web/admin/alert-messages
 func (h *Handler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	unreadOnly := c.Query("unreadOnly") == "true" || c.Query("unreadOnly") == "1"
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	unreadOnly := c.Query("unread_only") == "true"
 
 	items, total, err := h.svc.ListMessages(page, pageSize, unreadOnly)
 	if err != nil {

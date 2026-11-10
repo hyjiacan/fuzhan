@@ -20,9 +20,9 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/index/scan/trigger", indexHandler.TriggerFullScan)
 	admin.GET("/users", adminHandler.UsersHandler)
 	admin.POST("/users", adminHandler.CreateUserHandler)
-	admin.PUT("/users/:uuid/reset-password", adminHandler.ResetPasswordHandler)
-	admin.PUT("/users/:uuid/disabled", adminHandler.SetUserDisabledHandler)
-	admin.DELETE("/users/:uuid", adminHandler.DeleteUserHandler)
+	admin.PUT("/users/:id/reset-password", adminHandler.ResetPasswordHandler)
+	admin.PUT("/users/:id/disabled", adminHandler.SetUserDisabledHandler)
+	admin.DELETE("/users/:id", adminHandler.DeleteUserHandler)
 	admin.GET("/sessions", adminHandler.SessionsHandler)
 	admin.POST("/sessions/cleanup", adminHandler.CleanupSessionsHandler)
 	admin.POST("/sessions/cleanup-all", adminHandler.CleanupAllZombieSessionsHandler)
@@ -63,14 +63,14 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	}
 
 	// TLS 证书上传路由
-	admin.POST("/upload-cert", adminHandler.UploadCertHandler)
-	admin.POST("/upload-key", adminHandler.UploadKeyHandler)
+	admin.POST("/tls/certificate", adminHandler.UploadCertHandler)
+	admin.POST("/tls/private-key", adminHandler.UploadKeyHandler)
 
 	// 网络接口列表（初始化后由设置页使用，需管理员鉴权）
 	admin.GET("/network-interfaces", setupHandler.GetNetworkInterfaces)
 
 	// 文件管理路由
-	admin.GET("/files/list", fileHandlers.ListDirectories)
+	admin.GET("/files/list/*path", fileHandlers.ListDirectories)
 	admin.POST("/files/move", fileHandlers.MoveFileHandler)
 	admin.DELETE("/files", fileHandlers.DeleteFileHandler)
 

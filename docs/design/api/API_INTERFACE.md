@@ -165,10 +165,10 @@
 
 ### 1. 获取目录列表
 
-- **URL**：`GET /api/v1/web/files/list`
+- **URL**：`GET /api/v1/web/files/list/*path`
 - **认证**：受强制登录开关控制（未开启时匿名可访问；开启后需携带登录令牌）
 - **参数**：
-  - `path`（可选）：目录路径，格式 `rootName/subdir`
+  - 路径：URL 路径段，格式 `/rootName/subdir`；根目录为 `/files/list/`
 - **响应**：
   ```json
   {
@@ -331,7 +331,7 @@
   ```json
   {
     "path": "rootName/原文件.txt",
-    "newName": "新文件名.txt"
+    "new_name": "新文件名.txt"
   }
   ```
 
@@ -343,7 +343,7 @@
   ```json
   {
     "path": "rootName/源文件.txt",
-    "newPath": "rootName/subdir/目标位置.txt"
+    "target_path": "rootName/subdir/目标位置.txt"
   }
   ```
 
@@ -358,16 +358,15 @@
 
 ### 1. 创建上传会话
 
-- **URL**：`POST /api/v1/web/uploads/session`
+- **URL**：`POST /api/v1/web/uploads/sessions`
 - **认证**：无需认证（支持断点续传）
 - **请求体**：
   ```json
   {
     "filename": "文件名.zip",
-    "fileSize": 104857600,
-    "rootName": "share1",
-    "dir": "目标目录",
-    "targetType": "regular"
+    "file_size": 104857600,
+    "path": "/share1/目标目录",
+    "target_type": "regular"
   }
   ```
 - **响应**：
@@ -385,7 +384,7 @@
 
 ### 2. 获取上传会话状态
 
-- **URL**：`GET /api/v1/web/uploads/session/:id`
+- **URL**：`GET /api/v1/web/uploads/sessions/:id`
 - **认证**：无需认证
 - **响应**：
   ```json
@@ -402,23 +401,23 @@
 
 ### 3. 恢复上传会话
 
-- **URL**：`POST /api/v1/web/uploads/session/:id/resume`
+- **URL**：`POST /api/v1/web/uploads/sessions/:id/resume`
 - **认证**：无需认证
 
 ### 4. 取消上传会话
 
-- **URL**：`DELETE /api/v1/web/uploads/session/:id`
+- **URL**：`DELETE /api/v1/web/uploads/sessions/:id`
 - **认证**：无需认证
 
 ### 5. 上传分片
 
-- **URL**：`POST /api/v1/web/uploads/chunk`
+- **URL**：`POST /api/v1/web/uploads/chunks`
 - **认证**：无需认证
 - **Content-Type**：`multipart/form-data`
 - **参数**：
   - `file`：分片数据
-  - `uploadId`：会话ID
-  - `chunkIndex`：分片索引
+  - `upload_id`：会话ID
+  - `chunk_index`：分片索引
   - `checksum`：校验值（xxh3）
 - **响应**：
   ```json
@@ -438,13 +437,13 @@
 - **请求体**：
   ```json
   {
-    "uploadId": 1
+    "upload_id": 1
   }
   ```
 
 ### 7. 从 URL 上传
 
-- **URL**：`POST /api/v1/web/uploads/url`
+- **URL**：`POST /api/v1/web/uploads/url-tasks`
 - **认证**：可选（AuthOptional）
 - **说明**：仅做校验与入队，返回 `taskId`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。服务器侧大小硬上限由 `upload.url_upload.max_size` 控制（字节，0=不限，下载实际累计写入超过即中断并清理）。
 - **请求体**：
@@ -452,9 +451,8 @@
   {
     "url": "https://example.com/file.zip",
     "filename": "文件名.zip",
-    "rootName": "share1",
-    "dir": "目标目录",
-    "storageType": "regular"
+    "path": "/share1/目标目录",
+    "storage_type": "regular"
   }
   ```
 - **响应**：
@@ -473,9 +471,9 @@
 
 ### 8. 批量探测 URL
 
-- **URL**：`POST /api/v1/web/uploads/url-probe`
+- **URL**：`POST /api/v1/web/uploads/url-tasks/probe`
 - **认证**：可选（AuthOptional）
-- **请求体**：`{ "urls": ["https://..."], "dir": "", "rootName": "", "storageType": "" }`
+- **请求体**：`{ "urls": ["https://..."], "path": "/share1/subdir", "storage_type": "" }`
 - **响应**：
   ```json
   {
@@ -496,14 +494,14 @@
 
 ### 9. URL 上传任务进度
 
-- **URL**：`GET /api/v1/web/uploads/url-task/:taskId`
+- **URL**：`GET /api/v1/web/uploads/url-tasks/:id`
 - **认证**：可选（AuthOptional，仅任务归属者可用）
 - **说明**：返回任务状态（`pending`/`downloading`/`completed`/`failed`/`cancelled`）、`downloadedBytes`、`fileSize`、`retryCount`（已自动重试次数）等，供前端轮询进度。
 - **错误**：任务不存在返回 404；非任务归属者返回 403。
 
 ### 10. 计算 URL 上传任务校验值
 
-- **URL**：`POST /api/v1/web/uploads/url-tasks/:taskId/checksum`
+- **URL**：`POST /api/v1/web/uploads/url-tasks/:id/checksum`
 - **认证**：可选（AuthOptional，仅任务归属者可用）
 - **说明**：为已完成（`completed`）的 URL 上传任务计算校验值，供用户执行完整性校验。服务端对已落盘文件单次流式读取，按所选算法并行计算；结果仅返回前端，**不落库**。
 - **请求体**：
@@ -531,7 +529,7 @@
 
 ### 1. 获取临时文件列表
 
-- **URL**：`GET /api/v1/web/temp/list`
+- **URL**：`GET /api/v1/web/temp/list/*path`
 - **认证**：基于IP，无需用户认证
 - **响应**：
   ```json
@@ -558,30 +556,23 @@
 
 ### 2. 上传临时文件
 
-- **URL**：`POST /api/v1/web/temp/upload`
-- **认证**：基于IP
-- **Content-Type**：`multipart/form-data`
-- **参数**：
-  - `file`：上传的文件
-  - `expireDate`（可选）：过期日期
-
-### 3. 临时文件分片上传
+临时文件仅支持分片上传（断点续传），不提供单次简单上传入口。
 
 | 操作 | URL | 说明 |
 |------|-----|------|
-| 创建会话 | `POST /api/v1/web/temp/upload/session` | - |
-| 获取状态 | `GET /api/v1/web/temp/upload/session/:uploadId` | - |
-| 上传分片 | `POST /api/v1/web/temp/upload/chunk` | - |
-| 完成上传 | `POST /api/v1/web/temp/upload/finalize` | - |
+| 创建会话 | `POST /api/v1/web/temp/uploads/sessions` | - |
+| 获取状态 | `GET /api/v1/web/temp/uploads/sessions/:id` | - |
+| 上传分片 | `POST /api/v1/web/temp/uploads/chunks` | - |
+| 完成上传 | `POST /api/v1/web/temp/uploads/finalize` | - |
 
-### 4. 下载临时文件
+### 3. 下载临时文件
 
 - **URL**：`GET /api/v1/web/temp/:code/download`
 - **认证**：无需认证
 - **参数**：
   - `preview`（可选）：设为 `true` 时以内联方式返回（不设置 `Content-Disposition`，按扩展名推断 `Content-Type`），供图片/PDF/文本在线预览；不触发下载即删、不计入下载次数、不写下载记录
 
-### 5. 获取临时文件信息
+### 4. 获取临时文件信息
 
 - **URL**：`GET /api/v1/web/temp/:code`
 - **响应**：
@@ -596,12 +587,12 @@
   }
   ```
 
-### 6. 删除临时文件
+### 5. 删除临时文件
 
 - **URL**：`DELETE /api/v1/web/temp/:code`
 - **认证**：基于IP
 
-### 7. 获取临时文件配额
+### 6. 获取临时文件配额
 
 - **URL**：`GET /api/v1/web/temp/quota`
 
@@ -609,7 +600,7 @@
 
 ### 1. 获取私有文件列表
 
-- **URL**：`GET /api/v1/web/private/files`
+- **URL**：`GET /api/v1/web/private/files/*path`
 - **认证**：需要（JWT）
 - **响应**：
   ```json
@@ -629,11 +620,11 @@
 
 | 操作 | URL |
 |------|-----|
-| 创建会话 | `POST /api/v1/web/private/uploads/session` |
-| 获取状态 | `GET /api/v1/web/private/uploads/session/:id` |
-| 续传 | `POST /api/v1/web/private/uploads/session/:id/resume` |
-| 取消 | `DELETE /api/v1/web/private/uploads/session/:id` |
-| 上传分片 | `POST /api/v1/web/private/uploads/chunk` |
+| 创建会话 | `POST /api/v1/web/private/uploads/sessions` |
+| 获取状态 | `GET /api/v1/web/private/uploads/sessions/:id` |
+| 续传 | `POST /api/v1/web/private/uploads/sessions/:id/resume` |
+| 取消 | `DELETE /api/v1/web/private/uploads/sessions/:id` |
+| 上传分片 | `POST /api/v1/web/private/uploads/chunks` |
 | 完成 | `POST /api/v1/web/private/uploads/finalize` |
 
 ### 3. 获取私有存储配额
@@ -683,7 +674,7 @@
 
 ### 2. 重置用户密码
 
-- **URL**：`PUT /api/v1/web/admin/users/:uuid/reset-password`
+- **URL**：`PUT /api/v1/web/admin/users/:id/reset-password`
 - **请求体**：
   ```json
   {
@@ -693,7 +684,7 @@
 
 ### 3. 禁用/启用用户
 
-- **URL**：`PUT /api/v1/web/admin/users/:uuid/disabled`
+- **URL**：`PUT /api/v1/web/admin/users/:id/disabled`
 - **请求体**：
   ```json
   {
@@ -703,7 +694,7 @@
 
 ### 4. 删除用户
 
-- **URL**：`DELETE /api/v1/web/admin/users/:uuid`
+- **URL**：`DELETE /api/v1/web/admin/users/:id`
 
 ### 5. 获取上传会话列表
 
@@ -872,7 +863,7 @@
 
 ### 3. Prometheus 指标
 
-- **URL**：`GET /api/v1/metrics`
+- **URL**：`GET /api/v1/web/monitor/metrics`
 - **认证**：无需认证
 
 ## CLI 接口（受强制登录开关控制）
@@ -937,9 +928,9 @@ UploadManager 组件封装了分片上传功能，支持断点续传。
 ```javascript
 const uploadApi = {
   type: 'chunked',  // 固定值
-  createSession: () => '/api/v1/web/uploads/session',
-  getSession: (uploadId) => `/api/v1/web/uploads/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/web/uploads/chunk',
+  createSession: () => '/api/v1/web/uploads/sessions',
+  getSession: (uploadId) => `/api/v1/web/uploads/sessions/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/uploads/chunks',
   finalize: () => '/api/v1/web/uploads/finalize'
 }
 ```
@@ -948,9 +939,9 @@ const uploadApi = {
 
 | 模块 | createSession | getSession | uploadChunk | finalize |
 |------|---------------|------------|-------------|----------|
-| 公开文件 | `/api/v1/web/uploads/session` | `/api/v1/web/uploads/session/{id}` | `/api/v1/web/uploads/chunk` | `/api/v1/web/uploads/finalize` |
-| 私有存储 | `/api/v1/web/private/uploads/session` | `/api/v1/web/private/uploads/session/{id}` | `/api/v1/web/private/uploads/chunk` | `/api/v1/web/private/uploads/finalize` |
-| 临时文件 | `/api/v1/web/temp/upload/session` | `/api/v1/web/temp/upload/session/{id}` | `/api/v1/web/temp/upload/chunk` | `/api/v1/web/temp/upload/finalize` |
+| 公开文件 | `/api/v1/web/uploads/sessions` | `/api/v1/web/uploads/sessions/{id}` | `/api/v1/web/uploads/chunks` | `/api/v1/web/uploads/finalize` |
+| 私有存储 | `/api/v1/web/private/uploads/sessions` | `/api/v1/web/private/uploads/sessions/{id}` | `/api/v1/web/private/uploads/chunks` | `/api/v1/web/private/uploads/finalize` |
+| 临时文件 | `/api/v1/web/temp/uploads/sessions/sessions` | `/api/v1/web/temp/uploads/sessions/sessions/{id}` | `/api/v1/web/temp/uploads/sessions/chunks` | `/api/v1/web/temp/uploads/sessions/finalize` |
 
 ### 使用示例
 
@@ -966,9 +957,9 @@ const uploadApi = {
 <script setup>
 const uploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/web/uploads/session',
-  getSession: (id) => `/api/v1/web/uploads/session/${id}`,
-  uploadChunk: () => '/api/v1/web/uploads/chunk',
+  createSession: () => '/api/v1/web/uploads/sessions',
+  getSession: (id) => `/api/v1/web/uploads/sessions/${id}`,
+  uploadChunk: () => '/api/v1/web/uploads/chunks',
   finalize: () => '/api/v1/web/uploads/finalize'
 }
 

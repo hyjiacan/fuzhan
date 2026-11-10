@@ -44,7 +44,7 @@ func NewRecentHandler(recordRepo repositories.AuditStore, db *gorm.DB) *RecentHa
 // 支持分页参数 page 和 pageSize
 func (h *RecentHandler) GetRecent(c *gin.Context) {
 	pageStr := c.DefaultQuery("page", "1")
-	pageSizeStr := c.DefaultQuery("pageSize", "20")
+	pageSizeStr := c.DefaultQuery("page_size", "20")
 	action := c.Query("action")
 
 	// action 参数必填

@@ -73,7 +73,7 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 func (h *TaskHandler) GetTaskHistory(c *gin.Context) {
 	taskType := c.Query("type")
 	pageStr := c.DefaultQuery("page", "1")
-	pageSizeStr := c.DefaultQuery("pageSize", "20")
+	pageSizeStr := c.DefaultQuery("page_size", "20")
 
 	page, _ := strconv.Atoi(pageStr)
 	pageSize, _ := strconv.Atoi(pageSizeStr)

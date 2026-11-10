@@ -61,7 +61,7 @@ func (h *PrivateStorageHandlers) List(c *gin.Context) {
 		return
 	}
 
-	path := strings.Trim(c.Query("path"), "/")
+	path := strings.Trim(c.Param("path"), "/")
 
 	files, subdirs, err := ListPrivateDirectory(configPkg.GlobalConfig.Storage.Private.Path, userID, path)
 	if err != nil {

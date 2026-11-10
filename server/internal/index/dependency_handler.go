@@ -23,8 +23,8 @@ func NewDependencyHandler(svc *DependencyService) *DependencyHandler {
 // POST /api/v1/web/admin/index/dependencies
 func (h *DependencyHandler) CreateDependency(c *gin.Context) {
 	var req struct {
-		FileRecordID uint   `json:"fileRecordId" binding:"required"`
-		DependsOnID  uint   `json:"dependsOnId" binding:"required"`
+		FileRecordID uint   `json:"file_record_id" binding:"required"`
+		DependsOnID  uint   `json:"depends_on_id" binding:"required"`
 		Relation     string `json:"relation" binding:"required"`
 		Description  string `json:"description"`
 	}
@@ -115,8 +115,8 @@ func (h *DependencyHandler) GetDependencyTree(c *gin.Context) {
 // POST /api/v1/web/files/dependencies
 func (h *DependencyHandler) CreateDependencyPublic(c *gin.Context) {
 	var req struct {
-		FileRecordID uint   `json:"fileRecordId" binding:"required"`
-		DependsOnID  uint   `json:"dependsOnId" binding:"required"`
+		FileRecordID uint   `json:"file_record_id" binding:"required"`
+		DependsOnID  uint   `json:"depends_on_id" binding:"required"`
 		Relation     string `json:"relation" binding:"required"`
 		Description  string `json:"description"`
 	}

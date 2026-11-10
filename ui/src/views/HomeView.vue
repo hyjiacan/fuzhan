@@ -142,10 +142,10 @@ import { createColumns } from './home/columns'
 // 上传 API
 const uploadApi = {
   type: 'chunked',
-  createSession: () => '/api/v1/web/uploads/session',
-  getSession: (uploadId) => `/api/v1/web/uploads/session/${uploadId}`,
-  cancel: (uploadId) => `/api/v1/web/uploads/session/${uploadId}`,
-  uploadChunk: () => '/api/v1/web/uploads/chunk',
+  createSession: () => '/api/v1/web/uploads/sessions',
+  getSession: (uploadId) => `/api/v1/web/uploads/sessions/${uploadId}`,
+  cancel: (uploadId) => `/api/v1/web/uploads/sessions/${uploadId}`,
+  uploadChunk: () => '/api/v1/web/uploads/chunks',
   finalize: () => '/api/v1/web/uploads/finalize'
 }
 

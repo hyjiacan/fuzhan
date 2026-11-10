@@ -24,7 +24,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"- 业务成功/失败使用统一信封：`{success, code, message, data}` / `{success, code, message, errors}`。\n" +
 				"- 响应数据字段统一使用 `snake_case`（如 `file_size`、`page_size`、`upload_id`）。\n" +
 				"- 鉴权、scope、IP 白名单等中间件拒绝时返回简单结构：`{\"error\": \"...\"}`。\n" +
-				"- `GET /files/download?path=...` 成功时直接返回文件二进制流，不使用信封。\n\n" +
+				"- `GET /files/download/{path}` 成功时直接返回文件二进制流，不使用信封。\n\n" +
 				"## 参数校验\n\n" +
 				"- 参数缺省时使用声明的默认值；一旦提供非法值（类型、范围、枚举或格式不匹配）直接返回 `400`，不做静默回退。\n" +
 				"- 路径参数会规范化为 `/rootName[/sub]`，包含 `.` 或 `..` 片段时返回 `400`。\n\n" +
@@ -36,7 +36,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"version": version.Version,
 		},
 		"servers": []map[string]interface{}{
-			{"url": "/api/open/v1", "description": "Open API v1"},
+			{"url": "/api/v1/open", "description": "Open API v1"},
 		},
 		"tags": []map[string]interface{}{
 			{"name": "文件操作", "description": "文件列表、搜索、下载、上传、重命名/移动与删除（删除文件与删除目录为独立权限）"},
@@ -44,7 +44,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			{"name": "分片上传", "description": "大文件分片上传（断点续传）。需 `open_api:files:upload` 权限。\n\n" +
 				"## 调用流程\n" +
 				"1. `POST /files/upload/init`：提交文件名、文件总大小与目标目录，获取 `upload_id`、`chunk_size`、`total_chunks`\n" +
-				"2. `POST /files/upload/chunk`：按 `chunkIndex`（从 0 开始）逐片上传分片；可分片乱序、可重传覆盖单片、可随时补传缺失分片\n" +
+				"2. `POST /files/upload/chunk`：按 `chunk_index`（从 0 开始）逐片上传分片；可分片乱序、可重传覆盖单片、可随时补传缺失分片\n" +
 				"3. `POST /files/upload/finalize`：全部分片上传完成后调用，服务端按序合并、落盘、同步索引并写入上传记录\n" +
 				"4. （可选）`GET /files/upload/{id}`：查询 `uploaded_indexes` 与过期时间，实现断点续传\n\n" +
 				"注意事项：\n" +
@@ -55,17 +55,17 @@ func GenerateOpenAPISpec() map[string]interface{} {
 		},
 		"security": sessionOrAPIKeySecurity(),
 		"paths": map[string]interface{}{
-			"/files/list": map[string]interface{}{
+			"/files/list/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件列表",
-					"description":      "基于文件索引表，以分页方式获取指定目录的文件列表。\n\n所需 scope：`open_api:reader`",
+					"description":      "基于文件索引表，以分页方式获取指定目录的文件列表。路径写在 URL 中，始终以 `/` 开头并包含根目录名；根目录使用 `/files/list/`。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "query", "description": "目录路径：`/` 列出所有根目录；`/rootName` 列出根目录；`/rootName/subdir` 列出子目录", "schema": map[string]interface{}{"type": "string", "default": "/", "example": "/docs"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "目录路径：`/` 列出所有根目录；`/rootName` 列出根目录；`/rootName/subdir` 列出子目录", "schema": map[string]interface{}{"type": "string", "default": "/", "example": "/docs"}},
 						{"name": "page", "in": "query", "description": "页码，从 1 开始；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "default": 1}},
-						{"name": "pageSize", "in": "query", "description": "每页数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
+						{"name": "page_size", "in": "query", "description": "每页数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
 						{"name": "sort", "in": "query", "description": "排序字段；提供非法值返回 400", "schema": map[string]interface{}{"type": "string", "enum": []string{"name", "time", "size"}, "default": "name"}},
 						{"name": "order", "in": "query", "description": "排序方向；提供非法值返回 400", "schema": map[string]interface{}{"type": "string", "enum": []string{"asc", "desc"}, "default": "asc"}},
 					},
@@ -95,7 +95,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 						{"name": "root", "in": "query", "description": "限定搜索的根目录名称（不是完整路径）", "schema": map[string]interface{}{"type": "string", "example": "docs"}},
 						{"name": "ext", "in": "query", "description": "扩展名过滤，支持逗号分隔多个（最多 10 个）；可带或不带前导点，非法扩展名返回 400", "schema": map[string]interface{}{"type": "string", "example": "pdf,docx"}},
 						{"name": "page", "in": "query", "description": "页码，从 1 开始；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "default": 1}},
-						{"name": "pageSize", "in": "query", "description": "每页数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
+						{"name": "page_size", "in": "query", "description": "每页数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("搜索结果", objectSchema(map[string]interface{}{
@@ -111,15 +111,15 @@ func GenerateOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/files/download": map[string]interface{}{
+			"/files/download/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件下载",
-					"description":      "通过查询参数 `path` 下载文件，格式为 `/rootName/path/to/file`（带前导 `/`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
+					"description":      "通过 URL 路径下载文件，路径格式为 `/rootName/path/to/file`（带前导 `/`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "query", "required": true, "description": "文件完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
 						{"name": "disposition", "in": "query", "description": "下载方式；危险类型会被强制改为 attachment", "schema": map[string]interface{}{"type": "string", "enum": []string{"attachment", "inline"}, "default": "attachment"}},
 					},
 					"responses": map[string]interface{}{
@@ -141,15 +141,15 @@ func GenerateOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/files/info": map[string]interface{}{
+			"/files/info/{path}": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件详情",
-					"description":      "通过完整路径 `path`（`/rootName/path/to/file`）查询单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
+					"description":      "通过 URL 路径（`/rootName/path/to/file`）查询单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:info",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "query", "required": true, "description": "文件/目录完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件/目录完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("文件详情", schemaRef("FileDetail")),
@@ -209,11 +209,11 @@ func GenerateOpenAPISpec() map[string]interface{} {
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
 									"type":     "object",
-									"required": []string{"filename", "fileSize", "path"},
+									"required": []string{"filename", "file_size", "path"},
 									"properties": map[string]interface{}{
-										"filename": map[string]interface{}{"type": "string", "maxLength": 255, "description": "文件名", "example": "report.pdf"},
-										"fileSize": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 1, "description": "文件总大小（字节），超出配置上限返回 413", "example": 104857600},
-										"path":     map[string]interface{}{"type": "string", "description": "目标目录（必填），格式 /rootName[/subdir]", "example": "/docs"},
+										"filename":  map[string]interface{}{"type": "string", "maxLength": 255, "description": "文件名", "example": "report.pdf"},
+										"file_size": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 1, "description": "文件总大小（字节），超出配置上限返回 413", "example": 104857600},
+										"path":      map[string]interface{}{"type": "string", "description": "目标目录（必填），格式 /rootName[/subdir]", "example": "/docs"},
 									},
 								},
 							},
@@ -233,7 +233,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/upload/chunk": map[string]interface{}{
 				"post": map[string]interface{}{
 					"summary":          "上传分片",
-					"description":      "大文件分片上传第 2 步：按 uploadId 上传指定索引的分片；分片可乱序上传，重复上传同一索引会覆盖该片。\n\n所需 scope：`open_api:files:upload`",
+					"description":      "大文件分片上传第 2 步：按 upload_id 上传指定索引的分片；分片可乱序上传，重复上传同一索引会覆盖该片。\n\n所需 scope：`open_api:files:upload`",
 					"tags":             []string{"分片上传"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:upload",
@@ -243,12 +243,12 @@ func GenerateOpenAPISpec() map[string]interface{} {
 							"multipart/form-data": map[string]interface{}{
 								"schema": map[string]interface{}{
 									"type":     "object",
-									"required": []string{"uploadId", "chunkIndex", "chunk"},
+									"required": []string{"upload_id", "chunk_index", "chunk"},
 									"properties": map[string]interface{}{
-										"uploadId":   map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
-										"chunkIndex": map[string]interface{}{"type": "integer", "minimum": 0, "description": "分片索引，从 0 开始", "example": 0},
-										"chunk":      map[string]interface{}{"type": "string", "format": "binary", "description": "分片数据"},
-										"checksum":   map[string]interface{}{"type": "string", "description": "分片 xxh3 十六进制校验值（可选，传则校验；非法格式返回 400）", "example": "0123456789abcdef"},
+										"upload_id":   map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
+										"chunk_index": map[string]interface{}{"type": "integer", "minimum": 0, "description": "分片索引，从 0 开始", "example": 0},
+										"chunk":       map[string]interface{}{"type": "string", "format": "binary", "description": "分片数据"},
+										"checksum":    map[string]interface{}{"type": "string", "description": "分片 xxh3 十六进制校验值（可选，传则校验；非法格式返回 400）", "example": "0123456789abcdef"},
 									},
 								},
 							},
@@ -280,9 +280,9 @@ func GenerateOpenAPISpec() map[string]interface{} {
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
 									"type":     "object",
-									"required": []string{"uploadId"},
+									"required": []string{"upload_id"},
 									"properties": map[string]interface{}{
-										"uploadId":  map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
+										"upload_id": map[string]interface{}{"type": "integer", "format": "int64", "description": "上传会话 ID", "example": 1},
 										"overwrite": map[string]interface{}{"type": "boolean", "description": "目标已存在时是否覆盖，需具备 open_api:files:overwrite 权限", "default": false},
 									},
 								},
@@ -324,21 +324,21 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/duplicates": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "重复文件查询",
-					"description":      "基于 xxh3 哈希值检测重复文件，按分组返回。`pagination.total` 为按 minSize 过滤后的重复分组总数，与 groups 一致；每组 `file_count`/`total_size`/`files` 也仅统计大小 ≥ minSize 的文件。\n\n所需 scope：`open_api:files:duplicates`（兼容 `open_api:reader` / `open_api:writer`）",
+					"description":      "基于 xxh3 哈希值检测重复文件，按分组返回。`pagination.total` 为按 min_size 过滤后的重复分组总数，与 groups 一致；每组 `file_count`/`total_size`/`files` 也仅统计大小 ≥ min_size 的文件。\n\n所需 scope：`open_api:files:duplicates`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:duplicates",
 					"parameters": []map[string]interface{}{
-						{"name": "minSize", "in": "query", "description": "最小文件大小（字节），必须 >= 0；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 0, "default": 0}},
+						{"name": "min_size", "in": "query", "description": "最小文件大小（字节），必须 >= 0；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 0, "default": 0}},
 						{"name": "page", "in": "query", "description": "页码，从 1 开始；提供非法值返回 400", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "default": 1}},
-						{"name": "pageSize", "in": "query", "description": "每页分组数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
+						{"name": "page_size", "in": "query", "description": "每页分组数量，1-100；提供非法值返回 400（不回退）", "schema": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100, "default": 50}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("重复文件分组", objectSchema(map[string]interface{}{
 							"groups":     arraySchema(schemaRef("DuplicateGroup")),
 							"pagination": schemaRef("Pagination"),
 						}, "groups", "pagination")),
-						"400": errorResponse("minSize / page / pageSize 参数非法"),
+						"400": errorResponse("min_size / page / page_size 参数非法"),
 						"401": guardResponse("缺少或无效凭证"),
 						"403": mixedErrorResponse("API Key 缺少 open_api:files:duplicates scope"),
 						"429": errorResponse("请求过于频繁"),
@@ -387,7 +387,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/rename": map[string]interface{}{
 				"post": map[string]interface{}{
 					"summary":          "重命名或移动文件",
-					"description":      "支持仅修改文件名（newName，同目录）或修改完整路径（newPath，可跨目录/跨根）；两者至少提供一个。\n\n所需 scope：`open_api:files:rename`（兼容 `open_api:writer`）",
+					"description":      "支持仅修改文件名（new_name，同目录）或修改完整路径（new_path，可跨目录/跨根）；两者至少提供一个。\n\n所需 scope：`open_api:files:rename`（兼容 `open_api:writer`）",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:rename",
@@ -399,9 +399,9 @@ func GenerateOpenAPISpec() map[string]interface{} {
 									"type":     "object",
 									"required": []string{"path"},
 									"properties": map[string]interface{}{
-										"path":    map[string]interface{}{"type": "string", "description": "文件当前完整路径", "example": "/docs/report.pdf"},
-										"newName": map[string]interface{}{"type": "string", "description": "新文件名（仅同目录改名时使用）", "example": "report-2026.pdf"},
-										"newPath": map[string]interface{}{"type": "string", "description": "新完整路径（移动或跨目录改名时使用）", "example": "/archive/report-2026.pdf"},
+										"path":     map[string]interface{}{"type": "string", "description": "文件当前完整路径", "example": "/docs/report.pdf"},
+										"new_name": map[string]interface{}{"type": "string", "description": "新文件名（仅同目录改名时使用）", "example": "report-2026.pdf"},
+										"new_path": map[string]interface{}{"type": "string", "description": "新完整路径（移动或跨目录改名时使用）", "example": "/archive/report-2026.pdf"},
 									},
 								},
 							},
@@ -746,7 +746,7 @@ func componentSchemas() map[string]interface{} {
 			"file_size":     map[string]interface{}{"type": "integer", "format": "int64", "description": "文件大小（字节）", "example": 10240},
 			"is_dir":        map[string]interface{}{"type": "boolean", "description": "是否为目录", "example": false},
 			"relation":      map[string]interface{}{"type": "string", "enum": []string{"", "requires", "referenced_by", "related"}, "description": "依赖关系类型；根节点为空字符串", "example": "requires"},
-			"download_url":  map[string]interface{}{"type": "string", "description": "Web 下载 URL；根节点为空字符串", "example": "/download/docs/main.pdf"},
+			"download_url":  map[string]interface{}{"type": "string", "description": "Web 下载 URL；根节点为空字符串", "example": "/api/v1/web/download/docs/main.pdf"},
 			"children":      arraySchema(schemaRef("DependencyTreeNode")),
 			"downstream":    arraySchema(schemaRef("DependencyTreeNode")),
 		}, "id", "dependency_id", "file_name", "file_path", "full_path", "root_name", "file_size", "is_dir", "relation", "download_url", "children", "downstream"),
