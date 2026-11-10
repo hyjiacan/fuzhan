@@ -24,7 +24,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 				"- 业务成功/失败使用统一信封：`{success, code, message, data}` / `{success, code, message, errors}`。\n" +
 				"- 响应数据字段统一使用 `snake_case`（如 `file_size`、`page_size`、`upload_id`）。\n" +
 				"- 鉴权、scope、IP 白名单等中间件拒绝时返回简单结构：`{\"error\": \"...\"}`。\n" +
-				"- `GET /files/download/{path}` 成功时直接返回文件二进制流，不使用信封。\n\n" +
+				"- `GET /files/download?path=...` 成功时直接返回文件二进制流，不使用信封。\n\n" +
 				"## 参数校验\n\n" +
 				"- 参数缺省时使用声明的默认值；一旦提供非法值（类型、范围、枚举或格式不匹配）直接返回 `400`，不做静默回退。\n" +
 				"- 路径参数会规范化为 `/rootName[/sub]`，包含 `.` 或 `..` 片段时返回 `400`。\n\n" +
@@ -111,15 +111,15 @@ func GenerateOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/files/download/{path}": map[string]interface{}{
+			"/files/download": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件下载",
-					"description":      "通过路径下载文件。路径不带前导 `/`，格式为 `rootName/path/to/file`（等价于完整路径 `/rootName/path/to/file`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
+					"description":      "通过查询参数 `path` 下载文件，格式为 `/rootName/path/to/file`（带前导 `/`）。危险类型（HTML/SVG/XML/JS 等）即使请求 inline 也会强制按附件下载。\n\n所需 scope：`open_api:reader`",
 					"tags":             []string{"文件操作"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:reader",
 					"parameters": []map[string]interface{}{
-						{"name": "path", "in": "path", "required": true, "allowReserved": true, "description": "文件路径，必须包含根目录名，不带前导 /", "schema": map[string]interface{}{"type": "string", "example": "docs/report.pdf"}},
+						{"name": "path", "in": "query", "required": true, "description": "文件完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
 						{"name": "disposition", "in": "query", "description": "下载方式；危险类型会被强制改为 attachment", "schema": map[string]interface{}{"type": "string", "enum": []string{"attachment", "inline"}, "default": "attachment"}},
 					},
 					"responses": map[string]interface{}{
@@ -133,7 +133,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 								"application/octet-stream": map[string]interface{}{"schema": map[string]interface{}{"type": "string", "format": "binary"}},
 							},
 						},
-						"400": errorResponse("缺少文件路径、URL 转义/路径格式非法、不能下载目录或 disposition 非法"),
+						"400": errorResponse("缺少 path、路径格式非法、不能下载目录或 disposition 非法"),
 						"401": guardResponse("缺少或无效凭证"),
 						"403": mixedErrorResponse("API Key 缺少 open_api:reader scope"),
 						"404": errorResponse("文件不存在或根目录配置不存在"),
@@ -144,17 +144,16 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/files/info": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":          "文件详情",
-					"description":      "根据文件记录 ID 或完整路径 `/rootName/path/to/file` 获取单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
+					"description":      "通过完整路径 `path`（`/rootName/path/to/file`）查询单个文件/目录的详细信息，响应同时包含 `notes` 备注与 `depends` 依赖树（原备注/依赖独立接口已合并到本接口）。\n\n所需 scope：`open_api:files:info`（兼容 `open_api:reader` / `open_api:writer`）",
 					"tags":             []string{"文件信息"},
 					"security":         dataEndpointSecurity(),
 					"x-required-scope": "open_api:files:info",
 					"parameters": []map[string]interface{}{
-						{"name": "id", "in": "query", "description": "文件记录 ID（与 path 二选一）", "schema": map[string]interface{}{"type": "integer", "format": "int64", "minimum": 1, "example": 1}},
-						{"name": "path", "in": "query", "description": "完整路径（与 id 二选一），如 `/docs/report.pdf`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
+						{"name": "path", "in": "query", "required": true, "description": "文件/目录完整路径 `/rootName/path/to/file`", "schema": map[string]interface{}{"type": "string", "example": "/docs/report.pdf"}},
 					},
 					"responses": map[string]interface{}{
 						"200": successResponse("文件详情", schemaRef("FileDetail")),
-						"400": errorResponse("缺少查询条件、同时提供 id 与 path、ID 格式错误或路径格式错误"),
+						"400": errorResponse("缺少 path 或路径格式非法"),
 						"401": guardResponse("缺少或无效凭证"),
 						"403": mixedErrorResponse("API Key 缺少 open_api:files:info scope"),
 						"404": errorResponse("文件记录不存在或 Open API 功能未开启"),

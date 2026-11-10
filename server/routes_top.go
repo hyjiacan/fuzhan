@@ -134,7 +134,7 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		// FR-3.2: 文件搜索 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
 		openAPI.GET("/files/search", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.SearchFiles)
 		// FR-3.3: 文件下载 API（需认证；api_key 模式下需 open_api:reader，Web 会话 JWT 无该 scope 时 403）
-		openAPI.GET("/files/download/*path", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
+		openAPI.GET("/files/download", openapi.RequireReaderScope(rt.rbacService), rt.openAPIHandler.DownloadFile)
 		// 文件详情 API（需认证，需要文件详情查询权限；reader/writer 层级同样覆盖）
 		// 备注与依赖树已并入详情响应，不再提供独立接口
 		openAPI.GET("/files/info", rt.rbacService.RequireScope(models.ScopeFilesInfo), rt.openAPIHandler.GetFileInfo)
@@ -154,11 +154,11 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		// 文件删除 API（需认证）：删除文件需 open_api:files:delete，删除目录需 open_api:files:delete_dir；
 		// 路由层只做「二者具备其一」的粗粒度拦截，具体类型由 handler stat 目标后精确校验。
 		openAPI.DELETE("/files", openapi.RequireAnyScope(rt.rbacService, models.ScopeFilesDelete, models.ScopeFilesDeleteDir), rt.openAPIHandler.DeleteFile)
-		openAPI.GET("/docs", rt.openAPIHandler.GetDocsPage)
 	}
 
 	// OpenAPI 文档：从组级 AuthGate 中单独抽出，改走 LoginRequiredWhenForced。
 	// 未开启强制登录时匿名可读（与 /scalar.html 一致）；开启强制登录后需有效凭证。
+	// /docs 只是 301 到 /scalar.html，与 /openapi.json 同属文档端点，同样不要求 API Key scope。
 	openapiDoc := r.Group("/api/open/v1")
 	openapiDoc.Use(openAPICommonMW...)
 	openapiDoc.Use(
@@ -166,5 +166,6 @@ func (rt *runCtx) registerTopLevelRoutes(r *gin.Engine) {
 		openapi.CallStatMiddleware(rt.openAPICallStat),
 		middleware.ResponseWrapperMiddleware(),
 	)
+	openapiDoc.GET("/docs", rt.openAPIHandler.GetDocsPage)
 	openapiDoc.GET("/openapi.json", rt.openAPIHandler.GetOpenAPISpec)
 }

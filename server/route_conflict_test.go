@@ -11,16 +11,16 @@ import (
 func TestRouteConflictCandidates(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
-	t.Run("openapi_files 通配符download+静态接口", func(t *testing.T) {
+	t.Run("openapi_files 静态接口", func(t *testing.T) {
 		r := gin.New()
 		v1 := r.Group("/api/open/v1")
 		f := v1.Group("/files")
-		f.GET("/download/*path", dummy)
+		f.GET("/download", dummy)
 		f.GET("/info", dummy)
 		f.POST("/exists", dummy)
 		f.POST("/rename", dummy)
 		f.DELETE("", dummy)
-		assertRoutes(t, r, "/api/open/v1/files/download/*path", "/api/open/v1/files/info",
+		assertRoutes(t, r, "/api/open/v1/files/download", "/api/open/v1/files/info",
 			"/api/open/v1/files/exists", "/api/open/v1/files/rename", "/api/open/v1/files")
 	})
 

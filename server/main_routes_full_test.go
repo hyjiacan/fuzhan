@@ -208,7 +208,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	openAPI := r.Group("/api/open/v1")
 	openAPI.GET("/files/list", dummy)
 	openAPI.GET("/files/search", dummy)
-	openAPI.GET("/files/download/*path", dummy)
+	openAPI.GET("/files/download", dummy)
 	openAPI.GET("/files/duplicates", dummy)
 	openAPI.GET("/files/info", dummy)
 	openAPI.POST("/files/exists", dummy)

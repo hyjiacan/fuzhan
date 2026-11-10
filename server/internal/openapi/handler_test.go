@@ -2,7 +2,6 @@ package openapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -217,7 +216,6 @@ func TestGetFileInfoHidesOutOfScopeExistence(t *testing.T) {
 	if err := db.Create(&records).Error; err != nil {
 		t.Fatalf("写入测试记录失败: %v", err)
 	}
-	outsideID := records[1].ID
 
 	// 范围外路径：无论是否存在都返回 403，不产生存在性差异。
 	c, w := newTestContext(http.MethodGet, "/?path=/other/c.txt", nil)
@@ -225,14 +223,6 @@ func TestGetFileInfoHidesOutOfScopeExistence(t *testing.T) {
 	h.GetFileInfo(c)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("范围外路径应返回 403，实际 %d", w.Code)
-	}
-
-	// 范围外 ID：与“记录不存在”保持一致，返回 404。
-	c, w = newTestContext(http.MethodGet, fmt.Sprintf("/?id=%d", outsideID), nil)
-	c.Set(allowedPathsContextKey, "/docs")
-	h.GetFileInfo(c)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("范围外 ID 应返回 404，实际 %d", w.Code)
 	}
 
 	// 范围内路径正常返回。

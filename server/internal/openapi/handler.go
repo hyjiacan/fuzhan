@@ -516,36 +516,30 @@ func (h *Handler) buildSearchSuggestions(q string, limit int) []string {
 
 // ==================== FR-3.3: 文件下载 API ====================
 
-// DownloadFile GET /api/open/v1/files/download/*path
+// DownloadFile GET /api/open/v1/files/download?path=/rootName/path/to/file
 func (h *Handler) DownloadFile(c *gin.Context) {
-	filePath := c.Param("path")
-	if filePath == "" {
-		response.HandleBadRequest(c, "缺少文件路径", nil)
+	pathStr := strings.TrimSpace(c.Query("path"))
+	if pathStr == "" {
+		response.HandleBadRequest(c, "缺少查询条件: path 必填", nil)
+		return
+	}
+	cleanPath, err := normalizeOpenAPIPath(pathStr)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
 		return
 	}
 
-	// URL 解码，处理中文和特殊字符；非法转义直接拒绝，不能沿用未解码值。
-	decoded, err := url.QueryUnescape(filePath)
-	if err != nil {
-		response.HandleBadRequest(c, "路径包含非法的 URL 转义", nil)
-		return
-	}
-	cleanPath, err := normalizeOpenAPIPath(decoded)
-	if err != nil {
-		response.HandleBadRequest(c, "路径格式错误: "+err.Error(), nil)
-		return
-	}
-
-	disposition, ok := optionalEnumQuery(c, "disposition", "attachment", "attachment", "inline")
-	if !ok {
-		return
-	}
 	parts := splitPath(cleanPath)
 	if len(parts) < 2 {
 		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
 		return
 	}
 	if !requirePathAllowed(c, cleanPath) {
+		return
+	}
+
+	disposition, ok := optionalEnumQuery(c, "disposition", "attachment", "attachment", "inline")
+	if !ok {
 		return
 	}
 
@@ -733,67 +727,40 @@ func dependencyTreeJSON(node *index.DependencyTreeNode) gin.H {
 
 // ==================== 文件详情 API ====================
 
-// GetFileInfo GET /api/open/v1/files/info
-// 支持按文件记录 ID 或完整路径（/rootName/path/to/file）查询单个文件/目录的详细信息。
+// GetFileInfo GET /api/open/v1/files/info?path=/rootName/path/to/file
+// 按完整路径查询单个文件/目录的详细信息，响应同时包含 notes 备注与 depends 依赖树。
 func (h *Handler) GetFileInfo(c *gin.Context) {
-	idStr := strings.TrimSpace(c.Query("id"))
 	pathStr := strings.TrimSpace(c.Query("path"))
-	if idStr == "" && pathStr == "" {
-		response.HandleBadRequest(c, "缺少查询条件: id 或 path 至少提供一个", nil)
+	if pathStr == "" {
+		response.HandleBadRequest(c, "缺少查询条件: path 必填", nil)
 		return
 	}
-	if idStr != "" && pathStr != "" {
-		response.HandleBadRequest(c, "id 与 path 只能提供一个", nil)
+	cleanPath, err := normalizeOpenAPIPath(pathStr)
+	if err != nil {
+		response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
 		return
 	}
+	parts := splitPath(cleanPath)
+	if len(parts) < 2 {
+		response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
+		return
+	}
+	// 路径授权：在查询前校验，范围外无论是否存在都返回 403。
+	if !requirePathAllowed(c, cleanPath) {
+		return
+	}
+	rootName := parts[0]
+	relPath := "/" + strings.Join(parts[1:], "/")
 
 	var record models.FileRecordPublic
-	if idStr != "" {
-		id, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil || id == 0 {
-			response.HandleBadRequest(c, "无效的记录ID", nil)
+	if err := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
+		rootName, relPath, models.FileStatusActive).First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.HandleNotFound(c, "文件记录不存在: "+rootName+relPath)
 			return
 		}
-		if err := h.db.Where("id = ? AND status = ?", uint(id), models.FileStatusActive).
-			First(&record).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				response.HandleNotFound(c, "文件记录不存在")
-				return
-			}
-			response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
-			return
-		}
-		// 路径授权：ID 无法在查询前判断，越权时与不存在保持一致的响应，避免暴露记录存在性。
-		if !pathWithinAllowed(allowedPathEntries(c), record.FullPath) {
-			response.HandleNotFound(c, "文件记录不存在")
-			return
-		}
-	} else {
-		cleanPath, err := normalizeOpenAPIPath(pathStr)
-		if err != nil {
-			response.HandleBadRequest(c, "path 参数非法: "+err.Error(), nil)
-			return
-		}
-		parts := splitPath(cleanPath)
-		if len(parts) < 2 {
-			response.HandleBadRequest(c, "路径格式错误: 需要 /rootName/path/to/file", nil)
-			return
-		}
-		// 路径授权：在查询前校验，范围外无论是否存在都返回 403。
-		if !requirePathAllowed(c, cleanPath) {
-			return
-		}
-		rootName := parts[0]
-		relPath := "/" + strings.Join(parts[1:], "/")
-		if err := h.db.Where("root_name = ? AND file_path = ? AND status = ?",
-			rootName, relPath, models.FileStatusActive).First(&record).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				response.HandleNotFound(c, "文件记录不存在: "+rootName+relPath)
-				return
-			}
-			response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
-			return
-		}
+		response.HandleInternalServerError(c, "查询文件记录失败: "+err.Error())
+		return
 	}
 
 	// 依赖树并入文件详情：查询失败不阻塞详情返回，仅返回 depends=null。

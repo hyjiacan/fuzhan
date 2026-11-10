@@ -343,10 +343,10 @@ API Key / 索引记录 / Open API / 日志 / 资源
 - WebDAV 顶层别名：`constants.WebDAVAliasPathPrefix`
 - `/lite`：`GET|POST /*path`（老旧浏览器轻量页面；IE 访问 SPA 会 302 到 `/lite`）
 - `/api/open/v1`（scope 校验）：
-  - `GET /files/list`、`GET /files/search`、`GET /files/download/*path`（Reader scope）
+  - `GET /files/list`、`GET /files/search`、`GET /files/download`（Reader scope）
   - `GET /files/info`、`POST /files/exists`、`POST /files/upload`、`POST /files/upload/init|chunk|finalize`、`GET /files/upload/:id`
   - `GET /files/duplicates`、`POST /files/rename`、`DELETE /files`（任意 delete scope）
-  - `GET /docs`、`GET /openapi.json`
+  - `GET /docs`（301 → `/scalar.html`）、`GET /openapi.json`：独立分组，走 `LoginRequiredWhenForced`，未开启强制登录时匿名可读，开启后需凭证，不做 scope 校验
   - API Key 的 `allowedPaths` 路径授权：越界操作 403；列表/搜索/重复文件按允许路径裁剪（搜索建议词在启用路径限制时为空）；Web 会话不受限制
 
 ---
