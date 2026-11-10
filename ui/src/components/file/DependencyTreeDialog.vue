@@ -26,7 +26,7 @@
         node-key="key"
       >
         <template #default="{ data }">
-          <span v-if="data._raw === null" style="font-weight: bold; color: var(--el-text-color-placeholder); font-size: 12px;">{{ data.label }}</span>
+          <span v-if="data._raw === null" style="font-weight: 600; color: var(--el-text-color-regular); font-size: 12px;">{{ data.label }}</span>
           <div v-else style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0;">
             <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ data.label }}</span>
             <el-button v-if="data._raw?.downloadURL" size="small" link type="primary"
@@ -43,7 +43,7 @@
     <!-- 添加依赖 -->
     <el-divider />
     <div style="display: flex; flex-direction: column; gap: 8px;">
-      <h4 style="margin:0 0 4px">添加上游依赖</h4>
+      <h4 style="margin:0 0 4px">添加依赖（选择本文件依赖的文件）</h4>
       <el-autocomplete
         v-model="searchName"
         :maxlength="255"
@@ -139,15 +139,22 @@ const loadTree = async (recordId) => {
       const root = res.data.root
       // 当前文件信息单独保存，不放入树中
       rootNode.value = root
-      // 树的顶层只包含依赖项（上游 children + 下游 downstream）
+      // 树的顶层按方向分组：本文件依赖的文件 + 依赖本文件的文件
       const deps = []
       if (root.children && root.children.length > 0) {
-        deps.push(...root.children.map((child, i) => convertNode(child, `up-${i}`)))
+        deps.push({
+          key: 'upstream-group',
+          label: `本文件依赖的文件（${root.children.length}）`,
+          isLeaf: false,
+          _raw: null,
+          disabled: true,
+          children: root.children.map((child, i) => convertNode(child, `up-${i}`))
+        })
       }
       if (root.downstream && root.downstream.length > 0) {
         deps.push({
           key: 'downstream-group',
-          label: '下游依赖',
+          label: `依赖本文件的文件（${root.downstream.length}）`,
           isLeaf: false,
           _raw: null,
           disabled: true,
