@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -98,6 +99,7 @@ type Collector struct {
 	prevServerCPU    []cpu.TimesStat
 	prevServerDiskIO map[string]disk.IOCountersStat
 	prevServerNetIO  []gnet.IOCountersStat
+	prevProgCPU      *cpu.TimesStat
 	prevProgDiskIO   *process.IOCountersStat
 	lastSample       time.Time
 	lastCollect      time.Time
@@ -208,8 +210,13 @@ func (c *Collector) sample(ctx context.Context, now time.Time) {
 
 	// 程序资源
 	if c.proc != nil {
-		if p, err := c.proc.CPUPercent(); err == nil {
-			prog.CPU = p
+		// 程序 CPU 用两次进程 CPU 时间的差值计算，并以逻辑核心数归一化，
+		// 与服务器口径一致（占整机 CPU 的百分比）。
+		// 不能用 gopsutil 的 CPUPercent：它返回进程生命周期内的平均值，
+		// 且以单个核心为 100%，会出现"本程序 22% 而服务器 2%"这种不可比的数值。
+		if cur, err := c.proc.Times(); err == nil {
+			prog.CPU = procCPUPercent(c.prevProgCPU, cur, now.Sub(c.lastSample).Seconds())
+			c.prevProgCPU = cur
 		}
 		if mi, err := c.proc.MemoryInfo(); err == nil {
 			prog.Memory = mi.RSS
@@ -623,6 +630,31 @@ func (c *Collector) procIORates(prev *process.IOCountersStat, cur *process.IOCou
 		w = float64(cur.WriteBytes-prev.WriteBytes) / elapsed
 	}
 	return r, w
+}
+
+// procCPUPercent 基于两次进程 CPU 时间采样计算进程 CPU 占用率（%）。
+// elapsed 为两次采样的实际间隔秒数；结果按逻辑核心数归一化，
+// 与服务器整体占用率同口径（占整机 CPU 的百分比），可直接与服务器值对比。
+func procCPUPercent(prev, cur *cpu.TimesStat, elapsed float64) float64 {
+	if prev == nil || cur == nil || elapsed <= 0 {
+		return 0
+	}
+	cores := runtime.NumCPU()
+	if cores <= 0 {
+		cores = 1
+	}
+	d := cur.Total() - prev.Total()
+	if d <= 0 {
+		return 0
+	}
+	p := d / elapsed / float64(cores) * 100
+	if p < 0 {
+		p = 0
+	}
+	if p > 100 {
+		p = 100
+	}
+	return p
 }
 
 // cpuPercent 基于两次 CPU 时钟采样计算 CPU 占用率（%）

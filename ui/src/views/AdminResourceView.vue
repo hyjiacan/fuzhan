@@ -76,20 +76,12 @@
       <el-card shadow="never" class="metric-card">
         <div class="metric-title">CPU 占用率</div>
         <div ref="cpuGaugeEl" class="gauge-box"></div>
-        <div class="gauge-legend">
-          <span class="legend-item"><i class="dot" style="background:#FFA500"></i>服务器 {{ fmtPercent(server.cpu) }}</span>
-          <span class="legend-item"><i class="dot" style="background:#2080f0"></i>本程序 {{ fmtPercent(program.cpu) }}</span>
-        </div>
       </el-card>
 
       <!-- 内存仪表盘 -->
       <el-card shadow="never" class="metric-card">
         <div class="metric-title">内存占用</div>
         <div ref="memGaugeEl" class="gauge-box"></div>
-        <div class="gauge-legend">
-          <span class="legend-item"><i class="dot" style="background:#FFA500"></i>服务器 {{ fmtPercent(memPercent(server)) }}</span>
-          <span class="legend-item"><i class="dot" style="background:#2080f0"></i>本程序 {{ fmtPercent(memPercent(program)) }}</span>
-        </div>
         <div class="mem-detail">
           <div class="mem-line">
             <span class="mem-scope">服务器</span>
@@ -120,7 +112,10 @@
             </div>
             <span class="disk-pct">{{ diskPercent(program) }}%</span>
           </div>
-          <div class="disk-note">服务器 {{ fmtBytes(server.diskUsed) }} / {{ fmtBytes(server.diskTotal) }} · 本程序占整个存储 {{ fmtBytes(program.diskUsed) }} / {{ fmtBytes(program.diskTotal) }}</div>
+          <div class="disk-note">
+            <div>服务器 {{ fmtBytes(server.diskUsed) }} / {{ fmtBytes(server.diskTotal) }}</div>
+            <div>本程序占整个存储 {{ fmtBytes(program.diskUsed) }} / {{ fmtBytes(program.diskTotal) }}</div>
+          </div>
         </div>
       </el-card>
 
@@ -1012,16 +1007,6 @@ onUnmounted(() => {
       .metric-title { font-size: 13px; color: @text-color-secondary; margin-bottom: 8px; }
 
       .gauge-box { width: 100%; height: 200px; }
-      .gauge-legend {
-        display: flex;
-        justify-content: center;
-        gap: 16px;
-        margin-top: 2px;
-        font-size: 12px;
-        color: @text-color;
-        .legend-item { display: inline-flex; align-items: center; gap: 4px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-      }
       .mem-detail {
         margin-top: 6px;
         padding-top: 6px;
@@ -1047,7 +1032,7 @@ onUnmounted(() => {
         .disk-fill { height: 100%; border-radius: 7px; transition: width .4s ease; }
         .disk-pct { width: 42px; text-align: right; font-size: 13px; font-weight: 600; color: @text-color; }
       }
-      .disk-note { font-size: 11px; color: @text-color-placeholder; }
+      .disk-note { font-size: 11px; color: @text-color-placeholder; line-height: 1.7; }
 
       .io-numeric { padding: 10px 2px; display: flex; flex-direction: column; gap: 14px; }
       .io-row { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
