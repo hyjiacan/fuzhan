@@ -83,6 +83,10 @@ type NICRate struct {
 }
 
 // Realtime 实时接口返回体：硬件配置 + 当前快照 + 最近一段内存采样曲线
+//
+// /snapshot 返回完整数据（recent 为内存缓冲全量），供首屏与轮询兜底使用；
+// SSE 推送帧结构相同，但 serverRecent / programRecent 只携带最近若干个点，
+// 前端按时间戳合并去重，避免每帧重复下发整个缓冲（约数百 KB）。
 type Realtime struct {
 	// 程序是否正在运行（采集可用）
 	Running bool `json:"running"`

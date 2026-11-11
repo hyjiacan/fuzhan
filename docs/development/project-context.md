@@ -335,6 +335,8 @@ API Key / 索引记录 / Open API / 日志 / 资源
 - `GET /admin/open-api/stats`、`GET /admin/open-api/scopes`
 - `GET /admin/logs/files`、`GET /admin/logs/tail`、`GET /admin/logs/stream`
 - `/admin/resource`：`GET /snapshot`、`GET /history`、`GET /stream`
+  - `/snapshot` 返回完整数据（`hardware` 必带、`serverRecent`/`programRecent` 为内存缓冲全量，约 720 点），供首屏与轮询兜底；
+  - `/stream`（SSE）帧结构相同但为**增量**：`serverRecent`/`programRecent` 仅带最后 `recentFramePoints`（2）个点，前端按 `timestamp` 合并去重（客户端上限 720 点）。新增字段时注意前端是合并而非整段替换。
 
 ### 7.4 顶层路由（`routes_top.go`）
 

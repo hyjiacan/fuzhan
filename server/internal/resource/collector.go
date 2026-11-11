@@ -40,6 +40,9 @@ const (
 	// subscriberBuffer SSE 订阅通道缓冲长度。缓冲满说明客户端消费过慢，
 	// 直接丢弃该帧而不阻塞采集主循环，下一帧会带上最新值。
 	subscriberBuffer = 4
+	// recentFramePoints SSE 单帧携带的 recent 采样点数。前端按时间戳合并，
+	// 取 2 个点即可覆盖丢帧边界，又不会让每帧体积随缓冲增长。
+	recentFramePoints = 2
 )
 
 // skipFSType 服务器整体磁盘统计时跳过的伪文件系统类型（Linux）
@@ -269,9 +272,10 @@ func (c *Collector) refreshHardware(ctx context.Context, now time.Time) {
 }
 
 // broadcast 把最新快照推送给所有 SSE 订阅者。
+// 帧内 recent 只带最后若干个采样点（增量），前端按时间戳合并。
 // 订阅通道为带缓冲通道，缓冲满时丢弃该帧（客户端消费过慢），绝不阻塞采集主循环。
 func (c *Collector) broadcast() {
-	rt := c.Snapshot()
+	rt := c.recentFrame()
 	c.subMu.Lock()
 	defer c.subMu.Unlock()
 	for ch := range c.subscribers {
@@ -325,11 +329,12 @@ func (c *Collector) push(scope string, p Point, now time.Time) {
 	c.buffer[scope] = lst
 }
 
-// Snapshot 返回实时快照（硬件配置 + 当前值 + 最近内存曲线 + 网卡实时速率）
+// Snapshot 返回实时快照（硬件配置 + 当前值 + 最近内存曲线 + 网卡实时速率）。
+// 用于 /snapshot 首屏加载与轮询兜底，recent 为内存缓冲全量。
 func (c *Collector) Snapshot() Realtime {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	rt := Realtime{
+	return Realtime{
 		Running:          c.proc != nil,
 		SamplingInterval: c.currentSampling(),
 		Hardware:         c.hardware,
@@ -339,7 +344,35 @@ func (c *Collector) Snapshot() Realtime {
 		ProgramRecent:    append([]ScopePoint(nil), c.buffer[ScopeProgram]...),
 		NetNICs:          append([]NICRate(nil), c.netNICs...),
 	}
-	return rt
+}
+
+// recentFrame 返回用于 SSE 广播的精简快照：结构同 Snapshot，但 recent 只带最后
+// recentFramePoints 个采样点。SSE 是高频增量通道，每帧重复下发整个缓冲
+// （5 秒采样约 720 点、数百 KB）会把带宽和前端解析开销放大两个数量级。
+func (c *Collector) recentFrame() Realtime {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return Realtime{
+		Running:          c.proc != nil,
+		SamplingInterval: c.currentSampling(),
+		Hardware:         c.hardware,
+		Server:           c.server,
+		Program:          c.prog,
+		ServerRecent:     tailPoints(c.buffer[ScopeServer], recentFramePoints),
+		ProgramRecent:    tailPoints(c.buffer[ScopeProgram], recentFramePoints),
+		NetNICs:          append([]NICRate(nil), c.netNICs...),
+	}
+}
+
+// tailPoints 返回切片末尾 n 个元素的副本（n <= 0 或切片为空时返回空切片）
+func tailPoints(pts []ScopePoint, n int) []ScopePoint {
+	if n <= 0 || len(pts) == 0 {
+		return []ScopePoint{}
+	}
+	if len(pts) > n {
+		pts = pts[len(pts)-n:]
+	}
+	return append([]ScopePoint(nil), pts...)
 }
 
 func (c *Collector) currentSampling() int {

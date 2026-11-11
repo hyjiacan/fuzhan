@@ -431,6 +431,8 @@ const lastHist = { server: [], program: [] }
 // 系列级配置，故用一条 rich 文本同时展示两个 scope 的占用率 label。
 function gaugeBaseOption() {
   return {
+    // 每帧 merge 更新指针位置，动画会让指针持续走过渡，关闭以免周期性掉帧
+    animation: false,
     series: [{
       type: 'gauge', min: 0, max: 100, startAngle: 210, endAngle: -30,
       radius: '82%', center: ['50%', '50%'],
@@ -448,21 +450,26 @@ function gaugeBaseOption() {
   }
 }
 
+// 初始化仪表盘基础配置（仅一次，后续只 merge 数据）
+function initGauges() {
+  gaugeCpu.value?.setOption(gaugeBaseOption())
+  gaugeMem.value?.setOption(gaugeBaseOption())
+}
+
 function renderGauges() {
   const cpuData = [
     { value: +Number(server.cpu || 0).toFixed(1), name: '服务器', itemStyle: { color: ORANGE } },
     { value: +Number(program.cpu || 0).toFixed(1), name: '本程序', itemStyle: { color: BLUE } }
   ]
+  // 仪表盘每帧刷新，使用 merge 更新（不传 notMerge）只改数据与文本，避免整图重建
   gaugeCpu.value?.setOption({
     series: [{
-      ...gaugeBaseOption().series[0],
       detail: {
-        ...gaugeBaseOption().series[0].detail,
         formatter: () => `{n|服务器} {sv|${fmtPercent(server.cpu)}}\n{n|本程序} {pv|${fmtPercent(program.cpu)}}`
       },
       data: cpuData
     }]
-  }, true)
+  })
 
   const memData = [
     { value: memPercent(server), name: '服务器', itemStyle: { color: ORANGE } },
@@ -470,14 +477,12 @@ function renderGauges() {
   ]
   gaugeMem.value?.setOption({
     series: [{
-      ...gaugeBaseOption().series[0],
       detail: {
-        ...gaugeBaseOption().series[0].detail,
         formatter: () => `{n|服务器} {sv|${fmtPercent(memPercent(server))}}\n{n|本程序} {pv|${fmtPercent(memPercent(program))}}`
       },
       data: memData
     }]
-  }, true)
+  })
 }
 
 // ============ 曲线（实时+历史整合，服务器与程序同图，动态追加刷新） ============
@@ -541,6 +546,8 @@ function rebuildSeries() {
 function lineSeries(name, data, color) {
   return {
     name, type: 'line', showSymbol: false, smooth: true, data,
+    // 时间序列按 lttb 下采样：7d 窗口下点数远大于像素宽度，采样后绘制成本大幅下降
+    sampling: 'lttb',
     lineStyle: { width: 1.5, color }, itemStyle: { color },
     areaStyle: { opacity: 0.08, color }
   }
@@ -555,6 +562,9 @@ function axisTheme() {
 function mkOption({ title, yMax, yName, yFormatter, valueFormatter, customTooltip, series, withLabels = false }) {
   const t = axisTheme()
   return {
+    // 曲线每帧（默认 5 秒）追加数据，开启动画会让所有序列反复走过渡，
+    // 造成周期性掉帧；实时监控场景直接关闭动画。
+    animation: false,
     title: {
       text: title,
       subtext: '',
@@ -691,8 +701,8 @@ function lastTs(arr) {
 // 追加式刷新：把新到达的实时点 push 进 seriesData，再 merge setOption（不整图重建）
 function liveRefresh() {
   if (!chartOpt.cpu) return
-  syncChartLabels()
   const from = Date.now() - rangeMs(hiRange.value)
+  let appended = false
   for (const scope of ['s', 'p']) {
     const recent = scope === 's' ? rtRealtime.server : rtRealtime.program
     let anchor = -Infinity
@@ -706,8 +716,14 @@ function liveRefresh() {
       const arr = seriesData[key]
       for (const pt of tail) arr.push([pt.timestamp, ...val(pt)])
     }
+    appended = true
   }
 
+  // 本帧没有新点（数据未变化）：跳过重绘。图表标题上的最新值也只随新点变化，
+  // 因此无需 setOption。
+  if (!appended) return
+
+  syncChartLabels()
   // 裁剪窗口外旧点，控制数据量（同一数组引用，merge 会重新读取）
   for (const key of seriesKeys) {
     const arr = seriesData[key]
@@ -735,18 +751,42 @@ function applyPoint(target, p) {
 
 function applyHardware(hw) {
   if (!hw) return
-  hardware.hostname = hw.hostname || ''
-  hardware.os = hw.os || ''
-  hardware.arch = hw.arch || ''
-  hardware.kernel = hw.kernel || ''
-  hardware.cpu = hw.cpu || {}
-  hardware.memory = hw.memory || {}
-  hardware.disks = hw.disks || []
-  hardware.diskTotal = hw.diskTotal || 0
-  hardware.nics = hw.nics || []
+  // 硬件配置变化极少（服务端 10 分钟才刷新一次），逐字段比较后再赋值，
+  // 避免每帧把新对象/数组写进响应式状态，触发顶部硬件卡片整体重渲染
+  if (hardware.hostname !== (hw.hostname || '')) hardware.hostname = hw.hostname || ''
+  if (hardware.os !== (hw.os || '')) hardware.os = hw.os || ''
+  if (hardware.arch !== (hw.arch || '')) hardware.arch = hw.arch || ''
+  if (hardware.kernel !== (hw.kernel || '')) hardware.kernel = hw.kernel || ''
+  if (hardware.diskTotal !== (hw.diskTotal || 0)) hardware.diskTotal = hw.diskTotal || 0
+  if (JSON.stringify(hardware.cpu) !== JSON.stringify(hw.cpu || {})) hardware.cpu = hw.cpu || {}
+  if (JSON.stringify(hardware.memory) !== JSON.stringify(hw.memory || {})) hardware.memory = hw.memory || {}
+  if (JSON.stringify(hardware.disks) !== JSON.stringify(hw.disks || [])) hardware.disks = hw.disks || []
+  if (JSON.stringify(hardware.nics) !== JSON.stringify(hw.nics || [])) hardware.nics = hw.nics || []
 }
 
-// 应用一帧实时数据（SSE 帧与轮询快照结构一致）
+// 合并实时点：SSE 帧只携带最近若干个点（增量），按时间戳去重后按升序保存在内存里。
+// 上限与后端内存缓冲一致（720 点），保证长时间打开页面不会无限增长。
+const RT_MAX_POINTS = 720
+function mergeRecent(dst, incoming) {
+  if (!Array.isArray(incoming) || !incoming.length) return dst
+  const tailTs = dst.length ? dst[dst.length - 1].timestamp : -Infinity
+  if (incoming.every((p) => p.timestamp > tailTs)) {
+    // 常见路径（增量帧）：全部新于末尾，直接追加，避免每帧 Map + sort
+    for (const p of incoming) dst.push(p)
+  } else {
+    // 慢路径（首帧/重连补齐/轮询全量快照）：按时间戳去重后重排
+    const map = new Map()
+    for (const p of dst) map.set(p.timestamp, p)
+    for (const p of incoming) map.set(p.timestamp, p)
+    const merged = [...map.values()].sort((a, b) => a.timestamp - b.timestamp)
+    dst.length = 0
+    dst.push(...merged)
+  }
+  if (dst.length > RT_MAX_POINTS) dst.splice(0, dst.length - RT_MAX_POINTS)
+  return dst
+}
+
+// 应用一帧实时数据（SSE 帧与轮询快照结构一致；SSE 的 recent 为增量）
 function applyRealtime(d) {
   if (!d) return
   collectorRunning.value = !!d.running
@@ -754,9 +794,10 @@ function applyRealtime(d) {
   applyHardware(d.hardware)
   applyPoint(server, d.server)
   applyPoint(program, d.program)
-  netNICs.value = Array.isArray(d.netNICs) ? d.netNICs : []
-  rtRealtime.server = d.serverRecent || []
-  rtRealtime.program = d.programRecent || []
+  const nics = Array.isArray(d.netNICs) ? d.netNICs : []
+  if (JSON.stringify(netNICs.value) !== JSON.stringify(nics)) netNICs.value = nics
+  rtRealtime.server = mergeRecent(rtRealtime.server, d.serverRecent)
+  rtRealtime.program = mergeRecent(rtRealtime.program, d.programRecent)
   renderGauges()
   liveRefresh()
 }
@@ -785,8 +826,8 @@ async function loadHistory() {
 async function refreshAll() {
   loading.value = true
   try {
-    await loadSnapshot()
-    await loadHistory()
+    // 快照与历史互不依赖，并行拉取（原先串行会多等一个 RTT）
+    await Promise.all([loadSnapshot(), loadHistory()])
   } finally {
     loading.value = false
   }
@@ -798,30 +839,74 @@ function onRangeChange() {
 
 // ============ 实时通道：SSE（fetch 流式）优先，失败/不支持时降级为轮询 ============
 // fetch 流式读取同源 URL，登录凭证由后端 HttpOnly Cookie 自动携带（与 vue/lite 统一会话），
-// 无需手动附加 Authorization 头；按 "data: {json}\n\n" 帧解析；断流/连续失败 ≥2 次则降级轮询。
+// 无需手动附加 Authorization 头；按 "data: {json}\n\n" 帧解析。
+// 断流处理：正常 EOF（如服务端重启）自动重连；连续失败达阈值则降级为轮询。
 const SSE_URL = '/api/v1/web/admin/resource/stream'
+const SSE_RETRY_MAX = 5          // 连续重连失败次数上限，超过则降级轮询
+const SSE_HEALTHY_MS = 30000     // 连接存活超过该时长即视为健康，重置重连计数
 let sseCtrl = null       // AbortController，停止时中断 fetch 流
 let sseReader = null
-let sseErrors = 0
+let sseErrors = 0        // 连续网络失败计数（决定是否降级轮询）
+let sseRetry = 0         // 连续重连计数（决定退避与降级）
+let sseRetryTimer = null
 let pollTimer = null
+
+function clearSSERetry() {
+  if (sseRetryTimer) { clearTimeout(sseRetryTimer); sseRetryTimer = null }
+}
+
+// 断流后安排重连：指数退避（1s → 30s），超过上限降级轮询
+function scheduleSSEReconnect() {
+  if (!enabled.value || document.hidden) return
+  if (sseRetry >= SSE_RETRY_MAX) {
+    stopSSE()
+    startPolling()
+    return
+  }
+  const delay = Math.min(30000, 1000 * 2 ** sseRetry)
+  sseRetry++
+  clearSSERetry()
+  sseRetryTimer = setTimeout(() => {
+    sseRetryTimer = null
+    if (enabled.value && !document.hidden) startSSE()
+  }, delay)
+}
 
 function startSSE() {
   if (typeof window === 'undefined' || !window.fetch) { startPolling(); return }
   if (!localStorage.getItem('token')) { startPolling(); return }
   stopPolling()
+  clearSSERetry()
   const ctrl = new AbortController()
   sseCtrl = ctrl
+  let connectAt = Date.now()
+  // 连接结束（EOF / 异常）后的统一收尾：判断是重连还是降级轮询
+  const onEnd = (err) => {
+    if (ctrl.signal.aborted) return
+    if (sseCtrl === ctrl) sseCtrl = null
+    // 连接曾稳定存活：视为健康断开（如服务端重启），重置计数并尽快重连
+    if (Date.now() - connectAt >= SSE_HEALTHY_MS) {
+      sseErrors = 0
+      sseRetry = 0
+      scheduleSSEReconnect()
+      return
+    }
+    if (err) sseErrors++
+    if (sseErrors >= 2) { stopSSE(); startPolling(); return }
+    scheduleSSEReconnect()
+  }
   // 同源 fetch 默认携带 Cookie，作为登录凭证（HttpOnly 脚本不可读，无需手动附加）
   fetch(SSE_URL, {
     signal: ctrl.signal
   }).then(async (resp) => {
     if (ctrl.signal.aborted) return
     if (!resp.ok || !resp.body) {
-      if (++sseErrors >= 2) { stopSSE(); startPolling() }
+      onEnd(true)
       return
     }
     realtimeMode.value = 'sse'
     sseErrors = 0
+    connectAt = Date.now()
     const reader = resp.body.getReader()
     sseReader = reader
     const decoder = new TextDecoder()
@@ -841,29 +926,25 @@ function startSSE() {
             .find((l) => l.startsWith('data:'))
           if (!line) continue
           try { applyRealtime(JSON.parse(line.slice(5).trim())) } catch { /* 忽略异常帧 */ }
-          sseErrors = 0
         }
       }
+      // 正常 EOF：服务端关闭连接（重启/代理超时），自动重连而不是永久停更
+      onEnd(false)
     } catch (err) {
       // 主动中止忽略；网络中断计入连续失败
-      if (!ctrl.signal.aborted) {
-        if (++sseErrors >= 2) { stopSSE(); startPolling() }
-      }
-    } finally {
-      if (ctrl.signal.aborted) return
-      // 正常 EOF（服务端关闭）或解码层异常：视为断流
-      if (++sseErrors >= 2) { stopSSE(); startPolling() }
+      if (!ctrl.signal.aborted) onEnd(true)
     }
   }).catch(() => {
-    if (ctrl.signal.aborted) return
-    if (++sseErrors >= 2) { stopSSE(); startPolling() }
+    onEnd(true)
   })
 }
 
 function stopSSE() {
+  clearSSERetry()
   if (sseCtrl) { sseCtrl.abort(); sseCtrl = null }
   sseReader = null
   sseErrors = 0
+  sseRetry = 0
 }
 
 function startPolling() {
@@ -894,8 +975,15 @@ function stopRealtime() {
 }
 
 // ============ 生命周期 ============
+// resize 节流：窗口拖动时每像素都会触发，直接 resize 7 个 ECharts 实例会明显掉帧。
+// 用 rAF 合并到每帧最多一次。
+let resizeRAF = 0
 const resizeHandler = () => {
-  for (const c of [gaugeCpu, gaugeMem, chCpu, chMem, chDisk, chIo, chNet]) c.value?.resize()
+  if (resizeRAF) return
+  resizeRAF = requestAnimationFrame(() => {
+    resizeRAF = 0
+    for (const c of [gaugeCpu, gaugeMem, chCpu, chMem, chDisk, chIo, chNet]) c.value?.resize()
+  })
 }
 
 onMounted(async () => {
@@ -907,6 +995,7 @@ onMounted(async () => {
   chDisk.value = echarts.init(diskChartEl.value)
   chIo.value = echarts.init(ioChartEl.value)
   chNet.value = echarts.init(netChartEl.value)
+  initGauges()
   renderGauges()
 
   // 读取配置（含 resource 切片）；失败时内部已提示并返回 null，启用状态保持 unknown（null），
@@ -914,8 +1003,7 @@ onMounted(async () => {
   const cfg = await loadResourceConfig()
   enabled.value = cfg?.resource?.enabled !== false
 
-  await loadSnapshot()
-  await loadHistory()
+  await Promise.all([loadSnapshot(), loadHistory()])
 
   window.addEventListener('resize', resizeHandler)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -935,6 +1023,7 @@ onUnmounted(() => {
   stopRealtime()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('resize', resizeHandler)
+  if (resizeRAF) { cancelAnimationFrame(resizeRAF); resizeRAF = 0 }
   for (const c of [gaugeCpu, gaugeMem, chCpu, chMem, chDisk, chIo, chNet]) c.value?.dispose()
 })
 </script>
