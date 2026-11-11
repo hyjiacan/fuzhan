@@ -410,7 +410,7 @@ const handleKeydown = (e) => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   tableResizeObs?.disconnect()
-  clearTimeout(downloadRefreshTimer)
+  clearTimeout(refreshTimer)
 })
 
 // 监听路由参数变化

@@ -201,7 +201,7 @@ const downloadColumns = [
   {
     title: '大小',
     key: 'fileSize',
-    width: 100,
+    width: 140,
     cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
   },
   {

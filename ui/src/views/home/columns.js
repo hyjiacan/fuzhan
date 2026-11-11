@@ -148,7 +148,7 @@ export function createColumns(ctx) {
       cellRenderer: ({ rowData: row }) => renderFileNameCell(row)
     },
     {
-      title: '大小', key: 'size', width: 150,
+      title: '大小', key: 'size', width: 140,
       cellRenderer: ({ rowData: row }) => formatSize(row.size)
     },
     {

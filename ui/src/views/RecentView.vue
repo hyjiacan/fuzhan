@@ -20,20 +20,53 @@
       <!-- 最近上传 -->
       <el-card class="recent-card hover-card">
         <template #header>最近上传</template>
-        <div ref="uploadWrapRef" class="table-v2-wrap" v-loading="uploadsLoading">
-          <el-table-v2 :columns="columns" :data="uploads" :width="uploadWidth" :height="uploadHeight"
-            row-key="id" :row-height="TableConst.ROW_HEIGHT">
+        <div class="recent-table-wrap" v-loading="uploadsLoading">
+          <el-table :data="uploads" row-key="id" stripe height="100%">
+            <el-table-column label="文件名" min-width="220">
+              <template #default="{ row }">
+                <div class="file-name-cell" :title="fileNameOf(row)">
+                  <div class="file-icon-wrapper">
+                    <span :class="['icon-filetype', getFileIconClass(row)]"></span>
+                  </div>
+                  <span class="file-path-content">
+                    <template v-for="(seg, idx) in parentSegments(row)" :key="idx">
+                      <a class="path-segment" tabindex="0"
+                        @keydown="keyNav(navigateToDir, segmentPath(parentSegments(row), idx))"
+                        @click.prevent.stop="navigateToDir(segmentPath(parentSegments(row), idx))">{{ seg }}</a>
+                      <span>/</span>
+                    </template>
+                    <a v-if="isDir(row)" class="file-link" tabindex="0"
+                      @keydown="keyNav(navigateToDir, fullPathOf(row))"
+                      @click.prevent="navigateToDir(fullPathOf(row))">{{ fileNameOf(row) }}</a>
+                    <a v-else class="file-link" :href="downloadHref(row)"
+                      @click.prevent="handleDownload(row)">{{ fileNameOf(row) }}</a>
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="140">
+              <template #default="{ row }">{{ formatFileSize(row.fileSize || 0) }}</template>
+            </el-table-column>
+            <el-table-column label="备注" width="150">
+              <template #default="{ row }">
+                <span v-if="row.notes" class="note-text" :title="row.notes">{{ row.notes }}</span>
+                <span v-else class="note-empty">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="上传时间" width="180">
+              <template #default="{ row }">
+                <span :style="TimeUtils.isRecent24h(row.createdAt) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.createdAt) }}</span>
+              </template>
+            </el-table-column>
             <template #empty>
-              <div class="empty-state">
-                <el-empty description="暂无上传记录" :image-size="72">
-                  <el-button type="primary" plain @click="router.push('/files')">
-                    <el-icon><component :is="SearchIcon" /></el-icon>
-                    去文件页上传
-                  </el-button>
-                </el-empty>
-              </div>
+              <el-empty description="暂无上传记录" :image-size="72">
+                <el-button type="primary" plain @click="router.push('/files')">
+                  <el-icon><component :is="SearchIcon" /></el-icon>
+                  去文件页上传
+                </el-button>
+              </el-empty>
             </template>
-          </el-table-v2>
+          </el-table>
         </div>
         <template v-if="uploadTotal > uploads.length" #footer>
           <div class="card-footer">
@@ -47,20 +80,58 @@
       <!-- 最近下载 -->
       <el-card class="recent-card hover-card">
         <template #header>最近下载</template>
-        <div ref="downloadWrapRef" class="table-v2-wrap" v-loading="downloadsLoading">
-          <el-table-v2 :columns="downloadColumns" :data="downloads" :width="downloadWidth" :height="downloadHeight"
-            row-key="id" :row-height="TableConst.ROW_HEIGHT">
+        <div class="recent-table-wrap" v-loading="downloadsLoading">
+          <el-table :data="downloads" row-key="id" stripe height="100%">
+            <el-table-column label="文件名" min-width="220">
+              <template #default="{ row }">
+                <div class="file-name-cell" :title="fileNameOf(row)">
+                  <div class="file-icon-wrapper">
+                    <span :class="['icon-filetype', getFileIconClass(row)]"></span>
+                  </div>
+                  <span class="file-path-content">
+                    <template v-for="(seg, idx) in parentSegments(row)" :key="idx">
+                      <a class="path-segment" tabindex="0"
+                        @keydown="keyNav(navigateToDir, segmentPath(parentSegments(row), idx))"
+                        @click.prevent.stop="navigateToDir(segmentPath(parentSegments(row), idx))">{{ seg }}</a>
+                      <span>/</span>
+                    </template>
+                    <a v-if="isDir(row)" class="file-link" tabindex="0"
+                      @keydown="keyNav(navigateToDir, fullPathOf(row))"
+                      @click.prevent="navigateToDir(fullPathOf(row))">{{ fileNameOf(row) }}</a>
+                    <a v-else class="file-link" :href="downloadHref(row)"
+                      @click.prevent="handleDownload(row)">{{ fileNameOf(row) }}</a>
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="140">
+              <template #default="{ row }">{{ formatFileSize(row.fileSize || 0) }}</template>
+            </el-table-column>
+            <el-table-column label="备注" width="150">
+              <template #default="{ row }">
+                <span v-if="row.notes" class="note-text" :title="row.notes">{{ row.notes }}</span>
+                <span v-else class="note-empty">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="下载时间" width="180">
+              <template #default="{ row }">{{ TimeUtils.formatDateTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="上传时间" width="180">
+              <template #default="{ row }">
+                <span v-if="row.uploadTime && !String(row.uploadTime).startsWith('0001')"
+                  :style="TimeUtils.isRecent24h(row.uploadTime) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.uploadTime) }}</span>
+                <span v-else class="note-empty">-</span>
+              </template>
+            </el-table-column>
             <template #empty>
-              <div class="empty-state">
-                <el-empty description="暂无下载记录" :image-size="72">
-                  <el-button type="primary" plain @click="router.push('/files')">
-                    <el-icon><component :is="SearchIcon" /></el-icon>
-                    去文件页看看
-                  </el-button>
-                </el-empty>
-              </div>
+              <el-empty description="暂无下载记录" :image-size="72">
+                <el-button type="primary" plain @click="router.push('/files')">
+                  <el-icon><component :is="SearchIcon" /></el-icon>
+                  去文件页看看
+                </el-button>
+              </el-empty>
             </template>
-          </el-table-v2>
+          </el-table>
         </div>
         <template v-if="downloadTotal > downloads.length" #footer>
           <div class="card-footer">
@@ -75,11 +146,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, h } from 'vue'
+import { ref, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { FileApi, MonitorApi } from '@/api'
-import { TableConst, NumberUtils, TimeUtils, PathUtils } from '@/utils'
+import { NumberUtils, TimeUtils, PathUtils } from '@/utils'
 import { downloadWithTicket } from '@/utils/download'
 import { keyNav } from '@/utils/a11y'
 
@@ -106,38 +177,6 @@ const downloads = ref([])
 const downloadTotal = ref(0)
 const downloadPage = ref(1)
 const downloadPageSize = ref(10)
-
-// el-table-v2 需要数值宽高，实时测量容器
-const makeTableResize = () => {
-  const wrapRef = ref(null)
-  const width = ref(600)
-  const height = ref(380)
-  let resizeObs = null
-  const update = () => {
-    const el = wrapRef.value
-    if (el) {
-      width.value = el.clientWidth || 600
-      height.value = el.clientHeight || 380
-    }
-  }
-  const bind = () => {
-    update()
-    resizeObs = new ResizeObserver(update)
-    if (wrapRef.value) resizeObs.observe(wrapRef.value)
-  }
-  const unbind = () => resizeObs?.disconnect()
-  return { wrapRef, width, height, bind, unbind }
-}
-const uploadSize = makeTableResize()
-const downloadSize = makeTableResize()
-
-// 将工厂返回的嵌套对象扁平化，供模板直接引用（el-table-v2 需数值 width/height）
-const uploadWrapRef = uploadSize.wrapRef
-const uploadWidth = uploadSize.width
-const uploadHeight = uploadSize.height
-const downloadWrapRef = downloadSize.wrapRef
-const downloadWidth = downloadSize.width
-const downloadHeight = downloadSize.height
 
 // 格式化
 const formatFileSize = NumberUtils.formatFileSize
@@ -167,123 +206,19 @@ const getFileIconClass = (row) => {
   return `icon-filetype-${ext}`
 }
 
-// 表格列
-const fileNameCol = {
-  title: '文件名',
-  key: 'fileName',
-  minWidth: 220,
-  flexGrow: 1,
-  cellRenderer: ({ rowData: row }) => {
-    const fullPath = row.fullPath || row.path || ''
-    const segments = fullPath.split('/').filter(Boolean)
-    const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
-    const pathSegments = segments.slice(0, -1)
-    const iconClass = `icon-filetype ${getFileIconClass(row)}`
-    const dirPath = row.fullPath || row.path || ''
-
-    return h('div', {
-      class: 'file-name-cell',
-      title: fileName
-    }, [
-      h('div', { class: 'file-icon-wrapper' }, [
-        h('span', { class: iconClass })
-      ]),
-      h('span', { class: 'file-path-content' }, [
-        ...pathSegments.map((seg, idx) => {
-          const segPath = '/' + pathSegments.slice(0, idx + 1).join('/')
-          return [
-            h('a', {
-              class: 'path-segment',
-              tabindex: '0',
-              onKeydown: keyNav(navigateToDir, segPath),
-              onClick: (e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                navigateToDir(segPath)
-              }
-            }, seg),
-            '/'
-          ]
-        }).flat(),
-        isDir(row)
-          ? h('a', {
-              class: 'file-link',
-              tabindex: '0',
-              onKeydown: keyNav(navigateToDir, dirPath),
-              onClick: (e) => {
-                e.preventDefault()
-                navigateToDir(dirPath)
-              }
-            }, fileName)
-          : h('a', {
-              href: `/download/${PathUtils.encodeFilePath(fullPath)}`,
-              class: 'file-link',
-              onClick: (e) => {
-                e.preventDefault()
-                downloadWithTicket(`/download/${PathUtils.encodeFilePath(fullPath)}`)
-              }
-            }, fileName)
-      ])
-    ])
-  }
+// 完整路径与路径分段
+const fullPathOf = (row) => row.fullPath || row.path || ''
+const pathSegmentsOf = (row) => fullPathOf(row).split('/').filter(Boolean)
+const parentSegments = (row) => pathSegmentsOf(row).slice(0, -1)
+const fileNameOf = (row) => {
+  const segments = pathSegmentsOf(row)
+  return segments[segments.length - 1] || row.fileName || '未知文件'
 }
+const segmentPath = (segments, idx) => '/' + segments.slice(0, idx + 1).join('/')
 
-const sizeCol = {
-  title: '大小',
-  key: 'fileSize',
-  width: 100,
-  cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
-}
-
-const notesCol = {
-  title: '备注',
-  key: 'notes',
-  width: 150,
-  cellRenderer: ({ rowData: row }) => row.notes
-    ? h('span', { title: row.notes, style: 'color:var(--el-text-color-regular); text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;' }, row.notes)
-      : h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
-}
-
-// 上传操作时间列（最近上传：即文件上传时间）
-const uploadTimeCol = {
-  title: '上传时间',
-  key: 'createdAt',
-  width: 180,
-  cellRenderer: ({ rowData: row }) => renderRecentTime(row.createdAt)
-}
-
-// 下载操作时间列（最近下载：即本次下载发生时间，固定显示，不标绿）
-const downloadTimeCol = {
-  title: '下载时间',
-  key: 'createdAt',
-  width: 180,
-  cellRenderer: ({ rowData: row }) => TimeUtils.formatDateTime(row.createdAt)
-}
-
-// 上传时间列（最近下载：索引表回填的真实上传时间，非本次下载时间）
-const fileUploadTimeCol = {
-  title: '上传时间',
-  key: 'uploadTime',
-  width: 180,
-  cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001'))
-    ? renderRecentTime(row.uploadTime)
-    : h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
-}
-
-// 最近 24h 内的新记录显示为绿色（仅上传时间应用）
-const renderRecentTime = (time) => {
-  const text = TimeUtils.formatDateTime(time)
-  if (TimeUtils.isRecent24h(time)) {
-    return h('span', { style: 'color: #18a058' }, text)
-  }
-  return text
-}
-
-// 最近上传表：文件名/大小/备注/时间
-const columns = [fileNameCol, sizeCol, notesCol, uploadTimeCol]
-
-// 最近下载表：文件名/大小/备注/下载时间/上传时间
-const downloadColumns = [fileNameCol, sizeCol, notesCol, downloadTimeCol, fileUploadTimeCol]
+// 下载
+const downloadHref = (row) => `/download/${PathUtils.encodeFilePath(fullPathOf(row))}`
+const handleDownload = (row) => downloadWithTicket(downloadHref(row))
 
 // Pagination events
 const onUploadPageChange = (page) => {
@@ -359,13 +294,6 @@ onMounted(() => {
   loadRecentKeywords()
   loadUploads()
   loadDownloads()
-  uploadSize.bind()
-  downloadSize.bind()
-})
-
-onUnmounted(() => {
-  uploadSize.unbind()
-  downloadSize.unbind()
 })
 </script>
 
@@ -379,8 +307,21 @@ onUnmounted(() => {
     gap: 24px;
   }
 
-  .table-v2-wrap {
+  .recent-table-wrap {
     height: 380px;
+  }
+
+  .note-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--el-text-color-regular);
+    text-align: left;
+  }
+
+  .note-empty {
+    color: var(--el-text-color-placeholder);
   }
 
   .keyword-tags {
