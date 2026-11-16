@@ -555,6 +555,13 @@ export const AdminApi = {
     return request.post('/admin/files/move', { path: oldPath, target_path: newPath }, { skipSuccessToast: true })
   },
 
+  // 某文件的下载记录明细（分页）；record_id 用于跟随移动/重命名后的身份关联
+  listDownloadRecords({ path = '', recordId = 0, page = 1, pageSize = 10 } = {}) {
+    const params = { path, page, page_size: pageSize }
+    if (recordId) params.record_id = recordId
+    return request.get('/admin/files/download-records', { params })
+  },
+
   delete(path) {
     return request.delete('/admin/files', { params: { path }, skipSuccessToast: true })
   },

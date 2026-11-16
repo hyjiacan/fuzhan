@@ -704,6 +704,17 @@
 
 - **URL**：`POST /api/v1/web/admin/sessions/cleanup`
 
+### 7. 单文件下载记录明细
+
+- **URL**：`GET /api/v1/web/admin/files/download-records`
+- **参数**：
+  - `path`（可选）：完整路径，如 `/rootName/subdir/file.txt`
+  - `record_id`（可选）：文件索引记录 ID（移动/重命名后仍能追溯历史记录）
+  - `page` / `page_size`：分页，`page` 从 1 开始，`page_size` 默认 20、上限 200
+  - `path` 与 `record_id` 至少提供一个
+- **过滤口径**：`operation_records` 中 `dl_counted=1` 且未软删除；同时按 `file_record_id` 与 `full_path` 取并集，与「下载次数」列数值保持一致
+- **响应**：`data.items` 为记录数组，`data.pagination` 为 `{page, page_size, total}`
+
 ## 配置接口
 
 ### 1. 获取系统选项

@@ -77,6 +77,7 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 	admin.POST("/tls/certificate", dummy)
 	admin.POST("/tls/private-key", dummy)
 	admin.GET("/files/list/*path", dummy)
+	admin.GET("/files/download-records", dummy)
 	admin.POST("/files/move", dummy)
 	admin.DELETE("/files", dummy)
 	admin.GET("/url-tasks", dummy)

@@ -172,7 +172,7 @@
 | SettingsView | `/settings` | el-menu, el-form, el-input, el-switch, el-card, el-tabs | 系统设置，侧栏分节导航 + 内容面板（含「身份认证」子页：LDAP / OAuth2 标签页） |
 | OAuth2CallbackView | `/oauth2/callback` | el-card, el-icon, el-button | 外部 OAuth2/OIDC 登录回调，写入登录态并按角色跳转 |
 | AdminDashboardView | `/admin/dashboard` | el-card, el-descriptions, el-progress | 管理员仪表盘，统计卡片、存储使用、热门搜索 |
-| AdminFilesView | `/admin/files`, `/admin/files/:path*` | el-breadcrumb, el-table-v2, el-tree-select | 管理员文件管理，支持搜索、重命名、移动、删除 |
+| AdminFilesView | `/admin/files`, `/admin/files/:path*` | el-breadcrumb, el-table-v2, el-tree-select, el-dialog, el-pagination | 管理员文件管理，支持搜索、重命名、移动、删除，下载次数列可点击查看下载记录明细分页 |
 | AdminUsersView | `/admin/users` | el-table-v2, el-dialog, el-tag | 用户管理，搜索、启用/禁用、重置密码、删除用户 |
 | AdminTasksView | `/admin/tasks` | el-table-v2, el-button, el-progress | 系统作业，查看/执行定时任务 |
 | AdminUploadsView | `/admin/uploads` | el-table-v2, el-pagination | 上传管理，跟踪上传会话、清理残留 |

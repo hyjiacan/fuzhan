@@ -107,20 +107,57 @@
       </template>
     </el-dialog>
 
+    <!-- 下载记录明细弹窗（分页） -->
+    <el-dialog v-model="downloadRecordsVisible" :title="downloadRecordsTitle" width="760px">
+      <el-table :data="downloadRecords" v-loading="downloadRecordsLoading" size="small" max-height="420">
+        <el-table-column label="下载时间" width="180">
+          <template #default="{ row }">{{ TimeUtils.formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="client_ip" label="客户端 IP" width="150" />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'failed' ? 'danger' : 'success'" size="small">
+              {{ row.status === 'failed' ? '失败' : '成功' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="100">
+          <template #default="{ row }">{{ sourceTypeLabel(row.source_type) }}</template>
+        </el-table-column>
+        <el-table-column label="用户" min-width="120">
+          <template #default="{ row }">{{ row.user_id || '-' }}</template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-if="downloadRecordsTotal > 0"
+        style="margin-top: 12px; justify-content: flex-end"
+        v-model:current-page="downloadRecordsPage"
+        v-model:page-size="downloadRecordsPageSize"
+        :total="downloadRecordsTotal"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @current-change="loadDownloadRecords"
+        @size-change="handleDownloadRecordsSizeChange"
+      />
+      <template #footer>
+        <el-button @click="downloadRecordsVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 预览对话框（dialog 集成在 FilePreview 组件内） -->
     <file-preview v-model="previewDialogVisible" :file="previewFileData" :download="downloadFile" />
   </div>
 </template>
 
 <script setup>
-import { TableConst } from '@/utils'
-import { ref, watch, onUnmounted, onMounted } from 'vue'
+import { TableConst, TimeUtils } from '@/utils'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import FilePreview from '@/components/file/FilePreview.vue'
 import store from '@/store'
-import { FileRecordApi } from '@/api'
+import { FileRecordApi, AdminApi } from '@/api'
 import { formatErrorMessage } from '@/utils/error'
 import { useFilesTable } from './admin/useFilesTable'
 import { useFilesSearch } from './admin/useFilesSearch'
@@ -199,10 +236,64 @@ const saveNotes = async () => {
   }
 }
 
+// ============ 下载记录明细 ============
+const downloadRecordsVisible = ref(false)
+const downloadRecordsLoading = ref(false)
+const downloadRecords = ref([])
+const downloadRecordsTotal = ref(0)
+const downloadRecordsPage = ref(1)
+const downloadRecordsPageSize = ref(10)
+const downloadRecordsFile = ref(null)
+
+const downloadRecordsTitle = computed(() => {
+  const name = downloadRecordsFile.value?.name
+  return name ? `下载记录 - ${name}` : '下载记录'
+})
+
+const sourceTypeLabel = (type) => ({ public: '公开', private: '私有', temp: '临时' }[type] || type || '-')
+
+const loadDownloadRecords = async () => {
+  const row = downloadRecordsFile.value
+  if (!row) return
+  downloadRecordsLoading.value = true
+  try {
+    const res = await AdminApi.listDownloadRecords({
+      path: row.path || '',
+      recordId: row.record_id || 0,
+      page: downloadRecordsPage.value,
+      pageSize: downloadRecordsPageSize.value
+    })
+    if (res.success) {
+      downloadRecords.value = res.data?.items || []
+      downloadRecordsTotal.value = res.data?.pagination?.total || 0
+    } else {
+      ElMessage.error(res.message || '查询下载记录失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '查询下载记录失败'))
+  } finally {
+    downloadRecordsLoading.value = false
+  }
+}
+
+const openDownloadRecords = (row) => {
+  downloadRecordsFile.value = row
+  downloadRecords.value = []
+  downloadRecordsTotal.value = 0
+  downloadRecordsPage.value = 1
+  downloadRecordsVisible.value = true
+  loadDownloadRecords()
+}
+
+const handleDownloadRecordsSizeChange = () => {
+  downloadRecordsPage.value = 1
+  loadDownloadRecords()
+}
+
 // 列定义由独立模块构建，渲染回调从复合式取用
 const columns = buildFileColumns({
   ...table, ...search, ...actions, router,
-  openNotesEditor
+  openNotesEditor, openDownloadRecords
 })
 
 // 解构给模板使用的绑定（<script setup> 仅顶层绑定可被模板访问）

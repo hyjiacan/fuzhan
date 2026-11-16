@@ -71,6 +71,7 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 
 	// 文件管理路由
 	admin.GET("/files/list/*path", fileHandlers.ListDirectories)
+	admin.GET("/files/download-records", fileHandlers.ListDownloadRecords)
 	admin.POST("/files/move", fileHandlers.MoveFileHandler)
 	admin.DELETE("/files", fileHandlers.DeleteFileHandler)
 

@@ -38,7 +38,7 @@ export const buildFileColumns = ({
   toggleSelectAll, handleSingleCheck, currentPath, router,
   highlightKeyword, adminDownloadHref, previewFile,
   isSearching, searchCompleted, navigateToDir,
-  openMoveModal, handleDelete, openNotesEditor
+  openMoveModal, handleDelete, openNotesEditor, openDownloadRecords
 }) => {
   return [
     {
@@ -162,6 +162,28 @@ export const buildFileColumns = ({
       }
     },
     { title: '大小', key: 'size', width: 150, cellRenderer: ({ rowData: row }) => formatSize(row.size) },
+    {
+      // 下载次数：口径为 operation_records 中 dl_counted=1 的记录数，点击数字查看明细分页
+      title: '下载次数',
+      key: 'download_count',
+      width: 100,
+      cellRenderer: ({ rowData: row }) => {
+        if (isDir(row)) return '-'
+        const count = Number(row.download_count || 0)
+        if (count <= 0) return '0'
+        const open = () => openDownloadRecords(row)
+        return h('a', {
+          class: 'download-count-link',
+          role: 'button',
+          tabindex: '0',
+          onKeydown: keyNav(open),
+          onClick: (e) => {
+            e.preventDefault()
+            open()
+          }
+        }, String(count))
+      }
+    },
     {
       // 上传者IP：仅管理员接口返回；手动放入存储目录/扫描入库的文件没有记录，留空
       title: '上传 IP',

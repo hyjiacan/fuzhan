@@ -323,7 +323,7 @@ WebDAV / CLI
 证书/网络/文件
 
 - `POST /admin/tls/certificate`、`POST /admin/tls/private-key`、`GET /admin/network-interfaces`
-- `GET /admin/files/list/*path`、`POST /admin/files/move`、`DELETE /admin/files`
+- `GET /admin/files/list/*path`、`GET /admin/files/download-records`、`POST /admin/files/move`、`DELETE /admin/files`
 
 URL 任务/后台任务
 

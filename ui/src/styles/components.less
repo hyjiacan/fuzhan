@@ -577,6 +577,30 @@
   vertical-align: bottom;
 }
 
+// 下载次数列：可点击时是与纯文本同盒模型的链接，靠颜色/hover/焦点反馈表达可交互
+.download-count-link {
+  display: inline-block;
+  color: @primary-color;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  border-radius: 2px;
+  transition: color @transition-fast;
+
+  &:hover {
+    color: @primary-color-hover;
+    text-decoration: underline;
+  }
+
+  &:active {
+    color: @primary-color-pressed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid @primary-color;
+    outline-offset: 1px;
+  }
+}
+
 // ============================================
 // 表单字段提示
 // ============================================

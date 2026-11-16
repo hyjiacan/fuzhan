@@ -353,7 +353,8 @@ Content-Type: application/json
 
 | HTTP方法 | 路由 | Handler | 功能描述 |
 |----------|------|---------|----------|
-| GET | `/api/v1/web/admin/files/list/*path` | `file.Handler.ListDirectories` | 文件列表 |
+| GET | `/api/v1/web/admin/files/list/*path` | `file.Handler.ListDirectories` | 文件列表（含 `download_count`） |
+| GET | `/api/v1/web/admin/files/download-records` | `file.Handler.ListDownloadRecords` | 单文件下载记录明细分页（`path` / `record_id` / `page` / `page_size`） |
 | POST | `/api/v1/web/admin/files/rename` | `file.Handler.RenameFileHandler` | 重命名 |
 | POST | `/api/v1/web/admin/files/move` | `file.Handler.MoveFileHandler` | 移动 |
 | DELETE | `/api/v1/web/admin/files` | `file.Handler.DeleteFileHandler` | 删除 |

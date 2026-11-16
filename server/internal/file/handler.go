@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 
 	"fuzhan/internal/appconfig"
@@ -234,6 +235,70 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 		})
 	}
 	return result, nil
+}
+
+// ListDownloadRecords 分页查询某个文件的下载明细。
+// GET /api/v1/web/admin/files/download-records?path=/rootName/relPath&record_id=1&page=1&page_size=20
+// 过滤口径与"下载次数"列完全一致：dl_counted = 1 且未软删除；同时按文件身份
+// （file_record_id）与路径快照（full_path）取并集，使移动/重命名前后的记录都能查到。
+func (fh *FileHandlers) ListDownloadRecords(c *gin.Context) {
+	fullPath := strings.Trim(c.Query("path"), "/")
+	if fullPath != "" {
+		fullPath = "/" + fullPath
+	}
+	recordID, _ := strconv.ParseUint(c.Query("record_id"), 10, 64)
+	if fullPath == "" && recordID == 0 {
+		utils.HandleBadRequest(c, "缺少文件路径或记录 ID", nil)
+		return
+	}
+
+	page := 1
+	if v, err := strconv.Atoi(c.Query("page")); err == nil && v > 0 {
+		page = v
+	}
+	pageSize := 20
+	if v, err := strconv.Atoi(c.Query("page_size")); err == nil && v > 0 {
+		pageSize = v
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	applyFilters := func(q *gorm.DB) *gorm.DB {
+		q = q.Where("dl_counted = ? AND deleted_at IS NULL", 1)
+		switch {
+		case recordID > 0 && fullPath != "":
+			return q.Where("(file_record_id = ? OR full_path = ?)", uint(recordID), fullPath)
+		case recordID > 0:
+			return q.Where("file_record_id = ?", uint(recordID))
+		default:
+			return q.Where("full_path = ?", fullPath)
+		}
+	}
+
+	var total int64
+	if err := applyFilters(fh.DB.Model(&models.OperationRecord{})).Count(&total).Error; err != nil {
+		utils.HandleError(c, http.StatusInternalServerError, 500, "查询下载记录失败", err.Error())
+		return
+	}
+
+	var records []models.OperationRecord
+	if err := applyFilters(fh.DB.Model(&models.OperationRecord{})).
+		Order("created_at DESC, id DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).
+		Find(&records).Error; err != nil {
+		utils.HandleError(c, http.StatusInternalServerError, 500, "查询下载记录失败", err.Error())
+		return
+	}
+
+	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
+		"items": records,
+		"pagination": gin.H{
+			"page":      page,
+			"page_size": pageSize,
+			"total":     total,
+		},
+	})
 }
 
 // directChildrenQuery 构造"某目录直接子项"的基础查询。
