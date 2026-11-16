@@ -342,6 +342,26 @@ git push github main --follow-tags    # GitHub（同步）
 
 ## 常见任务
 
+### 定位功能落点（改动前必做）
+
+**先找已有实现，再动手新增。** 项目里同一个概念往往已有字段/接口/组件，重复造轮子会造成两套口径。
+
+推荐顺序（每一步只做一次检索，命中即停）：
+
+| 要查的事 | 查哪里 | 示例 |
+|---|---|---|
+| 某个字段是否已返回 | 模型定义 | `Grep "download_count" server/internal/models` |
+| 某个接口是否已存在 | 路由文件 | `Grep "admin/files" server/routes_admin.go` |
+| 某个页面/组件在哪 | `ui/src/views` | `Glob "ui/src/views/admin/*.js"` |
+| 分页/响应格式规范 | `docs/design/api/API_STYLE_GUIDE.md` | — |
+| 整体结构 | `docs/development/project-context.md` | §6 数据模型 / §7 路由 / §10 前端 |
+
+原则：
+
+- 小改动（1~3 个文件）预期只需浏览 5~8 个文件；明显超出说明在"通读结构"而不是"定位落点"，应停下核对目标。
+- 同一关键词的空结果检索只做 1 次，无果即换关键词或改读上下文文档，不要连续多轮撒网。
+- 读文件用行区间（`offset`/`limit`），不要同一文件反复整篇读。
+
 ### 添加新的 API 端点
 
 1. 在 `server/internal/{module}/` 创建或编辑 handler 文件
