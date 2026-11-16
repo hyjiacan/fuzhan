@@ -37,10 +37,10 @@ func (h *Handler) HotDownloads(c *gin.Context) {
 	if err != nil {
 		utils.Warn("获取热门下载统计失败", utils.Err(err))
 		response.HandleSuccess(c, http.StatusOK, "", gin.H{
-			"records":  []interface{}{},
-			"total":    0,
-			"page":     page,
-			"pageSize": pageSize,
+			"records":   []interface{}{},
+			"total":     0,
+			"page":      page,
+			"page_size": pageSize,
 		})
 		return
 	}

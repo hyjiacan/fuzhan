@@ -157,7 +157,7 @@ export const AuthApi = {
     localStorage.setItem('token', '__cookie__')
     if (userData.uuid) localStorage.setItem('uuid', userData.uuid)
     if (userData.username) localStorage.setItem('username', userData.username)
-    localStorage.setItem('displayName', userData.displayName || '')
+    localStorage.setItem('displayName', userData.display_name || userData.displayName || '')
     localStorage.setItem('nickname', userData.nickname || '')
   },
 
@@ -181,7 +181,7 @@ export const AuthApi = {
     return request.get('/auth/user')
   },
 
-  // 获取图形验证码：返回 { captchaId, image }，image 为 data:image/png;base64,... data URI
+  // 获取图形验证码：返回 { captcha_id, image }，image 为 data:image/png;base64,... data URI
   getCaptcha() {
     return request.get('/auth/captcha')
   },

@@ -5,27 +5,27 @@
       row-key="id"
       stripe
     >
-      <el-table-column prop="uploadTime" label="上传时间" width="140">
+      <el-table-column prop="upload_time" label="上传时间" width="140">
         <template #default="{ row }">
-          <span :style="{ color: TimeUtils.isRecent24h(row.uploadTime) ? '#18a058' : 'var(--el-text-color-regular)', fontSize: '13px' }">{{ TimeUtils.formatDateTime(row.uploadTime) }}</span>
+          <span :style="{ color: TimeUtils.isRecent24h(row.upload_time) ? '#18a058' : 'var(--el-text-color-regular)', fontSize: '13px' }">{{ TimeUtils.formatDateTime(row.upload_time) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="filename" label="文件名">
+      <el-table-column prop="file_name" label="文件名">
         <template #default="{ row }">
           <div style="display:flex;align-items:center;gap:8px">
-            <span :class="`icon-filetype icon-filetype-${getFileExt(row.filename)}`" style="font-size:16px"></span>
-            <span style="color:#b25a00;cursor:pointer" @click="emit('go-to', row)">{{ row.filename }}</span>
+            <span :class="`icon-filetype icon-filetype-${getFileExt(row.file_name)}`" style="font-size:16px"></span>
+            <span style="color:#b25a00;cursor:pointer" @click="emit('go-to', row)">{{ row.file_name }}</span>
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="fileSize" label="大小" width="100">
+      <el-table-column prop="file_size" label="大小" width="100">
         <template #default="{ row }">
-          <span style="color:var(--el-text-color-secondary);font-size:13px">{{ NumberUtils.formatFileSize(row.fileSize) }}</span>
+          <span style="color:var(--el-text-color-secondary);font-size:13px">{{ NumberUtils.formatFileSize(row.file_size) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="uploadType" label="上传方式" width="90">
+      <el-table-column prop="upload_type" label="上传方式" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.uploadType === 'remote' ? 'info' : 'success'" size="small">{{ row.uploadType === 'remote' ? 'URL' : '本地上传' }}</el-tag>
+          <el-tag :type="row.upload_type === 'remote' ? 'info' : 'success'" size="small">{{ row.upload_type === 'remote' ? 'URL' : '本地上传' }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="120">

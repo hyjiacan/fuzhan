@@ -135,7 +135,7 @@ export async function loadPreviewConfig(preloadedData) {
     if (preloadedData) {
       data = preloadedData
     } else {
-      // 预览配置只随完整运行时配置下发（公开的 /options 已不再包含 preview/mimeTable）
+      // 预览配置只随完整运行时配置下发（公开的 /options 已不再包含 preview/mime_table）
       const res = await SystemApi.getConfig()
       if (!res.success) return
       data = res.data
@@ -152,9 +152,9 @@ export async function loadPreviewConfig(preloadedData) {
       previewDefaults = data.preview.defaults || null
     }
     // 解析用户自定义 MIME 表（key 归一化为小写、忽略点号前缀，与后端一致）
-    if (data?.mimeTable) {
+    if (data?.mime_table) {
       userMimeTable = {}
-      for (const [ext, mime] of Object.entries(data.mimeTable)) {
+      for (const [ext, mime] of Object.entries(data.mime_table)) {
         const e = ext.trim().replace(/^\./, '').toLowerCase()
         if (e && mime) userMimeTable[e] = String(mime).trim()
       }

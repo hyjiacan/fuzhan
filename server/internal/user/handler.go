@@ -106,10 +106,10 @@ func (h *Handler) GetLoginLogs(c *gin.Context) {
 		return
 	}
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"records":  logs,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"records":   logs,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -144,10 +144,10 @@ func (h *Handler) GetRecords(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"records":  records,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"records":   records,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -206,12 +206,12 @@ func (h *Handler) GetStats(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"publicFiles":  publicFiles,
-		"publicBytes":  publicBytes,
-		"tempFiles":    tempFiles,
-		"tempBytes":    tempBytes,
-		"privateFiles": privateFiles,
-		"privateBytes": privateBytes,
-		"updatedAt":    time.Now(),
+		"public_files":  publicFiles,
+		"public_bytes":  publicBytes,
+		"temp_files":    tempFiles,
+		"temp_bytes":    tempBytes,
+		"private_files": privateFiles,
+		"private_bytes": privateBytes,
+		"updated_at":    time.Now(),
 	})
 }

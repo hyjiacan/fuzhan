@@ -97,7 +97,7 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 		"name":        filepath.Base(info.Name),
 		"path":        filePath,
 		"size":        info.Size,
-		"mimeType":    mimeType,
+		"mime_type":   mimeType,
 		"previewable": isPreviewable,
 	}
 
@@ -130,8 +130,8 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 				result["encoding"] = "utf-8"
 			}
 			result["chunked"] = info.Size > maxInlineSize
-			result["chunkSize"] = textChunkSize
-			result["totalChunks"] = (info.Size + textChunkSize - 1) / textChunkSize
+			result["chunk_size"] = textChunkSize
+			result["total_chunks"] = (info.Size + textChunkSize - 1) / textChunkSize
 		} else {
 			// 图片/PDF/音频/视频内联预览走下载接口但标记 preview=true：既排除内置浏览器预览器的
 			// 预取/缩略图请求，也不会累加下载计数或写入下载历史（见 download_service.go）；
@@ -152,7 +152,7 @@ func (h *PreviewHandler) PreviewFile(c *gin.Context) {
 					fileUrl += "&" + downloadticket.TicketParamName + "=" + url.QueryEscape(ticket)
 				}
 			}
-			result["fileUrl"] = fileUrl
+			result["file_url"] = fileUrl
 		}
 	}
 
@@ -247,12 +247,12 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"content":     string(buf[:n]),
-		"chunkIndex":  chunkIndex,
-		"chunkSize":   textChunkSize,
-		"totalChunks": totalChunks,
-		"startOffset": offset,
-		"endOffset":   offset + int64(n),
+		"content":      string(buf[:n]),
+		"chunk_index":  chunkIndex,
+		"chunk_size":   textChunkSize,
+		"total_chunks": totalChunks,
+		"start_offset": offset,
+		"end_offset":   offset + int64(n),
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", result)
@@ -263,8 +263,8 @@ func (h *PreviewHandler) GetChunk(c *gin.Context) {
 // - private / temp：需 code（私有分享码 / 临时访问码）
 // algorithms 为 md5/sha1/sha256 的任意子集
 type FileChecksumRequest struct {
-	StorageType string   `json:"storageType"`
-	RootName    string   `json:"rootName"`
+	StorageType string   `json:"storage_type"`
+	RootName    string   `json:"root_name"`
 	Path        string   `json:"path"`
 	Code        string   `json:"code"`
 	Algorithms  []string `json:"algorithms" binding:"required"`

@@ -139,13 +139,13 @@ func LogOperation(c *gin.Context, operation, target string, err error) {
 	// config.update / search / request.rejected 明确不派发（配置变更不再推送，
 	// security.event 已覆盖安全类拒绝，search 为高频只读噪音）。
 	dispatchWebhookEvent(operation, err, map[string]interface{}{
-		"operator":   operator,
-		"clientIp":   clientIP,
-		"operation":  operation,
-		"target":     target,
-		"result":     result,
-		"statusCode": c.Writer.Status(),
-		"durationMs": duration,
+		"operator":    operator,
+		"client_ip":   clientIP,
+		"operation":   operation,
+		"target":      target,
+		"result":      result,
+		"status_code": c.Writer.Status(),
+		"duration_ms": duration,
 	})
 }
 

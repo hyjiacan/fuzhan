@@ -201,11 +201,11 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"taskId":   taskID,
-		"taskType": "url",
-		"fileName": filename,
-		"fileSize": fileSize,
-		"status":   models.URLDownloadStatusPending,
+		"task_id":   taskID,
+		"task_type": "url",
+		"file_name": filename,
+		"file_size": fileSize,
+		"status":    models.URLDownloadStatusPending,
 	})
 
 	// 任务已持久化入队，与当前请求/浏览器解耦；唤醒后台调度器按全局并行上限执行
@@ -389,18 +389,18 @@ func (h *UploadSessionHandler) ProbeURLs(c *gin.Context) {
 			items = append(items, item)
 			continue
 		}
-		item["fileName"] = filename
-		item["fileSize"] = fileSize
+		item["file_name"] = filename
+		item["file_size"] = fileSize
 
 		if targetPath := h.probeTargetPath(targetType, filename, clientIP, req.Dir, req.RootName); targetPath != "" {
 			_, statErr := os.Stat(targetPath)
-			item["targetExists"] = statErr == nil
+			item["target_exists"] = statErr == nil
 		}
 
 		if exists, histErr := h.urlTaskRepo.ExistsCompletedByURL(downloadURL); histErr == nil {
-			item["alreadyUploaded"] = exists
+			item["already_uploaded"] = exists
 		} else {
-			item["alreadyUploaded"] = false
+			item["already_uploaded"] = false
 		}
 		items = append(items, item)
 	}
@@ -454,15 +454,15 @@ func (h *UploadSessionHandler) GetURLTask(c *gin.Context) {
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"task": gin.H{
-			"id":              task.ID,
-			"fileName":        task.FileName,
-			"fileSize":        task.FileSize,
-			"downloadedBytes": task.DownloadedBytes,
-			"status":          task.Status,
-			"errorMessage":    task.ErrorMessage,
-			"retryCount":      task.RetryCount,
-			"createdAt":       task.CreatedAt,
-			"completedAt":     task.CompletedAt,
+			"id":               task.ID,
+			"file_name":        task.FileName,
+			"file_size":        task.FileSize,
+			"downloaded_bytes": task.DownloadedBytes,
+			"status":           task.Status,
+			"error_message":    task.ErrorMessage,
+			"retry_count":      task.RetryCount,
+			"created_at":       task.CreatedAt,
+			"completed_at":     task.CompletedAt,
 		},
 	})
 }
@@ -562,15 +562,15 @@ func (h *UploadSessionHandler) StreamURLTasks(c *gin.Context) {
 // urlTaskStreamItem 组装单条任务推送数据（字段与 GetURLTask 保持一致）
 func urlTaskStreamItem(task models.URLDownloadTask) gin.H {
 	return gin.H{
-		"id":              task.ID,
-		"fileName":        task.FileName,
-		"fileSize":        task.FileSize,
-		"downloadedBytes": task.DownloadedBytes,
-		"status":          task.Status,
-		"errorMessage":    task.ErrorMessage,
-		"retryCount":      task.RetryCount,
-		"createdAt":       task.CreatedAt,
-		"completedAt":     task.CompletedAt,
+		"id":               task.ID,
+		"file_name":        task.FileName,
+		"file_size":        task.FileSize,
+		"downloaded_bytes": task.DownloadedBytes,
+		"status":           task.Status,
+		"error_message":    task.ErrorMessage,
+		"retry_count":      task.RetryCount,
+		"created_at":       task.CreatedAt,
+		"completed_at":     task.CompletedAt,
 	}
 }
 
@@ -690,16 +690,16 @@ func (h *UploadSessionHandler) ListURLTasks(c *gin.Context) {
 	result := make([]gin.H, 0, len(tasks))
 	for _, t := range tasks {
 		result = append(result, gin.H{
-			"id":              t.ID,
-			"fileName":        t.FileName,
-			"fileSize":        t.FileSize,
-			"downloadedBytes": t.DownloadedBytes,
-			"status":          t.Status,
-			"errorMessage":    t.ErrorMessage,
-			"retryCount":      t.RetryCount,
-			"createdAt":       t.CreatedAt,
-			"completedAt":     t.CompletedAt,
-			"storageType":     t.StorageType,
+			"id":               t.ID,
+			"file_name":        t.FileName,
+			"file_size":        t.FileSize,
+			"downloaded_bytes": t.DownloadedBytes,
+			"status":           t.Status,
+			"error_message":    t.ErrorMessage,
+			"retry_count":      t.RetryCount,
+			"created_at":       t.CreatedAt,
+			"completed_at":     t.CompletedAt,
+			"storage_type":     t.StorageType,
 		})
 	}
 

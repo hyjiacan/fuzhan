@@ -1,12 +1,12 @@
 # HTTP API 风格统一方案
 
-> 状态：已实施（后端/前端/文档已同步）。规范正文见 [API_STYLE_GUIDE.md](./API_STYLE_GUIDE.md)，本文件只记录存量接口的迁移对照。
+> 状态：规范已定，代码已迁移。规范正文见 [API_STYLE_GUIDE.md](./API_STYLE_GUIDE.md)，本文件记录存量接口的迁移对照与执行进度。
 >
 > 已确认的决策：
 > 1. 命名空间：`/api/v1/web`、`/api/v1/web/admin`、`/api/v1/open`。
 > 2. 文件路径参数：只有 GET 用 URL 路径段（`*path`）；POST/PUT/DELETE 用参数（`path`）。
 > 3. 正式路径与历史别名并行保留：统一风格的正式路径与既有别名（`/download`、`/cli`、`/webdav`）指向同一 handler、同一鉴权；不删除重复入口，也不新增第二个别名。
-> 4. 请求参数命名：`snake_case`。
+> 4. 请求参数与响应字段命名：一律 `snake_case`。
 > 5. 唯一例外：开放 API 旧前缀 `/api/open/v1/*` 不保留别名，切换后直接失效。
 
 ---
@@ -78,7 +78,7 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 | 文本检索 | `query`（原 `q`/`query` 混用统一为 `query`） |
 | 鉴权 | `api_key` 查询参数保留（兼容 API Key 传递方式） |
 
-响应字段命名保持现有 JSON 风格，不在本次调整范围内。
+响应字段同样统一为 `snake_case`，与请求参数一致（见 1.6）。
 
 ### 1.5 方法与状态码
 
@@ -92,6 +92,7 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 ### 1.6 响应体
 
 - 所有 JSON 接口统一信封：`{success, code, message, data, errors}`。
+- 响应字段全部 `snake_case`，与请求参数一致：结构体 `json` tag 与 `gin.H`/map 字面量 key 同步改名（`fullPath`→`full_path`、`fileSize`→`file_size`、`pageSize`→`page_size`、`uploadId`→`upload_id`、`createdAt`→`created_at`）。截至本计划执行完成，上述「现状」列已不存在，全仓仅剩 snake_case。
 - 例外（不套信封）：文件下载/预览二进制流、SSE（`text/event-stream`）、WebDAV、Lite HTML、安装脚本。
 - `download_url` 等返回的 URL 字段同步改为新路径。
 
@@ -107,8 +108,8 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 
 ## 3. 接口清单（现状 → 目标）
 
-> 说明：所有接口的请求参数都要按 1.4 做 `camelCase → snake_case` 全量替换，表中只标注额外变化。
-> “不变”指路径与放置方式不变，仅参数命名随规范调整。
+> 说明：所有接口的请求参数按 1.4、响应字段按 1.6 做 `camelCase → snake_case` 全量替换，表中只标注额外变化。
+> “不变”指路径与放置方式不变，仅参数/响应字段命名随规范调整。
 
 ### 3.1 开放 API（原 `/api/open/v1` → `/api/v1/open`）
 
@@ -352,6 +353,20 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 7. 文档：`docs/design/api/API_INTERFACE.md`、`api-contracts.md`、`docs/requirements/*`、`project-context.md` §7。
 8. 回归：`go test ./...`、前端构建、路由冲突测试、下载/预览/上传手工冒烟。
 
+### 4.1 迁移进度
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 0 | 命名守卫测试 `server/internal/naming/naming_test.go` | ☑ |
+| 1 | 安全止血：验证码、文件校验值 | ☑ |
+| 2.1 | 配置与设置（`appconfig` + Settings/Setup 前端） | ☑ |
+| 2.2 | 文件、上传与下载 | ☑ |
+| 2.3 | 用户与鉴权 | ☑ |
+| 2.4 | 管理后台 | ☑ |
+| 2.5 | 索引、监控、资源、行为分析 | ☑ |
+| 2.6 | 其余模块 | ☑ |
+| 3 | 文档与 OpenAPI 对齐 | ☑ |
+
 ## 5. 已确认结论
 
 | 事项 | 结论 |
@@ -360,6 +375,6 @@ gin 同一 HTTP 方法下，`*path` 不能与静态段/参数段成为兄弟节�
 | 管理端 `upload-cert` / `upload-key` | 改为 `/admin/tls/certificate`、`/admin/tls/private-key` |
 | 重复入口是否删除 | 不删除，正式路径与别名并行保留（见 1.1.1） |
 | 开放 API 旧前缀 `/api/open/v1/*` | 不保留别名，直接失效 |
-| 写操作路径参数 | 统一完整路径 `path`；创建上传会话由 `rootName` + `dir` 合并为 `path=/docs/reports` |
+| 写操作路径参数 | 统一完整路径 `path`；创建上传会话由 `root_name` + `dir` 合并为 `path=/docs/reports` |
 | 文件列表根目录 | 统一用 `/files/list/`（带结尾斜杠） |
 | `POST /files/dependencies` | body 是 `file_record_id` / `depends_on_id`，保持 ID 方式，仅改 `snake_case` |

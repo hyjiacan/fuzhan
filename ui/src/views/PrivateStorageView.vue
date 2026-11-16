@@ -289,9 +289,9 @@ const columns = computed(() => [
   },
   {
     title: '大小',
-    key: 'fileSize',
+    key: 'file_size',
     width: 100,
-    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: var(--el-text-color-secondary);' }, '-') : formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: var(--el-text-color-secondary);' }, '-') : formatSize(row.file_size)
   },
   {
     title: '访问码',
@@ -301,12 +301,12 @@ const columns = computed(() => [
   },
   {
     title: '上传时间',
-    key: 'uploadTime',
+    key: 'upload_time',
     width: 180,
     cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
-      const text = TimeUtils.formatDateTime(row.uploadTime)
-      if (TimeUtils.isRecent24h(row.uploadTime)) {
+      const text = TimeUtils.formatDateTime(row.upload_time)
+      if (TimeUtils.isRecent24h(row.upload_time)) {
         return h('span', { style: 'color: #18a058' }, text)
       }
       return text

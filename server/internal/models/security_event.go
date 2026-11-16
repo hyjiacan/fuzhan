@@ -40,22 +40,22 @@ const (
 // 字段按 OWASP 日志指南设计，保证足够细、可关联、可追责。
 type SecurityEvent struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
-	EventType  string    `gorm:"size:64;not null" json:"eventType"`              // 事件类型，见 Event* 常量
-	Severity   string    `gorm:"size:16;not null;default:low" json:"severity"`   // 严重级别 high/medium/low
-	ClientIP   string    `gorm:"size:45;index" json:"clientIP"`                  // 源 IP
-	Identity   string    `gorm:"size:64" json:"identity"`                        // 操作者身份（用户名 或 anonymous）
-	Operation  string    `gorm:"size:64" json:"operation"`                       // 操作名称（如 auth.login、file.download）
-	Target     string    `gorm:"size:512" json:"target"`                         // 操作对象（路径/分享码/用户名）
-	HTTPMethod string    `gorm:"size:16" json:"httpMethod"`                      // HTTP 方法
-	Path       string    `gorm:"size:1024" json:"path"`                          // 请求路径+查询串
-	UserAgent  string    `gorm:"size:512" json:"userAgent"`                      // 客户端 UA
-	StatusCode int       `gorm:"default:0" json:"statusCode"`                    // HTTP 状态码
-	Result     string    `gorm:"size:16;not null;default:failure" json:"result"` // success/failure
-	Reason     string    `gorm:"size:512" json:"reason"`                         // 事件详情/错误描述
-	RequestID  string    `gorm:"size:64;index" json:"requestID"`                 // 关联同一波攻击的请求 ID
-	Guard      string    `gorm:"size:64" json:"guard"`                           // 命中的防护机制
-	Read       bool      `gorm:"not null;default:false;index" json:"read"`       // 管理员是否已读（评估提醒未读）
-	CreatedAt  time.Time `gorm:"index" json:"createdAt"`                         // 事件产生时间（UTC）
+	EventType  string    `gorm:"size:64;not null" json:"event_type"`              // 事件类型，见 Event* 常量
+	Severity   string    `gorm:"size:16;not null;default:low" json:"severity"`    // 严重级别 high/medium/low
+	ClientIP   string    `gorm:"size:45;index" json:"client_ip"`                  // 源 IP
+	Identity   string    `gorm:"size:64" json:"identity"`                         // 操作者身份（用户名 或 anonymous）
+	Operation  string    `gorm:"size:64" json:"operation"`                        // 操作名称（如 auth.login、file.download）
+	Target     string    `gorm:"size:512" json:"target"`                          // 操作对象（路径/分享码/用户名）
+	HTTPMethod string    `gorm:"size:16" json:"http_method"`                      // HTTP 方法
+	Path       string    `gorm:"size:1024" json:"path"`                           // 请求路径+查询串
+	UserAgent  string    `gorm:"size:512" json:"user_agent"`                      // 客户端 UA
+	StatusCode int       `gorm:"default:0" json:"status_code"`                    // HTTP 状态码
+	Result     string    `gorm:"size:16;not null;default:failure" json:"result"`  // success/failure
+	Reason     string    `gorm:"size:512" json:"reason"`                          // 事件详情/错误描述
+	RequestID  string    `gorm:"size:64;index" json:"request_id"`                 // 关联同一波攻击的请求 ID
+	Guard      string    `gorm:"size:64" json:"guard"`                            // 命中的防护机制
+	Read       bool      `gorm:"not null;default:false;index" json:"read"`        // 管理员是否已读（评估提醒未读）
+	CreatedAt  time.Time `gorm:"index" json:"created_at"`                         // 事件产生时间（UTC）
 }
 
 // TableName 指定表名

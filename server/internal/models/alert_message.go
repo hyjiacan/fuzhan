@@ -14,10 +14,10 @@ type AlertMessage struct {
 	Level        string    `gorm:"size:16;not null;default:warning" json:"level"`
 	Title        string    `gorm:"size:255;not null" json:"title"`
 	Content      string    `gorm:"type:text" json:"content"`
-	UsagePercent float64   `gorm:"not null;default:0" json:"usagePercent"`
-	RootName     string    `gorm:"size:64" json:"rootName"`
+	UsagePercent float64   `gorm:"not null;default:0" json:"usage_percent"`
+	RootName     string    `gorm:"size:64" json:"root_name"`
 	Read         bool      `gorm:"column:is_read;not null;default:false;index" json:"read"`
-	CreatedAt    time.Time `gorm:"index" json:"createdAt"`
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
 }
 
 // TableName 指定表名

@@ -161,10 +161,10 @@ func (h *PrivateUploadHandler) CreateSession(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusCreated, "会话创建成功", gin.H{
-		"uploadId":    cs.ID,
-		"chunkSize":   cs.ChunkSize,
-		"totalChunks": cs.TotalChunks,
-		"expiredAt":   cs.ExpiredAt,
+		"upload_id":    cs.ID,
+		"chunk_size":   cs.ChunkSize,
+		"total_chunks": cs.TotalChunks,
+		"expired_at":   cs.ExpiredAt,
 	})
 }
 
@@ -214,9 +214,9 @@ func (h *PrivateUploadHandler) ResumeSession(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "会话已恢复", gin.H{
-		"uploadId":        status.ID,
-		"uploadedIndexes": status.UploadedIndexes,
-		"expiredAt":       status.ExpiredAt,
+		"upload_id":        status.ID,
+		"uploaded_indexes": status.UploadedIndexes,
+		"expired_at":       status.ExpiredAt,
 	})
 }
 
@@ -285,7 +285,7 @@ func (h *PrivateUploadHandler) UploadChunk(c *gin.Context) {
 		return
 	}
 
-	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunkIndex": chunkIndexStr})
+	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunk_index": chunkIndexStr})
 }
 
 // FinalizeSession 完成私有上传
@@ -316,9 +316,9 @@ func (h *PrivateUploadHandler) FinalizeSession(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "上传完成", gin.H{
-		"code":     result.ShareCode,
-		"filename": session.FileName,
-		"fileSize": session.FileSize,
+		"code":      result.ShareCode,
+		"filename":  session.FileName,
+		"file_size": session.FileSize,
 	})
 }
 

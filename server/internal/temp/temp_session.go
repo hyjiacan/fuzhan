@@ -137,11 +137,11 @@ func (h *Handler) CreateTempSessionHandler(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusCreated, "", gin.H{
-		"uploadId":    cs.ID,
-		"code":        code,
-		"totalChunks": cs.TotalChunks,
-		"chunkSize":   cs.ChunkSize,
-		"expiredAt":   cs.ExpiredAt,
+		"upload_id":    cs.ID,
+		"code":         code,
+		"total_chunks": cs.TotalChunks,
+		"chunk_size":   cs.ChunkSize,
+		"expired_at":   cs.ExpiredAt,
 	})
 }
 
@@ -171,15 +171,15 @@ func (h *Handler) GetTempSessionHandler(c *gin.Context) {
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"session": gin.H{
-			"uploadId":        status.ID,
-			"code":            session.Code,
-			"filename":        status.FileName,
-			"fileSize":        status.FileSize,
-			"totalChunks":     status.TotalChunks,
-			"chunkSize":       status.ChunkSize,
-			"uploadedSize":    uploadedSize,
-			"uploadedIndexes": status.UploadedIndexes,
-			"expiredAt":       status.ExpiredAt,
+			"upload_id":        status.ID,
+			"code":             session.Code,
+			"filename":         status.FileName,
+			"file_size":        status.FileSize,
+			"total_chunks":     status.TotalChunks,
+			"chunk_size":       status.ChunkSize,
+			"uploaded_size":    uploadedSize,
+			"uploaded_indexes": status.UploadedIndexes,
+			"expired_at":       status.ExpiredAt,
 		},
 	})
 }
@@ -216,7 +216,7 @@ func (h *Handler) UploadTempChunkHandler(c *gin.Context) {
 	indexes, _ := repositories.NewChunkRepository(h.db).GetUploadedIndexes(session.ID)
 	for _, i := range indexes {
 		if i == chunkIndex {
-			utils.HandleSuccess(c, http.StatusOK, "", gin.H{"chunkIndex": chunkIndex, "checksum": checksum})
+			utils.HandleSuccess(c, http.StatusOK, "", gin.H{"chunk_index": chunkIndex, "checksum": checksum})
 			return
 		}
 	}
@@ -244,7 +244,7 @@ func (h *Handler) UploadTempChunkHandler(c *gin.Context) {
 		return
 	}
 
-	utils.HandleSuccess(c, http.StatusOK, "", gin.H{"chunkIndex": chunkIndex, "checksum": checksum})
+	utils.HandleSuccess(c, http.StatusOK, "", gin.H{"chunk_index": chunkIndex, "checksum": checksum})
 }
 
 // ResumeTempSessionHandler 处理恢复临时文件上传会话
@@ -272,12 +272,12 @@ func (h *Handler) ResumeTempSessionHandler(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "会话已恢复", gin.H{
-		"uploadId":        status.ID,
-		"uploadedIndexes": status.UploadedIndexes,
-		"uploadedSize":    uploadedSize,
-		"totalChunks":     status.TotalChunks,
-		"chunkSize":       status.ChunkSize,
-		"expiredAt":       status.ExpiredAt,
+		"upload_id":        status.ID,
+		"uploaded_indexes": status.UploadedIndexes,
+		"uploaded_size":    uploadedSize,
+		"total_chunks":     status.TotalChunks,
+		"chunk_size":       status.ChunkSize,
+		"expired_at":       status.ExpiredAt,
 	})
 }
 
@@ -344,11 +344,11 @@ func (h *Handler) FinalizeTempUploadHandler(c *gin.Context) {
 	expiredAt := utils.Now().Add(time.Duration(expireDays) * 24 * time.Hour)
 
 	utils.HandleSuccess(c, http.StatusCreated, "", gin.H{
-		"code":        result.ShareCode,
-		"filename":    result.FileName,
-		"fileSize":    session.FileSize,
-		"expiredAt":   expiredAt,
-		"downloadUrl": fmt.Sprintf("/api/v1/web/temp/%s/download", result.ShareCode),
+		"code":         result.ShareCode,
+		"filename":     result.FileName,
+		"file_size":    session.FileSize,
+		"expired_at":   expiredAt,
+		"download_url": fmt.Sprintf("/api/v1/web/temp/%s/download", result.ShareCode),
 	})
 }
 

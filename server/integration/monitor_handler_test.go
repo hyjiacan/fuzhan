@@ -63,11 +63,11 @@ func TestMonitorHandler_Storage(t *testing.T) {
 		t.Fatal("data 应为对象")
 	}
 
-	if data["totalSpace"] == nil {
-		t.Error("totalSpace 字段应存在")
+	if data["total_space"] == nil {
+		t.Error("total_space 字段应存在")
 	}
-	if data["usedSpace"] == nil {
-		t.Error("usedSpace 字段应存在")
+	if data["used_space"] == nil {
+		t.Error("used_space 字段应存在")
 	}
 	if data["roots"] == nil {
 		t.Error("roots 字段应存在")
@@ -104,11 +104,11 @@ func TestMonitorHandler_Access(t *testing.T) {
 		t.Fatal("data 应为对象")
 	}
 
-	if data["totalRequests"] == nil {
-		t.Error("totalRequests 字段应存在")
+	if data["total_requests"] == nil {
+		t.Error("total_requests 字段应存在")
 	}
-	if data["activeUsers"] == nil {
-		t.Error("activeUsers 字段应存在")
+	if data["active_users"] == nil {
+		t.Error("active_users 字段应存在")
 	}
 }
 
@@ -150,12 +150,12 @@ func TestMonitorHandler_Access_WithRecords(t *testing.T) {
 	}
 
 	// 验证统计数据
-	totalRequests, ok := data["totalRequests"].(float64)
+	totalRequests, ok := data["total_requests"].(float64)
 	if !ok {
-		t.Error("totalRequests 应为数字")
+		t.Error("total_requests 应为数字")
 	}
 	if totalRequests != 3 {
-		t.Errorf("期望 totalRequests 为 3，实际 %v", totalRequests)
+		t.Errorf("期望 total_requests 为 3，实际 %v", totalRequests)
 	}
 }
 
@@ -291,11 +291,11 @@ func TestMonitorHandler_Rankings(t *testing.T) {
 		t.Fatal("data 应为对象")
 	}
 
-	if data["recentUploads"] == nil {
-		t.Error("recentUploads 字段应存在")
+	if data["recent_uploads"] == nil {
+		t.Error("recent_uploads 字段应存在")
 	}
-	if data["recentDownloads"] == nil {
-		t.Error("recentDownloads 字段应存在")
+	if data["recent_downloads"] == nil {
+		t.Error("recent_downloads 字段应存在")
 	}
 }
 
@@ -346,17 +346,17 @@ func TestMonitorHandler_Rankings_WithRecords(t *testing.T) {
 		t.Fatal("data 应为对象")
 	}
 
-	uploads, ok := data["recentUploads"].([]interface{})
+	uploads, ok := data["recent_uploads"].([]interface{})
 	if !ok {
-		t.Fatal("recentUploads 应为数组")
+		t.Fatal("recent_uploads 应为数组")
 	}
 	if len(uploads) != 2 {
 		t.Errorf("期望 2 条上传记录，实际 %d", len(uploads))
 	}
 
-	downloads, ok := data["recentDownloads"].([]interface{})
+	downloads, ok := data["recent_downloads"].([]interface{})
 	if !ok {
-		t.Fatal("recentDownloads 应为数组")
+		t.Fatal("recent_downloads 应为数组")
 	}
 	if len(downloads) != 1 {
 		t.Errorf("期望 1 条下载记录，实际 %d", len(downloads))

@@ -64,16 +64,16 @@ export function useHomeTable({ isSearching, searchCompleted }) {
     }
 
     let cmp
-    if (key === 'modifiedTime') {
+    if (key === 'modified_time') {
       cmp = (a, b) => {
-        const ta = String(a.modifiedTime || '')
-        const tb = String(b.modifiedTime || '')
+        const ta = String(a.modified_time || '')
+        const tb = String(b.modified_time || '')
         if (ta < tb) return -1
         if (ta > tb) return 1
         return 0
       }
-    } else if (key === 'downloadCount') {
-      cmp = (a, b) => (a.downloadCount || 0) - (b.downloadCount || 0)
+    } else if (key === 'download_count') {
+      cmp = (a, b) => (a.download_count || 0) - (b.download_count || 0)
     } else {
       // 默认为路径/文件名排序，保持"英文在前、中文按拼音"规则
       cmp = (a, b) => compareFileNames(a.name, b.name)

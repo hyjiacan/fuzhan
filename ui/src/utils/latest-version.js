@@ -53,7 +53,7 @@ export function analyzeLatestVersionsAsync(files, config = {}) {
     path: f.path,
     name: f.name,
     type: f.type,
-    modifiedTime: f.modifiedTime
+    modifiedTime: f.modified_time
   }))
 
   return new Promise((resolve) => {

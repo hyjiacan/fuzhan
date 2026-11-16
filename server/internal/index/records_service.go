@@ -369,7 +369,7 @@ func (s *Service) DeleteRecord(id uint) error {
 // KeptDuplicateResult 保留指定文件记录，删除同哈希的其他重复文件（索引记录 + 磁盘文件）
 // 返回被删除的文件列表
 type KeptDuplicateResult struct {
-	DeletedFiles []DuplicateFileItem `json:"deletedFiles"`
+	DeletedFiles []DuplicateFileItem `json:"deleted_files"`
 }
 
 func (s *Service) KeepDuplicate(id uint) (*KeptDuplicateResult, error) {

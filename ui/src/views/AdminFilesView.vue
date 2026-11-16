@@ -18,13 +18,13 @@
             触发全量扫描
           </el-button>
           <span v-if="scanProgress.status === 'running'" class="scan-progress-text">
-            扫描中: {{ scanProgress.scannedFiles }} / {{ scanProgress.totalFiles }}
+            扫描中: {{ scanProgress.scanned_files }} / {{ scanProgress.total_files }}
           </span>
           <span v-else-if="scanProgress.status === 'completed'" class="scan-progress-text completed">
             扫描完成
           </span>
           <span v-else-if="scanProgress.status === 'failed'" class="scan-progress-text failed">
-            扫描失败: {{ scanProgress.errorMessage }}
+            扫描失败: {{ scanProgress.error_message }}
           </span>
         </div>
       </div>
@@ -170,10 +170,10 @@ const saveNotes = async () => {
   }
   savingNotes.value = true
   try {
-    let recordId = row.recordId
+    let recordId = row.record_id
     if (!recordId) {
       const fullPath = row.path || ''
-      const rootName = row.rootName || ''
+      const rootName = row.root_name || ''
       const fileName = row.name || ''
       const indexPath = rootName ? fullPath.slice(rootName.length + 1) : fullPath
       const findRes = await FileRecordApi.findRecord(fileName, rootName, indexPath)

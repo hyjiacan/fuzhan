@@ -5,7 +5,7 @@
       size="small"
       stripe
     >
-      <el-table-column prop="fileName" label="文件名" show-overflow-tooltip />
+      <el-table-column prop="file_name" label="文件名" show-overflow-tooltip />
       <el-table-column prop="_type" label="上传类型" width="105">
         <template #default="{ row }">
           <el-tag :type="elTagType(typeMap[row._type]?.type || 'default')" size="small">{{ typeMap[row._type]?.text || '-' }}</el-tag>
@@ -23,12 +23,12 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="fileSize" label="文件大小" width="100">
-        <template #default="{ row }">{{ row.fileSize ? formatSize(row.fileSize) : '-' }}</template>
+      <el-table-column prop="file_size" label="文件大小" width="100">
+        <template #default="{ row }">{{ row.file_size ? formatSize(row.file_size) : '-' }}</template>
       </el-table-column>
-      <el-table-column prop="completedAt" label="完成时间" width="155">
+      <el-table-column prop="completed_at" label="完成时间" width="155">
         <template #default="{ row }">
-          <span>{{ TimeUtils.formatDateTime(row.completedAt) }} </span>
+          <span>{{ TimeUtils.formatDateTime(row.completed_at) }} </span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="180">
@@ -97,8 +97,8 @@ function elTagType(type) {
 }
 
 function getProgress(row) {
-  const total = row.fileSize || 0
-  const downloaded = row.downloadedBytes || row.uploadedBytes || 0
+  const total = row.file_size || 0
+  const downloaded = row.downloaded_bytes || row.uploaded_size || 0
   if (total > 0) return Math.round(downloaded / total * 100)
   return null
 }
@@ -165,7 +165,7 @@ async function loadData() {
     allTasks.value = [
       ...sessions.map(s => ({ ...s, _type: 'session' })),
       ...urlTasks.map(t => ({ ...t, _type: 'url' }))
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     // 数据变少导致当前页越界时回退到最后一页
     const maxPage = Math.max(1, Math.ceil(allTasks.value.length / pagination.value.pageSize))
     if (pagination.value.page > maxPage) pagination.value.page = maxPage

@@ -19,7 +19,7 @@
       <div class="table-v2-wrap">
         <!-- 表内嵌于流式卡片中，使用普通 el-table（支持 max-height）即可满足固定高度滚动，虚拟滚动无法稳定测量高度，故未采用 el-table-v2 -->
         <el-table :data="visibleActiveTasks" size="small" :border="false" :max-height="400">
-          <el-table-column label="任务名称" prop="taskName" min-width="200" show-overflow-tooltip />
+          <el-table-column label="任务名称" prop="task_name" min-width="200" show-overflow-tooltip />
           <el-table-column label="类型" width="110">
             <template #default="{ row }">
               <el-tag size="small" :type="taskTypeTag(row).type">{{ taskTypeTag(row).label }}</el-tag>
@@ -43,19 +43,19 @@
                   :status="row.status === 'failed' ? 'exception' : undefined"
                   style="flex: 1;"
                 />
-                <span v-if="row.totalItems > 0" class="progress-count">({{ row.doneItems }}/{{ row.totalItems }})</span>
+                <span v-if="row.total_items > 0" class="progress-count">({{ row.done_items }}/{{ row.total_items }})</span>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="开始时间" width="180">
-            <template #default="{ row }">{{ row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-' }}</template>
+            <template #default="{ row }">{{ row.started_at ? TimeUtils.formatDateTime(row.started_at) : '-' }}</template>
           </el-table-column>
           <el-table-column label="已运行" width="100">
-            <template #default="{ row }">{{ row.startedAt ? formatDuration(row.startedAt, new Date().toISOString()) : '-' }}</template>
+            <template #default="{ row }">{{ row.started_at ? formatDuration(row.started_at, new Date().toISOString()) : '-' }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" width="240" prop="errorMessage">
+          <el-table-column label="错误信息" width="240" prop="error_message">
             <template #default="{ row }">
-              <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
+              <span v-if="row.error_message" style="color: #d03050;">{{ row.error_message }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
@@ -99,7 +99,7 @@
       </template>
       <div class="table-v2-wrap">
         <el-table :data="historyTasks" size="small" :border="false" :max-height="500">
-          <el-table-column label="任务名称" prop="taskName" min-width="200" show-overflow-tooltip />
+          <el-table-column label="任务名称" prop="task_name" min-width="200" show-overflow-tooltip />
           <el-table-column label="类型" width="110">
             <template #default="{ row }">
               <el-tag size="small" :type="taskTypeTag(row).type">{{ taskTypeTag(row).label }}</el-tag>
@@ -124,17 +124,17 @@
             </template>
           </el-table-column>
           <el-table-column label="开始时间" width="180">
-            <template #default="{ row }">{{ row.startedAt ? TimeUtils.formatDateTime(row.startedAt) : '-' }}</template>
+            <template #default="{ row }">{{ row.started_at ? TimeUtils.formatDateTime(row.started_at) : '-' }}</template>
           </el-table-column>
           <el-table-column label="完成时间" width="180">
-            <template #default="{ row }">{{ row.endedAt ? TimeUtils.formatDateTime(row.endedAt) : '-' }}</template>
+            <template #default="{ row }">{{ row.ended_at ? TimeUtils.formatDateTime(row.ended_at) : '-' }}</template>
           </el-table-column>
           <el-table-column label="耗时" width="90">
-            <template #default="{ row }">{{ formatDuration(row.startedAt, row.endedAt) }}</template>
+            <template #default="{ row }">{{ formatDuration(row.started_at, row.ended_at) }}</template>
           </el-table-column>
-          <el-table-column label="错误信息" width="240" prop="errorMessage">
+          <el-table-column label="错误信息" width="240" prop="error_message">
             <template #default="{ row }">
-              <span v-if="row.errorMessage" style="color: #d03050;">{{ row.errorMessage }}</span>
+              <span v-if="row.error_message" style="color: #d03050;">{{ row.error_message }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
@@ -275,7 +275,7 @@ const taskTypeLabels = {
 }
 
 const taskTypeTag = (row) => {
-  const info = taskTypeLabels[row.taskType] || { label: row.taskType, type: 'default' }
+  const info = taskTypeLabels[row.task_type] || { label: row.task_type, type: 'default' }
   return { label: info.label, type: naiveToElTag(info.type) }
 }
 
@@ -380,11 +380,11 @@ const loadSchedule = async () => {
     if (res.success && res.data) {
       const idx = res.data.index || {}
       schedule.value = {
-        scanStartDelaySeconds: idx.scanStartDelaySeconds || 10,
-        scanCronExpression: idx.scanCronExpression || '0 1 * * *',
-        searchReconcileCronExpression: idx.searchReconcileCronExpression || '0 5 * * *',
-        cleanupCronExpression: idx.cleanupCronExpression || '0 * * * *',
-        consistencyCheckCronExpression: idx.consistencyCheckCronExpression || '0 3 * * *'
+        scanStartDelaySeconds: idx.scan_start_delay_seconds || 10,
+        scanCronExpression: idx.scan_cron_expression || '0 1 * * *',
+        searchReconcileCronExpression: idx.search_reconcile_cron_expression || '0 5 * * *',
+        cleanupCronExpression: idx.cleanup_cron_expression || '0 * * * *',
+        consistencyCheckCronExpression: idx.consistency_check_cron_expression || '0 3 * * *'
       }
       scheduleLoaded.value = true
     }
@@ -424,11 +424,11 @@ const saveSchedule = async () => {
   try {
     const res = await ConfigApi.save({
       index: {
-        scanStartDelaySeconds: draft.scanStartDelaySeconds,
-        scanCronExpression: draft.scanCronExpression.trim(),
-        searchReconcileCronExpression: draft.searchReconcileCronExpression.trim(),
-        cleanupCronExpression: draft.cleanupCronExpression.trim(),
-        consistencyCheckCronExpression: draft.consistencyCheckCronExpression.trim()
+        scan_start_delay_seconds: draft.scanStartDelaySeconds,
+        scan_cron_expression: draft.scanCronExpression.trim(),
+        search_reconcile_cron_expression: draft.searchReconcileCronExpression.trim(),
+        cleanup_cron_expression: draft.cleanupCronExpression.trim(),
+        consistency_check_cron_expression: draft.consistencyCheckCronExpression.trim()
       }
     })
     if (res.success) {

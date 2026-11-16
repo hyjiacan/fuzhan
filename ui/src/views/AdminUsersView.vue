@@ -205,10 +205,10 @@ const columns = [
   },
   {
     title: '姓名',
-    key: 'displayName',
+    key: 'display_name',
     minWidth: 120,
     flexGrow: 1,
-    cellRenderer: ({ rowData: row }) => h('div', { title: row.displayName || '' }, row.displayName || '-')
+    cellRenderer: ({ rowData: row }) => h('div', { title: row.display_name || '' }, row.display_name || '-')
   },
   {
     title: '昵称',
@@ -234,9 +234,9 @@ const columns = [
   },
   {
     title: '注册时间',
-    key: 'createdAt',
+    key: 'created_at',
     width: 180,
-    cellRenderer: ({ rowData: row }) => TimeUtils.formatDateTime(row.createdAt)
+    cellRenderer: ({ rowData: row }) => TimeUtils.formatDateTime(row.created_at)
   },
   {
     title: '配额使用',
@@ -244,7 +244,7 @@ const columns = [
     width: 200,
     cellRenderer: ({ rowData: row }) => {
       if (!row.quota) return h('span', { style: 'color: var(--el-text-color-secondary); font-size: 12px' }, '无限制')
-      const used = row.usedStorage || 0
+      const used = row.used_storage || 0
       const percentage = Math.min(100, Math.round(used / row.quota * 100))
       const status = percentage >= 90 ? 'exception' : percentage >= 70 ? 'warning' : 'success'
       return h('div', {

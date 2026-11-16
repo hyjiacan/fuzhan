@@ -129,7 +129,7 @@ func TestVerifyCaptchaAfterNTriggersAfterThreshold(t *testing.T) {
 	}
 }
 
-// TestGetCaptchaReturnsIDAndPNGDataURI 验证获取验证码接口返回 captchaId 与 PNG data URI。
+// TestGetCaptchaReturnsIDAndPNGDataURI 验证获取验证码接口返回 captcha_id 与 PNG data URI。
 func TestGetCaptchaReturnsIDAndPNGDataURI(t *testing.T) {
 	r := gin.New()
 	r.GET("/captcha", NewHandler(nil, nil).GetCaptcha)
@@ -142,7 +142,7 @@ func TestGetCaptchaReturnsIDAndPNGDataURI(t *testing.T) {
 	var body struct {
 		Success bool `json:"success"`
 		Data    struct {
-			CaptchaID string `json:"captchaId"`
+			CaptchaID string `json:"captcha_id"`
 			Image     string `json:"image"`
 		} `json:"data"`
 	}
@@ -153,7 +153,7 @@ func TestGetCaptchaReturnsIDAndPNGDataURI(t *testing.T) {
 		t.Fatalf("success = false, body = %s", w.Body.String())
 	}
 	if body.Data.CaptchaID == "" {
-		t.Fatal("captchaId 不应为空")
+		t.Fatal("captcha_id 不应为空")
 	}
 	if !strings.HasPrefix(body.Data.Image, "data:image/png;base64,") {
 		t.Fatalf("image 应以 PNG data URI 开头，实际前缀 %q", trimPrefix(body.Data.Image))
@@ -238,7 +238,7 @@ func TestRefreshReturnsCurrentUserWithoutCaptcha(t *testing.T) {
 			UUID      string `json:"uuid"`
 			Username  string `json:"username"`
 			Role      string `json:"role"`
-			CreatedAt string `json:"createdAt"`
+			CreatedAt string `json:"created_at"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {

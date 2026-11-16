@@ -83,12 +83,12 @@ func (h *Handler) OnlineIPs(c *gin.Context) {
 	paged := entries[start:end]
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"online":             paged,
-		"total":              total,
-		"page":               page,
-		"pageSize":           pageSize,
-		"idleTimeoutSeconds": int(online.IdleTimeout.Seconds()),
-		"serverTime":         now.Format(time.RFC3339),
+		"online":               paged,
+		"total":                total,
+		"page":                 page,
+		"page_size":            pageSize,
+		"idle_timeout_seconds": int(online.IdleTimeout.Seconds()),
+		"server_time":          now.Format(time.RFC3339),
 	})
 }
 
@@ -137,10 +137,10 @@ func (h *Handler) CreateUserHandler(c *gin.Context) {
 
 	middleware.LogOperation(c, "admin.user.create", req.Username, nil)
 	response.HandleSuccess(c, http.StatusCreated, "用户创建成功", gin.H{
-		"uuid":        user.UUID,
-		"username":    user.Username,
-		"displayName": user.DisplayName,
-		"role":        user.Role,
+		"uuid":         user.UUID,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"role":         user.Role,
 	})
 }
 

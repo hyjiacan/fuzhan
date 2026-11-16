@@ -60,7 +60,7 @@ func (h *DependencyHandler) ListDependencies(c *gin.Context) {
 		"dependencies": deps,
 		"total":        total,
 		"page":         query.Page,
-		"pageSize":     query.PageSize,
+		"page_size":    query.PageSize,
 	})
 }
 

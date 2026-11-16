@@ -180,7 +180,7 @@
 
             <div v-if="ep._testResult" class="endpoint-test-result" :class="{ ok: ep._testResult.success }">
               <span class="test-status">{{ ep._testResult.success ? '成功' : '失败' }}</span>
-              <span class="test-meta">HTTP {{ ep._testResult.statusCode || '-' }} · {{ ep._testResult.elapsedMs }}ms</span>
+              <span class="test-meta">HTTP {{ ep._testResult.status_code || '-' }} · {{ ep._testResult.elapsed_ms }}ms</span>
               <span v-if="ep._testResult.error" class="test-error">{{ ep._testResult.error }}</span>
               <span class="test-url">{{ ep._testResult.url }}</span>
             </div>
@@ -196,7 +196,7 @@
           <div class="test-results">
             <div v-for="(r, i) in allTestResults" :key="i" class="test-result-line" :class="{ ok: r.success }">
               <span class="test-status">{{ r.success ? '成功' : '失败' }}</span>
-              [{{ r.name || r.url }}] HTTP {{ r.statusCode || '-' }} · {{ r.elapsedMs }}ms
+              [{{ r.name || r.url }}] HTTP {{ r.status_code || '-' }} · {{ r.elapsed_ms }}ms
               <span v-if="r.error" class="test-error">—— {{ r.error }}</span>
             </div>
           </div>
@@ -274,8 +274,8 @@ const webhookEndpointPayload = (ep) => ({
   enabled: ep.enabled,
   events: Array.isArray(ep.events) ? ep.events : [],
   secret: ep.secret,
-  timeoutSeconds: ep.timeoutSeconds,
-  maxRetries: ep.maxRetries,
+  timeout_seconds: ep.timeoutSeconds,
+  max_retries: ep.maxRetries,
   headers: ep.headers || {},
   query: ep.query || {}
 })
@@ -315,13 +315,15 @@ const loadConfig = async () => {
       ...ep,
       enabled: ep.enabled !== false,
       events: Array.isArray(ep.events) ? ep.events : [],
+      timeoutSeconds: ep.timeout_seconds ?? 0,
+      maxRetries: ep.max_retries ?? 0,
       headers: ep.headers || {},
       query: ep.query || {}
     }))
     data.secret = wh.secret || ''
-    data.timeoutSeconds = wh.timeoutSeconds || 10
-    data.maxRetries = wh.maxRetries ?? 3
-    data.queueSize = wh.queueSize ?? 1024
+    data.timeoutSeconds = wh.timeout_seconds || 10
+    data.maxRetries = wh.max_retries ?? 3
+    data.queueSize = wh.queue_size ?? 1024
     markClean()
     loaded.value = true
   } catch (e) {
@@ -338,9 +340,9 @@ const webhookPayload = (globals) => ({
   urls: data.urls,
   endpoints: data.endpoints.map(webhookEndpointPayload),
   secret: globals.secret,
-  timeoutSeconds: globals.timeoutSeconds,
-  maxRetries: globals.maxRetries,
-  queueSize: globals.queueSize
+  timeout_seconds: globals.timeoutSeconds,
+  max_retries: globals.maxRetries,
+  queue_size: globals.queueSize
 })
 
 const saveConfig = async () => {
@@ -398,17 +400,17 @@ const refreshStoreOptions = async () => {
     if (optionsRes.data) {
       store.setConfig({
         appName: optionsRes.data.app?.name || '',
-        privateStorageEnabled: optionsRes.data.privateStorage?.enabled ?? false,
-        tempFilesEnabled: optionsRes.data.tempFiles?.enabled ?? true,
+        privateStorageEnabled: optionsRes.data.private_storage?.enabled ?? false,
+        tempFilesEnabled: optionsRes.data.temp_files?.enabled ?? true,
         ftpEnabled: optionsRes.data.ftp?.enabled ?? false,
         ftpPort: optionsRes.data.ftp?.port ?? null,
         webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
-        openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
-        allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
-        requireLogin: optionsRes.data.account?.requireLogin ?? false,
+        openApiEnabled: optionsRes.data.open_api?.enabled ?? false,
+        allowRegistration: optionsRes.data.account?.allow_registration ?? false,
+        requireLogin: optionsRes.data.account?.require_login ?? false,
         captchaMode: optionsRes.data.account?.captcha?.mode ?? 'disabled',
-        captchaTriggerAfter: optionsRes.data.account?.captcha?.triggerAfter ?? 3,
-        anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || ''
+        captchaTriggerAfter: optionsRes.data.account?.captcha?.trigger_after ?? 3,
+        anonymousUsername: optionsRes.data.webdav?.public_username || optionsRes.data.account?.anonymous?.username || ''
       })
     }
   } catch (e) {
@@ -573,8 +575,8 @@ const endpointToDTO = (ep) => ({
   enabled: ep.enabled,
   events: ep.events || [],
   secret: ep.secret,
-  timeoutSeconds: ep.timeoutSeconds,
-  maxRetries: ep.maxRetries,
+  timeout_seconds: ep.timeoutSeconds,
+  max_retries: ep.maxRetries,
   headers: mapFromRows(ep._headersRows || []),
   query: mapFromRows(ep._queryRows || [])
 })

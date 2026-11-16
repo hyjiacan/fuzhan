@@ -21,7 +21,7 @@ import (
 type StorageAlertRoot struct {
 	Name         string  `json:"name"`
 	Path         string  `json:"path"`
-	UsagePercent float64 `json:"usagePercent"`
+	UsagePercent float64 `json:"usage_percent"`
 	Used         int64   `json:"used"`
 	Quota        int64   `json:"quota"`
 	Total        int64   `json:"total"`
@@ -30,12 +30,12 @@ type StorageAlertRoot struct {
 
 // StorageAlertEvaluation 一次存储告警评估结果。
 type StorageAlertEvaluation struct {
-	ThresholdPercent float64            `json:"thresholdPercent"`
+	ThresholdPercent float64            `json:"threshold_percent"`
 	Triggered        bool               `json:"triggered"`
 	Level            string             `json:"level"`
 	Roots            []StorageAlertRoot `json:"roots"`
-	MaxUsagePercent  float64            `json:"maxUsagePercent"`
-	OccurredAt       time.Time          `json:"occurredAt"`
+	MaxUsagePercent  float64            `json:"max_usage_percent"`
+	OccurredAt       time.Time          `json:"occurred_at"`
 }
 
 // StorageAlertService 周期性检查存储使用率，并在达到阈值时通过
@@ -225,13 +225,13 @@ func percent(used, total int64) float64 {
 func (s *StorageAlertService) notify(cfg appconfig.StorageAlertConfig, evaluation *StorageAlertEvaluation) {
 	title, content := buildStorageAlertText(evaluation)
 	payload := map[string]interface{}{
-		"level":            evaluation.Level,
-		"title":            title,
-		"content":          content,
-		"thresholdPercent": evaluation.ThresholdPercent,
-		"maxUsagePercent":  evaluation.MaxUsagePercent,
-		"roots":            evaluation.Roots,
-		"occurredAt":       evaluation.OccurredAt.Format(time.RFC3339),
+		"level":             evaluation.Level,
+		"title":             title,
+		"content":           content,
+		"threshold_percent": evaluation.ThresholdPercent,
+		"max_usage_percent": evaluation.MaxUsagePercent,
+		"roots":             evaluation.Roots,
+		"occurred_at":       evaluation.OccurredAt.Format(time.RFC3339),
 	}
 
 	if cfg.WebEnabled {

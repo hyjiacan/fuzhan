@@ -12,19 +12,19 @@ import (
 // 用于第三方系统集成认证，管理员后台生成，绑定权限范围。
 type ApiKey struct {
 	ID     uint   `gorm:"primaryKey" json:"id"`
-	KeyID  string `gorm:"size:32;uniqueIndex;not null" json:"keyId"` // 唯一标识
-	ApiKey string `gorm:"size:256;uniqueIndex;not null" json:"-"`    // API Key 密钥（bcrypt 哈希存储）
-	Name   string `gorm:"size:128;not null" json:"name"`             // 应用/密钥名称
-	UserID uint   `gorm:"not null;index" json:"userId"`              // 所属用户 ID
-	Scopes string `gorm:"size:512;not null" json:"scopes"`           // 权限范围（逗号分隔: open_api:reader,open_api:writer）
+	KeyID  string `gorm:"size:32;uniqueIndex;not null" json:"key_id"` // 唯一标识
+	ApiKey string `gorm:"size:256;uniqueIndex;not null" json:"-"`     // API Key 密钥（bcrypt 哈希存储）
+	Name   string `gorm:"size:128;not null" json:"name"`              // 应用/密钥名称
+	UserID uint   `gorm:"not null;index" json:"user_id"`              // 所属用户 ID
+	Scopes string `gorm:"size:512;not null" json:"scopes"`            // 权限范围（逗号分隔: open_api:reader,open_api:writer）
 	// AllowedPaths 允许操作的公开目录路径（换行分隔的 /rootName[/sub] 前缀）；
 	// 空值或 "*" 表示所有路径。仅对 Open API 的公开目录操作生效。
-	AllowedPaths string     `gorm:"size:4096" json:"allowedPaths"`
+	AllowedPaths string     `gorm:"size:4096" json:"allowed_paths"`
 	Status       string     `gorm:"size:20;default:active;index" json:"status"` // active / disabled
-	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`                       // 最后使用时间
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`                        // 过期时间（nil 表示永不过期）
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`                     // 最后使用时间
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`                       // 过期时间（nil 表示永不过期）
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // TableName 指定表名
@@ -250,15 +250,15 @@ func normalizeAllowedPath(raw string) (string, bool) {
 // OAuthClient OAuth 2.0 客户端注册
 type OAuthClient struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	ClientID     string    `gorm:"size:64;uniqueIndex;not null" json:"clientId"`
-	ClientSecret string    `gorm:"size:128;not null" json:"-"`            // 加盐哈希
-	Name         string    `gorm:"size:128;not null" json:"name"`         // 应用名称
-	RedirectURI  string    `gorm:"size:1024;not null" json:"redirectUri"` // 回调 URL
-	Scopes       string    `gorm:"size:512;not null" json:"scopes"`       // 允许的 Scope
-	UserID       uint      `gorm:"not null;index" json:"userId"`          // 创建者
-	Status       string    `gorm:"size:20;default:active" json:"status"`  // active / disabled
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ClientID     string    `gorm:"size:64;uniqueIndex;not null" json:"client_id"`
+	ClientSecret string    `gorm:"size:128;not null" json:"-"`              // 加盐哈希
+	Name         string    `gorm:"size:128;not null" json:"name"`           // 应用名称
+	RedirectURI  string    `gorm:"size:1024;not null" json:"redirect_uri"`  // 回调 URL
+	Scopes       string    `gorm:"size:512;not null" json:"scopes"`         // 允许的 Scope
+	UserID       uint      `gorm:"not null;index" json:"user_id"`           // 创建者
+	Status       string    `gorm:"size:20;default:active" json:"status"`    // active / disabled
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名
@@ -269,12 +269,12 @@ func (OAuthClient) TableName() string {
 // AuthRecord 认证记录（用于统一认证管理）
 type AuthRecord struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	UserID       uint      `gorm:"not null;index" json:"userId"`           // 关联的本地用户 ID
-	AuthType     string    `gorm:"size:32;not null;index" json:"authType"` // ldap / oauth2 / local
-	ExternalID   string    `gorm:"size:256;not null" json:"externalId"`    // 外部 ID（LDAP DN、OAuth subject）
-	ExternalName string    `gorm:"size:128" json:"externalName"`           // 外部显示名称
-	ProviderName string    `gorm:"size:64" json:"providerName"`            // 提供方名称（如 oauth2:github, ldap:company）
-	CreatedAt    time.Time `json:"createdAt"`
+	UserID       uint      `gorm:"not null;index" json:"user_id"`             // 关联的本地用户 ID
+	AuthType     string    `gorm:"size:32;not null;index" json:"auth_type"`   // ldap / oauth2 / local
+	ExternalID   string    `gorm:"size:256;not null" json:"external_id"`      // 外部 ID（LDAP DN、OAuth subject）
+	ExternalName string    `gorm:"size:128" json:"external_name"`             // 外部显示名称
+	ProviderName string    `gorm:"size:64" json:"provider_name"`              // 提供方名称（如 oauth2:github, ldap:company）
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // TableName 指定表名

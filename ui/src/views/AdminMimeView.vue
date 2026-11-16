@@ -100,7 +100,7 @@ const loadConfig = async () => {
     const res = await ConfigApi.get()
     if (!res.success || !res.data) throw new Error('配置数据为空')
     const cfg = res.data
-    const mt = cfg.mimeTable || {}
+    const mt = cfg.mime_table || {}
     for (const k of Object.keys(mimeTable)) delete mimeTable[k]
     Object.assign(mimeTable, mt)
     markClean()
@@ -116,7 +116,7 @@ const loadConfig = async () => {
 const saveConfig = async () => {
   saving.value = true
   try {
-    const res = await ConfigApi.save({ mimeTable: { ...mimeTable } })
+    const res = await ConfigApi.save({ mime_table: { ...mimeTable } })
     if (res.success) {
       ElMessage.success(res.message || '配置已保存并生效')
       markClean()

@@ -35,11 +35,11 @@ func (h *Handler) List(c *gin.Context) {
 	}
 	unread, _ := h.svc.UnreadCount()
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"list":     items,
-		"total":    total,
-		"unread":   unread,
-		"page":     page,
-		"pageSize": pageSize,
+		"list":      items,
+		"total":     total,
+		"unread":    unread,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 

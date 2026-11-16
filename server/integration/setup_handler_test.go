@@ -75,7 +75,7 @@ func TestSetupSaveConfig(t *testing.T) {
 
 	// 测试空目录列表
 	t.Run("空目录列表应返回错误", func(t *testing.T) {
-		body := `{"appName":"测试","host":"0.0.0.0","port":8080,"rootDirs":[]}`
+		body := `{"app_name":"测试","host":"0.0.0.0","port":8080,"root_dirs":[]}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/web/setup/save", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

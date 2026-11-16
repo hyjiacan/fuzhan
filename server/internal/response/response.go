@@ -24,8 +24,8 @@ func EncodeResponse(w http.ResponseWriter, data interface{}, err string, statusC
 
 // UploadRecord 上传记录信息
 type UploadRecord struct {
-	IPAddress  string    `json:"ipAddress"`
-	UploadTime time.Time `json:"uploadTime"`
+	IPAddress  string    `json:"ip_address"`
+	UploadTime time.Time `json:"upload_time"`
 	Filename   string    `json:"filename"`
 	FilePath   string    `json:"path"`
 }

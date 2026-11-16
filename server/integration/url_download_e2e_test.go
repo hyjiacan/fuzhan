@@ -213,7 +213,7 @@ func TestURLDownloadE2E_FullFlow(t *testing.T) {
 
 		// 1. 列表查询 - 全部
 		t.Run("获取所有任务列表", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&pageSize=10", nil)
+			req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&page_size=10", nil)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 

@@ -41,7 +41,7 @@ async function refresh() {
   refreshing.value = true
   try {
     const res = await AuthApi.getCaptcha()
-    id.value = res?.data?.captchaId || ''
+    id.value = res?.data?.captcha_id || ''
     image.value = res?.data?.image || ''
     text.value = ''
     emit('change', id.value, text.value)

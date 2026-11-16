@@ -214,6 +214,8 @@ DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk,
 
 ## 7. 路由总览
 
+> **字段命名：** 所有 `/api/v1/**` 接口（web / admin / open 三套命名空间）的请求参数与响应字段一律 `snake_case`，详见 [API_STYLE_GUIDE.md](../design/api/API_STYLE_GUIDE.md) §4/§5。Go 结构体必须显式写 `json` tag；`gin.H` / `map` 字面量 key 同样写 snake。例外见 §7 例外清单（文件流、SSE、WebDAV、Lite HTML、安装脚本、OAuth2 回调参数）。
+
 ### 7.1 中间件与分组（`router.go`）
 
 Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（仅 `/assets`、`/scalar/assets`）→ `SecurityHeadersMiddleware` → `CORSMiddleware` → `RequestIDMiddleware` → `AuditMiddleware` → `gin.CustomRecovery`（结构化日志）。
@@ -483,6 +485,8 @@ cd ui; yarn dev
 10. **cli 脚本白名单**：`/cli/install.sh`、`/cli/fuzhan.sh` 恒匿名可下载。
 11. **IE 兜底**：SPA 导航与 NoRoute 时 302 到 `/lite`。
 12. **config 保存钩子**：`server.go`（JWT/日志/重启信号）与 `runScanTimerWorker`（扫描定时器/监听器重启）两处，新增热配置项时确认是否需要钩子。
+13. **命名不一致是静默失败的最大来源。** `ShouldBindJSON` 对不上 tag 的字段只会留空，不会报错；`c.PostForm("x")` / `c.Query("x")` 写错 key 同样静默返回空串。历史上「无效的会话ID」、验证码校验失效、文件校验值失败都属此类。新增读参一律用手写 snake key，并跑 `go test ./internal/naming/`。
+14. **`appconfig/api/handler.go` 的 `SaveConfig` 用裸字符串判断节点是否提交**（`present("root_dirs")`、`raw["storage_backend"]`、`sbFields["alert"]`）。改 DTO 的 `json` tag 时必须同步改这些字符串，否则配置保存会静默丢字段。
 
 ---
 

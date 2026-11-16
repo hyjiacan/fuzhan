@@ -817,11 +817,11 @@ const loadRootDirs = async () => {
   try {
     // 共享目录随受保护的完整配置下发（/setup/status 仅返回 initialized）
     const data = await SystemApi.getConfig()
-    if (data.success && data.data?.rootDirs) {
-      rootDirOptions.value = data.data.rootDirs.map(dir => ({
+    if (data.success && data.data?.root_dirs) {
+      rootDirOptions.value = data.data.root_dirs.map(dir => ({
         label: dir.name,
         value: dir.name,
-        disabled: dir.uploadEnabled === false
+        disabled: dir.upload_enabled === false
       }))
 
       if (!needsRootSelection.value) {

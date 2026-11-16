@@ -35,23 +35,23 @@ const (
 type ScanProgress struct {
 	mu           sync.RWMutex
 	Status       ScanStatus `json:"status"`
-	TotalFiles   int64      `json:"totalFiles"`
-	ScannedFiles int64      `json:"scannedFiles"`
-	CurrentFile  string     `json:"currentFile"`
-	ErrorMessage string     `json:"errorMessage,omitempty"`
-	StartedAt    time.Time  `json:"startedAt"`
-	CompletedAt  *time.Time `json:"completedAt,omitempty"`
+	TotalFiles   int64      `json:"total_files"`
+	ScannedFiles int64      `json:"scanned_files"`
+	CurrentFile  string     `json:"current_file"`
+	ErrorMessage string     `json:"error_message,omitempty"`
+	StartedAt    time.Time  `json:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 }
 
 // ScanProgressView 扫描进度的安全只读视图（不含互斥锁，用于 JSON 序列化）
 type ScanProgressView struct {
 	Status       ScanStatus `json:"status"`
-	TotalFiles   int64      `json:"totalFiles"`
-	ScannedFiles int64      `json:"scannedFiles"`
-	CurrentFile  string     `json:"currentFile"`
-	ErrorMessage string     `json:"errorMessage,omitempty"`
-	StartedAt    time.Time  `json:"startedAt"`
-	CompletedAt  *time.Time `json:"completedAt,omitempty"`
+	TotalFiles   int64      `json:"total_files"`
+	ScannedFiles int64      `json:"scanned_files"`
+	CurrentFile  string     `json:"current_file"`
+	ErrorMessage string     `json:"error_message,omitempty"`
+	StartedAt    time.Time  `json:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 }
 
 // Get 获取扫描进度的安全副本
@@ -177,23 +177,23 @@ func (p *ScanProgress) SetError(msg string) {
 
 // ConsistencyReport 一致性校验报告
 type ConsistencyReport struct {
-	CheckedAt   time.Time         `json:"checkedAt"`
+	CheckedAt   time.Time         `json:"checked_at"`
 	Duration    time.Duration     `json:"duration"`
-	TotalFS     int64             `json:"totalFS"`
-	TotalDB     int64             `json:"totalDB"`
-	MissingInDB []ConsistencyDiff `json:"missingInDB"`
-	MissingInFS []ConsistencyDiff `json:"missingInFS"`
+	TotalFS     int64             `json:"total_fs"`
+	TotalDB     int64             `json:"total_db"`
+	MissingInDB []ConsistencyDiff `json:"missing_in_db"`
+	MissingInFS []ConsistencyDiff `json:"missing_in_fs"`
 	Mismatched  []ConsistencyDiff `json:"mismatched"`
-	AutoFixed   int               `json:"autoFixed"`
-	FixErrors   []ConsistencyDiff `json:"fixErrors,omitempty"`
+	AutoFixed   int               `json:"auto_fixed"`
+	FixErrors   []ConsistencyDiff `json:"fix_errors,omitempty"`
 }
 
 // ConsistencyDiff 单一不一致条目
 type ConsistencyDiff struct {
-	RootName    string `json:"rootName"`
-	FilePath    string `json:"filePath"`
-	FullPath    string `json:"fullPath"`
-	FileName    string `json:"fileName"`
+	RootName    string `json:"root_name"`
+	FilePath    string `json:"file_path"`
+	FullPath    string `json:"full_path"`
+	FileName    string `json:"file_name"`
 	Description string `json:"description"`
 }
 
@@ -240,21 +240,21 @@ func (q *ListRecordsQuery) Normalize() {
 
 // DuplicateGroup 重复文件分组
 type DuplicateGroup struct {
-	Xxh3Hash  string              `json:"xxh3Hash"`
-	FileCount int64               `json:"fileCount"`
-	TotalSize int64               `json:"totalSize"`
+	Xxh3Hash  string              `json:"xxh3_hash"`
+	FileCount int64               `json:"file_count"`
+	TotalSize int64               `json:"total_size"`
 	Files     []DuplicateFileItem `json:"files,omitempty"`
 }
 
 // DuplicateFileItem 重复文件中的单个文件
 type DuplicateFileItem struct {
 	ID       uint      `json:"id"`
-	FileName string    `json:"fileName"`
-	FilePath string    `json:"filePath"`
-	FullPath string    `json:"fullPath"`
-	RootName string    `json:"rootName"`
-	FileSize int64     `json:"fileSize"`
-	ModTime  time.Time `json:"modTime"`
+	FileName string    `json:"file_name"`
+	FilePath string    `json:"file_path"`
+	FullPath string    `json:"full_path"`
+	RootName string    `json:"root_name"`
+	FileSize int64     `json:"file_size"`
+	ModTime  time.Time `json:"mod_time"`
 }
 
 // PathScope 限定文件查询的目录范围：Root 为根目录名，Prefix 为以 / 开头的相对目录路径（空表示整个根目录）。
@@ -293,15 +293,15 @@ func (q *DuplicateQuery) Normalize() {
 // DependencyTreeNode 依赖树节点
 type DependencyTreeNode struct {
 	ID           uint                  `json:"id"`
-	DependencyID uint                  `json:"dependencyId"` // 依赖关系 ID（用于删除）
-	FileName     string                `json:"fileName"`
-	FilePath     string                `json:"filePath"`
-	FullPath     string                `json:"fullPath"`
-	RootName     string                `json:"rootName"`
-	FileSize     int64                 `json:"fileSize"`
-	IsDir        bool                  `json:"isDir"`
+	DependencyID uint                  `json:"dependency_id"` // 依赖关系 ID（用于删除）
+	FileName     string                `json:"file_name"`
+	FilePath     string                `json:"file_path"`
+	FullPath     string                `json:"full_path"`
+	RootName     string                `json:"root_name"`
+	FileSize     int64                 `json:"file_size"`
+	IsDir        bool                  `json:"is_dir"`
 	Relation     string                `json:"relation"`
-	DownloadURL  string                `json:"downloadURL"`
+	DownloadURL  string                `json:"download_url"`
 	Children     []*DependencyTreeNode `json:"children"`
 	Downstream   []*DependencyTreeNode `json:"downstream"`
 }
@@ -323,23 +323,23 @@ func fileSizeFromInfo(info os.FileInfo) int64 {
 
 // RecordStatsResponse 文件统计响应
 type RecordStatsResponse struct {
-	TotalFiles      int64 `json:"totalFiles"`
-	TotalSize       int64 `json:"totalSize"`
-	TotalDirs       int64 `json:"totalDirs"`
-	DeletedFiles    int64 `json:"deletedFiles"`
-	ActiveFiles     int64 `json:"activeFiles"`
-	DuplicateGroups int64 `json:"duplicateGroups"` // 有重复的哈希组数
-	PendingSync     int64 `json:"pendingSync"`     // 待同步数 (LastSyncedAt 为空或较旧)
-	TotalRootDirs   int   `json:"totalRootDirs"`   // 根目录数
+	TotalFiles      int64 `json:"total_files"`
+	TotalSize       int64 `json:"total_size"`
+	TotalDirs       int64 `json:"total_dirs"`
+	DeletedFiles    int64 `json:"deleted_files"`
+	ActiveFiles     int64 `json:"active_files"`
+	DuplicateGroups int64 `json:"duplicate_groups"` // 有重复的哈希组数
+	PendingSync     int64 `json:"pending_sync"`     // 待同步数 (LastSyncedAt 为空或较旧)
+	TotalRootDirs   int   `json:"total_root_dirs"`  // 根目录数
 }
 
 // ScanStatusResponse 扫描状态响应（供 Footer 状态栏使用）
 type ScanStatusResponse struct {
-	LastScanTime       *time.Time `json:"lastScanTime"`       // 上次扫描完成时间
-	NextScanTime       *time.Time `json:"nextScanTime"`       // 下次计划扫描时间
-	IsScanning         bool       `json:"isScanning"`         // 是否正在扫描
-	ScanScope          string     `json:"scanScope"`          // 当前扫描范围（public/temp/private）
-	ScanProgress       int64      `json:"scanProgress"`       // 当前进度（已处理文件数）
-	ScanTotal          int64      `json:"scanTotal"`          // 总文件数
-	ScanCronExpression string     `json:"scanCronExpression"` // 扫描 cron 表达式
+	LastScanTime       *time.Time `json:"last_scan_time"`       // 上次扫描完成时间
+	NextScanTime       *time.Time `json:"next_scan_time"`       // 下次计划扫描时间
+	IsScanning         bool       `json:"is_scanning"`          // 是否正在扫描
+	ScanScope          string     `json:"scan_scope"`           // 当前扫描范围（public/temp/private）
+	ScanProgress       int64      `json:"scan_progress"`        // 当前进度（已处理文件数）
+	ScanTotal          int64      `json:"scan_total"`           // 总文件数
+	ScanCronExpression string     `json:"scan_cron_expression"` // 扫描 cron 表达式
 }

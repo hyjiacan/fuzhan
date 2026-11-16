@@ -76,13 +76,13 @@
       <div class="panel-title">近期锁定事件（高危）</div>
       <el-table :data="stats.locks" size="small" :border="false" style="width: 100%">
         <el-table-column label="时间" width="190">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="事件" width="160">
-          <template #default="{ row }">{{ eventTypeLabel(row.eventType) }}</template>
+          <template #default="{ row }">{{ eventTypeLabel(row.event_type) }}</template>
         </el-table-column>
         <el-table-column label="来源 IP" width="160">
-          <template #default="{ row }"><span class="mono">{{ row.clientIP || '-' }}</span></template>
+          <template #default="{ row }"><span class="mono">{{ row.client_ip || '-' }}</span></template>
         </el-table-column>
         <el-table-column label="目标" min-width="180">
           <template #default="{ row }">{{ row.target || '-' }}</template>
@@ -120,7 +120,7 @@
       <el-table :data="eventList" size="small" :border="false" stripe :max-height="tableHeight"
         @row-click="openDetail">
         <el-table-column label="时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="严重级别" width="90">
           <template #default="{ row }">
@@ -130,10 +130,10 @@
           </template>
         </el-table-column>
         <el-table-column label="事件类型" width="150">
-          <template #default="{ row }">{{ eventTypeLabel(row.eventType) }}</template>
+          <template #default="{ row }">{{ eventTypeLabel(row.event_type) }}</template>
         </el-table-column>
         <el-table-column label="来源 IP" width="150">
-          <template #default="{ row }"><span class="mono">{{ row.clientIP || '-' }}</span></template>
+          <template #default="{ row }"><span class="mono">{{ row.client_ip || '-' }}</span></template>
         </el-table-column>
         <el-table-column label="身份" width="110">
           <template #default="{ row }">{{ row.identity || row.identity === '' ? (row.identity || 'anonymous') : '-' }}</template>
@@ -147,7 +147,7 @@
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80">
-          <template #default="{ row }">{{ row.statusCode || '-' }}</template>
+          <template #default="{ row }">{{ row.status_code || '-' }}</template>
         </el-table-column>
       </el-table>
       <el-empty v-if="!loading && eventsError" description="事件列表加载失败" :image-size="80">
@@ -176,20 +176,20 @@
             {{ severityMeta[current.severity]?.label || current.severity }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="事件类型">{{ eventTypeLabel(current.eventType) }}</el-descriptions-item>
-        <el-descriptions-item label="时间">{{ formatTime(current.createdAt) }}</el-descriptions-item>
-        <el-descriptions-item label="来源 IP"><span class="mono">{{ current.clientIP }}</span></el-descriptions-item>
+        <el-descriptions-item label="事件类型">{{ eventTypeLabel(current.event_type) }}</el-descriptions-item>
+        <el-descriptions-item label="时间">{{ formatTime(current.created_at) }}</el-descriptions-item>
+        <el-descriptions-item label="来源 IP"><span class="mono">{{ current.client_ip }}</span></el-descriptions-item>
         <el-descriptions-item label="身份">{{ current.identity }}</el-descriptions-item>
-        <el-descriptions-item label="方法">{{ current.httpMethod || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态码">{{ current.statusCode || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="方法">{{ current.http_method || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态码">{{ current.status_code || '-' }}</el-descriptions-item>
         <el-descriptions-item label="防护机制">{{ guardLabel(current.guard) }}</el-descriptions-item>
         <el-descriptions-item label="结果">{{ current.result || 'failure' }}</el-descriptions-item>
         <el-descriptions-item label="操作">{{ current.operation || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="请求 ID"><span class="mono">{{ current.requestID || '-' }}</span></el-descriptions-item>
+        <el-descriptions-item label="请求 ID"><span class="mono">{{ current.request_id || '-' }}</span></el-descriptions-item>
         <el-descriptions-item label="目标"><span class="wrap">{{ current.target || '-' }}</span></el-descriptions-item>
         <el-descriptions-item label="说明" :span="2"><span class="wrap">{{ current.reason || '-' }}</span></el-descriptions-item>
         <el-descriptions-item label="请求路径" :span="2"><span class="wrap break">{{ current.path || '-' }}</span></el-descriptions-item>
-        <el-descriptions-item label="User-Agent" :span="2"><span class="wrap break">{{ current.userAgent || '-' }}</span></el-descriptions-item>
+        <el-descriptions-item label="User-Agent" :span="2"><span class="wrap break">{{ current.user_agent || '-' }}</span></el-descriptions-item>
       </el-descriptions>
     </el-dialog>
   </div>
@@ -292,8 +292,8 @@ const loadStats = async () => {
     if (res.success && res.data) {
       stats.value = {
         trend: res.data.trend || [],
-        topIPs: res.data.topIPs || [],
-        topTypes: res.data.topTypes || [],
+        topIPs: res.data.top_ips || [],
+        topTypes: res.data.top_types || [],
         locks: res.data.locks || []
       }
       dist.value = res.data.severity || dist.value

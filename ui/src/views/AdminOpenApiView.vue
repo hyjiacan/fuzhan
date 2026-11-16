@@ -368,7 +368,7 @@ const columns = computed(() => [
     cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.name || '' }, [
       h('span', { class: 'file-link' }, row.name || '-')
     ]) },
-  { title: 'Key ID', key: 'keyId', dataKey: 'keyId', width: 140 },
+  { title: 'Key ID', key: 'key_id', dataKey: 'key_id', width: 140 },
   {
     title: '权限', key: 'scopes', width: 300,
     cellRenderer: ({ rowData: row }) => h('div', { style: 'display: flex; align-items: center; gap: 4px; overflow: hidden;' },
@@ -379,9 +379,9 @@ const columns = computed(() => [
       }, () => scopeLabel(s))))
   },
   {
-    title: '允许路径', key: 'allowedPaths', width: 220,
+    title: '允许路径', key: 'allowed_paths', width: 220,
     cellRenderer: ({ rowData: row }) => {
-      const paths = (row.allowedPaths || '').split('\n').filter(Boolean)
+      const paths = (row.allowed_paths || '').split('\n').filter(Boolean)
       const text = paths.length ? paths.join(', ') : '所有路径'
       return h('div', { title: text, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, text)
     }
@@ -390,21 +390,21 @@ const columns = computed(() => [
     title: '状态', key: 'status', width: 80,
     cellRenderer: ({ rowData: row }) => {
       const now = new Date()
-      const isExpired = row.expiresAt && new Date(row.expiresAt) < now
+      const isExpired = row.expires_at && new Date(row.expires_at) < now
       if (isExpired) return h(ElTag, { size: 'small', type: 'danger' }, () => '已过期')
       return h(ElTag, { size: 'small', type: row.status === 'active' ? 'success' : 'info' },
         () => row.status === 'active' ? '活跃' : '禁用')
     }
   },
   {
-    title: '创建时间', key: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
+    title: '创建时间', key: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => row.created_at ? TimeUtils.formatDateTime(row.created_at) : '-'
   },
   {
-    title: '过期时间', key: 'expiresAt', width: 170,
+    title: '过期时间', key: 'expires_at', width: 170,
     cellRenderer: ({ rowData: row }) => {
-      if (!row.expiresAt) return '永不过期'
-      return TimeUtils.formatDateTime(row.expiresAt)
+      if (!row.expires_at) return '永不过期'
+      return TimeUtils.formatDateTime(row.expires_at)
     }
   },
   {
@@ -414,7 +414,7 @@ const columns = computed(() => [
     fixed: 'right',
     cellRenderer: ({ rowData: row }) => {
       const now = new Date()
-      const isExpired = row.expiresAt && new Date(row.expiresAt) < now
+      const isExpired = row.expires_at && new Date(row.expires_at) < now
 
       return h('div', { style: 'display: flex; gap: 8px;' }, [
         h(ElButton, {
@@ -435,16 +435,16 @@ async function loadConfig() {
   try {
     const data = await ConfigApi.get()
     if (data.success && data.data) {
-      const cfg = data.data.openApi || {}
+      const cfg = data.data.open_api || {}
       openApiConfig.value = {
         enabled: cfg.enabled ?? false,
-        authMode: cfg.authMode || 'none',
-        ipAccessMode: cfg.ipAccessMode || 'none',
-        ipWhitelist: (cfg.ipWhitelist || []).join('\n'),
-        ipBlacklist: (cfg.ipBlacklist || []).join('\n'),
-        domainWhitelist: (cfg.domainWhitelist || []).join('\n'),
-        rateLimitEnabled: cfg.rateLimitEnabled ?? true,
-        requestsPerMinute: cfg.requestsPerMinute || 60
+        authMode: cfg.auth_mode || 'none',
+        ipAccessMode: cfg.ip_access_mode || 'none',
+        ipWhitelist: (cfg.ip_whitelist || []).join('\n'),
+        ipBlacklist: (cfg.ip_blacklist || []).join('\n'),
+        domainWhitelist: (cfg.domain_whitelist || []).join('\n'),
+        rateLimitEnabled: cfg.rate_limit_enabled ?? true,
+        requestsPerMinute: cfg.requests_per_minute || 60
       }
     }
   } catch (e) {
@@ -457,15 +457,15 @@ async function saveConfig() {
   try {
     const draft = configDraft.value
     const data = await ConfigApi.save({
-      openApi: {
+      open_api: {
         enabled: draft.enabled,
-        authMode: draft.authMode,
-        ipAccessMode: draft.ipAccessMode,
-        ipWhitelist: draft.ipWhitelist.split('\n').filter(ip => ip.trim()),
-        ipBlacklist: draft.ipBlacklist.split('\n').filter(ip => ip.trim()),
-        domainWhitelist: draft.domainWhitelist.split('\n').filter(d => d.trim()),
-        rateLimitEnabled: draft.rateLimitEnabled,
-        requestsPerMinute: draft.requestsPerMinute
+        auth_mode: draft.authMode,
+        ip_access_mode: draft.ipAccessMode,
+        ip_whitelist: draft.ipWhitelist.split('\n').filter(ip => ip.trim()),
+        ip_blacklist: draft.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        domain_whitelist: draft.domainWhitelist.split('\n').filter(d => d.trim()),
+        rate_limit_enabled: draft.rateLimitEnabled,
+        requests_per_minute: draft.requestsPerMinute
       }
     })
     if (data.success) {
@@ -552,7 +552,7 @@ async function handleCreate() {
     if (res.success) {
       ElMessage.success('API Key 创建成功')
       showCreateModal.value = false
-      rawKey.value = res.data?.rawKey || ''
+      rawKey.value = res.data?.raw_key || ''
       showRawKeyModal.value = true
       loadApiKeys()
       createForm.value = { name: '', scopes: [], allowedPaths: '', expiresIn: 0 }

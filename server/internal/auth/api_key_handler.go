@@ -54,10 +54,10 @@ func (h *ApiKeyHandler) ListApiKeys(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"keys":     keys,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"keys":      keys,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 

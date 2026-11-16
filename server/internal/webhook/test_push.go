@@ -13,8 +13,8 @@ type TestResult struct {
 	Name       string `json:"name"`
 	URL        string `json:"url"`
 	Success    bool   `json:"success"`
-	StatusCode int    `json:"statusCode,omitempty"`
-	ElapsedMs  int64  `json:"elapsedMs,omitempty"`
+	StatusCode int    `json:"status_code,omitempty"`
+	ElapsedMs  int64  `json:"elapsed_ms,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
 

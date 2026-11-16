@@ -9,15 +9,15 @@ type ResourceMetric struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Timestamp   time.Time `gorm:"index:idx__resource_metrics__timestamp_scope" json:"timestamp"`
 	Scope       string    `gorm:"size:16;index:idx__resource_metrics__timestamp_scope" json:"scope"`
-	CPU         float64   `json:"cpu"`         // CPU 占用率（%）
-	Memory      uint64    `json:"memory"`      // 内存已用（字节），程序级为进程 RSS
-	MemoryTotal uint64    `json:"memoryTotal"` // 内存总量（字节），程序级为服务器总量
-	DiskUsed    uint64    `json:"diskUsed"`    // 磁盘已用（字节）
-	DiskTotal   uint64    `json:"diskTotal"`   // 磁盘总量（字节）
-	DiskIORead  float64   `json:"diskIoRead"`  // 磁盘读 IO（字节/秒）
-	DiskIOWrite float64   `json:"diskIoWrite"` // 磁盘写 IO（字节/秒）
-	NetRecv     float64   `json:"netRecv"`     // 网络接收速率（字节/秒）
-	NetSent     float64   `json:"netSent"`     // 网络发送速率（字节/秒）
+	CPU         float64   `json:"cpu"`           // CPU 占用率（%）
+	Memory      uint64    `json:"memory"`        // 内存已用（字节），程序级为进程 RSS
+	MemoryTotal uint64    `json:"memory_total"`  // 内存总量（字节），程序级为服务器总量
+	DiskUsed    uint64    `json:"disk_used"`     // 磁盘已用（字节）
+	DiskTotal   uint64    `json:"disk_total"`    // 磁盘总量（字节）
+	DiskIORead  float64   `json:"disk_io_read"`  // 磁盘读 IO（字节/秒）
+	DiskIOWrite float64   `json:"disk_io_write"` // 磁盘写 IO（字节/秒）
+	NetRecv     float64   `json:"net_recv"`      // 网络接收速率（字节/秒）
+	NetSent     float64   `json:"net_sent"`      // 网络发送速率（字节/秒）
 }
 
 func (ResourceMetric) TableName() string {

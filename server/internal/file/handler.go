@@ -63,20 +63,20 @@ type FileRecordInfo struct {
 	Name          string `json:"name"`
 	Type          string `json:"type"`
 	Path          string `json:"path"`
-	FullPath      string `json:"fullPath"`
-	ModifiedTime  string `json:"modifiedTime"`
+	FullPath      string `json:"full_path"`
+	ModifiedTime  string `json:"modified_time"`
 	Size          int64  `json:"size"`
 	Notes         string `json:"notes"`
-	Xxh3Hash      string `json:"xxh3Hash,omitempty"`
-	HashStatus    string `json:"hashStatus,omitempty"`
-	RecordID      uint   `json:"recordId,omitempty"`
-	IsDir         bool   `json:"isDir"`
-	RootName      string `json:"rootName"`
-	DownloadCount int64  `json:"downloadCount"`
+	Xxh3Hash      string `json:"xxh3_hash,omitempty"`
+	HashStatus    string `json:"hash_status,omitempty"`
+	RecordID      uint   `json:"record_id,omitempty"`
+	IsDir         bool   `json:"is_dir"`
+	RootName      string `json:"root_name"`
+	DownloadCount int64  `json:"download_count"`
 	// DependencyCount 该文件相关的依赖条数（上游 + 下游）
-	DependencyCount int64  `json:"dependencyCount"`
-	CanManage       bool   `json:"canManage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
-	UploaderIP      string `json:"uploaderIp,omitempty"` // 上传者IP，仅管理员请求时返回
+	DependencyCount int64  `json:"dependency_count"`
+	CanManage       bool   `json:"can_manage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
+	UploaderIP      string `json:"uploader_ip,omitempty"` // 上传者IP，仅管理员请求时返回
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）

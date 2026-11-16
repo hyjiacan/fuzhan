@@ -106,14 +106,14 @@ const testConnection = async () => {
       enabled: ld.enabled,
       host: ld.host,
       port: ld.port,
-      useSSL: ld.useSSL,
-      baseDN: ld.baseDN,
-      bindDN: ld.bindDN,
-      bindPassword: ld.bindPassword,
-      userFilter: ld.userFilter,
-      syncInterval: ld.syncInterval,
-      autoCreateUser: ld.autoCreateUser,
-      insecureSkipVerify: ld.insecureSkipVerify
+      use_ssl: ld.useSSL,
+      base_dn: ld.baseDN,
+      bind_dn: ld.bindDN,
+      bind_password: ld.bindPassword,
+      user_filter: ld.userFilter,
+      sync_interval: ld.syncInterval,
+      auto_create_user: ld.autoCreateUser,
+      insecure_skip_verify: ld.insecureSkipVerify
     })
     if (res.success) {
       testResult.value = res.message || '连接成功'

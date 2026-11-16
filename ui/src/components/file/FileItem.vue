@@ -40,10 +40,10 @@ const props = defineProps({
 
 const emit = defineEmits(['preview', 'download'])
 
-const isDir = computed(() => props.fileInfo.isDir)
+const isDir = computed(() => props.fileInfo.is_dir)
 const fileName = computed(() => props.fileInfo.name)
 const formattedSize = computed(() => props.fileInfo.size || '-')
-const formattedTime = computed(() => props.fileInfo.modTime || '')
+const formattedTime = computed(() => props.fileInfo.modified_time || '')
 
 const canPreview = computed(() => {
   if (isDir.value) return false

@@ -45,7 +45,7 @@
               </template>
             </el-table-column>
             <el-table-column label="大小" width="140">
-              <template #default="{ row }">{{ formatFileSize(row.fileSize || 0) }}</template>
+              <template #default="{ row }">{{ formatFileSize(row.file_size || 0) }}</template>
             </el-table-column>
             <el-table-column label="备注" width="150">
               <template #default="{ row }">
@@ -55,7 +55,7 @@
             </el-table-column>
             <el-table-column label="上传时间" width="180">
               <template #default="{ row }">
-                <span :style="TimeUtils.isRecent24h(row.createdAt) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.createdAt) }}</span>
+                <span :style="TimeUtils.isRecent24h(row.created_at) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.created_at) }}</span>
               </template>
             </el-table-column>
             <template #empty>
@@ -105,7 +105,7 @@
               </template>
             </el-table-column>
             <el-table-column label="大小" width="140">
-              <template #default="{ row }">{{ formatFileSize(row.fileSize || 0) }}</template>
+              <template #default="{ row }">{{ formatFileSize(row.file_size || 0) }}</template>
             </el-table-column>
             <el-table-column label="备注" width="150">
               <template #default="{ row }">
@@ -114,12 +114,12 @@
               </template>
             </el-table-column>
             <el-table-column label="下载时间" width="180">
-              <template #default="{ row }">{{ TimeUtils.formatDateTime(row.createdAt) }}</template>
+              <template #default="{ row }">{{ TimeUtils.formatDateTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="上传时间" width="180">
               <template #default="{ row }">
-                <span v-if="row.uploadTime && !String(row.uploadTime).startsWith('0001')"
-                  :style="TimeUtils.isRecent24h(row.uploadTime) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.uploadTime) }}</span>
+                <span v-if="row.upload_time && !String(row.upload_time).startsWith('0001')"
+                  :style="TimeUtils.isRecent24h(row.upload_time) ? 'color: #18a058' : ''">{{ TimeUtils.formatDateTime(row.upload_time) }}</span>
                 <span v-else class="note-empty">-</span>
               </template>
             </el-table-column>
@@ -202,17 +202,17 @@ const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 // 获取文件类型图标类名
 const getFileIconClass = (row) => {
   if (isDir(row)) return 'icon-filetype-folder'
-  const ext = row.fileName?.split('.').pop()?.toLowerCase() || ''
+  const ext = row.file_name?.split('.').pop()?.toLowerCase() || ''
   return `icon-filetype-${ext}`
 }
 
 // 完整路径与路径分段
-const fullPathOf = (row) => row.fullPath || row.path || ''
+const fullPathOf = (row) => row.full_path || row.path || ''
 const pathSegmentsOf = (row) => fullPathOf(row).split('/').filter(Boolean)
 const parentSegments = (row) => pathSegmentsOf(row).slice(0, -1)
 const fileNameOf = (row) => {
   const segments = pathSegmentsOf(row)
-  return segments[segments.length - 1] || row.fileName || '未知文件'
+  return segments[segments.length - 1] || row.file_name || '未知文件'
 }
 const segmentPath = (segments, idx) => '/' + segments.slice(0, idx + 1).join('/')
 

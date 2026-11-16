@@ -217,7 +217,7 @@ const stats = computed(() => {
   const total = apiKeys.value.length
   const active = apiKeys.value.filter(k => k.status === 'active').length
   const now = new Date()
-  const expired = apiKeys.value.filter(k => k.expiresAt && new Date(k.expiresAt) < now).length
+  const expired = apiKeys.value.filter(k => k.expires_at && new Date(k.expires_at) < now).length
   return { total, active, expired }
 })
 
@@ -241,16 +241,16 @@ const columns = [
     cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.name || '' }, [
       h('span', { class: 'file-link' }, row.name || '-')
     ]) },
-  { key: 'keyId', dataKey: 'keyId', title: 'Key ID', width: 140 },
+  { key: 'key_id', dataKey: 'key_id', title: 'Key ID', width: 140 },
   {
     key: 'scopes', title: '权限', width: 160,
     cellRenderer: ({ rowData: row }) => h(ElTag, { size: 'small', type: row.scopes === 'open_api:writer' ? 'success' : 'info' },
       () => row.scopes)
   },
   {
-    key: 'allowedPaths', title: '允许路径', width: 180,
+    key: 'allowed_paths', title: '允许路径', width: 180,
     cellRenderer: ({ rowData: row }) => {
-      const paths = (row.allowedPaths || '').split('\n').filter(Boolean)
+      const paths = (row.allowed_paths || '').split('\n').filter(Boolean)
       const text = paths.length ? paths.join(', ') : '所有路径'
       return h('div', { title: text, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, text)
     }
@@ -259,21 +259,21 @@ const columns = [
     key: 'status', title: '状态', width: 80,
     cellRenderer: ({ rowData: row }) => {
       const now = new Date()
-      const isExpired = row.expiresAt && new Date(row.expiresAt) < now
+      const isExpired = row.expires_at && new Date(row.expires_at) < now
       if (isExpired) return h(ElTag, { size: 'small', type: 'danger' }, () => '已过期')
       return h(ElTag, { size: 'small', type: row.status === 'active' ? 'success' : 'info' },
         () => row.status === 'active' ? '活跃' : '禁用')
     }
   },
   {
-    key: 'createdAt', title: '创建时间', width: 170,
-    cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
+    key: 'created_at', title: '创建时间', width: 170,
+    cellRenderer: ({ rowData: row }) => row.created_at ? TimeUtils.formatDateTime(row.created_at) : '-'
   },
   {
-    key: 'expiresAt', title: '过期时间', width: 170,
+    key: 'expires_at', title: '过期时间', width: 170,
     cellRenderer: ({ rowData: row }) => {
-      if (!row.expiresAt) return '永不过期'
-      return TimeUtils.formatDateTime(row.expiresAt)
+      if (!row.expires_at) return '永不过期'
+      return TimeUtils.formatDateTime(row.expires_at)
     }
   },
   {
@@ -283,7 +283,7 @@ const columns = [
     fixed: 'right',
     cellRenderer: ({ rowData: row }) => {
       const now = new Date()
-      const isExpired = row.expiresAt && new Date(row.expiresAt) < now
+      const isExpired = row.expires_at && new Date(row.expires_at) < now
 
       return h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [
         h(ElButton, {
@@ -360,7 +360,7 @@ async function handleCreate() {
     if (res.success) {
       ElMessage.success('API Key 创建成功')
       showCreateModal.value = false
-      rawKey.value = res.data?.rawKey || ''
+      rawKey.value = res.data?.raw_key || ''
       showRawKeyModal.value = true
       loadApiKeys()
       // 重置表单

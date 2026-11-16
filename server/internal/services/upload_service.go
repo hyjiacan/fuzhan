@@ -128,6 +128,6 @@ func (us *UploadService) UploadFile(w http.ResponseWriter, r *http.Request) {
 	us.fileService.AddUploadRecord(ipAddress, header.Filename, saveFilename)
 
 	utils.EncodeResponse(w, map[string]string{
-		"fileName": header.Filename,
+		"file_name": header.Filename,
 	}, "", http.StatusOK)
 }

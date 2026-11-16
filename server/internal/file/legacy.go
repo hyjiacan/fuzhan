@@ -197,7 +197,7 @@ func GetFileInfoFromURL(w http.ResponseWriter, r *http.Request) {
 
 	// 构建响应数据
 	respData := map[string]interface{}{
-		"realUrl":  downloadURL,
+		"real_url": downloadURL,
 		"filename": filename,
 		"size":     fileSize,
 	}
@@ -213,7 +213,7 @@ func HandleRenameFile(w http.ResponseWriter, r *http.Request) {
 	// 解析请求体
 	var requestData struct {
 		Path    string `json:"path"`
-		NewName string `json:"newName"`
+		NewName string `json:"new_name"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
@@ -265,7 +265,7 @@ func HandleMoveFile(w http.ResponseWriter, r *http.Request) {
 	// 解析请求体
 	var requestData struct {
 		Path    string `json:"path"`
-		NewPath string `json:"newPath"`
+		NewPath string `json:"new_path"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {

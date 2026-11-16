@@ -22,7 +22,7 @@
               {{ userInfo.uuid }}
             </el-descriptions-item>
             <el-descriptions-item label="注册时间">
-              {{ formatDate(userInfo.createdAt) }}
+              {{ formatDate(userInfo.created_at) }}
             </el-descriptions-item>
           </el-descriptions>
         </el-card>
@@ -115,7 +115,7 @@ const userInfo = ref({
   username: '',
   uuid: '',
   role: 'user',
-  createdAt: ''
+  created_at: ''
 })
 const quotaInfo = ref({
   used: 0,

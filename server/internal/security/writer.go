@@ -165,17 +165,17 @@ func Record(ev *models.SecurityEvent) bool {
 	// 负载为安全事件关键字段的快照，便于外部监控系统实时告警。
 	if ok {
 		webhook.Dispatch(webhook.EventSecurity, "security", map[string]interface{}{
-			"eventType":  ev.EventType,
-			"severity":   ev.Severity,
-			"clientIP":   ev.ClientIP,
-			"identity":   ev.Identity,
-			"operation":  ev.Operation,
-			"target":     ev.Target,
-			"guard":      ev.Guard,
-			"result":     ev.Result,
-			"reason":     ev.Reason,
-			"path":       ev.Path,
-			"statusCode": ev.StatusCode,
+			"event_type":  ev.EventType,
+			"severity":    ev.Severity,
+			"client_ip":   ev.ClientIP,
+			"identity":    ev.Identity,
+			"operation":   ev.Operation,
+			"target":      ev.Target,
+			"guard":       ev.Guard,
+			"result":      ev.Result,
+			"reason":      ev.Reason,
+			"path":        ev.Path,
+			"status_code": ev.StatusCode,
 		})
 	}
 	return ok

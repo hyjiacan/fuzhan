@@ -115,8 +115,8 @@ export function useUploadQueue({
               size: saved.size,
               uploadId: saved.uploadId,
               status: restoreStatus,
-              progress: session.uploadedIndexes?.length
-                ? Math.round((session.uploadedIndexes.length / session.totalChunks) * 100)
+              progress: session.uploaded_indexes?.length
+                ? Math.round((session.uploaded_indexes.length / session.total_chunks) * 100)
                 : 0,
               error: '',
               speed: saved.speed || '',
@@ -173,7 +173,7 @@ export function useUploadQueue({
     }
     const payload = { storage_type: item.checksumStorageType, algorithms }
     if (item.checksumStorageType === 'public') {
-      payload.rootName = item.checksumRootName
+      payload.root_name = item.checksumRootName
       payload.path = item.checksumPath
     } else {
       payload.code = item.checksumCode
@@ -421,7 +421,12 @@ export function useUploadQueue({
         throw new Error(response.message || '创建上传会话失败')
       }
 
-      const { uploadId: newUploadId, totalChunks, chunkSize, overwriteRequired } = response.data
+      const {
+        upload_id: newUploadId,
+        total_chunks: totalChunks,
+        chunk_size: chunkSize,
+        overwrite_required: overwriteRequired
+      } = response.data
       if (!chunkSize) {
         throw new Error('服务器未返回分片大小配置')
       }
@@ -473,11 +478,11 @@ export function useUploadQueue({
         throw new Error(sessionStatusData.message || '获取上传状态失败')
       }
       const session = sessionStatusData.data.session
-      if (!session.chunkSize) {
+      if (!session.chunk_size) {
         throw new Error('服务器未返回分片大小配置')
       }
-      queueItem.chunkSize = session.chunkSize
-      queueItem.totalChunks = session.totalChunks
+      queueItem.chunkSize = session.chunk_size
+      queueItem.totalChunks = session.total_chunks
     }
 
     const CHUNK_SIZE = queueItem.chunkSize
@@ -555,15 +560,15 @@ export function useUploadQueue({
 
     if (sessionStatusData.success && sessionStatusData.data?.session) {
       const session = sessionStatusData.data.session
-      const serverChunkSize = session.chunkSize
+      const serverChunkSize = session.chunk_size
       if (!serverChunkSize) {
         throw new Error('服务器未返回分片大小配置')
       }
       if (serverChunkSize !== CHUNK_SIZE) {
         throw new Error('分片大小不匹配：服务器配置已更改，请重新开始上传')
       }
-      if (session.uploadedIndexes) {
-        session.uploadedIndexes.forEach(i => uploadedIndexes.add(i))
+      if (session.uploaded_indexes) {
+        session.uploaded_indexes.forEach(i => uploadedIndexes.add(i))
         uploadedBytes = uploadedIndexes.size * CHUNK_SIZE
         if (uploadedBytes > size) uploadedBytes = size
         updateProgress(uploadedBytes)
@@ -583,8 +588,8 @@ export function useUploadQueue({
       const checksum = await calculateXXH3(chunkBuffer)
 
       const formData = new FormData()
-      formData.append('uploadId', String(uploadId))
-      formData.append('chunkIndex', String(index))
+      formData.append('upload_id', String(uploadId))
+      formData.append('chunk_index', String(index))
       formData.append('chunk', chunk)
       formData.append('checksum', checksum)
 
@@ -616,7 +621,7 @@ export function useUploadQueue({
 
     // Step 3: Finalize
     const finalizeUrl = getApiUrl('finalize')
-    const finalizeData = await request.post(finalizeUrl, { uploadId }, {
+    const finalizeData = await request.post(finalizeUrl, { upload_id: uploadId }, {
       baseURL: '',
       skipSuccessToast: true,
       headers: { 'Content-Type': 'application/json' }

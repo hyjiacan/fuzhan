@@ -31,28 +31,28 @@ const (
 // UploadSession 上传会话
 type UploadSession struct {
 	ID          uint         `gorm:"primaryKey" json:"id"`
-	FileName    string       `gorm:"size:255;not null" json:"fileName"`              // 文件名
-	FileSize    int64        `gorm:"not null" json:"fileSize"`                       // 文件大小
-	ChunkSize   int64        `gorm:"not null" json:"chunkSize"`                      // 分片大小
-	TotalChunks int          `gorm:"not null" json:"totalChunks"`                    // 总分片数
+	FileName    string       `gorm:"size:255;not null" json:"file_name"`             // 文件名
+	FileSize    int64        `gorm:"not null" json:"file_size"`                      // 文件大小
+	ChunkSize   int64        `gorm:"not null" json:"chunk_size"`                     // 分片大小
+	TotalChunks int          `gorm:"not null" json:"total_chunks"`                   // 总分片数
 	Checksum    string       `gorm:"size:64" json:"checksum"`                        // 文件校验和
 	Status      UploadStatus `gorm:"size:20;not null;default:pending" json:"status"` // 会话状态
-	TargetType  TargetType   `gorm:"size:20;not null;default:regular" json:"targetType"`
-	TargetPath  string       `gorm:"size:512" json:"targetPath"` // 目标路径
-	TargetRoot  string       `gorm:"size:255" json:"targetRoot"` // 目标根目录
+	TargetType  TargetType   `gorm:"size:20;not null;default:regular" json:"target_type"`
+	TargetPath  string       `gorm:"size:512" json:"target_path"` // 目标路径
+	TargetRoot  string       `gorm:"size:255" json:"target_root"` // 目标根目录
 	// Overwritten 本次上传是否覆盖了已存在的目标文件（仅运行期使用，不落库）
 	Overwritten bool   `gorm:"-" json:"overwritten,omitempty"`
-	UserID      string `gorm:"size:64" json:"userID"`             // 用户ID
-	ClientIP    string `gorm:"size:45" json:"clientIP,omitempty"` // 上传者IP（用于公开文件归属放行）
-	ChunkDir    string `gorm:"size:512" json:"chunkDir"`          // 分片目录
+	UserID      string `gorm:"size:64" json:"user_id"`             // 用户ID
+	ClientIP    string `gorm:"size:45" json:"client_ip,omitempty"` // 上传者IP（用于公开文件归属放行）
+	ChunkDir    string `gorm:"size:512" json:"chunk_dir"`          // 分片目录
 	// Code 访问码（仅临时上传携带，32 位十六进制 128bit 熵，用于命名与分享/下载）
 	Code string `gorm:"size:64" json:"code,omitempty"`
 	// DeleteOnDownload 下载后自动删除（仅临时上传使用）
-	DeleteOnDownload bool            `gorm:"default:false" json:"deleteOnDownload,omitempty"`
-	CreatedAt        time.Time       `json:"createdAt"`
-	UpdatedAt        time.Time       `json:"updatedAt"`
-	ExpiredAt        time.Time       `gorm:"index" json:"expiredAt"` // 过期时间
-	DeletedAt        gorm.DeletedAt  `gorm:"index" json:"deletedAt,omitempty"`
+	DeleteOnDownload bool            `gorm:"default:false" json:"delete_on_download,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	ExpiredAt        time.Time       `gorm:"index" json:"expired_at"` // 过期时间
+	DeletedAt        gorm.DeletedAt  `gorm:"index" json:"deleted_at,omitempty"`
 	Chunks           []UploadedChunk `gorm:"foreignKey:SessionID" json:"chunks,omitempty"`
 }
 
@@ -64,11 +64,11 @@ func (UploadSession) TableName() string {
 // UploadedChunk 已上传分片
 type UploadedChunk struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	SessionID     uint      `gorm:"not null;uniqueIndex:idx_session_chunk" json:"sessionID"`  // 会话ID
-	ChunkIndex    int       `gorm:"not null;uniqueIndex:idx_session_chunk" json:"chunkIndex"` // 分片索引
-	ChunkChecksum string    `gorm:"size:64" json:"chunkChecksum"`                             // 分片校验和
-	ChunkSize     int64     `gorm:"not null" json:"chunkSize"`                                // 分片大小
-	CreatedAt     time.Time `json:"createdAt"`
+	SessionID     uint      `gorm:"not null;uniqueIndex:idx_session_chunk" json:"session_id"`  // 会话ID
+	ChunkIndex    int       `gorm:"not null;uniqueIndex:idx_session_chunk" json:"chunk_index"` // 分片索引
+	ChunkChecksum string    `gorm:"size:64" json:"chunk_checksum"`                             // 分片校验和
+	ChunkSize     int64     `gorm:"not null" json:"chunk_size"`                                // 分片大小
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // TableName 指定表名
@@ -90,32 +90,32 @@ const (
 // OperationRecord 操作记录
 type OperationRecord struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
-	FileName string `gorm:"size:255;not null" json:"fileName"` // 文件名
-	FileSize int64  `gorm:"not null" json:"fileSize"`          // 文件大小
-	FilePath string `gorm:"size:512;not null" json:"path"`     // 相对于根目录的文件路径
-	FullPath string `gorm:"size:1024" json:"fullPath"`         // 完整路径 rootName/filePath
-	RootName string `gorm:"size:64;not null" json:"rootName"`  // 根目录名称
-	FileType string `gorm:"size:50" json:"fileType"`           // 文件类型
+	FileName string `gorm:"size:255;not null" json:"file_name"` // 文件名
+	FileSize int64  `gorm:"not null" json:"file_size"`          // 文件大小
+	FilePath string `gorm:"size:512;not null" json:"path"`      // 相对于根目录的文件路径
+	FullPath string `gorm:"size:1024" json:"full_path"`         // 完整路径 rootName/filePath
+	RootName string `gorm:"size:64;not null" json:"root_name"`  // 根目录名称
+	FileType string `gorm:"size:50" json:"file_type"`           // 文件类型
 	// Status 处理状态（success/failed），默认 success；失败维度分析依据此字段
 	Status string `gorm:"size:10;not null;default:success" json:"status"`
 	// FailReason 失败原因（仅 Status=failed 时填写，如 限流拦截/无效码/文件不存在 等）
-	FailReason string `gorm:"size:255" json:"failReason"`
+	FailReason string `gorm:"size:255" json:"fail_reason"`
 	// SourceType 下载来源类型（public/private/temp），用于行为分析跨来源聚合
-	SourceType string `gorm:"size:16;default:public" json:"sourceType"`
+	SourceType string `gorm:"size:16;default:public" json:"source_type"`
 	// SourceID 来源文件记录ID（对应 file_records_public/private/temp 主键），0 表示未能关联
-	SourceID uint `gorm:"default:0" json:"sourceId"`
+	SourceID uint `gorm:"default:0" json:"source_id"`
 	// FileRecordID 关联的公共文件索引记录 ID，用于移动/重命名后身份关联
-	FileRecordID uint       `gorm:"index" json:"fileRecordId"`     // 公共文件索引记录 ID（0 表示未关联/历史数据）
-	ClientIP     string     `gorm:"size:45;index" json:"clientIP"` // 客户端IP
-	UserID       string     `gorm:"size:64;index" json:"userID"`   // 用户ID
-	UploadType   TargetType `gorm:"size:20;not null;default:regular" json:"uploadType"`
+	FileRecordID uint       `gorm:"index" json:"file_record_id"`    // 公共文件索引记录 ID（0 表示未关联/历史数据）
+	ClientIP     string     `gorm:"size:45;index" json:"client_ip"` // 客户端IP
+	UserID       string     `gorm:"size:64;index" json:"user_id"`   // 用户ID
+	UploadType   TargetType `gorm:"size:20;not null;default:regular" json:"upload_type"`
 	Action       string     `gorm:"size:20;default:upload;index" json:"action"` // 操作类型: upload, download, search, preview, delete, rename, mkdir
 	// Overwritten 上传记录是否覆盖了已存在的同名文件（仅 action=upload 有意义）
 	Overwritten bool           `gorm:"not null;default:false" json:"overwritten"`
-	SearchQuery string         `gorm:"size:255;index" json:"searchQuery"` // 搜索关键词
-	UploadTime  time.Time      `gorm:"not null;index" json:"uploadTime"`  // 上传时间
-	CreatedAt   time.Time      `gorm:"index" json:"createdAt"`            // 创建时间（用于统计查询）
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
+	SearchQuery string         `gorm:"size:255;index" json:"search_query"` // 搜索关键词
+	UploadTime  time.Time      `gorm:"not null;index" json:"upload_time"`  // 上传时间
+	CreatedAt   time.Time      `gorm:"index" json:"created_at"`            // 创建时间（用于统计查询）
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 	// DlEvent 下载统计签名：1=该记录为公开下载事件（action∈{download,download-by-hash} 且来源为公共）。
 	// 写入侧在 BeforeCreate 计算，使行为分析查询退化为 dl_event/dl_ok 等值过滤，命中
 	// (dl_event, created_at, dl_ok) 覆盖索引，避免每次对 action/source_type 做 OR/IN 表达式过滤。
@@ -155,43 +155,43 @@ func (o *OperationRecord) BeforeCreate(_ *gorm.DB) error {
 type UploadRequest struct {
 	Dir      string `form:"dir" json:"dir" binding:"required,filepath,max=1024"`
 	Filename string `form:"filename" json:"filename" binding:"required,filetype,max=255"`
-	RootName string `form:"rootName" json:"rootName" binding:"required,max=255"`
-	FileSize int64  `form:"fileSize" json:"fileSize" binding:"min=0"`
+	RootName string `form:"root_name" json:"root_name" binding:"required,max=255"`
+	FileSize int64  `form:"file_size" json:"file_size" binding:"min=0"`
 }
 
 // CheckUploadStatusRequest 检查上传状态请求的数据结构
 type CheckUploadStatusRequest struct {
 	Filename string `form:"filename" json:"filename" binding:"required,filetype,max=255"`
 	Dir      string `form:"dir" json:"dir" binding:"required,filepath,max=1024"`
-	RootName string `form:"rootName" json:"rootName" binding:"required,max=255"`
-	FileSize int64  `form:"fileSize" json:"fileSize" binding:"min=0"`
+	RootName string `form:"root_name" json:"root_name" binding:"required,max=255"`
+	FileSize int64  `form:"file_size" json:"file_size" binding:"min=0"`
 }
 
 // UploadChunkRequest 上传分片请求的数据结构
 type UploadChunkRequest struct {
 	Filename    string                `form:"filename" json:"filename" binding:"required,filetype,max=255"`
 	Chunk       *multipart.FileHeader `form:"chunk" binding:"required"`
-	ChunkIndex  int                   `form:"chunkIndex" json:"chunkIndex" binding:"required,min=0"`
-	TotalChunks int                   `form:"totalChunks" json:"totalChunks" binding:"required,min=1"`
+	ChunkIndex  int                   `form:"chunk_index" json:"chunk_index" binding:"required,min=0"`
+	TotalChunks int                   `form:"total_chunks" json:"total_chunks" binding:"required,min=1"`
 	Checksum    string                `form:"checksum" json:"checksum" binding:"max=64"`
 	Dir         string                `form:"dir" json:"dir" binding:"required,filepath,max=1024"`
-	RootName    string                `form:"rootName" json:"rootName" binding:"required,max=255"`
-	FileSize    int64                 `form:"fileSize" json:"fileSize" binding:"min=0"`
+	RootName    string                `form:"root_name" json:"root_name" binding:"required,max=255"`
+	FileSize    int64                 `form:"file_size" json:"file_size" binding:"min=0"`
 }
 
 // FinalizeUploadRequest 完成分片上传请求的数据结构
 type FinalizeUploadRequest struct {
 	Filename    string `form:"filename" json:"filename" binding:"required,filetype,max=255"`
 	Dir         string `form:"dir" json:"dir" binding:"required,filepath,max=1024"`
-	RootName    string `form:"rootName" json:"rootName" binding:"required,max=255"`
-	TotalChunks int    `form:"totalChunks" json:"totalChunks" binding:"required,min=1"`
-	FileSize    int64  `form:"fileSize" json:"fileSize" binding:"min=0"`
+	RootName    string `form:"root_name" json:"root_name" binding:"required,max=255"`
+	TotalChunks int    `form:"total_chunks" json:"total_chunks" binding:"required,min=1"`
+	FileSize    int64  `form:"file_size" json:"file_size" binding:"min=0"`
 }
 
 // ExtendTempFileRequest 延长临时文件有效期请求的数据结构
 type ExtendTempFileRequest struct {
-	ExpireDate  string `json:"expireDate" binding:"max=32"`
-	NeverExpire bool   `json:"neverExpire"`
+	ExpireDate  string `json:"expire_date" binding:"max=32"`
+	NeverExpire bool   `json:"never_expire"`
 }
 
 // UserInfo 用户信息结构体

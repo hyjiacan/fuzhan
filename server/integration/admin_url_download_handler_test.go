@@ -75,7 +75,7 @@ func TestAdminURLDownloadHandler_ListAll(t *testing.T) {
 	router := gin.New()
 	router.GET("/admin/url-tasks", handler.ListURLTasks)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&pageSize=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&page_size=10", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -89,7 +89,7 @@ func TestAdminURLDownloadHandler_ListAll(t *testing.T) {
 			Items    []models.URLDownloadTask `json:"items"`
 			Total    int64                    `json:"total"`
 			Page     int                      `json:"page"`
-			PageSize int                      `json:"pageSize"`
+			PageSize int                      `json:"page_size"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -166,7 +166,7 @@ func TestAdminURLDownloadHandler_ListPagination(t *testing.T) {
 			Items    []models.URLDownloadTask `json:"items"`
 			Total    int64                    `json:"total"`
 			Page     int                      `json:"page"`
-			PageSize int                      `json:"pageSize"`
+			PageSize int                      `json:"page_size"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -203,7 +203,7 @@ func TestAdminURLDownloadHandler_ListDefaultParams(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 		Data    struct {
-			PageSize int `json:"pageSize"`
+			PageSize int `json:"page_size"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -460,13 +460,13 @@ func TestAdminURLDownloadHandler_InvalidQueryParams(t *testing.T) {
 	router.GET("/admin/url-tasks", handler.ListURLTasks)
 
 	// pageSize 超过上限
-	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&pageSize=200", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/url-tasks?page=1&page_size=200", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	var resp struct {
 		Data struct {
-			PageSize int `json:"pageSize"`
+			PageSize int `json:"page_size"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {

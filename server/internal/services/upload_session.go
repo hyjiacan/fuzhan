@@ -58,23 +58,23 @@ type UploadChunkReq struct {
 // UploadStatus 上传状态
 type UploadStatus struct {
 	ID              uint                `json:"id"`
-	FileName        string              `json:"fileName"`
-	FileSize        int64               `json:"fileSize"`
-	ChunkSize       int64               `json:"chunkSize"`
+	FileName        string              `json:"file_name"`
+	FileSize        int64               `json:"file_size"`
+	ChunkSize       int64               `json:"chunk_size"`
 	Status          models.UploadStatus `json:"status"`
-	TotalChunks     int                 `json:"totalChunks"`
-	UploadedIndexes []int               `json:"uploadedIndexes"`
+	TotalChunks     int                 `json:"total_chunks"`
+	UploadedIndexes []int               `json:"uploaded_indexes"`
 	Expired         bool                `json:"expired"`
-	ExpiredAt       time.Time           `json:"expiredAt"`
+	ExpiredAt       time.Time           `json:"expired_at"`
 }
 
 // FinalizeResult 完成上传结果
 type FinalizeResult struct {
-	TargetPath  string `json:"targetPath"`
-	FileName    string `json:"fileName"`
+	TargetPath  string `json:"target_path"`
+	FileName    string `json:"file_name"`
 	Overwritten bool   `json:"overwritten"`
 	// ShareCode 仅私有上传回填（作为分享/下载凭证）。公开上传为空。
-	ShareCode string `json:"shareCode,omitempty"`
+	ShareCode string `json:"share_code,omitempty"`
 }
 
 // UploadSessionService 上传会话服务

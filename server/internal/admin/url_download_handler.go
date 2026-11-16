@@ -62,7 +62,7 @@ func (h *URLDownloadHandler) ListURLTasks(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"items": tasks, "total": total, "page": page, "pageSize": pageSize,
+		"items": tasks, "total": total, "page": page, "page_size": pageSize,
 	})
 }
 

@@ -89,23 +89,23 @@
     <!-- ============ 概览指标卡片 ============ -->
     <section class="metric-grid">
       <div class="metric-card">
-        <div class="metric-value">{{ summary.totalDownloads }}</div>
+        <div class="metric-value">{{ summary.total_downloads }}</div>
         <div class="metric-title">成功下载（次）</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{{ summary.uniqueFiles }}</div>
+        <div class="metric-value">{{ summary.unique_files }}</div>
         <div class="metric-title">去重文件（个）</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{{ summary.uniqueIPs }}</div>
+        <div class="metric-value">{{ summary.unique_ips }}</div>
         <div class="metric-title">独立 IP（个）</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{{ summary.uniqueUsers }}</div>
+        <div class="metric-value">{{ summary.unique_users }}</div>
         <div class="metric-title">活跃用户（位）</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{{ fmtBytes(summary.totalBytes) }}</div>
+        <div class="metric-value">{{ fmtBytes(summary.total_bytes) }}</div>
         <div class="metric-title">下载体积</div>
       </div>
       <div class="metric-card danger">
@@ -120,7 +120,7 @@
         <div class="card-title">
           <span>下载趋势</span>
           <span class="selected-file" v-if="selectedFromFile">
-            单文件：{{ selectedFromFile.fileName }}（{{ selectedFromFile.fullPath }}）
+            单文件：{{ selectedFromFile.file_name }}（{{ selectedFromFile.full_path }}）
             <el-button link type="primary" size="small" @click="clearSelectedFile">清除单文件</el-button>
           </span>
         </div>
@@ -154,8 +154,8 @@
       <div ref="topFilesEl" class="chart-box small"></div>
       <el-table :data="topFiles" border size="small" :show-header="true" class="top-table" @row-click="onTopFileClick">
         <el-table-column type="index" label="#" width="44" align="center" />
-        <el-table-column prop="fileName" label="文件名" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="fullPath" label="路径" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="file_name" label="文件名" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="full_path" label="路径" min-width="170" show-overflow-tooltip />
         <el-table-column prop="count" label="下载数" width="86" align="right" />
         <el-table-column prop="spread" label="独立 IP" width="86" align="right" />
         <el-table-column label="扩散比" width="86" align="right">
@@ -163,7 +163,7 @@
         </el-table-column>
         <el-table-column v-if="buttonsEnabled" label="操作" width="70" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :disabled="!row.sourceId">下钻</el-button>
+            <el-button link type="primary" size="small" :disabled="!row.source_id">下钻</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -185,7 +185,7 @@
         <el-table-column type="index" label="#" width="44" align="center" />
         <el-table-column prop="key" :label="sourceBy === 'ip' ? 'IP 地址' : '用户'" min-width="180" show-overflow-tooltip />
         <el-table-column prop="count" label="下载数" width="100" align="right" />
-        <el-table-column prop="fileCount" label="涉文件数" width="100" align="right" />
+        <el-table-column prop="file_count" label="涉文件数" width="100" align="right" />
       </el-table>
     </el-card>
 
@@ -228,7 +228,7 @@
     <el-card v-if="fileDetail" shadow="never" class="chart-card">
       <template #header>
         <span class="card-title">
-          单文件下钻：{{ fileDetail.fileName }}
+          单文件下钻：{{ fileDetail.file_name }}
           <span class="sub">共 {{ fileDetail.total }} 次成功 · {{ fileDetail.failed }} 次失败</span>
         </span>
       </template>
@@ -237,15 +237,15 @@
         <div class="source-list">
           <h4>按 IP</h4>
           <ul>
-            <li v-for="item in fileDetail.byIP" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
-            <li v-if="!fileDetail.byIP.length" class="empty">暂无</li>
+            <li v-for="item in fileDetail.by_ip" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
+            <li v-if="!fileDetail.by_ip.length" class="empty">暂无</li>
           </ul>
         </div>
         <div class="source-list">
           <h4>按用户</h4>
           <ul>
-            <li v-for="item in fileDetail.byUser" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
-            <li v-if="!fileDetail.byUser.length" class="empty">暂无</li>
+            <li v-for="item in fileDetail.by_user" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
+            <li v-if="!fileDetail.by_user.length" class="empty">暂无</li>
           </ul>
         </div>
       </div>
@@ -275,7 +275,7 @@ const sourceBy = ref('ip')
 const topSort = ref('count')
 const aggDim = ref('dir')
 
-const summary = reactive({ totalDownloads: 0, uniqueFiles: 0, uniqueIPs: 0, uniqueUsers: 0, totalBytes: 0, failed: 0 })
+const summary = reactive({ total_downloads: 0, unique_files: 0, unique_ips: 0, unique_users: 0, total_bytes: 0, failed: 0 })
 const topFiles = ref([])
 const failures = ref([])
 const heatmap = ref([])
@@ -332,8 +332,8 @@ async function loadBehavior(st) {
     const byUser = {}
     const byIP = {}
     for (const r of records) {
-      const u = r.userID ? r.userID : '匿名'
-      const ip = r.clientIP ? r.clientIP : '未知'
+      const u = r.user_id ? r.user_id : '匿名'
+      const ip = r.client_ip ? r.client_ip : '未知'
       byIP[ip] = (byIP[ip] || 0) + 1
       byUser[u] = (byUser[u] || 0) + 1
     }
@@ -373,7 +373,7 @@ function renderBehaviorChart(st) {
 }
 
 // ================= 下载 =================
-const buttonsEnabled = computed(() => topFiles.value.some((f) => f.sourceId > 0))
+const buttonsEnabled = computed(() => topFiles.value.some((f) => f.source_id > 0))
 
 // 由档位/自定义解析出 RFC3339 的 from/to
 function resolveRange() {
@@ -455,8 +455,8 @@ async function loadSummary() {
 async function loadTrend() {
   const { from, to } = resolveRange()
   const params = { from, to, granularity: granularity.value }
-  if (selectedFromFile.value && selectedFromFile.value.sourceId) {
-    params.id = selectedFromFile.value.sourceId
+  if (selectedFromFile.value && selectedFromFile.value.source_id) {
+    params.id = selectedFromFile.value.source_id
   }
   const res = await BehaviorAnalyticsApi.getTrend(params)
   const data = (res.data || []).filter((p) => p.time)
@@ -494,7 +494,7 @@ async function loadTopFiles() {
     yAxis: {
       type: 'category',
       inverse: true,
-      data: rows.map((r) => r.fileName),
+      data: rows.map((r) => r.file_name),
       axisLabel: { color: c.text, formatter: (v) => truncateLabel(v, 130) },
       axisLine: { show: false }
     },
@@ -630,9 +630,9 @@ async function loadAggregate() {
 
 async function loadFileDetail() {
   const sel = selectedFromFile.value
-  if (!sel || !sel.sourceId) return
+  if (!sel || !sel.source_id) return
   const { from, to } = resolveRange()
-  const res = await BehaviorAnalyticsApi.getFileDetail({ id: sel.sourceId, from, to })
+  const res = await BehaviorAnalyticsApi.getFileDetail({ id: sel.source_id, from, to })
   if (res.success && res.data) {
     if (!fileDetail.value) fileDetail.value = res.data
     else Object.assign(fileDetail.value, res.data)
@@ -655,7 +655,7 @@ async function loadFileDetail() {
 
 async function loadAll() {
   loading.value = true
-  if (selectedFromFile.value && !selectedFromFile.value.sourceId) clearSelectedFile()
+  if (selectedFromFile.value && !selectedFromFile.value.source_id) clearSelectedFile()
   try {
     await loadFileDetail()
     await Promise.all([
@@ -670,7 +670,7 @@ async function loadAll() {
 }
 
 function onTopFileClick(row) {
-  if (!row.sourceId) {
+  if (!row.source_id) {
     return
   }
   selectedFromFile.value = row

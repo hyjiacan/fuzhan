@@ -15,7 +15,7 @@ export function useDependency() {
       const res = await FileRecordApi.searchFiles(value)
       if (res.success && res.data.records) {
         depAutocompleteCache[item.id] = res.data.records.map(r => ({
-          label: `${r.fileName} (${r.fullPath})`,
+          label: `${r.file_name} (${r.full_path})`,
           value: String(r.id)
         }))
       }
@@ -48,7 +48,7 @@ export function useDependency() {
       const res = await FileRecordApi.searchFiles(value)
       if (res.success && res.data.records) {
         extraDepAutocompleteOptions.value = res.data.records.map(r => ({
-          label: `${r.fileName} (${r.fullPath})`,
+          label: `${r.file_name} (${r.full_path})`,
           value: String(r.id)
         }))
       }

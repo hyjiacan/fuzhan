@@ -77,7 +77,7 @@ type LogLine struct {
 type LogFileInfo struct {
 	Name    string `json:"name"`
 	Size    int64  `json:"size"`
-	ModTime int64  `json:"modTime"`
+	ModTime int64  `json:"modified_time"`
 }
 
 // LogHandler 管理员日志查看处理器

@@ -53,10 +53,10 @@ func (h *Handler) ListRecords(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"records":  records,
-		"total":    total,
-		"page":     query.Page,
-		"pageSize": query.PageSize,
+		"records":   records,
+		"total":     total,
+		"page":      query.Page,
+		"page_size": query.PageSize,
 	})
 }
 
@@ -201,10 +201,10 @@ func (h *Handler) ListDuplicates(c *gin.Context) {
 	}
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"groups":   groups,
-		"total":    total,
-		"page":     query.Page,
-		"pageSize": query.PageSize,
+		"groups":    groups,
+		"total":     total,
+		"page":      query.Page,
+		"page_size": query.PageSize,
 	})
 }
 

@@ -307,9 +307,9 @@ const getFileIconClass = (fullPath) => {
 // 操作记录页文件路径列：与"最近"页一致，把路径段拆分渲染，目录段可点击，
 // 但跳转目标是「文件管理」页（/admin/files/<目录>）而非公共文件页。
 const renderRecordPathCell = (row) => {
-  const fullPath = row.fullPath || ''
+  const fullPath = row.full_path || ''
   const segments = fullPath.split('/').filter(Boolean)
-  const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
+  const fileName = segments[segments.length - 1] || row.file_name || '未知文件'
   const dirSegments = segments.slice(0, -1)
   const iconClass = `icon-filetype ${getFileIconClass(fullPath)}`
   const navigateToFileDir = (dirPath) => {
@@ -368,63 +368,63 @@ const deleteRecordColumn = (action) => ({
 })
 
 const uploadColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
-  { title: '大小', key: 'fileSize', width: 100,
-    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  { title: '文件路径', key: 'full_path', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'file_size', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
   },
-  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '上传时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => renderRecentTime(row.createdAt)
+  { title: 'IP地址', key: 'client_ip', dataKey: 'client_ip', width: 140, cellRenderer: ({ rowData: row }) => row.client_ip || '-' },
+  { title: '上传时间', key: 'created_at', dataKey: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => renderRecentTime(row.created_at)
   },
   deleteRecordColumn('upload')
 ]
 
 const downloadColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
-  { title: '大小', key: 'fileSize', width: 100,
-    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  { title: '文件路径', key: 'full_path', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'file_size', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
   },
-  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '下载时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  { title: 'IP地址', key: 'client_ip', dataKey: 'client_ip', width: 140, cellRenderer: ({ rowData: row }) => row.client_ip || '-' },
+  { title: '下载时间', key: 'created_at', dataKey: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.created_at)
   },
-  { title: '上传时间', key: 'uploadTime', dataKey: 'uploadTime', width: 170,
-    cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001'))
-      ? renderRecentTime(row.uploadTime)
+  { title: '上传时间', key: 'upload_time', dataKey: 'upload_time', width: 170,
+    cellRenderer: ({ rowData: row }) => (row.upload_time && !String(row.upload_time).startsWith('0001'))
+      ? renderRecentTime(row.upload_time)
       : h('span', { style: 'color:var(--el-text-color-placeholder);' }, '-')
   },
   deleteRecordColumn('download')
 ]
 
 const searchColumns = [
-  { title: '搜索关键词', key: 'searchQuery', minWidth: 200, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.searchQuery) },
-  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '搜索时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  { title: '搜索关键词', key: 'search_query', minWidth: 200, flexGrow: 1, cellRenderer: ({ rowData: row }) => formatTypeText(row.search_query) },
+  { title: 'IP地址', key: 'client_ip', dataKey: 'client_ip', width: 140, cellRenderer: ({ rowData: row }) => row.client_ip || '-' },
+  { title: '搜索时间', key: 'created_at', dataKey: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.created_at)
   },
   deleteRecordColumn('search')
 ]
 
 const previewColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
-  { title: '大小', key: 'fileSize', width: 100,
-    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  { title: '文件路径', key: 'full_path', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'file_size', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
   },
-  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '预览时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  { title: 'IP地址', key: 'client_ip', dataKey: 'client_ip', width: 140, cellRenderer: ({ rowData: row }) => row.client_ip || '-' },
+  { title: '预览时间', key: 'created_at', dataKey: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.created_at)
   },
   deleteRecordColumn('preview')
 ]
 
 const deleteColumns = [
-  { title: '文件路径', key: 'fullPath', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
-  { title: '大小', key: 'fileSize', width: 100,
-    cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+  { title: '文件路径', key: 'full_path', minWidth: 260, flexGrow: 1, cellRenderer: ({ rowData: row }) => renderRecordPathCell(row) },
+  { title: '大小', key: 'file_size', width: 100,
+    cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
   },
-  { title: 'IP地址', key: 'clientIP', dataKey: 'clientIP', width: 140, cellRenderer: ({ rowData: row }) => row.clientIP || '-' },
-  { title: '删除时间', key: 'createdAt', dataKey: 'createdAt', width: 170,
-    cellRenderer: ({ rowData: row }) => formatTime(row.createdAt)
+  { title: 'IP地址', key: 'client_ip', dataKey: 'client_ip', width: 140, cellRenderer: ({ rowData: row }) => row.client_ip || '-' },
+  { title: '删除时间', key: 'created_at', dataKey: 'created_at', width: 170,
+    cellRenderer: ({ rowData: row }) => formatTime(row.created_at)
   },
   deleteRecordColumn('delete')
 ]

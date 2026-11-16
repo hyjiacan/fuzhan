@@ -18,9 +18,9 @@ import (
 
 // StorageStats 存储统计
 type StorageStats struct {
-	TotalSpace int64         `json:"totalSpace"`
-	UsedSpace  int64         `json:"usedSpace"`
-	FreeSpace  int64         `json:"freeSpace"`
+	TotalSpace int64         `json:"total_space"`
+	UsedSpace  int64         `json:"used_space"`
+	FreeSpace  int64         `json:"free_space"`
 	Roots      []RootStorage `json:"roots"`
 	Temp       TempUsage     `json:"temp"`
 	Private    PrivateUsage  `json:"private"`
@@ -38,20 +38,20 @@ type RootStorage struct {
 
 // TempUsage 临时文件使用量
 type TempUsage struct {
-	QuotaPerIP int64            `json:"quotaPerIP"`
-	UsedByIP   map[string]int64 `json:"usedByIP"`
+	QuotaPerIP int64            `json:"quota_per_ip"`
+	UsedByIP   map[string]int64 `json:"used_by_ip"`
 }
 
 // PrivateUsage 私有存储使用量
 type PrivateUsage struct {
-	UsedByUser map[string]int64 `json:"usedByUser"`
+	UsedByUser map[string]int64 `json:"used_by_user"`
 }
 
 // AccessStats 访问统计
 type AccessStats struct {
-	TotalRequests int64 `json:"totalRequests"`
-	ActiveUsers   int64 `json:"activeUsers"`
-	OnlineIPs     int64 `json:"onlineIPs"`
+	TotalRequests int64 `json:"total_requests"`
+	ActiveUsers   int64 `json:"active_users"`
+	OnlineIPs     int64 `json:"online_ips"`
 }
 
 // KeywordStat 关键词统计
@@ -68,8 +68,8 @@ type RecentKeyword struct {
 
 // Rankings 排行榜
 type Rankings struct {
-	RecentUploads   []FileRank `json:"recentUploads"`
-	RecentDownloads []FileRank `json:"recentDownloads"`
+	RecentUploads   []FileRank `json:"recent_uploads"`
+	RecentDownloads []FileRank `json:"recent_downloads"`
 }
 
 // FileRank 文件排行
@@ -81,12 +81,12 @@ type FileRank struct {
 
 // HotDownloadStat 热门下载统计
 type HotDownloadStat struct {
-	FileName   string    `json:"fileName"`
+	FileName   string    `json:"file_name"`
 	FilePath   string    `json:"path"`
-	FullPath   string    `json:"fullPath"`
-	RootName   string    `json:"rootName"`
-	FileSize   int64     `json:"fileSize"`
-	UploadTime time.Time `json:"uploadTime"`
+	FullPath   string    `json:"full_path"`
+	RootName   string    `json:"root_name"`
+	FileSize   int64     `json:"file_size"`
+	UploadTime time.Time `json:"upload_time"`
 	Count      int       `json:"count"`
 	Notes      string    `json:"notes"`
 }
@@ -96,7 +96,7 @@ type HotDownloadResult struct {
 	Records  []HotDownloadStat `json:"records"`
 	Total    int               `json:"total"`
 	Page     int               `json:"page"`
-	PageSize int               `json:"pageSize"`
+	PageSize int               `json:"page_size"`
 }
 
 // MonitorService 监控服务

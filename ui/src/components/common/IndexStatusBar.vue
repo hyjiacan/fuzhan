@@ -1,13 +1,13 @@
 <template>
   <div class="index-status-bar">
     <!-- 正在扫描 -->
-    <el-tooltip v-if="status.isScanning">
+    <el-tooltip v-if="status.is_scanning">
       <template #default>
         <span class="status-item scanning">
           <el-icon class="icon is-spinning"><Loading /></el-icon>
-          正在扫描 {{ status.scanScope }}
-          <span v-if="status.scanTotal > 0" class="progress">
-            {{ status.scanProgress }} / {{ status.scanTotal }}
+          正在扫描 {{ status.scan_scope }}
+          <span v-if="status.scan_total > 0" class="progress">
+            {{ status.scan_progress }} / {{ status.scan_total }}
           </span>
         </span>
       </template>
@@ -25,14 +25,14 @@
       <span class="status-item idle">
         <el-icon class="icon"><FolderChecked /></el-icon>
         索引:
-        <span v-if="status.lastScanTime" class="time">
-          上次 {{ formatTime(status.lastScanTime) }}
+        <span v-if="status.last_scan_time" class="time">
+          上次 {{ formatTime(status.last_scan_time) }}
         </span>
         <span v-else class="time">尚未扫描</span>
-        <span v-if="status.nextScanTime" class="time next">
-          · 下次 {{ formatTime(status.nextScanTime) }}
+        <span v-if="status.next_scan_time" class="time next">
+          · 下次 {{ formatTime(status.next_scan_time) }}
         </span>
-        <span v-if="!status.scanCronExpression" class="time warn">
+        <span v-if="!status.scan_cron_expression" class="time warn">
           · 定时扫描未配置
         </span>
       </span>
@@ -55,12 +55,12 @@ const props = defineProps({
 })
 
 const status = ref({
-  lastScanTime: null,
-  nextScanTime: null,
-  isScanning: false,
-  scanScope: '',
-  scanProgress: 0,
-  scanTotal: 0,
+  last_scan_time: null,
+  next_scan_time: null,
+  is_scanning: false,
+  scan_scope: '',
+  scan_progress: 0,
+  scan_total: 0,
 })
 // 后端接口是否加载成功；失败时状态条显示未知，不展示「尚未扫描」等误导状态
 const loadError = ref(false)

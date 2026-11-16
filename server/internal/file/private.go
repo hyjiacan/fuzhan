@@ -73,11 +73,11 @@ func (h *PrivateStorageHandlers) List(c *gin.Context) {
 	items := make([]gin.H, 0, len(files))
 	for _, f := range files {
 		items = append(items, gin.H{
-			"filename":   f.FileName,
-			"fileSize":   f.FileSize,
-			"uploadTime": f.CreatedAt,
-			"owner":      f.OwnerID,
-			"code":       f.ShareCode,
+			"filename":    f.FileName,
+			"file_size":   f.FileSize,
+			"upload_time": f.CreatedAt,
+			"owner":       f.OwnerID,
+			"code":        f.ShareCode,
 		})
 	}
 

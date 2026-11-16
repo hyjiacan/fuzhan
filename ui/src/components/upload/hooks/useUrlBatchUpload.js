@@ -131,10 +131,10 @@ export function useUrlBatchUpload({
         items.value.push({
           id: nextId(),
           url: u,
-          fileName: it.fileName || '',
-          fileSize: it.fileSize || 0,
-          targetExists: !!it.targetExists,
-          alreadyUploaded: !!it.alreadyUploaded,
+          fileName: it.file_name || '',
+          fileSize: it.file_size || 0,
+          targetExists: !!it.target_exists,
+          alreadyUploaded: !!it.already_uploaded,
           notes: '',
           depFileName: '',
           depFileRecordId: null,
@@ -211,15 +211,15 @@ export function useUrlBatchUpload({
       } else {
         data = await UploadApi.uploadFromUrl(item.url, item.fileName, form.uploadDir || '', storageType.value)
       }
-      if (data.success && data.data?.taskId) {
+      if (data.success && data.data?.task_id) {
         store.setActiveUrlTasks(true)
-        item.taskId = data.data.taskId
+        item.taskId = data.data.task_id
         item.status = 'pending'
         item.displayText = '排队中...'
         item.error = ''
         item.progress = 0
-        if (data.data.fileSize) item.fileSize = data.data.fileSize
-        if (data.data.fileName) item.fileName = item.fileName || data.data.fileName
+        if (data.data.file_size) item.fileSize = data.data.file_size
+        if (data.data.file_name) item.fileName = item.fileName || data.data.file_name
         setMessage('已加入队列，等待上传...', 'info')
         syncStream()
         return true
@@ -316,10 +316,10 @@ export function useUrlBatchUpload({
   // applyTaskState 将后端任务状态映射到条目（SSE 与轮询共用；终态提示只触发一次）
   const applyTaskState = (item, task) => {
     if (!item || !task) return
-    item.progress = task.fileSize > 0 ? Math.round(task.downloadedBytes / task.fileSize * 100) : 0
-    item.retryCount = task.retryCount || 0
-    if (task.fileSize) item.fileSize = task.fileSize
-    if (task.fileName) item.fileName = task.fileName
+    item.progress = task.file_size > 0 ? Math.round(task.downloaded_bytes / task.file_size * 100) : 0
+    item.retryCount = task.retry_count || 0
+    if (task.file_size) item.fileSize = task.file_size
+    if (task.file_name) item.fileName = task.file_name
 
     const retrySuffix = item.retryCount > 0 ? `（第 ${item.retryCount} 次重试）` : ''
     const st = mapTaskStatus(task.status)
@@ -341,7 +341,7 @@ export function useUrlBatchUpload({
         emit?.('upload-success')
       }
     } else if (st === 'failed') {
-      item.error = task.errorMessage || '上传失败'
+      item.error = task.error_message || '上传失败'
       stopPolling(item.id)
       if (prev !== 'failed') setMessage('文件上传失败', 'error')
     } else if (st === 'cancelled') {

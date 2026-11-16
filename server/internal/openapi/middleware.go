@@ -371,11 +371,11 @@ func (s *APICallStat) Record(call CallRecord) {
 
 // StatsSummary 统计摘要
 type StatsSummary struct {
-	TotalCalls      int            `json:"totalCalls"`
-	ByEndpoint      map[string]int `json:"byEndpoint"`
-	ByStatusCode    map[int]int    `json:"byStatusCode"`
-	TopIPs          []IPCallCount  `json:"topIPs"`
-	HourlyBreakdown []HourlyCount  `json:"hourlyBreakdown"`
+	TotalCalls      int            `json:"total_calls"`
+	ByEndpoint      map[string]int `json:"by_endpoint"`
+	ByStatusCode    map[int]int    `json:"by_status_code"`
+	TopIPs          []IPCallCount  `json:"top_ips"`
+	HourlyBreakdown []HourlyCount  `json:"hourly_breakdown"`
 }
 
 // IPCallCount IP 调用次数

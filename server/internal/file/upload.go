@@ -221,11 +221,11 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 
 	middleware.LogOperation(c, "upload.session.create", req.Filename, nil)
 	utils.HandleSuccess(c, http.StatusCreated, "会话创建成功", gin.H{
-		"uploadId":          session.ID,
-		"chunkSize":         h.chunkSize,
-		"totalChunks":       session.TotalChunks,
-		"expiredAt":         session.ExpiredAt,
-		"overwriteRequired": targetExists,
+		"upload_id":          session.ID,
+		"chunk_size":         h.chunkSize,
+		"total_chunks":       session.TotalChunks,
+		"expired_at":         session.ExpiredAt,
+		"overwrite_required": targetExists,
 	})
 }
 
@@ -252,15 +252,15 @@ func (h *UploadSessionHandler) GetSession(c *gin.Context) {
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
 		"session": gin.H{
-			"id":              status.ID,
-			"fileName":        status.FileName,
-			"fileSize":        status.FileSize,
-			"chunkSize":       status.ChunkSize,
-			"status":          status.Status,
-			"totalChunks":     status.TotalChunks,
-			"uploadedIndexes": status.UploadedIndexes,
-			"expired":         status.Expired,
-			"expiredAt":       status.ExpiredAt,
+			"id":               status.ID,
+			"file_name":        status.FileName,
+			"file_size":        status.FileSize,
+			"chunk_size":       status.ChunkSize,
+			"status":           status.Status,
+			"total_chunks":     status.TotalChunks,
+			"uploaded_indexes": status.UploadedIndexes,
+			"expired":          status.Expired,
+			"expired_at":       status.ExpiredAt,
 		},
 	})
 }
@@ -286,9 +286,9 @@ func (h *UploadSessionHandler) ResumeSession(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "续传成功", gin.H{
-		"uploadId":        status.ID,
-		"uploadedIndexes": status.UploadedIndexes,
-		"expiredAt":       status.ExpiredAt,
+		"upload_id":        status.ID,
+		"uploaded_indexes": status.UploadedIndexes,
+		"expired_at":       status.ExpiredAt,
 	})
 }
 
@@ -363,7 +363,7 @@ func (h *UploadSessionHandler) UploadChunk(c *gin.Context) {
 		return
 	}
 
-	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunkIndex": chunkIndex})
+	utils.HandleSuccess(c, http.StatusOK, "分片上传成功", gin.H{"chunk_index": chunkIndex})
 }
 
 // FinalizeSession 完成上传
@@ -429,12 +429,12 @@ func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 		result := make([]gin.H, 0, len(sessions))
 		for _, s := range sessions {
 			result = append(result, gin.H{
-				"id":        s.ID,
-				"fileName":  s.FileName,
-				"fileSize":  s.FileSize,
-				"status":    s.Status,
-				"createdAt": s.CreatedAt,
-				"expiredAt": s.ExpiredAt,
+				"id":         s.ID,
+				"file_name":  s.FileName,
+				"file_size":  s.FileSize,
+				"status":     s.Status,
+				"created_at": s.CreatedAt,
+				"expired_at": s.ExpiredAt,
 			})
 		}
 		utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
@@ -448,12 +448,12 @@ func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 		result := make([]gin.H, 0, len(sessions))
 		for _, s := range sessions {
 			result = append(result, gin.H{
-				"id":        s.ID,
-				"fileName":  s.FileName,
-				"fileSize":  s.FileSize,
-				"status":    s.Status,
-				"createdAt": s.CreatedAt,
-				"expiredAt": s.ExpiredAt,
+				"id":         s.ID,
+				"file_name":  s.FileName,
+				"file_size":  s.FileSize,
+				"status":     s.Status,
+				"created_at": s.CreatedAt,
+				"expired_at": s.ExpiredAt,
 			})
 		}
 		utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})
@@ -467,12 +467,12 @@ func (h *UploadSessionHandler) ListUploadSessions(c *gin.Context) {
 		result := make([]gin.H, 0, len(sessions))
 		for _, s := range sessions {
 			result = append(result, gin.H{
-				"id":        s.ID,
-				"fileName":  s.FileName,
-				"fileSize":  s.FileSize,
-				"status":    s.Status,
-				"createdAt": s.CreatedAt,
-				"expiredAt": s.ExpiredAt,
+				"id":         s.ID,
+				"file_name":  s.FileName,
+				"file_size":  s.FileSize,
+				"status":     s.Status,
+				"created_at": s.CreatedAt,
+				"expired_at": s.ExpiredAt,
 			})
 		}
 		utils.HandleSuccess(c, http.StatusOK, "", gin.H{"sessions": result, "total": total})

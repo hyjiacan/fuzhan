@@ -31,11 +31,11 @@ type Entry struct {
 // Snapshot 对外返回的在线 IP 条目。
 type Snapshot struct {
 	IP            string `json:"ip"`
-	FirstSeen     string `json:"firstSeen"`
-	LastSeen      string `json:"lastSeen"`
-	OnlineSeconds int64  `json:"onlineSeconds"`
-	RequestCount  int64  `json:"requestCount"`
-	UserAgent     string `json:"userAgent"`
+	FirstSeen     string `json:"first_seen"`
+	LastSeen      string `json:"last_seen"`
+	OnlineSeconds int64  `json:"online_seconds"`
+	RequestCount  int64  `json:"request_count"`
+	UserAgent     string `json:"user_agent"`
 }
 
 // Tracker 记录各客户端 IP 的访问情况。

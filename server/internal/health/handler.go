@@ -158,20 +158,20 @@ func (hh *HealthHandler) Ready(c *gin.Context) {
 
 	// 检查根目录是否存在
 	if len(appconfig.GlobalConfig.Storage.Public.RootDirs) > 0 {
-		checks["rootDirs"] = "ok"
+		checks["root_dirs"] = "ok"
 	} else {
-		checks["rootDirs"] = "failed"
+		checks["root_dirs"] = "failed"
 	}
 
 	// 检查临时目录（如果启用）
 	if appconfig.GlobalConfig.Storage.Private.Enabled {
 		if appconfig.GlobalConfig.Storage.Private.Path != "" {
-			checks["tempDir"] = "ok"
+			checks["temp_dir"] = "ok"
 		} else {
-			checks["tempDir"] = "failed"
+			checks["temp_dir"] = "failed"
 		}
 	} else {
-		checks["tempDir"] = "skipped"
+		checks["temp_dir"] = "skipped"
 	}
 
 	// 确定整体状态

@@ -4,15 +4,15 @@
     <div v-if="rootNode" :style="{ marginBottom: '12px', padding: '12px', background: 'var(--el-fill-color-light)', borderRadius: '8px' }">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-weight: 600;">{{ rootNode.fileName }}</span>
+          <span style="font-weight: 600;">{{ rootNode.file_name }}</span>
         </div>
-        <el-button v-if="rootNode.downloadURL" size="small" link type="primary"
-          @click.stop="handleDownload(rootNode.downloadURL)">
+        <el-button v-if="rootNode.download_url" size="small" link type="primary"
+          @click.stop="handleDownload(rootNode.download_url)">
           下载
         </el-button>
       </div>
       <div v-if="recordInfo" :style="{ marginTop: '4px', fontSize: '12px', color: 'var(--el-text-color-placeholder)' }">
-        路径: {{ recordInfo.fullPath }}
+        路径: {{ recordInfo.full_path }}
       </div>
     </div>
 
@@ -29,10 +29,10 @@
           <span v-if="data._raw === null" style="font-weight: 600; color: var(--el-text-color-regular); font-size: 12px;">{{ data.label }}</span>
           <div v-else style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0;">
             <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ data.label }}</span>
-            <el-button v-if="data._raw?.downloadURL" size="small" link type="primary"
-              @click.stop="handleDownload(data._raw.downloadURL)">下载</el-button>
-            <el-button v-if="data._raw?.dependencyId" size="small" link type="danger"
-              @click.stop="deleteDependency(data._raw.dependencyId)">移除</el-button>
+            <el-button v-if="data._raw?.download_url" size="small" link type="primary"
+              @click.stop="handleDownload(data._raw.download_url)">下载</el-button>
+            <el-button v-if="data._raw?.dependency_id" size="small" link type="danger"
+              @click.stop="deleteDependency(data._raw.dependency_id)">移除</el-button>
           </div>
         </template>
       </el-tree>
@@ -63,7 +63,7 @@
 
     <template #footer>
       <div style="display: flex; justify-content: space-between;">
-        <el-button size="small" @click="handleDownloadAll" :disabled="!treeData.length && !rootNode?.downloadURL">
+        <el-button size="small" @click="handleDownloadAll" :disabled="!treeData.length && !rootNode?.download_url">
           <el-icon :size="14"><Download /></el-icon>
           <span style="margin-left: 4px;">下载全部</span>
         </el-button>
@@ -175,7 +175,7 @@ function convertNode(node, parentKey) {
   const key = parentKey ? `${parentKey}-${node.id}` : String(node.id)
   const result = {
     key,
-    label: node.fileName,
+    label: node.file_name,
     isLeaf: true,
     _raw: { ...node }
   }
@@ -196,11 +196,11 @@ const handleDownload = (downloadURL) => {
 function collectURLs() {
   const urls = []
   // 当前文件
-  if (rootNode.value?.downloadURL) urls.push(rootNode.value.downloadURL)
+  if (rootNode.value?.download_url) urls.push(rootNode.value.download_url)
   // 收集所有依赖项的下载路径
   const walkTree = (nodes) => {
     for (const node of nodes) {
-      if (node._raw?.downloadURL) urls.push(node._raw.downloadURL)
+      if (node._raw?.download_url) urls.push(node._raw.download_url)
       if (node.children) walkTree(node.children)
     }
   }
@@ -302,9 +302,9 @@ const handleSearch = async (value) => {
     const res = await IndexApi.searchRecords(value)
     if (res.success && res.data.records) {
       autocompleteOptions.value = res.data.records
-        .filter(r => !r.isDir)
+        .filter(r => !r.is_dir)
         .map(r => ({
-        label: `${r.fileName} (${r.fullPath})`,
+        label: `${r.file_name} (${r.full_path})`,
         value: String(r.id)
       }))
     }

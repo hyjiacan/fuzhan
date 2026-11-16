@@ -127,7 +127,7 @@ const isDir = (row) => row.type === 'dir' || row.type === 'directory'
 // 获取文件类型图标类名
 const getFileIconClass = (row) => {
   if (isDir(row)) return 'icon-filetype-folder'
-  const ext = row.fileName?.split('.').pop()?.toLowerCase() || ''
+  const ext = row.file_name?.split('.').pop()?.toLowerCase() || ''
   return `icon-filetype-${ext}`
 }
 
@@ -141,16 +141,16 @@ const downloadColumns = [
   },
   {
     title: '文件名',
-    key: 'fileName',
+    key: 'file_name',
     minWidth: 220,
     flexGrow: 1,
     cellRenderer: ({ rowData: row }) => {
-      const fullPath = row.fullPath || row.path || ''
+      const fullPath = row.full_path || row.path || ''
       const segments = fullPath.split('/').filter(Boolean)
-      const fileName = segments[segments.length - 1] || row.fileName || '未知文件'
+      const fileName = segments[segments.length - 1] || row.file_name || '未知文件'
       const pathSegments = segments.slice(0, -1)
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
-      const dirPath = row.fullPath || row.path || ''
+      const dirPath = row.full_path || row.path || ''
 
       return h('div', {
         class: 'file-name-cell',
@@ -200,9 +200,9 @@ const downloadColumns = [
   },
   {
     title: '大小',
-    key: 'fileSize',
+    key: 'file_size',
     width: 140,
-    cellRenderer: ({ rowData: row }) => formatFileSize(row.fileSize || 0)
+    cellRenderer: ({ rowData: row }) => formatFileSize(row.file_size || 0)
   },
   {
     title: '备注',
@@ -214,9 +214,9 @@ const downloadColumns = [
   },
   {
     title: '上传时间',
-    key: 'uploadTime',
+    key: 'upload_time',
     width: 180,
-    cellRenderer: ({ rowData: row }) => (row.uploadTime && !String(row.uploadTime).startsWith('0001')) ? renderUploadTime(row.uploadTime) : '-'
+    cellRenderer: ({ rowData: row }) => (row.upload_time && !String(row.upload_time).startsWith('0001')) ? renderUploadTime(row.upload_time) : '-'
   },
   {
     title: '下载次数',

@@ -73,7 +73,7 @@ func TestSaveConfig_PersistsSecurity(t *testing.T) {
 	}()
 	appconfig.GlobalConfig = appconfig.Config{} // 关闭私有/临时存储，跳过目录创建副作用
 
-	body := `{"security":{"trustProxy":true,"allowedOrigins":["https://a.example.com","https://b.example.com"]}}`
+	body := `{"security":{"trust_proxy":true,"allowed_origins":["https://a.example.com","https://b.example.com"]}}`
 	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	if !appconfig.GlobalConfig.Security.TrustProxy {
@@ -118,7 +118,7 @@ func TestSaveConfig_ClearsSecurity(t *testing.T) {
 		},
 	}
 
-	body := `{"security":{"trustProxy":false,"allowedOrigins":[]}}`
+	body := `{"security":{"trust_proxy":false,"allowed_origins":[]}}`
 	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	if appconfig.GlobalConfig.Security.TrustProxy {
@@ -174,7 +174,7 @@ func TestSaveConfig_PreviewGroups(t *testing.T) {
 
 	body := `{"preview":{"enabled":false,"groups":{` +
 		`"image":{"enabled":false,"mimes":"image/png","exts":"png"},` +
-		`"text":{"enabled":true,"mimes":"text/plain","exts":"txt","maxInlineSize":"2M","textChunkSize":"200K"}}}}`
+		`"text":{"enabled":true,"mimes":"text/plain","exts":"txt","max_inline_size":"2M","text_chunk_size":"200K"}}}}`
 	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	pv := appconfig.GlobalConfig.Preview
@@ -239,7 +239,7 @@ func TestGetOptions_CaptchaAndNoAllowedIPRanges(t *testing.T) {
 		Data struct {
 			Account map[string]interface{} `json:"account"`
 			Upload  struct {
-				URLUpload map[string]interface{} `json:"urlUpload"`
+				URLUpload map[string]interface{} `json:"url_upload"`
 			} `json:"upload"`
 		} `json:"data"`
 	}
@@ -254,15 +254,15 @@ func TestGetOptions_CaptchaAndNoAllowedIPRanges(t *testing.T) {
 	if captcha["mode"] != "always" {
 		t.Errorf("options.account.captcha.mode = %v, want always", captcha["mode"])
 	}
-	if captcha["triggerAfter"] != float64(4) {
-		t.Errorf("options.account.captcha.triggerAfter = %v, want 4", captcha["triggerAfter"])
+	if captcha["trigger_after"] != float64(4) {
+		t.Errorf("options.account.captcha.trigger_after = %v, want 4", captcha["trigger_after"])
 	}
 	// mode=always 时 required 恒为 true（与本 IP 失败次数无关）
 	if captcha["required"] != true {
 		t.Errorf("options.account.captcha.required = %v, want true", captcha["required"])
 	}
-	if _, exists := resp.Data.Upload.URLUpload["allowedIPRanges"]; exists {
-		t.Error("options.upload.urlUpload 不应再包含 allowedIPRanges")
+	if _, exists := resp.Data.Upload.URLUpload["allowed_ip_ranges"]; exists {
+		t.Error("options.upload.url_upload 不应再包含 allowed_ip_ranges")
 	}
 }
 
@@ -278,7 +278,7 @@ func TestSaveConfig_PersistsCaptcha(t *testing.T) {
 	}()
 	appconfig.GlobalConfig = appconfig.Config{}
 
-	body := `{"account":{"captcha":{"mode":"after_n","triggerAfter":3}}}`
+	body := `{"account":{"captcha":{"mode":"after_n","trigger_after":3}}}`
 	postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 	got := appconfig.GlobalConfig.Account.Captcha
@@ -331,7 +331,7 @@ func TestSaveConfig_CaptchaTriggerAfterOnlyPositive(t *testing.T) {
 				},
 			}
 
-			body := `{"account":{"captcha":{"mode":"after_n","triggerAfter":` + strconv.Itoa(tc.trigger) + `}}}`
+			body := `{"account":{"captcha":{"mode":"after_n","trigger_after":` + strconv.Itoa(tc.trigger) + `}}}`
 			postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 			got := appconfig.GlobalConfig.Account.Captcha
@@ -352,7 +352,7 @@ func TestSaveConfig_CaptchaTriggerAfterOnlyPositive(t *testing.T) {
 					t.Errorf("持久化 YAML 缺少 trigger_after: 3: %s", yamlText)
 				}
 			} else if strings.Contains(yamlText, "trigger_after") {
-				t.Errorf("triggerAfter=%d 时不应写入 account.captcha.trigger_after: %s", tc.trigger, yamlText)
+				t.Errorf("trigger_after=%d 时不应写入 account.captcha.trigger_after: %s", tc.trigger, yamlText)
 			}
 		})
 	}
@@ -379,7 +379,7 @@ func TestGetOptions_CaptchaRequiredDisabled(t *testing.T) {
 			Account struct {
 				Captcha struct {
 					Mode         string `json:"mode"`
-					TriggerAfter int    `json:"triggerAfter"`
+					TriggerAfter int    `json:"trigger_after"`
 					Required     bool   `json:"required"`
 				} `json:"captcha"`
 			} `json:"account"`
@@ -440,7 +440,7 @@ func TestSaveConfig_CaptchaModeInvalid(t *testing.T) {
 		},
 	}
 
-	w := postConfig(t, "/api/v1/web/config", `{"account":{"captcha":{"mode":"bogus","triggerAfter":9}}}`, &Handler{})
+	w := postConfig(t, "/api/v1/web/config", `{"account":{"captcha":{"mode":"bogus","trigger_after":9}}}`, &Handler{})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("非法 mode 返回状态码 = %d, want %d", w.Code, http.StatusBadRequest)
 	}
@@ -479,7 +479,7 @@ func TestSaveConfig_PersistsURLUploadMaxSize(t *testing.T) {
 				},
 			}
 
-			body := `{"upload":{"urlUpload":{"maxSize":` + strconv.FormatInt(tc.maxSize, 10) + `}}}`
+			body := `{"upload":{"url_upload":{"max_size":` + strconv.FormatInt(tc.maxSize, 10) + `}}}`
 			postConfig(t, "/api/v1/web/config", body, &Handler{})
 
 			got := appconfig.GlobalConfig.Upload.URLUpload.MaxSize
@@ -518,15 +518,15 @@ func TestGetRuntimeConfig_URLUploadExposesMaxSize(t *testing.T) {
 	var resp struct {
 		Data struct {
 			Upload struct {
-				URLUpload map[string]interface{} `json:"urlUpload"`
+				URLUpload map[string]interface{} `json:"url_upload"`
 			} `json:"upload"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("解析 runtime-config 响应失败: %v", err)
 	}
-	if got, ok := resp.Data.Upload.URLUpload["maxSize"].(float64); !ok || int64(got) != 2<<30 {
-		t.Errorf("runtime-config.upload.urlUpload.maxSize = %v, want %d", resp.Data.Upload.URLUpload["maxSize"], 2<<30)
+	if got, ok := resp.Data.Upload.URLUpload["max_size"].(float64); !ok || int64(got) != 2<<30 {
+		t.Errorf("runtime-config.upload.url_upload.max_size = %v, want %d", resp.Data.Upload.URLUpload["max_size"], 2<<30)
 	}
 }
 

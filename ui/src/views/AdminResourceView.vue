@@ -44,8 +44,8 @@
               <template v-if="hardware.cpu?.cores || hardware.cpu?.threads">
                 {{ hardware.cpu?.cores || '-' }} 核 / {{ hardware.cpu?.threads || '-' }} 线程
               </template>
-              <template v-if="hardware.cpu?.freqMhz"> · {{ fmtGHz(hardware.cpu.freqMhz) }}</template>
-              <template v-if="hardware.cpu?.cacheSize"> · 缓存 {{ fmtCache(hardware.cpu.cacheSize) }}</template>
+              <template v-if="hardware.cpu?.freq_mhz"> · {{ fmtGHz(hardware.cpu.freq_mhz) }}</template>
+              <template v-if="hardware.cpu?.cache_size"> · 缓存 {{ fmtCache(hardware.cpu.cache_size) }}</template>
             </div>
           </div>
           <div class="hw-item">
@@ -53,12 +53,12 @@
             <div class="hw-value">{{ fmtCapacity(hardware.memory?.total) }}</div>
             <div class="hw-sub">
               <template v-if="hardware.memory?.available">可用 {{ fmtCapacity(hardware.memory.available) }}</template>
-              <template v-if="hardware.memory?.swapTotal"> · Swap {{ fmtCapacity(hardware.memory.swapTotal) }}</template>
+              <template v-if="hardware.memory?.swap_total"> · Swap {{ fmtCapacity(hardware.memory.swap_total) }}</template>
             </div>
           </div>
           <div class="hw-item">
             <div class="hw-label">磁盘</div>
-            <div class="hw-value">{{ (hardware.disks?.length || 0) }} 块 · {{ fmtCapacity(hardware.diskTotal) }}</div>
+            <div class="hw-value">{{ (hardware.disks?.length || 0) }} 块 · {{ fmtCapacity(hardware.disk_total) }}</div>
             <div class="hw-sub">{{ diskSummary }}</div>
           </div>
           <div class="hw-item">
@@ -85,7 +85,7 @@
         <div class="mem-detail">
           <div class="mem-line">
             <span class="mem-scope">服务器</span>
-            已用 <b>{{ fmtGB(server.memory) }}</b> / 总 <b>{{ fmtGB(server.memoryTotal) }}</b>
+            已用 <b>{{ fmtGB(server.memory) }}</b> / 总 <b>{{ fmtGB(server.memory_total) }}</b>
           </div>
           <div class="mem-line">
             <span class="mem-scope">本程序</span>
@@ -113,8 +113,8 @@
             <span class="disk-pct">{{ diskPercent(program) }}%</span>
           </div>
           <div class="disk-note">
-            <div>服务器 {{ fmtBytes(server.diskUsed) }} / {{ fmtBytes(server.diskTotal) }}</div>
-            <div>本程序占整个存储 {{ fmtBytes(program.diskUsed) }} / {{ fmtBytes(program.diskTotal) }}</div>
+            <div>服务器 {{ fmtBytes(server.disk_used) }} / {{ fmtBytes(server.disk_total) }}</div>
+            <div>本程序占整个存储 {{ fmtBytes(program.disk_used) }} / {{ fmtBytes(program.disk_total) }}</div>
           </div>
         </div>
       </el-card>
@@ -125,13 +125,13 @@
         <div class="io-numeric">
           <div class="io-row info">
             <span class="io-scope">服务器</span>
-            <span class="io-val"><b class="read">读 ↓</b> {{ fmtRate(server.diskIoRead) }}</span>
-            <span class="io-val"><b class="write">写 ↑</b> {{ fmtRate(server.diskIOWrite) }}</span>
+            <span class="io-val"><b class="read">读 ↓</b> {{ fmtRate(server.disk_io_read) }}</span>
+            <span class="io-val"><b class="write">写 ↑</b> {{ fmtRate(server.disk_io_write) }}</span>
           </div>
           <div class="io-row">
             <span class="io-scope">本程序</span>
-            <span class="io-val"><b class="read">读 ↓</b> {{ fmtRate(program.diskIoRead) }}</span>
-            <span class="io-val"><b class="write">写 ↑</b> {{ fmtRate(program.diskIOWrite) }}</span>
+            <span class="io-val"><b class="read">读 ↓</b> {{ fmtRate(program.disk_io_read) }}</span>
+            <span class="io-val"><b class="write">写 ↑</b> {{ fmtRate(program.disk_io_write) }}</span>
           </div>
         </div>
       </el-card>
@@ -142,8 +142,8 @@
         <div class="net-usage">
           <div class="io-row info">
             <span class="io-scope">服务器</span>
-            <span class="io-val"><b class="recv">收 ↓</b> {{ fmtRate(server.netRecv) }}</span>
-            <span class="io-val"><b class="sent">发 ↑</b> {{ fmtRate(server.netSent) }}</span>
+            <span class="io-val"><b class="recv">收 ↓</b> {{ fmtRate(server.net_recv) }}</span>
+            <span class="io-val"><b class="sent">发 ↑</b> {{ fmtRate(server.net_sent) }}</span>
           </div>
           <div class="net-nics">
             <div v-for="nic in topNICs" :key="nic.name" class="net-nic-row">
@@ -285,9 +285,9 @@ const loadResourceConfig = async () => {
     if (!res.success || !res.data) throw new Error('配置数据为空')
     const rc = res.data.resource || {}
     resourceCfg.enabled = rc.enabled ?? false
-    resourceCfg.samplingInterval = rc.samplingInterval ?? 5
-    resourceCfg.collectInterval = rc.collectInterval ?? 60
-    resourceCfg.retentionDays = rc.retentionDays ?? 7
+    resourceCfg.samplingInterval = rc.sampling_interval ?? 5
+    resourceCfg.collectInterval = rc.collect_interval ?? 60
+    resourceCfg.retentionDays = rc.retention_days ?? 7
     markCfgClean()
     return res.data
   } catch (e) {
@@ -301,7 +301,14 @@ const loadResourceConfig = async () => {
 const saveResourceConfig = async () => {
   cfgSaving.value = true
   try {
-    const res = await ConfigApi.save({ resource: { ...resourceCfg } })
+    const res = await ConfigApi.save({
+      resource: {
+        enabled: resourceCfg.enabled,
+        sampling_interval: resourceCfg.samplingInterval,
+        collect_interval: resourceCfg.collectInterval,
+        retention_days: resourceCfg.retentionDays
+      }
+    })
     if (res.success) {
       markCfgClean()
       showResourceConfigModal.value = false
@@ -327,24 +334,24 @@ const saveResourceConfig = async () => {
 }
 
 const emptyPoint = {
-  cpu: 0, memory: 0, memoryTotal: 0,
-  diskUsed: 0, diskTotal: 0, diskIoRead: 0, diskIOWrite: 0,
-  netRecv: 0, netSent: 0
+  cpu: 0, memory: 0, memory_total: 0,
+  disk_used: 0, disk_total: 0, disk_io_read: 0, disk_io_write: 0,
+  net_recv: 0, net_sent: 0
 }
 const server = reactive({ ...emptyPoint })
 const program = reactive({ ...emptyPoint })
 
 const hardware = reactive({
   hostname: '', os: '', arch: '', kernel: '',
-  cpu: {}, memory: {}, disks: [], diskTotal: 0, nics: []
+  cpu: {}, memory: {}, disks: [], disk_total: 0, nics: []
 })
 
 // ============ 格式化 ============
 const fmtPercent = (v) => (v == null ? '-' : `${Number(v).toFixed(1)}%`)
-const memPercent = ({ memory, memoryTotal }) =>
-  memoryTotal > 0 ? Math.min(100, Math.round((memory / memoryTotal) * 1000) / 10) : 0
-const diskPercent = ({ diskUsed, diskTotal }) =>
-  diskTotal > 0 ? Math.min(100, Math.round((diskUsed / diskTotal) * 1000) / 10) : 0
+const memPercent = ({ memory, memory_total }) =>
+  memory_total > 0 ? Math.min(100, Math.round((memory / memory_total) * 1000) / 10) : 0
+const diskPercent = ({ disk_used, disk_total }) =>
+  disk_total > 0 ? Math.min(100, Math.round((disk_used / disk_total) * 1000) / 10) : 0
 
 // 容量展示：统一以 G 为主单位（内存等小容量场景更直观），超过 1024G 折算为 T
 function fmtCapacity(bytes) {
@@ -391,7 +398,7 @@ const diskSummary = computed(() => {
 const nicSummary = computed(() => {
   const n = hardware.nics || []
   if (!n.length) return '未采集到网卡信息'
-  const head = n.slice(0, 3).map((x) => `${x.name} ${x.speedMbps ? x.speedMbps + ' Mbps' : '速率未知'}`).join(' · ')
+  const head = n.slice(0, 3).map((x) => `${x.name} ${x.speed_mbps ? x.speed_mbps + ' Mbps' : '速率未知'}`).join(' · ')
   return n.length > 3 ? `${head} 等 ${n.length} 块` : head
 })
 
@@ -498,16 +505,16 @@ for (const k of seriesKeys) seriesData[k] = []
 const seriesVal = {
   'cpu-s': (pt) => [+Number(pt.cpu || 0).toFixed(2)],
   'cpu-p': (pt) => [+Number(pt.cpu || 0).toFixed(2)],
-  'mem-s': (pt) => [memPercent(pt), pt.memory || 0, pt.memoryTotal || 0],
-  'mem-p': (pt) => [memPercent(pt), pt.memory || 0, pt.memoryTotal || 0],
-  'disk-s': (pt) => [pt.diskUsed || 0],
-  'disk-p': (pt) => [pt.diskUsed || 0],
-  'ioR-s': (pt) => [pt.diskIoRead || 0],
-  'ioR-p': (pt) => [pt.diskIoRead || 0],
-  'ioW-s': (pt) => [pt.diskIOWrite || 0],
-  'ioW-p': (pt) => [pt.diskIOWrite || 0],
-  'netR-s': (pt) => [pt.netRecv || 0],
-  'netS-s': (pt) => [pt.netSent || 0]
+  'mem-s': (pt) => [memPercent(pt), pt.memory || 0, pt.memory_total || 0],
+  'mem-p': (pt) => [memPercent(pt), pt.memory || 0, pt.memory_total || 0],
+  'disk-s': (pt) => [pt.disk_used || 0],
+  'disk-p': (pt) => [pt.disk_used || 0],
+  'ioR-s': (pt) => [pt.disk_io_read || 0],
+  'ioR-p': (pt) => [pt.disk_io_read || 0],
+  'ioW-s': (pt) => [pt.disk_io_write || 0],
+  'ioW-p': (pt) => [pt.disk_io_write || 0],
+  'netR-s': (pt) => [pt.net_recv || 0],
+  'netS-s': (pt) => [pt.net_sent || 0]
 }
 const scopeKeys = (scope) => seriesKeys.filter((k) => k.endsWith('-' + scope))
 
@@ -740,13 +747,13 @@ function liveRefresh() {
 function applyPoint(target, p) {
   target.cpu = p?.cpu ?? 0
   target.memory = p?.memory ?? 0
-  target.memoryTotal = p?.memoryTotal ?? 0
-  target.diskUsed = p?.diskUsed ?? 0
-  target.diskTotal = p?.diskTotal ?? 0
-  target.diskIoRead = p?.diskIoRead ?? 0
-  target.diskIOWrite = p?.diskIOWrite ?? 0
-  target.netRecv = p?.netRecv ?? 0
-  target.netSent = p?.netSent ?? 0
+  target.memory_total = p?.memory_total ?? 0
+  target.disk_used = p?.disk_used ?? 0
+  target.disk_total = p?.disk_total ?? 0
+  target.disk_io_read = p?.disk_io_read ?? 0
+  target.disk_io_write = p?.disk_io_write ?? 0
+  target.net_recv = p?.net_recv ?? 0
+  target.net_sent = p?.net_sent ?? 0
 }
 
 function applyHardware(hw) {
@@ -757,7 +764,7 @@ function applyHardware(hw) {
   if (hardware.os !== (hw.os || '')) hardware.os = hw.os || ''
   if (hardware.arch !== (hw.arch || '')) hardware.arch = hw.arch || ''
   if (hardware.kernel !== (hw.kernel || '')) hardware.kernel = hw.kernel || ''
-  if (hardware.diskTotal !== (hw.diskTotal || 0)) hardware.diskTotal = hw.diskTotal || 0
+  if (hardware.disk_total !== (hw.disk_total || 0)) hardware.disk_total = hw.disk_total || 0
   if (JSON.stringify(hardware.cpu) !== JSON.stringify(hw.cpu || {})) hardware.cpu = hw.cpu || {}
   if (JSON.stringify(hardware.memory) !== JSON.stringify(hw.memory || {})) hardware.memory = hw.memory || {}
   if (JSON.stringify(hardware.disks) !== JSON.stringify(hw.disks || [])) hardware.disks = hw.disks || []
@@ -790,14 +797,14 @@ function mergeRecent(dst, incoming) {
 function applyRealtime(d) {
   if (!d) return
   collectorRunning.value = !!d.running
-  if (d.samplingInterval) samplingInterval.value = d.samplingInterval
+  if (d.sampling_interval) samplingInterval.value = d.sampling_interval
   applyHardware(d.hardware)
   applyPoint(server, d.server)
   applyPoint(program, d.program)
-  const nics = Array.isArray(d.netNICs) ? d.netNICs : []
+  const nics = Array.isArray(d.net_nics) ? d.net_nics : []
   if (JSON.stringify(netNICs.value) !== JSON.stringify(nics)) netNICs.value = nics
-  rtRealtime.server = mergeRecent(rtRealtime.server, d.serverRecent)
-  rtRealtime.program = mergeRecent(rtRealtime.program, d.programRecent)
+  rtRealtime.server = mergeRecent(rtRealtime.server, d.server_recent)
+  rtRealtime.program = mergeRecent(rtRealtime.program, d.program_recent)
   renderGauges()
   liveRefresh()
 }

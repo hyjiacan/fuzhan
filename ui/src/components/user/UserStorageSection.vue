@@ -171,16 +171,16 @@ const loadPublicStats = async () => {
     const data = await PersonalApi.getStats()
     if (data.success && data.data) {
       publicStats.value = {
-        files: data.data.publicFiles ?? null,
-        bytes: data.data.publicBytes ?? null
+        files: data.data.public_files ?? null,
+        bytes: data.data.public_bytes ?? null
       }
       privateStats.value = {
-        files: data.data.privateFiles ?? null,
-        bytes: data.data.privateBytes ?? null
+        files: data.data.private_files ?? null,
+        bytes: data.data.private_bytes ?? null
       }
       tempStats.value = {
-        files: data.data.tempFiles ?? null,
-        bytes: data.data.tempBytes ?? null
+        files: data.data.temp_files ?? null,
+        bytes: data.data.temp_bytes ?? null
       }
     }
   } catch (error) {

@@ -60,7 +60,7 @@
         empty-text="没有符合条件的登录记录"
       >
         <el-table-column label="时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="方式" width="120">
           <template #default="{ row }">
@@ -74,9 +74,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="clientIP" label="IP" width="140" />
-        <el-table-column prop="failReason" label="失败原因" show-overflow-tooltip />
-        <el-table-column prop="userAgent" label="浏览器 / 设备" show-overflow-tooltip />
+        <el-table-column prop="client_ip" label="IP" width="140" />
+        <el-table-column prop="fail_reason" label="失败原因" show-overflow-tooltip />
+        <el-table-column prop="user_agent" label="浏览器 / 设备" show-overflow-tooltip />
       </el-table>
 
       <el-pagination

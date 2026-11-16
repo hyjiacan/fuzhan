@@ -16,18 +16,18 @@ type FileInfo struct {
 	Name          string `json:"name"`
 	Type          string `json:"type"`
 	Path          string `json:"path"`
-	ModifiedTime  string `json:"modifiedTime"`
+	ModifiedTime  string `json:"modified_time"`
 	Size          int64  `json:"size"`
-	RootName      string `json:"rootName,omitempty"`
+	RootName      string `json:"root_name,omitempty"`
 	Quota         int64  `json:"quota,omitempty"`
 	Used          int64  `json:"used,omitempty"`
-	Xxh3Hash      string `json:"xxh3Hash,omitempty"`
+	Xxh3Hash      string `json:"xxh3_hash,omitempty"`
 	Notes         string `json:"notes,omitempty"`
-	DownloadCount int64  `json:"downloadCount,omitempty"`
-	RecordID      uint   `json:"recordId,omitempty"`
+	DownloadCount int64  `json:"download_count,omitempty"`
+	RecordID      uint   `json:"record_id,omitempty"`
 	// DependencyCount 该文件的依赖条数（上游 + 下游），仅数据库索引搜索结果填充。
 	// 不省略 0 值：前端按该字段判断是否显示"依赖 (n)"，缺字段与计数为 0 语义不同。
-	DependencyCount int64 `json:"dependencyCount"`
+	DependencyCount int64 `json:"dependency_count"`
 }
 
 // APPConfig 独立的 APP 配置结构体
@@ -128,8 +128,8 @@ type DirectoryConfig struct {
 	Path  string `yaml:"path"`
 	Quota int64  `yaml:"quota,omitempty"`
 	// AllowUpload 是否允许向该公共目录上传文件。空（nil）表示允许（默认值）。
-	// 前端 JSON 字段为 uploadEnabled；设置页未配置时保持 nil 即允许上传。
-	AllowUpload *bool `yaml:"allow_upload,omitempty" json:"uploadEnabled"`
+	// 前端 JSON 字段为 upload_enabled；设置页未配置时保持 nil 即允许上传。
+	AllowUpload *bool `yaml:"allow_upload,omitempty" json:"upload_enabled"`
 }
 
 // UploadAllowed 返回该公共目录是否允许上传文件（未配置时默认允许）。
@@ -789,42 +789,42 @@ func (c PreviewConfig) InitConfig() utils.PreviewInitConfig {
 // PrivateFileMeta 临时文件元数据
 type PrivateFileMeta struct {
 	Filename   string    `json:"filename"`
-	UploadTime time.Time `json:"uploadTime"`
-	FileSize   int64     `json:"fileSize"`
+	UploadTime time.Time `json:"upload_time"`
+	FileSize   int64     `json:"file_size"`
 	Owner      string    `json:"owner"`
 	Code       string    `json:"code"`
-	ExpireTime time.Time `json:"expireTime"`
+	ExpireTime time.Time `json:"expire_time"`
 	// 添加文件哈希用于去重
-	FileHash string `json:"fileHash,omitempty"`
+	FileHash string `json:"file_hash,omitempty"`
 }
 
 // FileReference 文件引用信息
 type FileReference struct {
-	FileHash    string    `json:"fileHash"`
+	FileHash    string    `json:"file_hash"`
 	FilePath    string    `json:"-"` // 内部使用，不返回给前端
-	FileSize    int64     `json:"fileSize"`
-	RefCount    int       `json:"refCount"`
-	CreatedTime time.Time `json:"createdTime"`
+	FileSize    int64     `json:"file_size"`
+	RefCount    int       `json:"ref_count"`
+	CreatedTime time.Time `json:"created_time"`
 }
 
 // PersistentFileMeta 持久文件元数据
 type PersistentFileMeta struct {
-	FileHash    string    `json:"fileHash"`
-	FileSize    int64     `json:"fileSize"`
-	CreatedTime time.Time `json:"createdTime"`
+	FileHash    string    `json:"file_hash"`
+	FileSize    int64     `json:"file_size"`
+	CreatedTime time.Time `json:"created_time"`
 }
 
 // UserIdentifier 用户标识信息
 type UserIdentifier struct {
 	ID        string    `json:"id"`
-	IPAddress string    `json:"ipAddress"`
-	CreatedAt time.Time `json:"createdAt"`
+	IPAddress string    `json:"ip_address"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // UploadRecord 上传记录信息
 type UploadRecord struct {
-	IPAddress  string    `json:"ipAddress"`
-	UploadTime time.Time `json:"uploadTime"`
+	IPAddress  string    `json:"ip_address"`
+	UploadTime time.Time `json:"upload_time"`
 	Filename   string    `json:"filename"`
 	FilePath   string    `json:"path"` // 文件路径
 }
@@ -852,12 +852,12 @@ type ChunkInfo struct {
 
 // UploadStatus 上传状态
 type UploadStatus struct {
-	UploadedChunks []int       `json:"uploadedChunks"`
+	UploadedChunks []int       `json:"uploaded_chunks"`
 	Chunks         []ChunkInfo `json:"chunks"` // 分片表
 	Completed      bool        `json:"completed"`
-	FileSize       int64       `json:"fileSize"`    // 文件大小
-	TotalChunks    int         `json:"totalChunks"` // 总分片数
-	ChunkSize      int64       `json:"chunkSize"`   // 分片大小
+	FileSize       int64       `json:"file_size"`    // 文件大小
+	TotalChunks    int         `json:"total_chunks"` // 总分片数
+	ChunkSize      int64       `json:"chunk_size"`   // 分片大小
 }
 
 // Global variables

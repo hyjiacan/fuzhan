@@ -104,18 +104,18 @@ function applyConfig(d) {
   store.setConfig({
     appName: d.app?.name || '',
     version: d.app?.version || '',
-    privateStorageEnabled: d.privateStorage?.enabled ?? false,
-    tempFilesEnabled: d.tempFiles?.enabled ?? false,
+    privateStorageEnabled: d.private_storage?.enabled ?? false,
+    tempFilesEnabled: d.temp_files?.enabled ?? false,
     ftpEnabled: d.ftp?.enabled ?? false,
     ftpPort: d.ftp?.port ?? null,
     webdavEnabled: d.webdav?.enabled ?? false,
-    openApiEnabled: d.openApi?.enabled ?? false,
-    urlUploadEnabled: d.upload?.urlUpload?.enabled ?? false,
-    allowRegistration: d.account?.allowRegistration ?? false,
-    requireLogin: d.account?.requireLogin ?? false,
-    anonymousUsername: d.webdav?.publicUsername || d.account?.anonymous?.username || '',
+    openApiEnabled: d.open_api?.enabled ?? false,
+    urlUploadEnabled: d.upload?.url_upload?.enabled ?? false,
+    allowRegistration: d.account?.allow_registration ?? false,
+    requireLogin: d.account?.require_login ?? false,
+    anonymousUsername: d.webdav?.public_username || d.account?.anonymous?.username || '',
     captchaMode: d.account?.captcha?.mode ?? 'disabled',
-    captchaTriggerAfter: d.account?.captcha?.triggerAfter ?? 3,
+    captchaTriggerAfter: d.account?.captcha?.trigger_after ?? 3,
     // 服务端按当前 IP 判定的是否需要验证码，用作登录页初始值；验证码错误时再动态置位
     captchaRequired: d.account?.captcha?.required ?? false
   })
@@ -124,7 +124,7 @@ function applyConfig(d) {
   if (d.app?.name) {
     document.title = d.app.name
   }
-  // 加载预览配置（完整配置才含 preview/mimeTable；最小配置下为 no-op）
+  // 加载预览配置（完整配置才含 preview/mime_table；最小配置下为 no-op）
   loadPreviewConfig(d)
 }
 

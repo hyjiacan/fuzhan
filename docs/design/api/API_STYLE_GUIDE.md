@@ -1,6 +1,6 @@
 # HTTP API 风格规范（v1）
 
-> 状态：已确认并生效。新增/修改接口必须遵守；存量接口按 [API_STYLE_UNIFICATION.md](./API_STYLE_UNIFICATION.md) 迁移。
+> 状态：已确认并生效。新增/修改接口必须遵守（请求参数与响应字段一律 `snake_case`）；存量接口按 [API_STYLE_UNIFICATION.md](./API_STYLE_UNIFICATION.md) 迁移。
 >
 > 适用对象：`web`、`admin`、`open`、`cli`、`download` 以及 WebDAV 的挂载与鉴权部分。
 
@@ -81,10 +81,12 @@
 - 文本检索：`query`。
 - 兼容参数：`api_key` 保留。
 
-响应字段命名保持现有 JSON 风格，不随本规范调整。
-
 ## 5. 响应
 
+- 响应字段一律 `snake_case`，与请求参数保持一致：`file_size`、`page_size`、`upload_id`、`full_path`、`created_at`。
+  - Go 结构体用 `json` tag 显式声明，例如把 `json:"fullPath"`（以及 `fileSize`、`createdAt`、`pageSize` 等）改为 `json:"full_path"`、`json:"file_size"`、`json:"created_at"`、`json:"page_size"`。
+  - `gin.H` / `map[string]interface{}` 字面量的 key 同样使用 `snake_case`。
+  - `/api/v1/open/*`、`/api/v1/web/*`、`/api/v1/web/admin/*` 三套命名空间无差别适用，不再按命名空间区分风格。
 - 所有 JSON 接口统一信封：`{success, code, message, data, errors}`。
 - 分页数据统一放在 `data.pagination`：`{page, page_size, total}`。
 - 例外（不套信封）：文件流、预览流、SSE、WebDAV、Lite HTML、安装脚本。
@@ -107,8 +109,13 @@
 
 - WebDAV 的 `PROPFIND/MKCOL/MOVE/PROPPATCH/LOCK/UNLOCK` 等方法与路径语义由 RFC 4918 固定，不按本规范改名。
 - OAuth2 回调参数 `code/state/error_description` 属于外部协议。
-- `/config`、`/setup` 的读写 body 与配置文件结构保持一致，沿用配置文件中的字段名，不做 `snake_case` 迁移。
+- `/config`、`/setup` 的读写 body 与配置文件结构保持一致，字段名沿用配置文件中的 `snake_case`（`app_name`、`require_login`、`allow_registration`、`root_dirs`），不再使用 `appName`/`requireLogin` 这类驼峰写法。
 - `/assets/*`、`/scalar.html`、`/scalar/assets/*` 属于静态资源。
+- 以下 camelCase 不是 API 契约，**永久保留，勿改**：
+  - `server/internal/openapi/spec.go` 全部 camelCase（`requestBody`、`securitySchemes`、`additionalProperties` 等 OpenAPI 关键字）。
+  - `server/internal/openapi/middleware.go` 中 `IPAccessConfig`（`cidrList`/`domainList`）、`RateLimitConfig`（`requestsPerMinute`/`burstSize`）、`CallRecord`（`statusCode`）——仅内部配置与调用记录，不经 `c.JSON` 输出；同文件的 `StatsSummary` 是对外响应，已是 snake。
+  - `server/internal/resource/hardware.go` 的 `json:"Name"`/`json:"LinkSpeed"`——用于解析 PowerShell `Get-NetAdapter | ConvertTo-Json` 的输出，Go tag 精确匹配，改名会静默解析为空。
+  - `server/internal/auth/ldap.go` 的 `sAMAccountName`/`displayName`/`givenName`（LDAP 属性名）、`server/internal/lite/lite.go` 的 `crumbSep`（模板函数名）、`server/internal/index/hashworker.go` 的错误分类常量（内部 map key）。
 
 ## 8. 新增/修改接口检查清单
 
@@ -117,11 +124,12 @@
 3. 文件路径：GET 用 `*path`，写操作用 `path` 参数。
 4. 主键参数写 `{id}`，短码写 `{code}`。
 5. 请求参数全部 snake_case，布尔只接受 `true/false`。
-6. 返回统一信封（流/SSE 除外）。
-7. 鉴权与 scope 正确，路径权限在操作前校验。
-8. 通配路由已检查冲突并同步 `main_routes_full_test.go`。
-9. 同步 `server/internal/openapi/spec.go`、`docs/design/api/API_INTERFACE.md`、`docs/development/project-context.md` §7。
-10. 新增别名需评审，且只能指向同一 handler。
+6. 响应字段全部 snake_case（含 `gin.H` 字面量 key 与结构体 `json` tag）。
+7. 返回统一信封（流/SSE 除外）。
+8. 鉴权与 scope 正确，路径权限在操作前校验。
+9. 通配路由已检查冲突并同步 `main_routes_full_test.go`。
+10. 同步 `server/internal/openapi/spec.go`、`docs/design/api/API_INTERFACE.md`、`docs/development/project-context.md` §7。
+11. 新增别名需评审，且只能指向同一 handler。
 
 ## 9. 文档维护
 

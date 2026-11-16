@@ -18,7 +18,7 @@ export const useFileActions = ({
 }) => {
   // ============ 索引扫描 ============
   const scanning = ref(false)
-  const scanProgress = ref({ status: 'idle', scannedFiles: 0, totalFiles: 0, currentFile: '', errorMessage: '' })
+  const scanProgress = ref({ status: 'idle', scanned_files: 0, total_files: 0, current_file: '', error_message: '' })
   let progressTimer = null
 
   async function loadScanProgress() {
@@ -73,10 +73,10 @@ export const useFileActions = ({
 
   const openMoveModal = (file) => {
     currentFile.value = file
-    targetRootName.value = file.rootName || ''
+    targetRootName.value = file.root_name || ''
     // 预填相对根目录的路径（去除 rootName 前缀），避免与 handleMove 拼接时出现重复嵌套
     let rel = file.path || ''
-    const prefix = '/' + (file.rootName || '')
+    const prefix = '/' + (file.root_name || '')
     if (rel.startsWith(prefix + '/')) {
       rel = rel.slice(prefix.length + 1)
     }

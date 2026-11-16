@@ -233,10 +233,10 @@ const saveNotes = async () => {
   savingNotes.value = true
   try {
     // 如果 row 没有 recordId，通过索引表查询
-    let recordId = row.recordId
+    let recordId = row.record_id
     if (!recordId) {
       const fullPath = row.path || ''
-      const rootName = row.rootName || ''
+      const rootName = row.root_name || ''
       const fileName = row.name || ''
       // row.path 现在是完整路径 (rootName/relativePath)，需要提取相对路径
       const indexPath = rootName ? fullPath.slice(rootName.length + 1) : fullPath
@@ -299,8 +299,8 @@ const refreshListDebounced = () => {
 const depTreeDialogRef = ref(null)
 const openDepTree = (row) => {
   // 如果有 recordId 直接用，否则尝试从文件名搜索
-  if (row.recordId) {
-    depTreeDialogRef.value?.open(row.recordId)
+  if (row.record_id) {
+    depTreeDialogRef.value?.open(row.record_id)
   } else {
     // 通过文件名搜索记录
     FileRecordApi.searchFiles(row.name).then(res => {

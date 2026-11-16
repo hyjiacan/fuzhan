@@ -234,8 +234,8 @@ const handleOAuth2Login = async () => {
   oauth2Redirecting.value = true
   try {
     const res = await AuthApi.oauth2Authorize()
-    if (res.success && res.data?.authorizeUrl) {
-      window.location.href = res.data.authorizeUrl
+    if (res.success && res.data?.authorize_url) {
+      window.location.href = res.data.authorize_url
     } else {
       ElMessage.error('外部认证暂时不可用，请稍后重试')
       oauth2Redirecting.value = false

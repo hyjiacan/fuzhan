@@ -82,10 +82,10 @@ type HashProgress struct {
 
 // HashStats 失败统计
 type HashStats struct {
-	FileNotFound     int `json:"fileNotFound"`
-	PermissionDenied int `json:"permissionDenied"`
-	RootNotFound     int `json:"rootNotFound"`
-	OtherError       int `json:"otherError"`
+	FileNotFound     int `json:"file_not_found"`
+	PermissionDenied int `json:"permission_denied"`
+	RootNotFound     int `json:"root_not_found"`
+	OtherError       int `json:"other_error"`
 }
 
 // NewHashWorker 创建哈希计算器

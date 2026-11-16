@@ -20,7 +20,7 @@ const (
 
 // ScanRootResult 单个根目录的扫描结果
 type ScanRootResult struct {
-	RootName string `json:"rootName"`
+	RootName string `json:"root_name"`
 	Scanned  int64  `json:"scanned"`
 	Added    int64  `json:"added"`
 	Deleted  int64  `json:"deleted"`
@@ -34,17 +34,17 @@ type ScanRootResult struct {
 type ScanRecord struct {
 	ID           uint             `gorm:"primaryKey" json:"id"`
 	Status       ScanRecordStatus `gorm:"size:20;default:running;index" json:"status"`
-	StartedAt    time.Time        `gorm:"not null" json:"startedAt"`
-	EndedAt      *time.Time       `json:"endedAt,omitempty"`
-	TotalFiles   int64            `gorm:"default:0" json:"totalFiles"`
-	ScannedFiles int64            `gorm:"default:0" json:"scannedFiles"`
-	AddedFiles   int64            `gorm:"default:0" json:"addedFiles"`
-	DeletedFiles int64            `gorm:"default:0" json:"deletedFiles"`
-	RootResults  string           `gorm:"type:text" json:"rootResults,omitempty"`
-	ErrorMessage string           `gorm:"type:text" json:"errorMessage,omitempty"`
-	CreatedAt    time.Time        `json:"createdAt"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
-	DeletedAt    gorm.DeletedAt   `gorm:"index" json:"deletedAt"`
+	StartedAt    time.Time        `gorm:"not null" json:"started_at"`
+	EndedAt      *time.Time       `json:"ended_at,omitempty"`
+	TotalFiles   int64            `gorm:"default:0" json:"total_files"`
+	ScannedFiles int64            `gorm:"default:0" json:"scanned_files"`
+	AddedFiles   int64            `gorm:"default:0" json:"added_files"`
+	DeletedFiles int64            `gorm:"default:0" json:"deleted_files"`
+	RootResults  string           `gorm:"type:text" json:"root_results,omitempty"`
+	ErrorMessage string           `gorm:"type:text" json:"error_message,omitempty"`
+	CreatedAt    time.Time        `json:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt   `gorm:"index" json:"deleted_at"`
 }
 
 // TableName 指定表名

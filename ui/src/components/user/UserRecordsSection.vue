@@ -74,7 +74,7 @@
         empty-text="没有符合条件的操作记录"
       >
         <el-table-column label="时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
@@ -82,17 +82,17 @@
           </template>
         </el-table-column>
         <el-table-column label="来源" width="90">
-          <template #default="{ row }">{{ sourceLabel(row.sourceType) }}</template>
+          <template #default="{ row }">{{ sourceLabel(row.source_type) }}</template>
         </el-table-column>
         <el-table-column label="文件名 / 路径" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <span>{{ row.fileName }}</span>
+            <span>{{ row.file_name }}</span>
             <el-tag v-if="row.overwritten" size="small" type="warning" effect="plain" style="margin: 0 6px">覆盖</el-tag>
-            <span>{{ row.fullPath ? '（' + row.fullPath + '）' : '' }}</span>
+            <span>{{ row.full_path ? '（' + row.full_path + '）' : '' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="大小" width="120">
-          <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
+          <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
         </el-table-column>
         <el-table-column label="结果" width="90">
           <template #default="{ row }">
@@ -101,7 +101,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="failReason" label="原因" show-overflow-tooltip />
+        <el-table-column prop="fail_reason" label="原因" show-overflow-tooltip />
       </el-table>
 
       <el-pagination

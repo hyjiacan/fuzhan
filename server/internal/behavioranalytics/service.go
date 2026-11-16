@@ -36,12 +36,12 @@ const publicDownloadCond = "dl_event = 1 AND deleted_at IS NULL"
 
 // SummaryResult 区间总览
 type SummaryResult struct {
-	TotalDownloads int64 `json:"totalDownloads"` // 成功下载次数
-	UniqueFiles    int64 `json:"uniqueFiles"`    // 去重文件数（成功）
-	UniqueIPs      int64 `json:"uniqueIPs"`      // 去重客户端 IP（成功）
-	UniqueUsers    int64 `json:"uniqueUsers"`    // 去重用户数（成功，匿名视为空不计）
-	TotalBytes     int64 `json:"totalBytes"`     // 下载体积（成功，按一次下载记录文件大小）
-	Failed         int64 `json:"failed"`         // 失败下载次数
+	TotalDownloads int64 `json:"total_downloads"` // 成功下载次数
+	UniqueFiles    int64 `json:"unique_files"`    // 去重文件数（成功）
+	UniqueIPs      int64 `json:"unique_ips"`      // 去重客户端 IP（成功）
+	UniqueUsers    int64 `json:"unique_users"`    // 去重用户数（成功，匿名视为空不计）
+	TotalBytes     int64 `json:"total_bytes"`     // 下载体积（成功，按一次下载记录文件大小）
+	Failed         int64 `json:"failed"`          // 失败下载次数
 }
 
 // TrendPoint 时序点
@@ -53,16 +53,16 @@ type TrendPoint struct {
 
 // TopFile 热门下载文件
 type TopFile struct {
-	SourceID     uint      `json:"sourceId"`
-	FileRecordID uint      `json:"fileRecordId"`
-	FileName     string    `json:"fileName"`
+	SourceID     uint      `json:"source_id"`
+	FileRecordID uint      `json:"file_record_id"`
+	FileName     string    `json:"file_name"`
 	FilePath     string    `json:"path"`
-	FullPath     string    `json:"fullPath"`
-	RootName     string    `json:"rootName"`
-	FileSize     int64     `json:"fileSize"`
+	FullPath     string    `json:"full_path"`
+	RootName     string    `json:"root_name"`
+	FileSize     int64     `json:"file_size"`
 	Count        int64     `json:"count"`
 	Spread       int64     `json:"spread"` // 覆盖的不同客户端 IP 数（扩散）
-	UploadTime   time.Time `json:"uploadTime,omitempty"`
+	UploadTime   time.Time `json:"upload_time,omitempty"`
 	Notes        string    `json:"notes"`
 }
 
@@ -70,7 +70,7 @@ type TopFile struct {
 type SourceStat struct {
 	Key       string `json:"key"`
 	Count     int64  `json:"count"`
-	FileCount int64  `json:"fileCount"`
+	FileCount int64  `json:"file_count"`
 }
 
 // FailureStat 失败原因分布
@@ -103,15 +103,15 @@ type LifecyclePoint struct {
 
 // FileDetailResult 单文件明细
 type FileDetailResult struct {
-	FileRecordID uint         `json:"fileRecordId"`
-	FileName     string       `json:"fileName"`
-	FullPath     string       `json:"fullPath"`
-	RootName     string       `json:"rootName"`
+	FileRecordID uint         `json:"file_record_id"`
+	FileName     string       `json:"file_name"`
+	FullPath     string       `json:"full_path"`
+	RootName     string       `json:"root_name"`
 	Total        int64        `json:"total"`
 	Failed       int64        `json:"failed"`
 	Trend        []TrendPoint `json:"trend"`
-	ByIP         []SourceStat `json:"byIP"`
-	ByUser       []SourceStat `json:"byUser"`
+	ByIP         []SourceStat `json:"by_ip"`
+	ByUser       []SourceStat `json:"by_user"`
 }
 
 // Service 行为分析服务

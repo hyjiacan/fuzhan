@@ -26,13 +26,13 @@ type UserListResult struct {
 type UserItem struct {
 	UUID        string    `json:"uuid"`
 	Username    string    `json:"username"`
-	DisplayName string    `json:"displayName"`
+	DisplayName string    `json:"display_name"`
 	Nickname    string    `json:"nickname"`
 	Role        string    `json:"role"`
 	Disabled    bool      `json:"disabled"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
-	UsedStorage int64     `json:"usedStorage"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	UsedStorage int64     `json:"used_storage"`
 	Quota       int64     `json:"quota"`
 }
 
@@ -45,22 +45,22 @@ type SessionListResult struct {
 
 // SessionStats 会话的全局聚合统计（与分页无关，用于统计卡片）
 type SessionStats struct {
-	TotalSessions  int64 `json:"totalSessions"`
-	ZombieSessions int64 `json:"zombieSessions"`
-	TotalSize      int64 `json:"totalSize"`
+	TotalSessions  int64 `json:"total_sessions"`
+	ZombieSessions int64 `json:"zombie_sessions"`
+	TotalSize      int64 `json:"total_size"`
 }
 
 // SessionItem 会话列表项
 type SessionItem struct {
 	ID           uint   `json:"id"`
-	FileName     string `json:"fileName"`
-	FileSize     int64  `json:"fileSize"`
-	UploadedSize int64  `json:"uploadedSize"`
+	FileName     string `json:"file_name"`
+	FileSize     int64  `json:"file_size"`
+	UploadedSize int64  `json:"uploaded_size"`
 	Status       string `json:"status"`
-	TargetPath   string `json:"targetPath"`
-	TargetRoot   string `json:"targetRoot"`
-	CreatedAt    string `json:"createdAt"`
-	ExpiredAt    string `json:"expiredAt"`
+	TargetPath   string `json:"target_path"`
+	TargetRoot   string `json:"target_root"`
+	CreatedAt    string `json:"created_at"`
+	ExpiredAt    string `json:"expired_at"`
 }
 
 // AdminService 管理员服务

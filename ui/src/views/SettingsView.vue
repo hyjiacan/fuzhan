@@ -110,8 +110,8 @@ const normalizePreviewGroups = (cfgGroups) => {
       exts: src.exts ?? ''
     }
   }
-  groups.text.maxInlineSize = NumberUtils.parseFileSize(cfgGroups?.text?.maxInlineSize || '1M')
-  groups.text.textChunkSize = NumberUtils.parseFileSize(cfgGroups?.text?.textChunkSize || '100K')
+  groups.text.maxInlineSize = NumberUtils.parseFileSize(cfgGroups?.text?.max_inline_size || '1M')
+  groups.text.textChunkSize = NumberUtils.parseFileSize(cfgGroups?.text?.text_chunk_size || '100K')
   return groups
 }
 
@@ -122,8 +122,8 @@ const buildPreviewPayload = () => {
   for (const [name, g] of Object.entries(settings.preview.groups)) {
     const item = { enabled: g.enabled, mimes: g.mimes, exts: g.exts }
     if (name === 'text') {
-      item.maxInlineSize = formatToUnit(g.maxInlineSize)
-      item.textChunkSize = formatToUnit(g.textChunkSize)
+      item.max_inline_size = formatToUnit(g.maxInlineSize)
+      item.text_chunk_size = formatToUnit(g.textChunkSize)
     }
     groups[name] = item
   }
@@ -402,8 +402,8 @@ const loadSettings = async () => {
       settings.server.ftp = {
         enabled: cfg.server?.ftp?.enabled ?? false,
         port: cfg.server?.ftp?.port || 21,
-        passivePortStart: cfg.server?.ftp?.passivePortStart || 2122,
-        passivePortEnd: cfg.server?.ftp?.passivePortEnd || 2221
+        passivePortStart: cfg.server?.ftp?.passive_port_start || 2122,
+        passivePortEnd: cfg.server?.ftp?.passive_port_end || 2221
       }
       settings.server.ftps = {
         enabled: cfg.server?.ftps?.enabled ?? false,
@@ -411,12 +411,12 @@ const loadSettings = async () => {
       }
       settings.account = {
         anonymous: { username: cfg.account?.anonymous?.username || 'public' },
-        reservedUsernames: cfg.account?.reservedUsernames || [],
-        allowRegistration: cfg.account?.allowRegistration ?? false,
-        requireLogin: cfg.account?.requireLogin ?? false,
+        reservedUsernames: cfg.account?.reserved_usernames || [],
+        allowRegistration: cfg.account?.allow_registration ?? false,
+        requireLogin: cfg.account?.require_login ?? false,
         captcha: {
           mode: cfg.account?.captcha?.mode || 'disabled',
-          triggerAfter: cfg.account?.captcha?.triggerAfter ?? 3
+          triggerAfter: cfg.account?.captcha?.trigger_after ?? 3
         }
       }
       settings.server.webdav = {
@@ -431,82 +431,83 @@ const loadSettings = async () => {
       if (settings.database.driver === 'postgres' && cfg.database?.dsn) {
         parsePostgresDsn(cfg.database.dsn)
       }
-      settings.rootDirs = cfg.rootDirs?.map(d => ({ path: d.fullPath, name: d.name, uploadEnabled: d.uploadEnabled !== false })) || []
-      settings.allowedExtensions = cfg.allowedExtensions || []
+      settings.rootDirs = cfg.root_dirs?.map(d => ({ path: d.full_path, name: d.name, uploadEnabled: d.upload_enabled !== false })) || []
+      settings.allowedExtensions = cfg.allowed_extensions || []
       settings.storageBackend = {
-        backend: cfg.storageBackend?.backend || 'local',
+        backend: cfg.storage_backend?.backend || 'local',
         s3: {
-          endpoint: cfg.storageBackend?.s3?.endpoint || '',
-          accessKey: cfg.storageBackend?.s3?.accessKey || '',
-          secretKey: cfg.storageBackend?.s3?.secretKey || '',
-          bucket: cfg.storageBackend?.s3?.bucket || '',
-          region: cfg.storageBackend?.s3?.region || '',
-          useSSL: cfg.storageBackend?.s3?.useSSL ?? false
+          endpoint: cfg.storage_backend?.s3?.endpoint || '',
+          accessKey: cfg.storage_backend?.s3?.access_key || '',
+          secretKey: cfg.storage_backend?.s3?.secret_key || '',
+          bucket: cfg.storage_backend?.s3?.bucket || '',
+          region: cfg.storage_backend?.s3?.region || '',
+          useSSL: cfg.storage_backend?.s3?.use_ssl ?? false
         },
         oss: {
-          endpoint: cfg.storageBackend?.oss?.endpoint || '',
-          accessKey: cfg.storageBackend?.oss?.accessKey || '',
-          secretKey: cfg.storageBackend?.oss?.secretKey || '',
-          bucket: cfg.storageBackend?.oss?.bucket || ''
+          endpoint: cfg.storage_backend?.oss?.endpoint || '',
+          accessKey: cfg.storage_backend?.oss?.access_key || '',
+          secretKey: cfg.storage_backend?.oss?.secret_key || '',
+          bucket: cfg.storage_backend?.oss?.bucket || ''
         },
         webdav: {
-          url: cfg.storageBackend?.webdav?.url || '',
-          username: cfg.storageBackend?.webdav?.username || '',
-          password: cfg.storageBackend?.webdav?.password || ''
+          url: cfg.storage_backend?.webdav?.url || '',
+          username: cfg.storage_backend?.webdav?.username || '',
+          password: cfg.storage_backend?.webdav?.password || ''
         },
         alert: {
-          enabled: cfg.storageBackend?.alert?.enabled ?? false,
-          thresholdPercent: cfg.storageBackend?.alert?.thresholdPercent ?? 85,
-          checkIntervalMinutes: cfg.storageBackend?.alert?.checkIntervalMinutes ?? 10,
-          cooldownMinutes: cfg.storageBackend?.alert?.cooldownMinutes ?? 120,
-          webEnabled: cfg.storageBackend?.alert?.webEnabled ?? true,
-          webhookEnabled: cfg.storageBackend?.alert?.webhookEnabled ?? false,
-          emailEnabled: cfg.storageBackend?.alert?.emailEnabled ?? false,
-          emailRecipients: cfg.storageBackend?.alert?.emailRecipients || [],
+          enabled: cfg.storage_backend?.alert?.enabled ?? false,
+          thresholdPercent: cfg.storage_backend?.alert?.threshold_percent ?? 85,
+          checkIntervalMinutes: cfg.storage_backend?.alert?.check_interval_minutes ?? 10,
+          cooldownMinutes: cfg.storage_backend?.alert?.cooldown_minutes ?? 120,
+          webEnabled: cfg.storage_backend?.alert?.web_enabled ?? true,
+          webhookEnabled: cfg.storage_backend?.alert?.webhook_enabled ?? false,
+          emailEnabled: cfg.storage_backend?.alert?.email_enabled ?? false,
+          emailRecipients: cfg.storage_backend?.alert?.email_recipients || [],
           smtp: {
-            host: cfg.storageBackend?.alert?.smtp?.host || '',
-            port: cfg.storageBackend?.alert?.smtp?.port ?? 587,
-            username: cfg.storageBackend?.alert?.smtp?.username || '',
-            password: cfg.storageBackend?.alert?.smtp?.password || '',
-            from: cfg.storageBackend?.alert?.smtp?.from || '',
-            tlsMode: cfg.storageBackend?.alert?.smtp?.tlsMode || 'starttls'
+            host: cfg.storage_backend?.alert?.smtp?.host || '',
+            port: cfg.storage_backend?.alert?.smtp?.port ?? 587,
+            username: cfg.storage_backend?.alert?.smtp?.username || '',
+            password: cfg.storage_backend?.alert?.smtp?.password || '',
+            from: cfg.storage_backend?.alert?.smtp?.from || '',
+            tlsMode: cfg.storage_backend?.alert?.smtp?.tls_mode || 'starttls'
           }
         }
       }
 
-      settings.privateFiles.enabled = cfg.privateFiles?.enabled ?? false
-      settings.privateFiles.path = cfg.privateFiles?.path || ''
-      settings.privateQuotaGlobal = cfg.privateFiles?.quotaGlobal || 0
-      settings.privateQuotaUser = cfg.privateFiles?.quotaPerUser || 0
+      settings.privateFiles.enabled = cfg.private_files?.enabled ?? false
+      settings.privateFiles.path = cfg.private_files?.path || ''
+      settings.privateQuotaGlobal = cfg.private_files?.quota_global || 0
+      settings.privateQuotaUser = cfg.private_files?.quota_per_user || 0
 
-      settings.tempFiles.enabled = cfg.tempFiles?.enabled ?? true
-      settings.tempFiles.path = cfg.tempFiles?.path || ''
-      settings.tempFiles.defaultExpireDays = cfg.tempFiles?.defaultExpireDays || 7
-      settings.tempFiles.deleteOnDownload = cfg.tempFiles?.deleteOnDownload ?? true
-      settings.tempFilesQuotaGlobal = cfg.tempFiles?.quotaGlobal || 0
-      settings.tempFilesQuotaPerIP = cfg.tempFiles?.quotaPerIP || 0
+      settings.tempFiles.enabled = cfg.temp_files?.enabled ?? true
+      settings.tempFiles.path = cfg.temp_files?.path || ''
+      settings.tempFiles.defaultExpireDays = cfg.temp_files?.default_expire_days || 7
+      settings.tempFiles.deleteOnDownload = cfg.temp_files?.delete_on_download ?? true
+      settings.tempFilesQuotaGlobal = cfg.temp_files?.quota_global || 0
+      settings.tempFilesQuotaPerIP = cfg.temp_files?.quota_per_ip || 0
 
-      settings.upload = cfg.upload || { chunkSize: 10485760, maxFileSize: 17179869184, urlUpload: { enabled: false, allowedIPRanges: [], insecureSkipVerify: false, maxConcurrent: 2, maxRetries: 3 } }
-      settings.upload.urlUpload = {
-        enabled: false,
-        allowedIPRanges: [],
-        insecureSkipVerify: false,
-        maxConcurrent: 2,
-        maxRetries: 3,
-        ...(settings.upload.urlUpload || {})
-      }
-      settings.upload.rateLimit = {
-        windowMinutes: 1,
-        maxRequests: 0,
-        ...(settings.upload.rateLimit || {})
+      settings.upload = {
+        chunkSize: cfg.upload?.chunk_size || 10485760,
+        maxFileSize: cfg.upload?.max_file_size || 17179869184,
+        urlUpload: {
+          enabled: cfg.upload?.url_upload?.enabled ?? false,
+          allowedIPRanges: cfg.upload?.url_upload?.allowed_ip_ranges || [],
+          insecureSkipVerify: cfg.upload?.url_upload?.insecure_skip_verify ?? false,
+          maxConcurrent: cfg.upload?.url_upload?.max_concurrent || 2,
+          maxRetries: cfg.upload?.url_upload?.max_retries || 3
+        },
+        rateLimit: {
+          windowMinutes: cfg.upload?.rate_limit?.window_minutes || 1,
+          maxRequests: cfg.upload?.rate_limit?.max_requests || 0
+        }
       }
 
       settings.download = {
         rateLimit: {
-          windowMinutes: cfg.download?.rateLimit?.windowMinutes || 1,
-          maxRequests: cfg.download?.rateLimit?.maxRequests || 0,
-          lockAfter: cfg.download?.rateLimit?.lockAfter || 0,
-          lockMinutes: cfg.download?.rateLimit?.lockMinutes || 10
+          windowMinutes: cfg.download?.rate_limit?.window_minutes || 1,
+          maxRequests: cfg.download?.rate_limit?.max_requests || 0,
+          lockAfter: cfg.download?.rate_limit?.lock_after || 0,
+          lockMinutes: cfg.download?.rate_limit?.lock_minutes || 10
         }
       }
 
@@ -516,18 +517,18 @@ const loadSettings = async () => {
       }
 
       settings.openApi = {
-        enabled: cfg.openApi?.enabled ?? false,
-        ipAccessMode: cfg.openApi?.ipAccessMode || 'none',
-        ipWhitelist: (cfg.openApi?.ipWhitelist || []).join('\n'),
-        ipBlacklist: (cfg.openApi?.ipBlacklist || []).join('\n'),
-        domainWhitelist: (cfg.openApi?.domainWhitelist || []).join('\n'),
-        rateLimitEnabled: cfg.openApi?.rateLimitEnabled ?? true,
-        requestsPerMinute: cfg.openApi?.requestsPerMinute || 60
+        enabled: cfg.open_api?.enabled ?? false,
+        ipAccessMode: cfg.open_api?.ip_access_mode || 'none',
+        ipWhitelist: (cfg.open_api?.ip_whitelist || []).join('\n'),
+        ipBlacklist: (cfg.open_api?.ip_blacklist || []).join('\n'),
+        domainWhitelist: (cfg.open_api?.domain_whitelist || []).join('\n'),
+        rateLimitEnabled: cfg.open_api?.rate_limit_enabled ?? true,
+        requestsPerMinute: cfg.open_api?.requests_per_minute || 60
       }
 
       settings.security = {
-        trustProxy: cfg.security?.trustProxy ?? false,
-        allowedOrigins: cfg.security?.allowedOrigins || []
+        trustProxy: cfg.security?.trust_proxy ?? false,
+        allowedOrigins: cfg.security?.allowed_origins || []
       }
 
       settings.auth = {
@@ -535,31 +536,31 @@ const loadSettings = async () => {
           enabled: cfg.auth?.ldap?.enabled ?? false,
           host: cfg.auth?.ldap?.host || '',
           port: cfg.auth?.ldap?.port || 389,
-          useSSL: cfg.auth?.ldap?.useSSL ?? false,
-          baseDN: cfg.auth?.ldap?.baseDN || '',
-          bindDN: cfg.auth?.ldap?.bindDN || '',
-          bindPassword: cfg.auth?.ldap?.bindPassword || '',
-          userFilter: cfg.auth?.ldap?.userFilter || '',
-          syncInterval: cfg.auth?.ldap?.syncInterval || 3600,
-          autoCreateUser: cfg.auth?.ldap?.autoCreateUser ?? false,
-          insecureSkipVerify: cfg.auth?.ldap?.insecureSkipVerify ?? false
+          useSSL: cfg.auth?.ldap?.use_ssl ?? false,
+          baseDN: cfg.auth?.ldap?.base_dn || '',
+          bindDN: cfg.auth?.ldap?.bind_dn || '',
+          bindPassword: cfg.auth?.ldap?.bind_password || '',
+          userFilter: cfg.auth?.ldap?.user_filter || '',
+          syncInterval: cfg.auth?.ldap?.sync_interval || 3600,
+          autoCreateUser: cfg.auth?.ldap?.auto_create_user ?? false,
+          insecureSkipVerify: cfg.auth?.ldap?.insecure_skip_verify ?? false
         },
         oauth2: {
           enabled: cfg.auth?.oauth2?.enabled ?? false,
-          providerName: cfg.auth?.oauth2?.providerName || '',
-          clientId: cfg.auth?.oauth2?.clientId || '',
-          clientSecret: cfg.auth?.oauth2?.clientSecret || '',
-          authUrl: cfg.auth?.oauth2?.authUrl || '',
-          tokenUrl: cfg.auth?.oauth2?.tokenUrl || '',
-          userInfoUrl: cfg.auth?.oauth2?.userInfoUrl || '',
+          providerName: cfg.auth?.oauth2?.provider_name || '',
+          clientId: cfg.auth?.oauth2?.client_id || '',
+          clientSecret: cfg.auth?.oauth2?.client_secret || '',
+          authUrl: cfg.auth?.oauth2?.auth_url || '',
+          tokenUrl: cfg.auth?.oauth2?.token_url || '',
+          userInfoUrl: cfg.auth?.oauth2?.user_info_url || '',
           issuer: cfg.auth?.oauth2?.issuer || '',
           scopes: cfg.auth?.oauth2?.scopes || [],
-          redirectUrl: cfg.auth?.oauth2?.redirectUrl || '',
-          usernameClaim: cfg.auth?.oauth2?.usernameClaim || '',
-          displayNameClaim: cfg.auth?.oauth2?.displayNameClaim || '',
-          emailClaim: cfg.auth?.oauth2?.emailClaim || '',
-          autoCreateUser: cfg.auth?.oauth2?.autoCreateUser ?? false,
-          insecureSkipVerify: cfg.auth?.oauth2?.insecureSkipVerify ?? false
+          redirectUrl: cfg.auth?.oauth2?.redirect_url || '',
+          usernameClaim: cfg.auth?.oauth2?.username_claim || '',
+          displayNameClaim: cfg.auth?.oauth2?.display_name_claim || '',
+          emailClaim: cfg.auth?.oauth2?.email_claim || '',
+          autoCreateUser: cfg.auth?.oauth2?.auto_create_user ?? false,
+          insecureSkipVerify: cfg.auth?.oauth2?.insecure_skip_verify ?? false
         }
       }
 
@@ -590,21 +591,22 @@ const markClean = () => {
   for (const k of Object.keys(settings)) baselineSections[k] = serialize(settings[k])
 }
 
-// configData 顶层节 -> 其来源的 settings 顶层节，用于判定该节是否因变更而随请求提交
+// configData 顶层节（后端 snake_case）-> 其来源的 settings 顶层节（前端内部 camelCase），
+// 用于判定该节是否因变更而随请求提交
 const SECTION_SOURCES = {
   app: ['appName'],
   account: ['account'],
   server: ['server'],
   database: ['database'],
-  rootDirs: ['rootDirs'],
-  allowedExtensions: ['allowedExtensions'],
-  storageBackend: ['storageBackend'],
-  privateFiles: ['privateFiles', 'privateQuotaGlobal', 'privateQuotaUser'],
-  tempFiles: ['tempFiles', 'tempFilesQuotaGlobal', 'tempFilesQuotaPerIP'],
+  root_dirs: ['rootDirs'],
+  allowed_extensions: ['allowedExtensions'],
+  storage_backend: ['storageBackend'],
+  private_files: ['privateFiles', 'privateQuotaGlobal', 'privateQuotaUser'],
+  temp_files: ['tempFiles', 'tempFilesQuotaGlobal', 'tempFilesQuotaPerIP'],
   upload: ['upload'],
   download: ['download'],
   preview: ['preview'],
-  openApi: ['openApi'],
+  open_api: ['openApi'],
   security: ['security'],
   auth: ['auth']
 }
@@ -683,12 +685,12 @@ const doSaveSettings = async () => {
       app: { name: settings.appName },
       account: {
         anonymous: { username: settings.account.anonymous.username },
-        reservedUsernames: settings.account.reservedUsernames,
-        allowRegistration: settings.account.allowRegistration,
-        requireLogin: settings.account.requireLogin,
+        reserved_usernames: settings.account.reservedUsernames,
+        allow_registration: settings.account.allowRegistration,
+        require_login: settings.account.requireLogin,
         captcha: {
           mode: settings.account.captcha.mode,
-          triggerAfter: settings.account.captcha.triggerAfter
+          trigger_after: settings.account.captcha.triggerAfter
         }
       },
       server: {
@@ -698,8 +700,8 @@ const doSaveSettings = async () => {
         ftp: {
           enabled: settings.server.ftp.enabled,
           port: settings.server.ftp.port,
-          passivePortStart: settings.server.ftp.passivePortStart,
-          passivePortEnd: settings.server.ftp.passivePortEnd
+          passive_port_start: settings.server.ftp.passivePortStart,
+          passive_port_end: settings.server.ftp.passivePortEnd
         },
         ftps: { enabled: settings.server.ftps.enabled, port: settings.server.ftps.port },
         webdav: { enabled: settings.server.webdav.enabled }
@@ -708,77 +710,134 @@ const doSaveSettings = async () => {
         driver: settings.database.driver,
         dsn: finalDsn
       },
-      rootDirs: settings.rootDirs,
-      allowedExtensions: settings.allowedExtensions,
-      storageBackend: {
+      root_dirs: settings.rootDirs.map(d => ({
+        name: d.name,
+        path: d.path,
+        full_path: d.path,
+        upload_enabled: d.uploadEnabled !== false
+      })),
+      allowed_extensions: settings.allowedExtensions,
+      storage_backend: {
         backend: settings.storageBackend.backend,
-        s3: { ...settings.storageBackend.s3 },
-        oss: { ...settings.storageBackend.oss },
-        webdav: { ...settings.storageBackend.webdav },
+        s3: {
+          endpoint: settings.storageBackend.s3.endpoint,
+          access_key: settings.storageBackend.s3.accessKey,
+          secret_key: settings.storageBackend.s3.secretKey,
+          bucket: settings.storageBackend.s3.bucket,
+          region: settings.storageBackend.s3.region,
+          use_ssl: settings.storageBackend.s3.useSSL
+        },
+        oss: {
+          endpoint: settings.storageBackend.oss.endpoint,
+          access_key: settings.storageBackend.oss.accessKey,
+          secret_key: settings.storageBackend.oss.secretKey,
+          bucket: settings.storageBackend.oss.bucket
+        },
+        webdav: {
+          url: settings.storageBackend.webdav.url,
+          username: settings.storageBackend.webdav.username,
+          password: settings.storageBackend.webdav.password
+        },
         alert: {
-          ...settings.storageBackend.alert,
-          emailRecipients: [...(settings.storageBackend.alert?.emailRecipients || [])],
-          smtp: { ...settings.storageBackend.alert?.smtp }
+          enabled: settings.storageBackend.alert.enabled,
+          threshold_percent: settings.storageBackend.alert.thresholdPercent,
+          check_interval_minutes: settings.storageBackend.alert.checkIntervalMinutes,
+          cooldown_minutes: settings.storageBackend.alert.cooldownMinutes,
+          web_enabled: settings.storageBackend.alert.webEnabled,
+          webhook_enabled: settings.storageBackend.alert.webhookEnabled,
+          email_enabled: settings.storageBackend.alert.emailEnabled,
+          email_recipients: [...(settings.storageBackend.alert.emailRecipients || [])],
+          smtp: {
+            host: settings.storageBackend.alert.smtp.host,
+            port: settings.storageBackend.alert.smtp.port,
+            username: settings.storageBackend.alert.smtp.username,
+            password: settings.storageBackend.alert.smtp.password,
+            from: settings.storageBackend.alert.smtp.from,
+            tls_mode: settings.storageBackend.alert.smtp.tlsMode
+          }
         }
       },
-      privateFiles: {
-        ...settings.privateFiles,
-        quotaGlobal: settings.privateQuotaGlobal,
-        quotaPerUser: settings.privateQuotaUser
+      private_files: {
+        enabled: settings.privateFiles.enabled,
+        path: settings.privateFiles.path,
+        quota_global: settings.privateQuotaGlobal,
+        quota_per_user: settings.privateQuotaUser
       },
-      tempFiles: {
-        ...settings.tempFiles,
-        quotaGlobal: settings.tempFilesQuotaGlobal,
-        quotaPerIP: settings.tempFilesQuotaPerIP
+      temp_files: {
+        enabled: settings.tempFiles.enabled,
+        path: settings.tempFiles.path,
+        default_expire_days: settings.tempFiles.defaultExpireDays,
+        delete_on_download: settings.tempFiles.deleteOnDownload,
+        quota_global: settings.tempFilesQuotaGlobal,
+        quota_per_ip: settings.tempFilesQuotaPerIP
       },
-      upload: settings.upload,
+      upload: {
+        chunk_size: settings.upload.chunkSize,
+        max_file_size: settings.upload.maxFileSize,
+        url_upload: {
+          enabled: settings.upload.urlUpload.enabled,
+          allowed_ip_ranges: [...(settings.upload.urlUpload.allowedIPRanges || [])],
+          insecure_skip_verify: settings.upload.urlUpload.insecureSkipVerify,
+          max_concurrent: settings.upload.urlUpload.maxConcurrent,
+          max_retries: settings.upload.urlUpload.maxRetries
+        },
+        rate_limit: {
+          window_minutes: settings.upload.rateLimit.windowMinutes,
+          max_requests: settings.upload.rateLimit.maxRequests
+        }
+      },
       download: {
-        rateLimit: settings.download.rateLimit
+        rate_limit: {
+          window_minutes: settings.download.rateLimit.windowMinutes,
+          max_requests: settings.download.rateLimit.maxRequests,
+          lock_after: settings.download.rateLimit.lockAfter,
+          lock_minutes: settings.download.rateLimit.lockMinutes
+        }
       },
       preview: buildPreviewPayload(),
-      openApi: {
+      open_api: {
         enabled: settings.openApi.enabled,
-        ipAccessMode: settings.openApi.ipAccessMode,
-        ipWhitelist: settings.openApi.ipWhitelist.split('\n').filter(ip => ip.trim()),
-        ipBlacklist: settings.openApi.ipBlacklist.split('\n').filter(ip => ip.trim()),
-        domainWhitelist: settings.openApi.domainWhitelist.split('\n').filter(d => d.trim()),
-        rateLimitEnabled: settings.openApi.rateLimitEnabled,
-        requestsPerMinute: settings.openApi.requestsPerMinute
+        ip_access_mode: settings.openApi.ipAccessMode,
+        ip_whitelist: settings.openApi.ipWhitelist.split('\n').filter(ip => ip.trim()),
+        ip_blacklist: settings.openApi.ipBlacklist.split('\n').filter(ip => ip.trim()),
+        domain_whitelist: settings.openApi.domainWhitelist.split('\n').filter(d => d.trim()),
+        rate_limit_enabled: settings.openApi.rateLimitEnabled,
+        requests_per_minute: settings.openApi.requestsPerMinute
       },
       security: {
-        trustProxy: settings.security.trustProxy,
-        allowedOrigins: settings.security.allowedOrigins
+        trust_proxy: settings.security.trustProxy,
+        allowed_origins: settings.security.allowedOrigins
       },
       auth: {
         ldap: {
           enabled: settings.auth.ldap.enabled,
           host: settings.auth.ldap.host,
           port: settings.auth.ldap.port,
-          useSSL: settings.auth.ldap.useSSL,
-          baseDN: settings.auth.ldap.baseDN,
-          bindDN: settings.auth.ldap.bindDN,
-          bindPassword: settings.auth.ldap.bindPassword,
-          userFilter: settings.auth.ldap.userFilter,
-          syncInterval: settings.auth.ldap.syncInterval,
-          autoCreateUser: settings.auth.ldap.autoCreateUser,
-          insecureSkipVerify: settings.auth.ldap.insecureSkipVerify
+          use_ssl: settings.auth.ldap.useSSL,
+          base_dn: settings.auth.ldap.baseDN,
+          bind_dn: settings.auth.ldap.bindDN,
+          bind_password: settings.auth.ldap.bindPassword,
+          user_filter: settings.auth.ldap.userFilter,
+          sync_interval: settings.auth.ldap.syncInterval,
+          auto_create_user: settings.auth.ldap.autoCreateUser,
+          insecure_skip_verify: settings.auth.ldap.insecureSkipVerify
         },
         oauth2: {
           enabled: settings.auth.oauth2.enabled,
-          providerName: settings.auth.oauth2.providerName,
-          clientId: settings.auth.oauth2.clientId,
-          clientSecret: settings.auth.oauth2.clientSecret,
-          authUrl: settings.auth.oauth2.authUrl,
-          tokenUrl: settings.auth.oauth2.tokenUrl,
-          userInfoUrl: settings.auth.oauth2.userInfoUrl,
+          provider_name: settings.auth.oauth2.providerName,
+          client_id: settings.auth.oauth2.clientId,
+          client_secret: settings.auth.oauth2.clientSecret,
+          auth_url: settings.auth.oauth2.authUrl,
+          token_url: settings.auth.oauth2.tokenUrl,
+          user_info_url: settings.auth.oauth2.userInfoUrl,
           issuer: settings.auth.oauth2.issuer,
           scopes: settings.auth.oauth2.scopes,
-          redirectUrl: settings.auth.oauth2.redirectUrl,
-          usernameClaim: settings.auth.oauth2.usernameClaim,
-          displayNameClaim: settings.auth.oauth2.displayNameClaim,
-          emailClaim: settings.auth.oauth2.emailClaim,
-          autoCreateUser: settings.auth.oauth2.autoCreateUser,
-          insecureSkipVerify: settings.auth.oauth2.insecureSkipVerify
+          redirect_url: settings.auth.oauth2.redirectUrl,
+          username_claim: settings.auth.oauth2.usernameClaim,
+          display_name_claim: settings.auth.oauth2.displayNameClaim,
+          email_claim: settings.auth.oauth2.emailClaim,
+          auto_create_user: settings.auth.oauth2.autoCreateUser,
+          insecure_skip_verify: settings.auth.oauth2.insecureSkipVerify
         }
       }
     }
@@ -799,18 +858,18 @@ const doSaveSettings = async () => {
         if (optionsRes.data) {
           store.setConfig({
             appName: optionsRes.data.app?.name || '',
-            privateStorageEnabled: optionsRes.data.privateStorage?.enabled ?? false,
-            tempFilesEnabled: optionsRes.data.tempFiles?.enabled ?? true,
+            privateStorageEnabled: optionsRes.data.private_storage?.enabled ?? false,
+            tempFilesEnabled: optionsRes.data.temp_files?.enabled ?? true,
             ftpEnabled: optionsRes.data.ftp?.enabled ?? false,
             ftpPort: optionsRes.data.ftp?.port ?? null,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
-            openApiEnabled: optionsRes.data.openApi?.enabled ?? false,
-            urlUploadEnabled: optionsRes.data.upload?.urlUpload?.enabled ?? false,
-            allowRegistration: optionsRes.data.account?.allowRegistration ?? false,
-            requireLogin: optionsRes.data.account?.requireLogin ?? false,
+            openApiEnabled: optionsRes.data.open_api?.enabled ?? false,
+            urlUploadEnabled: optionsRes.data.upload?.url_upload?.enabled ?? false,
+            allowRegistration: optionsRes.data.account?.allow_registration ?? false,
+            requireLogin: optionsRes.data.account?.require_login ?? false,
             captchaMode: optionsRes.data.account?.captcha?.mode ?? 'disabled',
-            captchaTriggerAfter: optionsRes.data.account?.captcha?.triggerAfter ?? 3,
-            anonymousUsername: optionsRes.data.webdav?.publicUsername || optionsRes.data.account?.anonymous?.username || ''
+            captchaTriggerAfter: optionsRes.data.account?.captcha?.trigger_after ?? 3,
+            anonymousUsername: optionsRes.data.webdav?.public_username || optionsRes.data.account?.anonymous?.username || ''
           })
         }
       } catch (e) {

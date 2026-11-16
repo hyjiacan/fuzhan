@@ -183,15 +183,15 @@ func (s *TaskService) dispatchTaskEvent(eventType string, id uint, extraMsg stri
 	}
 	payload := map[string]interface{}{"id": id}
 	if task, err := s.GetTaskByID(id); err == nil && task != nil {
-		payload["taskType"] = task.TaskType
-		payload["taskName"] = task.TaskName
+		payload["task_type"] = task.TaskType
+		payload["task_name"] = task.TaskName
 		payload["status"] = task.Status
 		payload["trigger"] = task.Trigger
 		if extraMsg != "" {
-			payload["errorMessage"] = extraMsg
+			payload["error_message"] = extraMsg
 		}
 	} else if extraMsg != "" {
-		payload["errorMessage"] = extraMsg
+		payload["error_message"] = extraMsg
 	}
 	webhook.Dispatch(eventType, "task", payload)
 }

@@ -152,18 +152,18 @@ export function createColumns(ctx) {
       cellRenderer: ({ rowData: row }) => formatSize(row.size)
     },
     {
-      title: '修改时间', key: 'modifiedTime', width: 200, sortable: true, sortBy: 'modifiedTime',
+      title: '修改时间', key: 'modified_time', width: 200, sortable: true, sortBy: 'modified_time',
       cellRenderer: ({ rowData: row }) => {
-        const text = TimeUtils.formatDateTime(row.modifiedTime)
-        if (TimeUtils.isRecent24h(row.modifiedTime)) {
+        const text = TimeUtils.formatDateTime(row.modified_time)
+        if (TimeUtils.isRecent24h(row.modified_time)) {
           return h('span', { class: 'recent-time', title: '近 24 小时内有更新' }, text)
         }
         return text
       }
     },
     {
-      title: '下载次数', key: 'downloadCount', width: 110, sortable: true, sortBy: 'downloadCount',
-      cellRenderer: ({ rowData: row }) => isDir(row) ? '' : ((row.downloadCount || 0) > 0 ? row.downloadCount : '-')
+      title: '下载次数', key: 'download_count', width: 110, sortable: true, sortBy: 'download_count',
+      cellRenderer: ({ rowData: row }) => isDir(row) ? '' : ((row.download_count || 0) > 0 ? row.download_count : '-')
     },
     {
       title: '备注', key: 'notes', width: 150,
@@ -179,7 +179,7 @@ export function createColumns(ctx) {
       cellRenderer: ({ rowData: row }) => {
         // 目录：不显示管理操作（公开文件的管理已迁移至管理员页面）
         if (isDir(row)) return null
-        const count = row.dependencyCount || 0
+        const count = row.dependency_count || 0
         return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) },
           () => (count > 0 ? `依赖 (${count})` : '依赖'))
       }

@@ -47,7 +47,7 @@
     "data": {
       "uuid": "用户UUID",
       "username": "用户名",
-      "expiresIn": 86400
+      "expires_in": 86400
     }
   }
   ```
@@ -72,7 +72,7 @@
     "data": {
       "uuid": "用户UUID",
       "username": "用户名",
-      "expiresIn": 86400
+      "expires_in": 86400
     }
   }
   ```
@@ -107,7 +107,7 @@
     "data": {
       "uuid": "用户UUID",
       "username": "用户名",
-      "expiresIn": 86400
+      "expires_in": 86400
     }
   }
   ```
@@ -120,8 +120,8 @@
 - **请求体**：
   ```json
   {
-    "oldPassword": "旧密码",
-    "newPassword": "新密码 (6-128字符)"
+    "old_password": "旧密码",
+    "new_password": "新密码 (6-128字符)"
   }
   ```
 
@@ -153,7 +153,7 @@
 - **发起授权**：`GET /api/v1/web/auth/oauth2/authorize`
   - 返回外部认证系统的授权地址与签名 state，由前端整页跳转。
   ```json
-  { "success": true, "data": { "authorizeUrl": "https://sso.example.com/oauth2/authorize?...", "state": "..." } }
+  { "success": true, "data": { "authorize_url": "https://sso.example.com/oauth2/authorize?...", "state": "..." } }
   ```
 
 - **回调处理**：`GET /api/v1/web/auth/oauth2/callback`
@@ -174,13 +174,13 @@
   {
     "success": true,
     "data": {
-      "currentPath": "rootName/subdir",
+      "current_path": "rootName/subdir",
       "items": [
         {
           "name": "目录名",
           "type": "directory",
           "path": "rootName/subdir/目录名",
-          "modifiedTime": "2026-07-22T10:00:00Z",
+          "modified_time": "2026-07-22T10:00:00Z",
           "quota": 1073741824,
           "used": 536870912
         },
@@ -188,7 +188,7 @@
           "name": "文件名.txt",
           "type": "file",
           "path": "rootName/subdir/文件名.txt",
-          "modifiedTime": "2026-07-22T10:00:00Z",
+          "modified_time": "2026-07-22T10:00:00Z",
           "size": 1024
         }
       ]
@@ -210,7 +210,7 @@
       {
         "filename": "文件名",
         "path": "rootName/文件名",
-        "uploadTime": "2026-07-22T10:00:00Z",
+        "upload_time": "2026-07-22T10:00:00Z",
         "size": 1024
       }
     ]
@@ -263,10 +263,10 @@
 - **响应**（SSE 格式）：
   ```
   event: result
-  data: {"name":"file.txt","path":"root/file.txt","type":"file","size":1024,"modifiedTime":"..."}
+  data: {"name":"file.txt","path":"root/file.txt","type":"file","size":1024,"modified_time":"..."}
 
   event: result
-  data: {"name":"file2.txt","path":"root2/file2.txt","type":"file","size":2048,"modifiedTime":"..."}
+  data: {"name":"file2.txt","path":"root2/file2.txt","type":"file","size":2048,"modified_time":"..."}
 
   event: message
   data: {"success":true,"message":"搜索完成，共找到 2 个结果","data":[]}
@@ -374,10 +374,10 @@
   {
     "success": true,
     "data": {
-      "uploadId": 1,
-      "chunkSize": 10485760,
-      "totalChunks": 10,
-      "expiredAt": "2026-07-23T10:00:00Z"
+      "upload_id": 1,
+      "chunk_size": 10485760,
+      "total_chunks": 10,
+      "expired_at": "2026-07-23T10:00:00Z"
     }
   }
   ```
@@ -391,9 +391,9 @@
   {
     "success": true,
     "data": {
-      "uploadId": 1,
+      "upload_id": 1,
       "filename": "文件名.zip",
-      "uploadedChunks": [0, 1, 2],
+      "uploaded_indexes": [0, 1, 2],
       "completed": false
     }
   }
@@ -424,7 +424,7 @@
   {
     "success": true,
     "data": {
-      "chunkIndex": 0,
+      "chunk_index": 0,
       "offset": 0
     }
   }
@@ -445,7 +445,7 @@
 
 - **URL**：`POST /api/v1/web/uploads/url-tasks`
 - **认证**：可选（AuthOptional）
-- **说明**：仅做校验与入队，返回 `taskId`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。服务器侧大小硬上限由 `upload.url_upload.max_size` 控制（字节，0=不限，下载实际累计写入超过即中断并清理）。
+- **说明**：仅做校验与入队，返回 `task_id`；实际传输由后台全局队列按 `upload.url_upload.max_concurrent`（所有用户共享）调度，关闭浏览器/进程重启后继续执行。失败且错误可重试（超时/5xx/408/429）时按 `upload.url_upload.max_retries`（默认 3）自动重试并排到队尾，用尽后标记失败；4xx 不重试。服务器侧大小硬上限由 `upload.url_upload.max_size` 控制（字节，0=不限，下载实际累计写入超过即中断并清理）。
 - **请求体**：
   ```json
   {
@@ -460,10 +460,10 @@
   {
     "success": true,
     "data": {
-      "taskId": "uuid",
-      "taskType": "url",
-      "fileName": "文件名.zip",
-      "fileSize": 1024000,
+      "task_id": "uuid",
+      "task_type": "url",
+      "file_name": "文件名.zip",
+      "file_size": 1024000,
       "status": "pending"
     }
   }
@@ -482,10 +482,10 @@
       "items": [
         {
           "url": "https://example.com/file.zip",
-          "fileName": "file.zip",
-          "fileSize": 1024000,
-          "targetExists": false,
-          "alreadyUploaded": false
+          "file_name": "file.zip",
+          "file_size": 1024000,
+          "target_exists": false,
+          "already_uploaded": false
         }
       ]
     }
@@ -496,7 +496,7 @@
 
 - **URL**：`GET /api/v1/web/uploads/url-tasks/:id`
 - **认证**：可选（AuthOptional，仅任务归属者可用）
-- **说明**：返回任务状态（`pending`/`downloading`/`completed`/`failed`/`cancelled`）、`downloadedBytes`、`fileSize`、`retryCount`（已自动重试次数）等，供前端轮询进度。
+- **说明**：返回任务状态（`pending`/`downloading`/`completed`/`failed`/`cancelled`）、`downloaded_bytes`、`file_size`、`retry_count`（已自动重试次数）等，供前端轮询进度。
 - **错误**：任务不存在返回 404；非任务归属者返回 403。
 
 ### 10. 计算 URL 上传任务校验值
@@ -539,10 +539,10 @@
       "files": [
         {
           "filename": "文件名",
-          "uploadTime": "2026-07-22T10:00:00Z",
-          "fileSize": 1024,
+          "upload_time": "2026-07-22T10:00:00Z",
+          "file_size": 1024,
           "code": "A1B2C3D4",
-          "expiredAt": "2026-07-29T10:00:00Z"
+          "expired_at": "2026-07-29T10:00:00Z"
         }
       ],
       "quota": {
@@ -581,8 +581,8 @@
     "success": true,
     "data": {
       "filename": "文件名.zip",
-      "fileSize": 1024,
-      "expiredAt": "2026-07-29T10:00:00Z"
+      "file_size": 1024,
+      "expired_at": "2026-07-29T10:00:00Z"
     }
   }
   ```
@@ -608,8 +608,8 @@
     "success": true,
     "data": {
       "files": [...],
-      "totalSize": 5368709120,
-      "maxSize": 10737418240
+      "total_size": 5368709120,
+      "max_size": 10737418240
     }
   }
   ```
@@ -653,12 +653,12 @@
   {
     "name": "应用名称",
     "scopes": "open_api:reader",
-    "allowedPaths": "/docs",
-    "expiresIn": 86400
+    "allowed_paths": "/docs",
+    "expires_in": 86400
   }
   ```
 
-  `allowedPaths` 用于限定可操作的公开目录路径（换行/逗号分隔，留空或 `*` 表示所有路径；
+  `allowed_paths` 用于限定可操作的公开目录路径（换行/逗号分隔，留空或 `*` 表示所有路径；
   配置为目录时包含其所有子路径），越界操作返回 403。
 
 ### 3. 删除 API Key
@@ -722,11 +722,11 @@
         "name": "浮栈"
       },
       "account": {
-        "allowRegistration": false,
-        "requireLogin": false,
+        "allow_registration": false,
+        "require_login": false,
         "captcha": {
           "mode": "disabled",
-          "triggerAfter": 3,
+          "trigger_after": 3,
           "required": false
         }
       },
@@ -739,7 +739,7 @@
 
 - **URL**：`GET /api/v1/web/runtime-config`
 - **认证**：未开启强制登录时匿名可访问；开启强制登录后需登录（由 LoginGate 拦截匿名请求）
-- **说明**：下发全部业务配置与共享目录列表（`rootDirs`，含显示名称与是否允许上传），
+- **说明**：下发全部业务配置与共享目录列表（`root_dirs`，含显示名称与是否允许上传），
   供上传面板选择上传目录、URL 上传开关、预览 MIME 判定等使用。
   未开启强制登录时匿名访客同样需要该数据（匿名上传/预览能力依赖它）。
 - **响应**：
@@ -751,28 +751,28 @@
         "name": "浮栈"
       },
       "account": {
-        "allowRegistration": false,
-        "requireLogin": false,
+        "allow_registration": false,
+        "require_login": false,
         "captcha": {
           "mode": "disabled",
-          "triggerAfter": 3,
+          "trigger_after": 3,
           "required": false
         }
       },
-      "rootDirs": [
-        { "name": "共享文件", "uploadEnabled": true }
+      "root_dirs": [
+        { "name": "共享文件", "upload_enabled": true }
       ],
-      "privateStorage": { "enabled": false },
-      "tempFiles": { "enabled": true },
+      "private_storage": { "enabled": false },
+      "temp_files": { "enabled": true },
       "ftp": { "enabled": false, "port": 2121 },
       "ftps": { "enabled": false, "port": 0 },
-      "webdav": { "enabled": false, "publicUsername": "public" },
+      "webdav": { "enabled": false, "public_username": "public" },
       "upload": {
-        "chunkSize": 10485760,
-        "maxFileSize": 17179869184,
-        "urlUpload": { "enabled": false, "maxSize": 2147483648 }
+        "chunk_size": 10485760,
+        "max_file_size": 17179869184,
+        "url_upload": { "enabled": false, "max_size": 2147483648 }
       },
-      "download": { "rateLimit": { "windowMinutes": 0, "maxRequests": 0 } },
+      "download": { "rate_limit": { "window_minutes": 0, "max_requests": 0 } },
       "preview": {
         "enabled": true,
         "groups": {
@@ -792,8 +792,8 @@
           "custom": { "enabled": false, "mimes": "", "exts": "" }
         }
       },
-      "mimeTable": {},
-      "openApi": { "enabled": false }
+      "mime_table": {},
+      "open_api": { "enabled": false }
     }
   }
   ```

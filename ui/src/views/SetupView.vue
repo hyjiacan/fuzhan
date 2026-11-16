@@ -556,22 +556,21 @@ const submitConfig = async () => {
     }
 
     const config = {
-      appName: form.appName,
+      app_name: form.appName,
       host: form.host,
       port: form.port,
-      httpsEnabled: form.https.enabled,
-      httpsPort: form.https.port,
-      tlsCertFile: form.tls.certFile,
-      tlsKeyFile: form.tls.keyFile,
-      adminUsername: form.adminUsername,
-      adminPassword: form.adminPassword,
-      requireLogin: form.requireLogin,
-      allowRegistration: form.allowRegistration,
-      rootDirs: form.rootDirs.filter(d => d.path).map(d => ({
-        name: d.name || '共享文件',
+      https_enabled: form.https.enabled,
+      https_port: form.https.port,
+      tls_cert_file: form.tls.certFile,
+      tls_key_file: form.tls.keyFile,
+      admin_username: form.adminUsername,
+      admin_password: form.adminPassword,
+      require_login: form.requireLogin,
+      allow_registration: form.allowRegistration,
+      root_dirs: form.rootDirs.filter(d => d.path).map(d => ({
         path: d.path,
         quota: NumberUtils.parseFileSize(d.quota),
-        uploadEnabled: d.uploadEnabled !== false
+        upload_enabled: d.uploadEnabled !== false
       })),
       database: {
         driver: form.dbDriver,
@@ -651,12 +650,12 @@ onMounted(async () => {
     const defaultConfig = await SetupApi.getDefaultConfig()
     if (defaultConfig.success && defaultConfig.data) {
       const cfg = defaultConfig.data
-      if (cfg.appName) form.appName = cfg.appName
+      if (cfg.app_name) form.appName = cfg.app_name
       if (cfg.host) form.host = cfg.host
       if (cfg.port) form.port = cfg.port
       initialHost.value = form.host || '0.0.0.0'
       initialPort.value = form.port || 8888
-      if (cfg.dbDriver) form.dbDriver = cfg.dbDriver
+      if (cfg.db_driver) form.dbDriver = cfg.db_driver
       if (cfg.dsn) form.dsn = cfg.dsn
     }
   } catch (e) {

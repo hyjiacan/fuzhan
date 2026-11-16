@@ -38,21 +38,21 @@
             <span style="font-family: monospace; font-weight: 500;">{{ row.ip }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="在线时长" width="150" sortable prop="onlineSeconds">
-          <template #default="{ row }">{{ formatDuration(row.onlineSeconds) }}</template>
+        <el-table-column label="在线时长" width="150" sortable prop="online_seconds">
+          <template #default="{ row }">{{ formatDuration(row.online_seconds) }}</template>
         </el-table-column>
         <el-table-column label="上次请求" width="220">
-          <template #default="{ row }">{{ formatTime(row.lastSeen) }}</template>
+          <template #default="{ row }">{{ formatTime(row.last_seen) }}</template>
         </el-table-column>
         <el-table-column label="首次请求" width="220">
-          <template #default="{ row }">{{ formatTime(row.firstSeen) }}</template>
+          <template #default="{ row }">{{ formatTime(row.first_seen) }}</template>
         </el-table-column>
-        <el-table-column label="请求次数" width="120" sortable prop="requestCount">
-          <template #default="{ row }">{{ row.requestCount || 0 }}</template>
+        <el-table-column label="请求次数" width="120" sortable prop="request_count">
+          <template #default="{ row }">{{ row.request_count || 0 }}</template>
         </el-table-column>
         <el-table-column label="User-Agent" min-width="300">
           <template #default="{ row }">
-            <span class="ua-cell" :title="row.userAgent || ''">{{ row.userAgent || '-' }}</span>
+            <span class="ua-cell" :title="row.user_agent || ''">{{ row.user_agent || '-' }}</span>
           </template>
         </el-table-column>
       </el-table>
@@ -127,8 +127,8 @@ const loadData = async () => {
     if (res.success && res.data) {
       onlineList.value = Array.isArray(res.data.online) ? res.data.online : []
       total.value = res.data.total ?? 0
-      if (res.data.idleTimeoutSeconds > 0) {
-        idleTimeoutSeconds.value = res.data.idleTimeoutSeconds
+      if (res.data.idle_timeout_seconds > 0) {
+        idleTimeoutSeconds.value = res.data.idle_timeout_seconds
       }
     }
   } catch (e) {

@@ -91,10 +91,10 @@ func (h *Handler) ListEvents(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"list":     list,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -168,11 +168,11 @@ func (h *Handler) Stats(c *gin.Context) {
 	locks := h.recentLocks(10)
 
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"severity": gin.H{"total": total, "high": high, "medium": medium, "low": low},
-		"trend":    trend,
-		"topIPs":   topIPs,
-		"topTypes": topTypes,
-		"locks":    locks,
+		"severity":  gin.H{"total": total, "high": high, "medium": medium, "low": low},
+		"trend":     trend,
+		"top_ips":   topIPs,
+		"top_types": topTypes,
+		"locks":     locks,
 	})
 }
 

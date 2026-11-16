@@ -74,11 +74,11 @@ export const useUrlTasks = () => {
     },
     {
       title: '文件名',
-      key: 'fileName',
+      key: 'file_name',
       minWidth: 160,
       flexGrow: 1,
-      cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.fileName || '' }, [
-        h('span', { class: 'file-link' }, row.fileName || '-')
+      cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.file_name || '' }, [
+        h('span', { class: 'file-link' }, row.file_name || '-')
       ])
     },
     {
@@ -103,26 +103,26 @@ export const useUrlTasks = () => {
     },
     {
       title: '存储类型',
-      key: 'storageType',
+      key: 'storage_type',
       width: 90,
       cellRenderer: ({ rowData: row }) => {
-        return storageTypeMap[row.storageType] || row.storageType
+        return storageTypeMap[row.storage_type] || row.storage_type
       }
     },
     {
       title: '文件大小',
-      key: 'fileSize',
+      key: 'file_size',
       width: 100,
-      cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+      cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
     },
     {
       title: '上传进度',
-      key: 'downloadedBytes',
+      key: 'downloaded_bytes',
       width: 150,
       cellRenderer: ({ rowData: row }) => {
         if (row.status === 'completed') return '100%'
-        if (row.fileSize <= 0) return '-'
-        const pct = Math.round((row.downloadedBytes / row.fileSize) * 100)
+        if (row.file_size <= 0) return '-'
+        const pct = Math.round((row.downloaded_bytes / row.file_size) * 100)
         return h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, [
           h('div', {
             style: {
@@ -139,26 +139,26 @@ export const useUrlTasks = () => {
             })
           ]),
           h('span', { style: { fontSize: '12px', color: 'rgba(0,0,0,0.6)' } },
-            `${formatSize(row.downloadedBytes)} / ${formatSize(row.fileSize)}`)
+            `${formatSize(row.downloaded_bytes)} / ${formatSize(row.file_size)}`)
         ])
       }
     },
     {
       title: '错误信息',
-      key: 'errorMessage',
+      key: 'error_message',
       width: 180,
       cellRenderer: ({ rowData: row }) => {
-        if (!row.errorMessage) return null
-        return h('span', { style: { color: '#ff4d4f', fontSize: '12px' } }, row.errorMessage)
+        if (!row.error_message) return null
+        return h('span', { style: { color: '#ff4d4f', fontSize: '12px' } }, row.error_message)
       }
     },
     {
       title: '创建时间',
-      key: 'createdAt',
+      key: 'created_at',
       width: 170,
       cellRenderer: ({ rowData: row }) => {
-        const text = TimeUtils.formatDateTime(row.createdAt)
-        if (TimeUtils.isRecent24h(row.createdAt)) {
+        const text = TimeUtils.formatDateTime(row.created_at)
+        if (TimeUtils.isRecent24h(row.created_at)) {
           return h('span', { style: 'color: #18a058' }, text)
         }
         return text
@@ -166,9 +166,9 @@ export const useUrlTasks = () => {
     },
     {
       title: '完成时间',
-      key: 'completedAt',
+      key: 'completed_at',
       width: 170,
-      cellRenderer: ({ rowData: row }) => row.completedAt ? TimeUtils.formatDateTime(row.completedAt) : '-'
+      cellRenderer: ({ rowData: row }) => row.completed_at ? TimeUtils.formatDateTime(row.completed_at) : '-'
     },
     {
       title: '操作',
@@ -198,7 +198,7 @@ export const useUrlTasks = () => {
         if (res.success) {
           urlTasks.value = res.data.items || []
           urlPage.value = res.data.page
-          urlPageSize.value = res.data.pageSize
+          urlPageSize.value = res.data.page_size
           urlTotal.value = res.data.total
         } else {
           ElMessage.error(res.message || '加载失败')

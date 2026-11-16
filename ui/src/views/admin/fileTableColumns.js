@@ -165,17 +165,17 @@ export const buildFileColumns = ({
     {
       // 上传者IP：仅管理员接口返回；手动放入存储目录/扫描入库的文件没有记录，留空
       title: '上传 IP',
-      key: 'uploaderIp',
+      key: 'uploader_ip',
       width: 140,
-      cellRenderer: ({ rowData: row }) => row.uploaderIp || ''
+      cellRenderer: ({ rowData: row }) => row.uploader_ip || ''
     },
     {
       title: '修改时间',
-      key: 'modifiedTime',
+      key: 'modified_time',
       width: 200,
       cellRenderer: ({ rowData: row }) => {
-        const text = TimeUtils.formatDateTime(row.modifiedTime)
-        if (TimeUtils.isRecent24h(row.modifiedTime)) {
+        const text = TimeUtils.formatDateTime(row.modified_time)
+        if (TimeUtils.isRecent24h(row.modified_time)) {
           return h('span', { class: 'recent-time', title: '近 24 小时内有更新' }, text)
         }
         return text

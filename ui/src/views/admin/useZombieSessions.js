@@ -78,11 +78,11 @@ export const useZombieSessions = () => {
     },
     {
       title: '文件名',
-      key: 'fileName',
+      key: 'file_name',
       minWidth: 160,
       flexGrow: 1,
-      cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.fileName || '' }, [
-        h('span', { class: 'file-link' }, row.fileName || '-')
+      cellRenderer: ({ rowData: row }) => h('div', { class: 'file-name-cell', title: row.file_name || '' }, [
+        h('span', { class: 'file-link' }, row.file_name || '-')
       ])
     },
     {
@@ -96,30 +96,30 @@ export const useZombieSessions = () => {
     },
     {
       title: '文件大小',
-      key: 'fileSize',
+      key: 'file_size',
       width: 120,
-      cellRenderer: ({ rowData: row }) => formatSize(row.fileSize)
+      cellRenderer: ({ rowData: row }) => formatSize(row.file_size)
     },
     {
       title: '已上传',
-      key: 'uploadedSize',
+      key: 'uploaded_size',
       width: 120,
       cellRenderer: ({ rowData: row }) => {
-        const percent = row.fileSize > 0 ? Math.round((row.uploadedSize / row.fileSize) * 100) : 0
-        return `${formatSize(row.uploadedSize)} (${percent}%)`
+        const percent = row.file_size > 0 ? Math.round((row.uploaded_size / row.file_size) * 100) : 0
+        return `${formatSize(row.uploaded_size)} (${percent}%)`
       }
     },
     {
       title: '创建时间',
-      key: 'createdAt',
+      key: 'created_at',
       width: 180,
-      cellRenderer: ({ rowData: row }) => row.createdAt ? TimeUtils.formatDateTime(row.createdAt) : '-'
+      cellRenderer: ({ rowData: row }) => row.created_at ? TimeUtils.formatDateTime(row.created_at) : '-'
     },
     {
       title: '过期时间',
-      key: 'expiredAt',
+      key: 'expired_at',
       width: 180,
-      cellRenderer: ({ rowData: row }) => row.expiredAt ? TimeUtils.formatDateTime(row.expiredAt) : '-'
+      cellRenderer: ({ rowData: row }) => row.expired_at ? TimeUtils.formatDateTime(row.expired_at) : '-'
     },
     {
       title: '操作',
@@ -149,9 +149,9 @@ export const useZombieSessions = () => {
         // 仅信任后端返回的全局聚合统计；缺失时保持未知，不用当前页估算冒充全局值
         const stats = data.data?.stats
         if (stats) {
-          zombieStats.totalSessions = stats.totalSessions || 0
-          zombieStats.zombieSessions = stats.zombieSessions || 0
-          zombieStats.totalSize = stats.totalSize || 0
+          zombieStats.totalSessions = stats.total_sessions || 0
+          zombieStats.zombieSessions = stats.zombie_sessions || 0
+          zombieStats.totalSize = stats.total_size || 0
           zombieStatsAvailable.value = true
         } else {
           zombieStatsAvailable.value = false

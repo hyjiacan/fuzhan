@@ -51,14 +51,14 @@ func buildAccountOptions(c *gin.Context) gin.H {
 	currentConfig := appconfig.GetConfig()
 	return gin.H{
 		// 注册开关：登录/注册入口据此决定是否展示「立即注册」
-		"allowRegistration": currentConfig.Account.AllowRegistration,
+		"allow_registration": currentConfig.Account.AllowRegistration,
 		// 强制登录开关：前端据此决定首次加载前移登录页、路由守卫与下载链接是否附带 token
-		"requireLogin": currentConfig.Account.RequireLogin,
-		// 登录/注册图形验证码：mode/triggerAfter 为配置；required 按当前请求 IP 的失败次数动态计算
+		"require_login": currentConfig.Account.RequireLogin,
+		// 登录/注册图形验证码：mode/trigger_after 为配置；required 按当前请求 IP 的失败次数动态计算
 		"captcha": gin.H{
-			"mode":         currentConfig.Account.Captcha.Mode,
-			"triggerAfter": currentConfig.Account.Captcha.TriggerAfter,
-			"required":     auth.CaptchaRequired(utils.GetClientIP(c)),
+			"mode":          currentConfig.Account.Captcha.Mode,
+			"trigger_after": currentConfig.Account.Captcha.TriggerAfter,
+			"required":      auth.CaptchaRequired(utils.GetClientIP(c)),
 		},
 	}
 }
@@ -80,19 +80,19 @@ func (h *Handler) GetRuntimeConfig(c *gin.Context) {
 			name = name[idx+1:]
 		}
 		rootDirs[i] = gin.H{
-			"name":          name,
-			"uploadEnabled": dir.UploadAllowed(),
+			"name":           name,
+			"upload_enabled": dir.UploadAllowed(),
 		}
 	}
 
 	resp := gin.H{
-		"app":      buildAppOptions(),
-		"account":  buildAccountOptions(c),
-		"rootDirs": rootDirs,
-		"privateStorage": gin.H{
+		"app":       buildAppOptions(),
+		"account":   buildAccountOptions(c),
+		"root_dirs": rootDirs,
+		"private_storage": gin.H{
 			"enabled": currentConfig.Storage.Private.Enabled,
 		},
-		"tempFiles": gin.H{
+		"temp_files": gin.H{
 			"enabled": currentConfig.Storage.Temp.Enabled,
 		},
 		"ftp": gin.H{
@@ -104,32 +104,32 @@ func (h *Handler) GetRuntimeConfig(c *gin.Context) {
 			"port":    currentConfig.Server.FTPS.Port,
 		},
 		"webdav": gin.H{
-			"enabled":        currentConfig.Server.WebDAV.Enabled,
-			"publicUsername": currentConfig.Account.Anonymous.Username,
+			"enabled":         currentConfig.Server.WebDAV.Enabled,
+			"public_username": currentConfig.Account.Anonymous.Username,
 		},
 		"upload": gin.H{
-			"chunkSize":   currentConfig.Upload.ChunkSize,
-			"maxFileSize": currentConfig.Upload.MaxFileSize,
-			"urlUpload": gin.H{
-				"enabled":            currentConfig.Upload.URLUpload.Enabled,
-				"insecureSkipVerify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
-				"maxConcurrent":      currentConfig.Upload.URLUpload.MaxConcurrent,
-				"maxRetries":         currentConfig.Upload.URLUpload.MaxRetries,
-				"maxSize":            currentConfig.Upload.URLUpload.MaxSize,
+			"chunk_size":    currentConfig.Upload.ChunkSize,
+			"max_file_size": currentConfig.Upload.MaxFileSize,
+			"url_upload": gin.H{
+				"enabled":              currentConfig.Upload.URLUpload.Enabled,
+				"insecure_skip_verify": currentConfig.Upload.URLUpload.InsecureSkipVerify,
+				"max_concurrent":       currentConfig.Upload.URLUpload.MaxConcurrent,
+				"max_retries":          currentConfig.Upload.URLUpload.MaxRetries,
+				"max_size":             currentConfig.Upload.URLUpload.MaxSize,
 			},
 		},
 		"download": gin.H{
-			"rateLimit": gin.H{
-				"windowMinutes": currentConfig.Download.RateLimit.WindowMinutes,
-				"maxRequests":   currentConfig.Download.RateLimit.MaxRequests,
-				"lockAfter":     currentConfig.Download.RateLimit.LockAfter,
-				"lockMinutes":   currentConfig.Download.RateLimit.LockMinutes,
+			"rate_limit": gin.H{
+				"window_minutes": currentConfig.Download.RateLimit.WindowMinutes,
+				"max_requests":   currentConfig.Download.RateLimit.MaxRequests,
+				"lock_after":     currentConfig.Download.RateLimit.LockAfter,
+				"lock_minutes":   currentConfig.Download.RateLimit.LockMinutes,
 			},
 		},
 		"preview": buildPreviewOptions(currentConfig.Preview),
 		// 用户自定义 MIME 表：供前端文件列表「是否可预览」判定与后端预览识别口径一致
-		"mimeTable": currentConfig.MimeTable,
-		"openApi": gin.H{
+		"mime_table": currentConfig.MimeTable,
+		"open_api": gin.H{
 			"enabled": currentConfig.OpenAPI.Enabled,
 		},
 	}
@@ -196,16 +196,16 @@ type SaveConfigRequest struct {
 	Account           appconfig.AccountResponse    `json:"account"`
 	Server            appconfig.ServerResponse     `json:"server"`
 	Database          appconfig.DatabaseConfigDTO  `json:"database"`
-	RootDirs          []appconfig.RootDirConfig    `json:"rootDirs"`
-	AllowedExtensions []string                     `json:"allowedExtensions"`
-	StorageBackend    *appconfig.StorageBackendDTO `json:"storageBackend"`
-	PrivateFiles      appconfig.PrivateConfigDTO   `json:"privateFiles"`
-	TempFiles         appconfig.TempFilesConfigDTO `json:"tempFiles"`
+	RootDirs          []appconfig.RootDirConfig    `json:"root_dirs"`
+	AllowedExtensions []string                     `json:"allowed_extensions"`
+	StorageBackend    *appconfig.StorageBackendDTO `json:"storage_backend"`
+	PrivateFiles      appconfig.PrivateConfigDTO   `json:"private_files"`
+	TempFiles         appconfig.TempFilesConfigDTO `json:"temp_files"`
 	Upload            appconfig.UploadConfigDTO    `json:"upload"`
 	Download          appconfig.DownloadConfigDTO  `json:"download"`
 	Preview           appconfig.PreviewConfigDTO   `json:"preview"`
-	MimeTable         map[string]string            `json:"mimeTable"`
-	OpenApi           *appconfig.OpenApiConfigDTO  `json:"openApi"`
+	MimeTable         map[string]string            `json:"mime_table"`
+	OpenApi           *appconfig.OpenApiConfigDTO  `json:"open_api"`
 	Index             appconfig.IndexConfigDTO     `json:"index"`
 	Resource          appconfig.ResourceConfigDTO  `json:"resource"`
 	Security          appconfig.SecurityConfigDTO  `json:"security"`
@@ -237,7 +237,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 
 	// 存储后端连接参数校验：切换后端后需重启服务，若参数不完整将导致下次启动失败，
 	// 因此在保存前拦截，避免把不可用的配置写入文件。
-	if present("storageBackend") && req.StorageBackend != nil {
+	if present("storage_backend") && req.StorageBackend != nil {
 		if msg := validateStorageBackend(req.StorageBackend); msg != "" {
 			utils.HandleBadRequest(c, msg, nil)
 			return
@@ -379,7 +379,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	// —— 共享目录（保留既有配额）——
-	if present("rootDirs") && len(req.RootDirs) > 0 {
+	if present("root_dirs") && len(req.RootDirs) > 0 {
 		dirs := make([]appconfig.DirectoryConfig, len(req.RootDirs))
 		fileDirs := make([]interface{}, len(req.RootDirs))
 		newRootNames := map[string]string{}
@@ -411,7 +411,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	// —— 允许的扩展名 ——
-	if present("allowedExtensions") {
+	if present("allowed_extensions") {
 		appconfig.GlobalConfig.Storage.AllowedExtensions = req.AllowedExtensions
 		// 前端可能清空列表（表示允许所有扩展名），此时也必须写回空序列
 		extList := make([]interface{}, len(req.AllowedExtensions))
@@ -422,7 +422,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	// —— 存储后端（服务启动时初始化，保存后需重启服务生效）——
-	if present("storageBackend") && req.StorageBackend != nil {
+	if present("storage_backend") && req.StorageBackend != nil {
 		sb := req.StorageBackend
 		backend := strings.TrimSpace(sb.Backend)
 		if backend == "" {
@@ -467,9 +467,9 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("storage.webdav.password", appconfig.GlobalConfig.Storage.WebDAV.Password)
 
 		// —— 存储告警（内存配置即时生效，无需重启）——
-		// 仅在请求显式包含 storageBackend.alert 时更新，避免旧客户端只提交
+		// 仅在请求显式包含 storage_backend.alert 时更新，避免旧客户端只提交
 		// 存储后端字段时把告警配置重置为默认值。
-		if rawSB, ok := raw["storageBackend"]; ok {
+		if rawSB, ok := raw["storage_backend"]; ok {
 			var sbFields map[string]json.RawMessage
 			if json.Unmarshal(rawSB, &sbFields) == nil {
 				if _, hasAlert := sbFields["alert"]; hasAlert {
@@ -511,8 +511,8 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		}
 	}
 
-	// —— 私有文件存储（前端字段名 privateFiles）——
-	if present("privateFiles") {
+	// —— 私有文件存储（前端字段名 private_files）——
+	if present("private_files") {
 		appconfig.GlobalConfig.Storage.Private.Enabled = req.PrivateFiles.Enabled
 		appconfig.GlobalConfig.Storage.Private.Path = req.PrivateFiles.Path
 		appconfig.GlobalConfig.Storage.Private.Quota.GlobalQuota = req.PrivateFiles.QuotaGlobal
@@ -523,8 +523,8 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("storage.private.quota.per_user", appconfig.FormatSizeString(req.PrivateFiles.QuotaPerUser))
 	}
 
-	// —— 临时文件（前端字段名 tempFiles）——
-	if present("tempFiles") {
+	// —— 临时文件（前端字段名 temp_files）——
+	if present("temp_files") {
 		appconfig.GlobalConfig.Storage.Temp.Enabled = req.TempFiles.Enabled
 		appconfig.GlobalConfig.Storage.Temp.Path = req.TempFiles.Path
 		appconfig.GlobalConfig.Storage.Temp.Quota.Global = appconfig.FormatSizeString(req.TempFiles.QuotaGlobal)
@@ -633,13 +633,13 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	// —— 用户自定义 MIME 表（扩展名 -> MIME 映射）——
-	if present("mimeTable") {
+	if present("mime_table") {
 		appconfig.GlobalConfig.MimeTable = req.MimeTable
 		updates.Add("mime_table", req.MimeTable)
 	}
 
 	// —— OpenAPI ——
-	if req.OpenApi != nil && present("openApi") {
+	if req.OpenApi != nil && present("open_api") {
 		// 鉴权方式白名单校验：非法值会让 Open API 中间件直接返回 500，保存前拦截。
 		// 未提交（空字符串）时沿用原值，避免设置页的局部保存把已配置的方式重置。
 		if mode := strings.TrimSpace(req.OpenApi.AuthMode); mode != "" {

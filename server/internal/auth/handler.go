@@ -115,11 +115,11 @@ func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 // 凭证只由 HttpOnly Cookie 下发，响应体永远不回传 JWT。
 func authSessionResponse(resp *services.AuthResponse) gin.H {
 	return gin.H{
-		"uuid":        resp.UUID,
-		"username":    resp.Username,
-		"displayName": resp.DisplayName,
-		"nickname":    resp.Nickname,
-		"expiresIn":   resp.ExpiresIn,
+		"uuid":         resp.UUID,
+		"username":     resp.Username,
+		"display_name": resp.DisplayName,
+		"nickname":     resp.Nickname,
+		"expires_in":   resp.ExpiresIn,
 	}
 }
 
@@ -141,7 +141,7 @@ func verifyCaptcha(c *gin.Context, id, answer string) bool {
 }
 
 // GetCaptcha 生成图形验证码（匿名可拉取，路由层按 IP 限流）。
-// 返回 captchaId 与可直接用于 <img src> 的 PNG data URI。
+// 返回 captcha_id 与可直接用于 <img src> 的 PNG data URI。
 func (h *Handler) GetCaptcha(c *gin.Context) {
 	id, dataURI, err := captcha.Generate()
 	if err != nil {
@@ -150,8 +150,8 @@ func (h *Handler) GetCaptcha(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"captchaId": id,
-		"image":     dataURI,
+		"captcha_id": id,
+		"image":      dataURI,
 	})
 }
 
@@ -251,8 +251,8 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 	data := gin.H{
 		"uuid": user.UUID, "username": user.Username,
-		"displayName": user.DisplayName, "nickname": user.Nickname,
-		"role": user.Role, "createdAt": user.CreatedAt,
+		"display_name": user.DisplayName, "nickname": user.Nickname,
+		"role": user.Role, "created_at": user.CreatedAt,
 	}
 	if newToken := h.refreshTokenIfNeeded(c); newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，凭证不回传响应体（不暴露给脚本）。
@@ -271,8 +271,8 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 	newToken := h.refreshTokenIfNeeded(c)
 	data := gin.H{
 		"uuid": user.UUID, "username": user.Username,
-		"displayName": user.DisplayName, "nickname": user.Nickname,
-		"role": user.Role, "createdAt": user.CreatedAt,
+		"display_name": user.DisplayName, "nickname": user.Nickname,
+		"role": user.Role, "created_at": user.CreatedAt,
 	}
 	if newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，不回传响应体（凭证不对脚本暴露）。
@@ -369,12 +369,12 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 
 	middleware.LogOperation(c, "auth.update_profile", user.Username, nil)
 	response.HandleSuccess(c, http.StatusOK, "资料已更新", gin.H{
-		"uuid":        user.UUID,
-		"username":    user.Username,
-		"displayName": user.DisplayName,
-		"nickname":    user.Nickname,
-		"role":        user.Role,
-		"createdAt":   user.CreatedAt,
+		"uuid":         user.UUID,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"nickname":     user.Nickname,
+		"role":         user.Role,
+		"created_at":   user.CreatedAt,
 	})
 }
 
@@ -398,8 +398,8 @@ func (h *Handler) OAuth2Authorize(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"authorizeUrl": authURL,
-		"state":        state,
+		"authorize_url": authURL,
+		"state":         state,
 	})
 }
 

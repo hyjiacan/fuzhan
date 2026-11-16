@@ -29,10 +29,10 @@ func (beh *BindingExampleHandler) UploadWithBinding(c *gin.Context) {
 		return
 	}
 	response.HandleSuccess(c, http.StatusOK, "上传请求处理成功", map[string]interface{}{
-		"dir":      req.Dir,
-		"filename": req.Filename,
-		"rootName": req.RootName,
-		"fileSize": req.FileSize,
+		"dir":       req.Dir,
+		"filename":  req.Filename,
+		"root_name": req.RootName,
+		"file_size": req.FileSize,
 	})
 }
 

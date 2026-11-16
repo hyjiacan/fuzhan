@@ -24,26 +24,26 @@ const (
 // FullPath 字段同步存储 rootName/filePath，避免运行时拼接
 type FileRecordBase struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
-	FileName      string         `gorm:"size:512;not null" json:"fileName"`
-	FilePath      string         `gorm:"size:1024;not null" json:"filePath"`
-	RootName      string         `gorm:"size:128;not null" json:"rootName"`
-	FullPath      string         `gorm:"size:1024;not null" json:"fullPath"` // /rootName/filePath 完整路径（带前导 /）
-	FileSize      int64          `gorm:"not null" json:"fileSize"`
-	IsDir         bool           `gorm:"not null;default:false" json:"isDir"`
-	Xxh3Hash      string         `gorm:"size:64" json:"xxh3Hash"`
-	HashStatus    string         `gorm:"size:20;default:pending" json:"hashStatus"` // pending/done/failed
-	HashError     string         `gorm:"size:512" json:"hashError"`                 // 失败原因
-	HashRetries   int            `gorm:"default:0" json:"hashRetries"`              // 已重试次数
-	ModTime       time.Time      `gorm:"not null" json:"modTime"`
+	FileName      string         `gorm:"size:512;not null" json:"file_name"`
+	FilePath      string         `gorm:"size:1024;not null" json:"file_path"`
+	RootName      string         `gorm:"size:128;not null" json:"root_name"`
+	FullPath      string         `gorm:"size:1024;not null" json:"full_path"` // /rootName/filePath 完整路径（带前导 /）
+	FileSize      int64          `gorm:"not null" json:"file_size"`
+	IsDir         bool           `gorm:"not null;default:false" json:"is_dir"`
+	Xxh3Hash      string         `gorm:"size:64" json:"xxh3_hash"`
+	HashStatus    string         `gorm:"size:20;default:pending" json:"hash_status"` // pending/done/failed
+	HashError     string         `gorm:"size:512" json:"hash_error"`                 // 失败原因
+	HashRetries   int            `gorm:"default:0" json:"hash_retries"`              // 已重试次数
+	ModTime       time.Time      `gorm:"not null" json:"modified_time"`
 	Notes         string         `gorm:"size:4096" json:"notes"`
-	DownloadCount int64          `gorm:"not null;default:0" json:"downloadCount"` // 公共文件下载次数
-	UploaderIP    string         `gorm:"size:45" json:"uploaderIp,omitempty"`     // 上传者IP（公开文件），用于"IP一致允许覆盖/重命名/删除"
+	DownloadCount int64          `gorm:"not null;default:0" json:"download_count"` // 公共文件下载次数
+	UploaderIP    string         `gorm:"size:45" json:"uploader_ip,omitempty"`     // 上传者IP（公开文件），用于"IP一致允许覆盖/重命名/删除"
 	Status        FileStatus     `gorm:"size:20;default:active" json:"status"`
-	OwnerID       string         `gorm:"size:64" json:"ownerID"` // 所有者标识：public 为空，temp 为 IP，private 为用户 ID
-	LastSyncedAt  time.Time      `gorm:"not null" json:"lastSyncedAt"`
-	CreatedAt     time.Time      `gorm:"not null" json:"createdAt"`
-	UpdatedAt     time.Time      `gorm:"not null" json:"updatedAt"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deletedAt"`
+	OwnerID       string         `gorm:"size:64" json:"owner_id"` // 所有者标识：public 为空，temp 为 IP，private 为用户 ID
+	LastSyncedAt  time.Time      `gorm:"not null" json:"last_synced_at"`
+	CreatedAt     time.Time      `gorm:"not null" json:"created_at"`
+	UpdatedAt     time.Time      `gorm:"not null" json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 // FileRecordPublic 公开文件索引表
@@ -69,7 +69,7 @@ func (FileRecordTemp) TableName() string {
 // FilePath 为私有存储内的真实相对路径（含子目录+真实文件名）。
 type FileRecordPrivate struct {
 	FileRecordBase
-	ShareCode string `gorm:"size:64" json:"shareCode,omitempty"`
+	ShareCode string `gorm:"size:64" json:"share_code,omitempty"`
 }
 
 func (FileRecordPrivate) TableName() string {

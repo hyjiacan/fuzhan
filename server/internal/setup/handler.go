@@ -41,20 +41,20 @@ func (h *SetupHandler) IsInitialized(c *gin.Context) {
 
 // SetupConfigRequest 配置保存请求
 type SetupConfigRequest struct {
-	AppName           string                      `json:"appName" binding:"max=64"`
+	AppName           string                      `json:"app_name" binding:"max=64"`
 	Host              string                      `json:"host" binding:"max=255"`
 	Port              int                         `json:"port"`
-	HTTPSEnabled      bool                        `json:"httpsEnabled"`
-	HTTPSPort         int                         `json:"httpsPort"`
-	TLSCertFile       string                      `json:"tlsCertFile"`
-	TLSKeyFile        string                      `json:"tlsKeyFile"`
-	AdminUsername     string                      `json:"adminUsername" binding:"max=64"`
-	AdminPassword     string                      `json:"adminPassword" binding:"max=128"`
+	HTTPSEnabled      bool                        `json:"https_enabled"`
+	HTTPSPort         int                         `json:"https_port"`
+	TLSCertFile       string                      `json:"tls_cert_file"`
+	TLSKeyFile        string                      `json:"tls_key_file"`
+	AdminUsername     string                      `json:"admin_username" binding:"max=64"`
+	AdminPassword     string                      `json:"admin_password" binding:"max=128"`
 	Database          appconfig.DatabaseConfig    `json:"database"`
-	RootDirs          []appconfig.DirectoryConfig `json:"rootDirs"`
+	RootDirs          []appconfig.DirectoryConfig `json:"root_dirs"`
 	Initialized       bool                        `json:"initialized"`
-	RequireLogin      bool                        `json:"requireLogin"`      // 是否强制登录（默认 false，保持与现有默认行为一致）
-	AllowRegistration bool                        `json:"allowRegistration"` // 是否允许注册（默认 false，保持与现有默认行为一致）
+	RequireLogin      bool                        `json:"require_login"`      // 是否强制登录（默认 false，保持与现有默认行为一致）
+	AllowRegistration bool                        `json:"allow_registration"` // 是否允许注册（默认 false，保持与现有默认行为一致）
 }
 
 // SaveConfig 保存配置（仅在未初始化时可用）
@@ -303,10 +303,10 @@ func (h *SetupHandler) GetDefaultConfig(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"appName":  defaultConfig.App.Name,
-		"host":     defaultConfig.Server.Host,
-		"port":     defaultConfig.Server.HTTP.Port,
-		"dbDriver": defaultConfig.Database.Driver,
-		"dsn":      defaultConfig.Database.DSN,
+		"app_name":  defaultConfig.App.Name,
+		"host":      defaultConfig.Server.Host,
+		"port":      defaultConfig.Server.HTTP.Port,
+		"db_driver": defaultConfig.Database.Driver,
+		"dsn":       defaultConfig.Database.DSN,
 	})
 }

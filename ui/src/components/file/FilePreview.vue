@@ -423,7 +423,7 @@ const loadPreviewContent = async () => {
     }
 
     const data = result.data || {};
-    fileType.value = detectFileType(data.mimeType);
+    fileType.value = detectFileType(data.mime_type);
 
     if (data.previewable) {
       if (data.content) {
@@ -433,16 +433,16 @@ const loadPreviewContent = async () => {
       } else if (data.chunked) {
         // 大文件，需要分段加载
         chunked.value = true;
-        totalChunks.value = data.totalChunks || 1;
+        totalChunks.value = data.total_chunks || 1;
         currentChunk.value = 0;
         totalSize.value = data.size || 0;
         // 自动加载第一段
         await loadChunk(0);
-      } else if (data.fileUrl) {
+      } else if (data.file_url) {
         // 图片/PDF/音频/视频：统一使用内联预览地址
-        imageUrl.value = data.fileUrl;
-        pdfUrl.value = data.fileUrl;
-        mediaUrl.value = data.fileUrl;
+        imageUrl.value = data.file_url;
+        pdfUrl.value = data.file_url;
+        mediaUrl.value = data.file_url;
       }
     } else {
       errorMessage.value = "该文件类型不支持预览";
@@ -515,8 +515,8 @@ const loadChunk = async (chunkIndex) => {
       } else {
         errorMessage.value = "分段内容为空，请重试";
       }
-      startOffset.value = data.startOffset || 0;
-      endOffset.value = data.endOffset || 0;
+      startOffset.value = data.start_offset || 0;
+      endOffset.value = data.end_offset || 0;
     } else {
       errorMessage.value = result.message || "加载分段失败";
     }

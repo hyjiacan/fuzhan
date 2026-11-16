@@ -14,7 +14,7 @@
               <div class="stat-content stat-storage">
                 <el-icon :size="32"><component :is="StorageIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ storageError ? '—' : formatSize(storageStats.usedSpace) }}</div>
+                  <div class="stat-value">{{ storageError ? '—' : formatSize(storageStats.used_space) }}</div>
                   <div class="stat-label">已用存储</div>
                 </div>
               </div>
@@ -25,7 +25,7 @@
               <div class="stat-content stat-files">
                 <el-icon :size="32"><component :is="FileIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ indexError ? '—' : indexStats.totalFiles.toLocaleString('zh-CN') }}</div>
+                  <div class="stat-value">{{ indexError ? '—' : indexStats.total_files.toLocaleString('zh-CN') }}</div>
                   <div class="stat-label">文件总数</div>
                 </div>
               </div>
@@ -36,7 +36,7 @@
               <div class="stat-content stat-dups">
                 <el-icon :size="32"><component :is="DuplicateIcon" /></el-icon>
                 <div class="stat-info">
-                  <div class="stat-value">{{ indexError ? '—' : indexStats.duplicateGroups }}</div>
+                  <div class="stat-value">{{ indexError ? '—' : indexStats.duplicate_groups }}</div>
                   <div class="stat-label">重复文件组</div>
                 </div>
               </div>
@@ -100,35 +100,35 @@
                     <span v-if="!item.read" class="unread-dot"></span>
                   </div>
                   <div class="alert-content">{{ item.content }}</div>
-                  <div class="alert-time">{{ formatTime(item.createdAt) }}</div>
+                  <div class="alert-time">{{ formatTime(item.created_at) }}</div>
                 </div>
               </div>
               <el-empty v-else description="暂无存储告警" />
             </el-card>
             <el-card class="chart-card" shadow="never">
               <template #header>临时文件配额</template>
-              <div v-if="Object.keys(storageStats.temp?.usedByIP || {}).length > 0" class="quota-list">
+              <div v-if="Object.keys(storageStats.temp?.used_by_ip || {}).length > 0" class="quota-list">
                 <div class="quota-header">
                   <span>IP地址</span>
                   <span>使用量</span>
                   <span>配额</span>
                 </div>
-                <div v-for="(used, ip) in storageStats.temp?.usedByIP" :key="ip" class="quota-item">
+                <div v-for="(used, ip) in storageStats.temp?.used_by_ip" :key="ip" class="quota-item">
                   <span class="quota-ip">{{ ip }}</span>
                   <span class="quota-value">{{ formatSize(used) }}</span>
-                  <span class="quota-value">{{ formatSize(storageStats.temp?.quotaPerIP || 0) }}</span>
+                  <span class="quota-value">{{ formatSize(storageStats.temp?.quota_per_ip || 0) }}</span>
                 </div>
               </div>
               <el-empty v-else description="暂无临时文件" />
             </el-card>
             <el-card v-if="privateStorageEnabled" class="chart-card" shadow="never">
               <template #header>私有存储配额</template>
-              <div v-if="Object.keys(storageStats.private?.usedByUser || {}).length > 0" class="quota-list">
+              <div v-if="Object.keys(storageStats.private?.used_by_user || {}).length > 0" class="quota-list">
                 <div class="quota-header cols-2">
                   <span>用户ID</span>
                   <span>使用量</span>
                 </div>
-                <div v-for="(used, userId) in storageStats.private?.usedByUser" :key="userId" class="quota-item cols-2">
+                <div v-for="(used, userId) in storageStats.private?.used_by_user" :key="userId" class="quota-item cols-2">
                   <span class="quota-ip">{{ userId.substring(0, 8) }}...</span>
                   <span class="quota-value">{{ formatSize(used) }}</span>
                 </div>
@@ -212,16 +212,16 @@ const stats = ref({
 
 // 存储统计
 const storageStats = ref({
-  totalSpace: 0,
-  usedSpace: 0,
-  freeSpace: 0,
+  total_space: 0,
+  used_space: 0,
+  free_space: 0,
   roots: [],
   temp: {
-    quotaPerIP: 0,
-    usedByIP: {}
+    quota_per_ip: 0,
+    used_by_ip: {}
   },
   private: {
-    usedByUser: {}
+    used_by_user: {}
   }
 })
 
@@ -236,9 +236,9 @@ const rankings = ref({
 
 // 索引统计
 const indexStats = ref({
-  totalFiles: 0,
-  totalSize: 0,
-  duplicateGroups: 0
+  total_files: 0,
+  total_size: 0,
+  duplicate_groups: 0
 })
 
 // 各数据源加载失败标记（失败时不展示假的 0 值，显示 "—"）
@@ -341,17 +341,17 @@ const loadStats = async () => {
 
     if (storageData.success) {
       storageStats.value = storageData.data || {
-        totalSpace: 0,
-        usedSpace: 0,
+        total_space: 0,
+        used_space: 0,
         roots: [],
-        temp: { quotaPerIP: 0, usedByIP: {} },
-        private: { usedByUser: {} }
+        temp: { quota_per_ip: 0, used_by_ip: {} },
+        private: { used_by_user: {} }
       }
     }
 
     if (accessData.success) {
-      stats.value.activeUsers = accessData.data?.activeUsers ?? 0
-      stats.value.onlineIPs = accessData.data?.onlineIPs ?? 0
+      stats.value.activeUsers = accessData.data?.active_users ?? 0
+      stats.value.onlineIPs = accessData.data?.online_ips ?? 0
     }
 
     if (keywordsData.success) {
@@ -366,12 +366,12 @@ const loadStats = async () => {
         seen.add(key)
         return true
       })
-      rankings.value.recentUploads = dedup(rankingsData.data?.recentUploads).slice(0, 10)
-      rankings.value.recentDownloads = dedup(rankingsData.data?.recentDownloads).slice(0, 10)
+      rankings.value.recentUploads = dedup(rankingsData.data?.recent_uploads).slice(0, 10)
+      rankings.value.recentDownloads = dedup(rankingsData.data?.recent_downloads).slice(0, 10)
     }
 
     if (indexStatsData.success) {
-      indexStats.value = indexStatsData.data || { totalFiles: 0, totalSize: 0, duplicateGroups: 0 }
+      indexStats.value = indexStatsData.data || { total_files: 0, total_size: 0, duplicate_groups: 0 }
     }
   } catch (e) {
     console.error('获取统计数据失败', e)

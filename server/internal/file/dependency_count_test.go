@@ -89,8 +89,8 @@ func TestLoadDependencyCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("序列化失败: %v", err)
 	}
-	if !strings.Contains(string(raw), `"dependencyCount":0`) {
-		t.Fatalf("响应 JSON 缺少 dependencyCount 字段: %s", raw)
+	if !strings.Contains(string(raw), `"dependency_count":0`) {
+		t.Fatalf("响应 JSON 缺少 dependency_count 字段: %s", raw)
 	}
 
 	sub, err := fh.loadDependencyCounts("docs", "sub")

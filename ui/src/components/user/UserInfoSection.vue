@@ -18,7 +18,7 @@
           {{ userInfo.username }}
         </el-descriptions-item>
         <el-descriptions-item label="姓名">
-          <span v-if="editingField === 'displayName'" class="inline-edit">
+          <span v-if="editingField === 'display_name'" class="inline-edit">
             <el-input
               ref="editInputRef"
               v-model="editValue"
@@ -34,8 +34,8 @@
             <el-button size="small" :disabled="savingProfile" @click="cancelEdit">取消</el-button>
           </span>
           <span v-else class="inline-view">
-            <span>{{ userInfo.displayName || '-' }}</span>
-            <el-button link type="primary" :icon="Edit" title="编辑姓名" @click="startEdit('displayName')" />
+            <span>{{ userInfo.display_name || '-' }}</span>
+            <el-button link type="primary" :icon="Edit" title="编辑姓名" @click="startEdit('display_name')" />
           </span>
         </el-descriptions-item>
         <el-descriptions-item label="昵称">
@@ -63,7 +63,7 @@
           {{ userInfo.uuid }}
         </el-descriptions-item>
         <el-descriptions-item label="注册时间">
-          {{ formatDate(userInfo.createdAt) }}
+          {{ formatDate(userInfo.created_at) }}
         </el-descriptions-item>
       </el-descriptions>
     </el-card>
@@ -151,16 +151,16 @@ const router = useRouter()
 
 const userInfo = ref({
   username: '',
-  displayName: '',
+  display_name: '',
   nickname: '',
   uuid: '',
   role: 'user',
-  createdAt: ''
+  created_at: ''
 })
 
 const formatDate = (dateStr) => TimeUtils.formatDateTime(dateStr)
 
-// 行内编辑：一次只编辑一个字段（displayName / nickname）
+// 行内编辑：一次只编辑一个字段（display_name / nickname）
 const editingField = ref('')
 const editValue = ref('')
 const editInputRef = ref(null)
@@ -183,15 +183,15 @@ const handleSaveField = async () => {
   if (!field) return
 
   const value = editValue.value.trim()
-  const limits = { displayName: 64, nickname: 32 }
+  const limits = { display_name: 64, nickname: 32 }
   if (value.length > limits[field]) {
-    ElMessage.warning(field === 'displayName' ? '姓名不能超过64个字符' : '昵称不能超过32个字符')
+    ElMessage.warning(field === 'display_name' ? '姓名不能超过64个字符' : '昵称不能超过32个字符')
     return
   }
 
   savingProfile.value = true
   try {
-    const displayName = field === 'displayName' ? value : (userInfo.value.displayName || '')
+    const displayName = field === 'display_name' ? value : (userInfo.value.display_name || '')
     const nickname = field === 'nickname' ? value : (userInfo.value.nickname || '')
     const data = await AuthApi.updateProfile(displayName, nickname)
     if (data.success) {

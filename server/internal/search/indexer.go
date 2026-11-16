@@ -13,10 +13,10 @@ import (
 
 // ReconcileResult 对齐结果统计
 type ReconcileResult struct {
-	IndexedTotal   int64 `json:"indexedTotal"`   // DB 中 active 记录总数（补缺失的参考基数）
-	MissingIndexed int64 `json:"missingIndexed"` // DB 有而索引无、已补齐的条数
-	OrphansTotal   int64 `json:"orphansTotal"`   // 索引中应被清理的孤儿总数
-	OrphansRemoved int64 `json:"orphansRemoved"` // 索引有而 DB 无、已清理的条数
+	IndexedTotal   int64 `json:"indexed_total"`   // DB 中 active 记录总数（补缺失的参考基数）
+	MissingIndexed int64 `json:"missing_indexed"` // DB 有而索引无、已补齐的条数
+	OrphansTotal   int64 `json:"orphans_total"`   // 索引中应被清理的孤儿总数
+	OrphansRemoved int64 `json:"orphans_removed"` // 索引有而 DB 无、已清理的条数
 }
 
 // listActiveFiles 分页读取 file_records_public 中 status=active 的全部（ID + 文件名）。

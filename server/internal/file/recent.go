@@ -88,10 +88,10 @@ func (h *RecentHandler) GetRecent(c *gin.Context) {
 	}
 
 	utils.HandleSuccess(c, http.StatusOK, "", gin.H{
-		"records":  records,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"records":   records,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 

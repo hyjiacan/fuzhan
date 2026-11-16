@@ -73,8 +73,8 @@ type CreateApiKeyRequest struct {
 
 // CreateApiKeyResponse 创建 API Key 响应
 type CreateApiKeyResponse struct {
-	ApiKey models.ApiKey `json:"apiKey"`
-	RawKey string        `json:"rawKey,omitempty"` // 创建时返回明文密钥（仅一次）
+	ApiKey models.ApiKey `json:"api_key"`
+	RawKey string        `json:"raw_key,omitempty"` // 创建时返回明文密钥（仅一次）
 }
 
 // CreateApiKey 创建新的 API Key

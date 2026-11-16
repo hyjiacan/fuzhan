@@ -117,13 +117,13 @@
           {{ accessedFile.filename }}
         </el-descriptions-item>
         <el-descriptions-item label="文件大小">
-          {{ formatSize(accessedFile.fileSize) }}
+          {{ formatSize(accessedFile.file_size) }}
         </el-descriptions-item>
         <el-descriptions-item label="访问码">
           <el-tag type="info">{{ accessedFile.code }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="过期时间">
-          {{ TimeUtils.formatDateTime(accessedFile.expiredAt) }}
+          {{ TimeUtils.formatDateTime(accessedFile.expired_at) }}
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -230,10 +230,10 @@ const tableData = computed(() => {
     _type: 'dir',
     name: name,
     filename: name,
-    fileSize: 0,
+    file_size: 0,
     code: '',
-    createdAt: '',
-    expiredAt: '',
+    created_at: '',
+    expired_at: '',
     dirName: name
   }))
   let fileRows = files.value.map(f => ({
@@ -350,7 +350,7 @@ const columns = computed(() => [
       const iconClass = `icon-filetype ${getFileIconClass(row)}`
       const fileHref = TempApi.download(row.code)
       const isPreview = canPreview(row)
-      const expire = new Date(row.expiredAt)
+      const expire = new Date(row.expired_at)
       const now = new Date()
       const isExpired = expire < now
 
@@ -377,9 +377,9 @@ const columns = computed(() => [
   },
   {
     title: '大小',
-    key: 'fileSize',
+    key: 'file_size',
     width: 100,
-    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: var(--el-text-color-secondary);' }, '-') : formatSize(row.fileSize)
+    cellRenderer: ({ rowData: row }) => row._type === 'dir' ? h('span', { style: 'color: var(--el-text-color-secondary);' }, '-') : formatSize(row.file_size)
   },
   {
     title: '访问码',
@@ -389,12 +389,12 @@ const columns = computed(() => [
   },
   {
     title: '上传时间',
-    key: 'createdAt',
+    key: 'created_at',
     width: 180,
     cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
-      const text = TimeUtils.formatDateTime(row.createdAt)
-      if (TimeUtils.isRecent24h(row.createdAt)) {
+      const text = TimeUtils.formatDateTime(row.created_at)
+      if (TimeUtils.isRecent24h(row.created_at)) {
         return h('span', { style: 'color: #18a058' }, text)
       }
       return text
@@ -402,14 +402,14 @@ const columns = computed(() => [
   },
   {
     title: '过期时间',
-    key: 'expiredAt',
+    key: 'expired_at',
     width: 180,
     cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
-      const expire = new Date(row.expiredAt)
+      const expire = new Date(row.expired_at)
       const now = new Date()
       if (expire < now) return h(ElTag, { type: 'danger', size: 'small' }, () => '已过期')
-      return TimeUtils.formatDateTime(row.expiredAt)
+      return TimeUtils.formatDateTime(row.expired_at)
     }
   },
   {
@@ -418,7 +418,7 @@ const columns = computed(() => [
     width: 160,
     cellRenderer: ({ rowData: row }) => {
       if (row._type === 'dir') return null
-      const expire = new Date(row.expiredAt)
+      const expire = new Date(row.expired_at)
       const now = new Date()
       const isExpired = expire < now
 

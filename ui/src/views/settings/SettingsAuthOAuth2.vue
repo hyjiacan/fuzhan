@@ -131,20 +131,20 @@ const buildPayload = () => {
   const o = props.settings.auth.oauth2
   return {
     enabled: o.enabled,
-    providerName: o.providerName,
-    clientId: o.clientId,
-    clientSecret: o.clientSecret,
-    authUrl: o.authUrl,
-    tokenUrl: o.tokenUrl,
-    userInfoUrl: o.userInfoUrl,
+    provider_name: o.providerName,
+    client_id: o.clientId,
+    client_secret: o.clientSecret,
+    auth_url: o.authUrl,
+    token_url: o.tokenUrl,
+    user_info_url: o.userInfoUrl,
     issuer: o.issuer,
     scopes: o.scopes || [],
-    redirectUrl: o.redirectUrl,
-    usernameClaim: o.usernameClaim,
-    displayNameClaim: o.displayNameClaim,
-    emailClaim: o.emailClaim,
-    autoCreateUser: o.autoCreateUser,
-    insecureSkipVerify: o.insecureSkipVerify
+    redirect_url: o.redirectUrl,
+    username_claim: o.usernameClaim,
+    display_name_claim: o.displayNameClaim,
+    email_claim: o.emailClaim,
+    auto_create_user: o.autoCreateUser,
+    insecure_skip_verify: o.insecureSkipVerify
   }
 }
 

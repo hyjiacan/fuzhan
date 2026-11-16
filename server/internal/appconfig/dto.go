@@ -15,22 +15,22 @@ func BoolPtrFalseWhenDisabled(enabled bool) *bool {
 	return nil
 }
 
-// ConfigDTO 配置 API 响应/请求 DTO，与前端字段保持一致（JSON camelCase）
+// ConfigDTO 配置 API 响应/请求 DTO，与前端字段保持一致（JSON snake_case）
 type ConfigDTO struct {
 	App               AppConfigDTO       `json:"app"`
 	Account           AccountResponse    `json:"account"`
 	Server            ServerResponse     `json:"server"`
 	Database          DatabaseConfigDTO  `json:"database"`
-	RootDirs          []RootDirConfig    `json:"rootDirs"`
-	AllowedExtensions []string           `json:"allowedExtensions"`
-	StorageBackend    *StorageBackendDTO `json:"storageBackend"`
-	PrivateFiles      PrivateConfigDTO   `json:"privateFiles"`
-	TempFiles         TempFilesConfigDTO `json:"tempFiles"`
+	RootDirs          []RootDirConfig    `json:"root_dirs"`
+	AllowedExtensions []string           `json:"allowed_extensions"`
+	StorageBackend    *StorageBackendDTO `json:"storage_backend"`
+	PrivateFiles      PrivateConfigDTO   `json:"private_files"`
+	TempFiles         TempFilesConfigDTO `json:"temp_files"`
 	Upload            UploadConfigDTO    `json:"upload"`
 	Download          DownloadConfigDTO  `json:"download"`
 	Preview           PreviewConfigDTO   `json:"preview"`
-	MimeTable         map[string]string  `json:"mimeTable"`
-	OpenApi           *OpenApiConfigDTO  `json:"openApi"`
+	MimeTable         map[string]string  `json:"mime_table"`
+	OpenApi           *OpenApiConfigDTO  `json:"open_api"`
 	Index             IndexConfigDTO     `json:"index"`
 	Resource          ResourceConfigDTO  `json:"resource"`
 	Security          SecurityConfigDTO  `json:"security"`
@@ -47,53 +47,53 @@ type AuthConfigDTO struct {
 // OAuth2ConfigDTO 外部 OAuth2/OIDC 配置 DTO（对应 yaml auth.oauth2.*）
 type OAuth2ConfigDTO struct {
 	Enabled            bool     `json:"enabled"`
-	ProviderName       string   `json:"providerName"`
-	ClientID           string   `json:"clientId"`
-	ClientSecret       string   `json:"clientSecret"`
-	AuthURL            string   `json:"authUrl"`
-	TokenURL           string   `json:"tokenUrl"`
-	UserInfoURL        string   `json:"userInfoUrl"`
+	ProviderName       string   `json:"provider_name"`
+	ClientID           string   `json:"client_id"`
+	ClientSecret       string   `json:"client_secret"`
+	AuthURL            string   `json:"auth_url"`
+	TokenURL           string   `json:"token_url"`
+	UserInfoURL        string   `json:"user_info_url"`
 	Issuer             string   `json:"issuer"`
 	Scopes             []string `json:"scopes"`
-	RedirectURL        string   `json:"redirectUrl"`
-	UsernameClaim      string   `json:"usernameClaim"`
-	DisplayNameClaim   string   `json:"displayNameClaim"`
-	EmailClaim         string   `json:"emailClaim"`
-	AutoCreateUser     bool     `json:"autoCreateUser"`
-	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
+	RedirectURL        string   `json:"redirect_url"`
+	UsernameClaim      string   `json:"username_claim"`
+	DisplayNameClaim   string   `json:"display_name_claim"`
+	EmailClaim         string   `json:"email_claim"`
+	AutoCreateUser     bool     `json:"auto_create_user"`
+	InsecureSkipVerify bool     `json:"insecure_skip_verify"`
 }
 
-// LDAPConfigDTO LDAP 配置 DTO（前端 camelCase 字段，对应 yaml auth.ldap.*）
+// LDAPConfigDTO LDAP 配置 DTO（前端 snake_case 字段，对应 yaml auth.ldap.*）
 type LDAPConfigDTO struct {
 	Enabled            bool   `json:"enabled"`
 	Host               string `json:"host"`
 	Port               int    `json:"port"`
-	UseSSL             bool   `json:"useSSL"`
-	BaseDN             string `json:"baseDN"`
-	BindDN             string `json:"bindDN"`
-	BindPassword       string `json:"bindPassword"`
-	UserFilter         string `json:"userFilter"`
-	SyncInterval       int    `json:"syncInterval"`
-	AutoCreateUser     bool   `json:"autoCreateUser"`
-	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
+	UseSSL             bool   `json:"use_ssl"`
+	BaseDN             string `json:"base_dn"`
+	BindDN             string `json:"bind_dn"`
+	BindPassword       string `json:"bind_password"`
+	UserFilter         string `json:"user_filter"`
+	SyncInterval       int    `json:"sync_interval"`
+	AutoCreateUser     bool   `json:"auto_create_user"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
 }
 
 // SecurityConfigDTO 安全配置 DTO（trust_proxy / CORS）
 type SecurityConfigDTO struct {
-	TrustProxy     bool     `json:"trustProxy"`
-	AllowedOrigins []string `json:"allowedOrigins"`
+	TrustProxy     bool     `json:"trust_proxy"`
+	AllowedOrigins []string `json:"allowed_origins"`
 }
 
 type OpenApiConfigDTO struct {
 	Enabled           bool     `json:"enabled"`
-	IpAccessMode      string   `json:"ipAccessMode"`
-	IpWhitelist       []string `json:"ipWhitelist"`
-	IpBlacklist       []string `json:"ipBlacklist"`
-	DomainWhitelist   []string `json:"domainWhitelist"`
-	RateLimitEnabled  bool     `json:"rateLimitEnabled"`
-	RequestsPerMinute int      `json:"requestsPerMinute"`
+	IpAccessMode      string   `json:"ip_access_mode"`
+	IpWhitelist       []string `json:"ip_whitelist"`
+	IpBlacklist       []string `json:"ip_blacklist"`
+	DomainWhitelist   []string `json:"domain_whitelist"`
+	RateLimitEnabled  bool     `json:"rate_limit_enabled"`
+	RequestsPerMinute int      `json:"requests_per_minute"`
 	// AuthMode 鉴权方式：none（匿名）/ api_key（系统签发的 API Key + scope）
-	AuthMode string `json:"authMode"`
+	AuthMode string `json:"auth_mode"`
 }
 
 // WebhookEndpointDTO 单条 Webhook 回调地址 DTO（对应 yaml webhook.endpoints[]）
@@ -102,8 +102,8 @@ type WebhookEndpointDTO struct {
 	URL            string            `json:"url"`
 	Enabled        *bool             `json:"enabled"`
 	Secret         string            `json:"secret"`
-	TimeoutSeconds int               `json:"timeoutSeconds"`
-	MaxRetries     int               `json:"maxRetries"`
+	TimeoutSeconds int               `json:"timeout_seconds"`
+	MaxRetries     int               `json:"max_retries"`
 	Events         []string          `json:"events"`
 	Headers        map[string]string `json:"headers"`
 	Query          map[string]string `json:"query"`
@@ -115,9 +115,9 @@ type WebhookConfigDTO struct {
 	URLs           []string             `json:"urls,omitempty"` // 旧版，仅兼容读取
 	Endpoints      []WebhookEndpointDTO `json:"endpoints"`
 	Secret         string               `json:"secret"`
-	TimeoutSeconds int                  `json:"timeoutSeconds"`
-	MaxRetries     int                  `json:"maxRetries"`
-	QueueSize      int                  `json:"queueSize"`
+	TimeoutSeconds int                  `json:"timeout_seconds"`
+	MaxRetries     int                  `json:"max_retries"`
+	QueueSize      int                  `json:"queue_size"`
 }
 
 // EndpointToDTO 将内部端点结构转为 DTO。
@@ -166,8 +166,8 @@ type DatabaseConfigDTO struct {
 type RootDirConfig struct {
 	Name          string `json:"name"`
 	Path          string `json:"path"`
-	FullPath      string `json:"fullPath"`
-	UploadEnabled bool   `json:"uploadEnabled"`
+	FullPath      string `json:"full_path"`
+	UploadEnabled bool   `json:"upload_enabled"`
 }
 
 // StorageBackendDTO 存储后端配置 DTO（对应 yaml storage.backend/s3/oss/webdav）。
@@ -183,13 +183,13 @@ type StorageBackendDTO struct {
 // StorageAlertConfigDTO 存储使用率告警配置 DTO。
 type StorageAlertConfigDTO struct {
 	Enabled              bool          `json:"enabled"`
-	ThresholdPercent     float64       `json:"thresholdPercent"`
-	CheckIntervalMinutes int           `json:"checkIntervalMinutes"`
-	CooldownMinutes      int           `json:"cooldownMinutes"`
-	WebEnabled           bool          `json:"webEnabled"`
-	WebhookEnabled       bool          `json:"webhookEnabled"`
-	EmailEnabled         bool          `json:"emailEnabled"`
-	EmailRecipients      []string      `json:"emailRecipients"`
+	ThresholdPercent     float64       `json:"threshold_percent"`
+	CheckIntervalMinutes int           `json:"check_interval_minutes"`
+	CooldownMinutes      int           `json:"cooldown_minutes"`
+	WebEnabled           bool          `json:"web_enabled"`
+	WebhookEnabled       bool          `json:"webhook_enabled"`
+	EmailEnabled         bool          `json:"email_enabled"`
+	EmailRecipients      []string      `json:"email_recipients"`
 	SMTP                 SMTPConfigDTO `json:"smtp"`
 }
 
@@ -200,24 +200,24 @@ type SMTPConfigDTO struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	From     string `json:"from"`
-	TLSMode  string `json:"tlsMode"`
+	TLSMode  string `json:"tls_mode"`
 }
 
 // S3StorageConfigDTO S3/MinIO 连接配置 DTO
 type S3StorageConfigDTO struct {
 	Endpoint  string `json:"endpoint"`
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
 	Bucket    string `json:"bucket"`
 	Region    string `json:"region"`
-	UseSSL    bool   `json:"useSSL"`
+	UseSSL    bool   `json:"use_ssl"`
 }
 
 // OSSStorageConfigDTO 阿里云 OSS 连接配置 DTO
 type OSSStorageConfigDTO struct {
 	Endpoint  string `json:"endpoint"`
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
 	Bucket    string `json:"bucket"`
 }
 
@@ -232,55 +232,55 @@ type WebDAVStorageConfigDTO struct {
 type PrivateConfigDTO struct {
 	Enabled      bool   `json:"enabled"`
 	Path         string `json:"path"`
-	QuotaGlobal  int64  `json:"quotaGlobal"`
-	QuotaPerUser int64  `json:"quotaPerUser"`
+	QuotaGlobal  int64  `json:"quota_global"`
+	QuotaPerUser int64  `json:"quota_per_user"`
 }
 
 // TempFilesConfigDTO 临时文件配置 DTO
 type TempFilesConfigDTO struct {
 	Enabled           bool   `json:"enabled"`
 	Path              string `json:"path"`
-	QuotaGlobal       int64  `json:"quotaGlobal"`
-	QuotaPerIP        int64  `json:"quotaPerIP"`
-	DefaultExpireDays int    `json:"defaultExpireDays"`
-	DeleteOnDownload  bool   `json:"deleteOnDownload"`
+	QuotaGlobal       int64  `json:"quota_global"`
+	QuotaPerIP        int64  `json:"quota_per_ip"`
+	DefaultExpireDays int    `json:"default_expire_days"`
+	DeleteOnDownload  bool   `json:"delete_on_download"`
 }
 
 // UploadConfigDTO 上传配置 DTO
 type UploadConfigDTO struct {
-	ChunkSize   int64              `json:"chunkSize"`
-	MaxFileSize int64              `json:"maxFileSize"`
-	URLUpload   URLUploadDTO       `json:"urlUpload"`
-	RateLimit   UploadRateLimitDTO `json:"rateLimit"`
+	ChunkSize   int64              `json:"chunk_size"`
+	MaxFileSize int64              `json:"max_file_size"`
+	URLUpload   URLUploadDTO       `json:"url_upload"`
+	RateLimit   UploadRateLimitDTO `json:"rate_limit"`
 }
 
 // UploadRateLimitDTO 上传频率限制 DTO（按客户端 IP 统计，作用于上传控制面接口）
 type UploadRateLimitDTO struct {
-	WindowMinutes int `json:"windowMinutes"`
-	MaxRequests   int `json:"maxRequests"` // 0 = 不限制
+	WindowMinutes int `json:"window_minutes"`
+	MaxRequests   int `json:"max_requests"` // 0 = 不限制
 }
 
 // URLUploadDTO URL 上传配置 DTO
 type URLUploadDTO struct {
 	Enabled            bool     `json:"enabled"`
-	AllowedIPRanges    []string `json:"allowedIPRanges"`
-	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
-	MaxConcurrent      int      `json:"maxConcurrent"`
-	MaxRetries         int      `json:"maxRetries"`
-	MaxSize            int64    `json:"maxSize"` // 服务器侧大小硬上限（字节），0=不限
+	AllowedIPRanges    []string `json:"allowed_ip_ranges"`
+	InsecureSkipVerify bool     `json:"insecure_skip_verify"`
+	MaxConcurrent      int      `json:"max_concurrent"`
+	MaxRetries         int      `json:"max_retries"`
+	MaxSize            int64    `json:"max_size"` // 服务器侧大小硬上限（字节），0=不限
 }
 
 // DownloadConfigDTO 下载配置 DTO
 type DownloadConfigDTO struct {
-	RateLimit DownloadRateLimitDTO `json:"rateLimit"`
+	RateLimit DownloadRateLimitDTO `json:"rate_limit"`
 }
 
 // DownloadRateLimitDTO 下载频率限制 DTO
 type DownloadRateLimitDTO struct {
-	WindowMinutes int `json:"windowMinutes"`
-	MaxRequests   int `json:"maxRequests"`
-	LockAfter     int `json:"lockAfter"`
-	LockMinutes   int `json:"lockMinutes"`
+	WindowMinutes int `json:"window_minutes"`
+	MaxRequests   int `json:"max_requests"`
+	LockAfter     int `json:"lock_after"`
+	LockMinutes   int `json:"lock_minutes"`
 }
 
 // PreviewGroupDTO 单个预览分组 DTO。
@@ -296,8 +296,8 @@ type PreviewTextGroupDTO struct {
 	Enabled       *bool   `json:"enabled"`
 	Mimes         *string `json:"mimes"`
 	Exts          *string `json:"exts"`
-	MaxInlineSize string  `json:"maxInlineSize"`
-	TextChunkSize string  `json:"textChunkSize"`
+	MaxInlineSize string  `json:"max_inline_size"`
+	TextChunkSize string  `json:"text_chunk_size"`
 }
 
 // PreviewGroupsDTO 预览类型分组配置 DTO
@@ -330,16 +330,16 @@ func ResolvePreviewSwitch(p *bool) bool {
 // AccountResponse 账户配置 DTO
 type AccountResponse struct {
 	Anonymous         AnonymousResponse `json:"anonymous"`
-	ReservedUsernames []string          `json:"reservedUsernames"`
-	AllowRegistration bool              `json:"allowRegistration"` // 是否允许用户自行注册
-	RequireLogin      bool              `json:"requireLogin"`      // 是否强制登录：开启后 Web 界面仅登录用户可交互
-	Captcha           CaptchaResponse   `json:"captcha"`           // 登录/注册图形验证码
+	ReservedUsernames []string          `json:"reserved_usernames"`
+	AllowRegistration bool              `json:"allow_registration"` // 是否允许用户自行注册
+	RequireLogin      bool              `json:"require_login"`      // 是否强制登录：开启后 Web 界面仅登录用户可交互
+	Captcha           CaptchaResponse   `json:"captcha"`            // 登录/注册图形验证码
 }
 
 // CaptchaResponse 验证码配置响应
 type CaptchaResponse struct {
 	Mode         string `json:"mode"`
-	TriggerAfter int    `json:"triggerAfter"`
+	TriggerAfter int    `json:"trigger_after"`
 }
 
 // AnonymousResponse 匿名用户 DTO
@@ -367,8 +367,8 @@ type HTTPConfigResp struct {
 type FTPConfigResp struct {
 	Enabled          bool `json:"enabled"`
 	Port             int  `json:"port"`
-	PassivePortStart int  `json:"passivePortStart"`
-	PassivePortEnd   int  `json:"passivePortEnd"`
+	PassivePortStart int  `json:"passive_port_start"`
+	PassivePortEnd   int  `json:"passive_port_end"`
 }
 
 // FTPSConfigResp FTPS 配置响应
@@ -384,19 +384,19 @@ type WebDAVConfigResp struct {
 
 // IndexConfigDTO 文件索引配置 DTO
 type IndexConfigDTO struct {
-	ScanStartDelaySeconds          int    `json:"scanStartDelaySeconds"`
-	ScanCronExpression             string `json:"scanCronExpression"`
-	SearchReconcileCronExpression  string `json:"searchReconcileCronExpression"`
-	CleanupCronExpression          string `json:"cleanupCronExpression"`
-	ConsistencyCheckCronExpression string `json:"consistencyCheckCronExpression"`
+	ScanStartDelaySeconds          int    `json:"scan_start_delay_seconds"`
+	ScanCronExpression             string `json:"scan_cron_expression"`
+	SearchReconcileCronExpression  string `json:"search_reconcile_cron_expression"`
+	CleanupCronExpression          string `json:"cleanup_cron_expression"`
+	ConsistencyCheckCronExpression string `json:"consistency_check_cron_expression"`
 }
 
 // ResourceConfigDTO 服务器资源监控配置 DTO
 type ResourceConfigDTO struct {
 	Enabled          bool `json:"enabled"`
-	SamplingInterval int  `json:"samplingInterval"`
-	CollectInterval  int  `json:"collectInterval"`
-	RetentionDays    int  `json:"retentionDays"`
+	SamplingInterval int  `json:"sampling_interval"`
+	CollectInterval  int  `json:"collect_interval"`
+	RetentionDays    int  `json:"retention_days"`
 }
 
 // ParseOrDefault 解析配额字符串，失败时返回默认值

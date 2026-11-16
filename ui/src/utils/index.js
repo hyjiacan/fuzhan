@@ -237,7 +237,7 @@ export const analyzeLatestVersions = (files) => {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(f)
   }
-  const timeOf = (f) => new Date(f.modifiedTime || 0).getTime()
+  const timeOf = (f) => new Date(f.modified_time || 0).getTime()
   for (const group of groups.values()) {
     if (group.length < 2) continue
     const versioned = group.filter((f) => extractVersionParts(f.name) !== null)
@@ -334,7 +334,7 @@ export const UserUtils = {
   // 统一的用户展示名，优先级：昵称 > 姓名 > 用户名
   displayLabel(user) {
     if (!user) return ''
-    return user.nickname || user.displayName || user.username || ''
+    return user.nickname || user.display_name || user.username || ''
   }
 }
 
