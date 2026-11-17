@@ -131,8 +131,15 @@ func NewOAuth2Service(db *gorm.DB, cfg *OAuth2Config) *OAuth2Service {
 // UpdateConfig 热更新配置（配置保存后由 OnSave 钩子调用）
 func (s *OAuth2Service) UpdateConfig(cfg *OAuth2Config) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.cfg = cfg
+	s.mu.Unlock()
+
+	// issuer / user_info_url 可能已变化，旧 JWKS 缓存必须失效，
+	// 否则最长 jwksCacheTTL 内仍按旧 Issuer 的公钥验签，导致新配置登录失败。
+	s.verify.mu.Lock()
+	s.verify.jwks = nil
+	s.verify.lastErr = nil
+	s.verify.mu.Unlock()
 }
 
 // GetConfig 获取当前配置

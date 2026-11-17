@@ -752,6 +752,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Auth.LDAP.BindDN = ld.BindDN
 		appconfig.GlobalConfig.Auth.LDAP.BindPassword = ld.BindPassword
 		appconfig.GlobalConfig.Auth.LDAP.UserFilter = ld.UserFilter
+		appconfig.GlobalConfig.Auth.LDAP.UsernameAttribute = ld.UsernameAttribute
 		appconfig.GlobalConfig.Auth.LDAP.SyncInterval = ld.SyncInterval
 		appconfig.GlobalConfig.Auth.LDAP.AutoCreateUser = ld.AutoCreateUser
 		appconfig.GlobalConfig.Auth.LDAP.InsecureSkipVerify = ld.InsecureSkipVerify
@@ -763,6 +764,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("auth.ldap.bind_dn", ld.BindDN)
 		updates.Add("auth.ldap.bind_password", ld.BindPassword)
 		updates.Add("auth.ldap.user_filter", ld.UserFilter)
+		updates.Add("auth.ldap.username_attribute", ld.UsernameAttribute)
 		updates.Add("auth.ldap.sync_interval", ld.SyncInterval)
 		updates.Add("auth.ldap.auto_create_user", ld.AutoCreateUser)
 		updates.Add("auth.ldap.insecure_skip_verify", ld.InsecureSkipVerify)
@@ -951,6 +953,7 @@ func (h *Handler) TestLDAPConfig(c *gin.Context) {
 			BindDN:             saved.BindDN,
 			BindPassword:       saved.BindPassword,
 			UserFilter:         saved.UserFilter,
+			UsernameAttribute:  saved.UsernameAttribute,
 			SyncInterval:       saved.SyncInterval,
 			AutoCreateUser:     saved.AutoCreateUser,
 			InsecureSkipVerify: saved.InsecureSkipVerify,
@@ -971,6 +974,7 @@ func (h *Handler) TestLDAPConfig(c *gin.Context) {
 		BindDN:             dto.BindDN,
 		BindPassword:       dto.BindPassword,
 		UserFilter:         dto.UserFilter,
+		UsernameAttribute:  dto.UsernameAttribute,
 		SyncInterval:       dto.SyncInterval,
 		AutoCreateUser:     dto.AutoCreateUser,
 		InsecureSkipVerify: dto.InsecureSkipVerify,

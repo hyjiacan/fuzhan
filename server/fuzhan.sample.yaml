@@ -342,9 +342,10 @@ security:
 #     bind_dn: ""              # 绑定 DN（仅用于目录查询）
 #     bind_password: ""        # 绑定密码
 #     user_filter: ""          # 用户过滤条件，如 (uid=%s) 或 (sAMAccountName=%s)
+#     username_attribute: ""   # 本地用户名取值的目录属性，留空按 user_filter 推导（默认 uid）
 #     sync_interval: 3600      # 目录同步间隔（秒）
 #     auto_create_user: false  # 认证通过后是否自动创建本地账户
-#     insecure_skip_verify: false  # 跳过 LDAPS 证书校验（仅测试/自签名环境可设为 true）
+#     insecure_skip_verify: false  # 跳过 LDAPS 证书校验（仅 use_ssl: true 时生效，仅测试/自签名环境可设为 true）
 #   oauth2:
 #     enabled: false           # 是否启用外部认证（授权码模式）
 #     provider_name: ""        # 显示名称，用于登录页按钮文案，如 "企业 SSO"

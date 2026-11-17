@@ -21,14 +21,16 @@ import (
 
 // LDAPConfig LDAP 认证配置（与 fuzhan.yaml 的 auth.ldap 节点一一对应）
 type LDAPConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	Host               string `yaml:"host"`
-	Port               int    `yaml:"port"`
-	UseSSL             bool   `yaml:"use_ssl"`
-	BaseDN             string `yaml:"base_dn"`
-	BindDN             string `yaml:"bind_dn"`
-	BindPassword       string `yaml:"bind_password"`
-	UserFilter         string `yaml:"user_filter"`
+	Enabled      bool   `yaml:"enabled"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	UseSSL       bool   `yaml:"use_ssl"`
+	BaseDN       string `yaml:"base_dn"`
+	BindDN       string `yaml:"bind_dn"`
+	BindPassword string `yaml:"bind_password"`
+	UserFilter   string `yaml:"user_filter"`
+	// UsernameAttribute 本地用户名取值的目录属性；留空时按 user_filter 推导，回退 uid
+	UsernameAttribute  string `yaml:"username_attribute"`
 	SyncInterval       int    `yaml:"sync_interval"`
 	AutoCreateUser     bool   `yaml:"auto_create_user"`
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
@@ -143,7 +145,8 @@ func (s *LDAPService) Authenticate(username, password string) (*models.User, err
 		return nil, fmt.Errorf("%w: %v", services.ErrLDAPInvalidCredentials, err)
 	}
 
-	return s.findOrCreateUser(username, attrs)
+	// 本地用户名以目录中的用户名属性为准，属性缺失时回退登录输入值
+	return s.findOrCreateUser(firstNonEmpty(attrs["username"], username), attrs)
 }
 
 // resolveUserDN 用服务账号绑定并按住 user_filter 搜索，解析用户真实 DN 与属性
@@ -166,7 +169,7 @@ func (s *LDAPService) resolveUserDN(conn *ldap.Conn, cfg *LDAPConfig, username s
 		ldap.NeverDerefAliases,
 		0, 0, false,
 		filter,
-		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName", "givenName", "sn"},
+		s.entryAttributeList(cfg),
 		nil,
 	)
 	sr, err := conn.Search(req)
@@ -176,17 +179,77 @@ func (s *LDAPService) resolveUserDN(conn *ldap.Conn, cfg *LDAPConfig, username s
 	if len(sr.Entries) == 0 {
 		return "", nil, fmt.Errorf("%w: 未在 LDAP 目录中找到用户 %s", services.ErrLDAPInvalidCredentials, username)
 	}
+	nameAttr := s.usernameAttribute(cfg)
 	if len(sr.Entries) > 1 {
-		return "", nil, fmt.Errorf("LDAP 目录中存在多个匹配用户，请细化 user_filter")
+		// 目录里存在同名条目（如个人账户与同名测试/迁移账户并存）时，
+		// 依次按候选用户名属性挑出唯一条目，仍无法消歧才报错并列出候选 DN 便于定位
+		for _, attr := range s.usernameAttributeCandidates(cfg) {
+			if entry := pickUniqueEntry(sr.Entries, attr, username); entry != nil {
+				utils.Info("LDAP 登录：多条匹配记录已按属性消歧",
+					utils.String("username", username), utils.String("attribute", attr),
+					utils.String("dn", entry.DN))
+				return entry.DN, entryAttributes(entry, nameAttr), nil
+			}
+		}
+		return "", nil, fmt.Errorf("LDAP 目录中存在 %d 条匹配记录，请细化 user_filter 或配置 username_attribute（当前 base_dn=%q，过滤器 %s）；候选 DN: %s",
+			len(sr.Entries), cfg.BaseDN, filter, joinEntryDNs(sr.Entries, 5))
 	}
 
 	entry := sr.Entries[0]
-	attrs := entryAttributes(entry)
+	attrs := entryAttributes(entry, nameAttr)
 	return entry.DN, attrs, nil
 }
 
+// pickUniqueEntry 在多个检索结果中按用户名属性挑出唯一条目：
+// 先要求属性值完全相等，再退化为忽略大小写相等；任一阶段命中多条都视为无法消歧。
+func pickUniqueEntry(entries []*ldap.Entry, attr, username string) *ldap.Entry {
+	pick := func(equal func(a, b string) bool) *ldap.Entry {
+		var hit *ldap.Entry
+		for _, e := range entries {
+			if !equal(e.GetAttributeValue(attr), username) {
+				continue
+			}
+			if hit != nil {
+				return nil
+			}
+			hit = e
+		}
+		return hit
+	}
+	if hit := pick(func(a, b string) bool { return a == b }); hit != nil {
+		return hit
+	}
+	return pick(strings.EqualFold)
+}
+
+// joinEntryDNs 拼接候选条目 DN，便于在错误信息中直接定位重复数据
+func joinEntryDNs(entries []*ldap.Entry, limit int) string {
+	dns := make([]string, 0, len(entries))
+	for i, e := range entries {
+		if i >= limit {
+			dns = append(dns, "...")
+			break
+		}
+		dns = append(dns, e.DN)
+	}
+	return strings.Join(dns, ", ")
+}
+
+// entryAttributeList 返回检索需要拉取的属性列表，确保包含当前用户名属性
+func (s *LDAPService) entryAttributeList(cfg *LDAPConfig) []string {
+	attrs := []string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName", "givenName", "sn"}
+	nameAttr := s.usernameAttribute(cfg)
+	for _, a := range attrs {
+		if strings.EqualFold(a, nameAttr) {
+			return attrs
+		}
+	}
+	return append(attrs, nameAttr)
+}
+
 // entryAttributes 提取用户条目的关键属性用于本地建号与认证记录
-func entryAttributes(entry *ldap.Entry) map[string]string {
+// usernameAttr 为本地用户名取值属性（见 usernameAttribute）
+func entryAttributes(entry *ldap.Entry, usernameAttr string) map[string]string {
 	attrs := map[string]string{
 		"dn":             entry.DN,
 		"uid":            entry.GetAttributeValue("uid"),
@@ -207,18 +270,25 @@ func entryAttributes(entry *ldap.Entry) map[string]string {
 		strings.TrimSpace(attrs["givenName"]+" "+attrs["sn"]),
 		attrs["uid"],
 	)
+	// 用户名回退链：配置的用户名属性 → uid → sAMAccountName → mail
+	attrs["username"] = firstNonEmpty(
+		entry.GetAttributeValue(usernameAttr),
+		attrs["uid"],
+		attrs["sAMAccountName"],
+		attrs["mail"],
+	)
 	return attrs
 }
 
 // buildUserFilter 构造用户检索过滤器
-//   - 未配置 user_filter 时默认 (uid=%s)，适用于常见 OpenLDAP 目录
+//   - 未配置 user_filter 时默认按用户名属性过滤（默认为 (uid=%s)），配置了 username_attribute 则用它
 //   - 配置了 user_filter 且含 %s 时，将 %s 替换为转义后的用户名（如 (sAMAccountName=%s) 适配 AD）
 //   - 配置了 user_filter 但未含 %s 时按静态过滤器使用（此时需保证过滤结果唯一）
 func (s *LDAPService) buildUserFilter(cfg *LDAPConfig, username string) string {
 	escaped := ldap.EscapeFilter(username)
 	f := strings.TrimSpace(cfg.UserFilter)
 	if f == "" {
-		return fmt.Sprintf("(uid=%s)", escaped)
+		return fmt.Sprintf("(%s=%s)", s.usernameAttribute(cfg), escaped)
 	}
 	if strings.Contains(f, "%s") {
 		return strings.ReplaceAll(f, "%s", escaped)
@@ -344,9 +414,16 @@ func (s *LDAPService) TestConnection() error {
 	return nil
 }
 
-// usernameAttribute 从 user_filter 推导用于本地用户名的目录属性（默认 uid）
+// usernameAttribute 本地用户名取值的目录属性。
+// 优先使用显式配置的 username_attribute；未配置时从 user_filter 推导（默认 uid），
 // 仅支持简单等值过滤器形如 (uid=%s) / (sAMAccountName=%s) 的推导；其它复杂过滤器回退 uid。
 func (s *LDAPService) usernameAttribute(cfg *LDAPConfig) string {
+	if cfg == nil {
+		return "uid"
+	}
+	if attr := strings.TrimSpace(cfg.UsernameAttribute); attr != "" {
+		return attr
+	}
 	f := strings.TrimSpace(cfg.UserFilter)
 	if strings.HasPrefix(f, "(") && strings.Contains(f, "=") {
 		inner := strings.Trim(f, "()")
@@ -361,11 +438,32 @@ func (s *LDAPService) usernameAttribute(cfg *LDAPConfig) string {
 	return "uid"
 }
 
+// usernameAttributeCandidates 返回多条匹配记录时用于消歧的属性候选顺序：
+// 优先当前用户名属性，其次是常见的 uid / sAMAccountName / mail，去重并保持顺序。
+func (s *LDAPService) usernameAttributeCandidates(cfg *LDAPConfig) []string {
+	attrs := []string{s.usernameAttribute(cfg), "uid", "sAMAccountName", "mail"}
+	seen := make(map[string]bool, len(attrs))
+	out := make([]string, 0, len(attrs))
+	for _, a := range attrs {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		key := strings.ToLower(a)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, a)
+	}
+	return out
+}
+
 // syncFilter 构造目录同步的枚举过滤器：将模板中的 %s 替换为 * 以遍历全部用户
 func (s *LDAPService) syncFilter(cfg *LDAPConfig) string {
 	f := strings.TrimSpace(cfg.UserFilter)
 	if f == "" {
-		return "(uid=*)"
+		return "(" + s.usernameAttribute(cfg) + "=*)"
 	}
 	if strings.Contains(f, "%s") {
 		return strings.ReplaceAll(f, "%s", "*")
@@ -373,7 +471,7 @@ func (s *LDAPService) syncFilter(cfg *LDAPConfig) string {
 	if strings.HasPrefix(f, "(") {
 		return f
 	}
-	return "(uid=*)"
+	return "(" + s.usernameAttribute(cfg) + "=*)"
 }
 
 // SyncUsers 从 LDAP 目录同步用户到本地，仅创建本地缺失的账户。
@@ -406,7 +504,7 @@ func (s *LDAPService) SyncUsers() (int, error) {
 		ldap.NeverDerefAliases,
 		0, 0, false,
 		s.syncFilter(cfg),
-		[]string{"dn", "uid", "cn", "sAMAccountName", "mail", "displayName", "givenName", "sn"},
+		s.entryAttributeList(cfg),
 		nil,
 	)
 	// 使用分页查询，避免目录条目超过服务端单次返回上限（如 AD 默认 1000 条）时同步被截断
@@ -419,6 +517,10 @@ func (s *LDAPService) SyncUsers() (int, error) {
 	failed := 0
 	for _, entry := range sr.Entries {
 		username := entry.GetAttributeValue(usernameAttr)
+		attrs := entryAttributes(entry, usernameAttr)
+		if username == "" {
+			username = attrs["username"]
+		}
 		if username == "" {
 			continue
 		}
@@ -433,10 +535,10 @@ func (s *LDAPService) SyncUsers() (int, error) {
 		}
 		if err == nil {
 			// 已存在的用户不回补建，但在姓名缺失时用目录属性补齐
-			s.fillDisplayName(&existing, entryAttributes(entry))
+			s.fillDisplayName(&existing, attrs)
 			continue
 		}
-		if _, err := s.findOrCreateUser(username, entryAttributes(entry)); err != nil {
+		if _, err := s.findOrCreateUser(username, attrs); err != nil {
 			failed++
 			utils.Warn("LDAP 目录同步：创建本地用户失败",
 				utils.String("username", username), utils.Err(err))

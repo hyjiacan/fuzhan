@@ -161,6 +161,7 @@ const FIELD_LABELS = {
   'auth.ldap.bind_dn': '绑定 DN',
   'auth.ldap.bind_password': '绑定密码',
   'auth.ldap.user_filter': '用户过滤器',
+  'auth.ldap.username_attribute': '用户名属性',
   'auth.ldap.sync_interval': '目录同步间隔(秒)',
   'auth.ldap.auto_create_user': '自动创建本地用户',
   'auth.ldap.insecure_skip_verify': '跳过证书校验',

@@ -580,16 +580,18 @@ type OpenAPIConfig struct {
 
 // LDAPClientConfig LDAP 客户端配置
 type LDAPClientConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	Host           string `yaml:"host"`
-	Port           int    `yaml:"port"`
-	UseSSL         bool   `yaml:"use_ssl"`
-	BaseDN         string `yaml:"base_dn"`
-	BindDN         string `yaml:"bind_dn"`
-	BindPassword   string `yaml:"bind_password"`
-	UserFilter     string `yaml:"user_filter"`
-	SyncInterval   int    `yaml:"sync_interval"`
-	AutoCreateUser bool   `yaml:"auto_create_user"`
+	Enabled      bool   `yaml:"enabled"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	UseSSL       bool   `yaml:"use_ssl"`
+	BaseDN       string `yaml:"base_dn"`
+	BindDN       string `yaml:"bind_dn"`
+	BindPassword string `yaml:"bind_password"`
+	UserFilter   string `yaml:"user_filter"`
+	// UsernameAttribute 本地用户名取值的目录属性；留空时按 user_filter 推导，回退 uid
+	UsernameAttribute string `yaml:"username_attribute"`
+	SyncInterval      int    `yaml:"sync_interval"`
+	AutoCreateUser    bool   `yaml:"auto_create_user"`
 	// InsecureSkipVerify 是否跳过 LDAPS 证书校验（默认 false，安全）
 	// 仅测试环境或使用自签名证书时可设为 true
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`

@@ -5,6 +5,7 @@ import (
 
 	"fuzhan/internal/models"
 	"github.com/glebarez/sqlite"
+	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
 )
 
@@ -127,20 +128,22 @@ func TestLDAPService_BuildUserFilter(t *testing.T) {
 func TestLDAPService_UsernameAttribute(t *testing.T) {
 	db := setupLDAPTestDB(t)
 	cases := []struct {
-		name, filter, want string
+		name, filter, explicit, want string
 	}{
-		{"空", "", "uid"},
-		{"uid", "(uid=%s)", "uid"},
-		{"AD", "(sAMAccountName=%s)", "sAMAccountName"},
-		{"复合过滤器回退", "(&(objectClass=person)(uid=%s))", "uid"},
+		{"空", "", "", "uid"},
+		{"uid", "(uid=%s)", "", "uid"},
+		{"AD", "(sAMAccountName=%s)", "", "sAMAccountName"},
+		{"复合过滤器回退", "(&(objectClass=person)(uid=%s))", "", "uid"},
+		{"显式配置优先", "(&(objectClass=person)(uid=%s))", "sAMAccountName", "sAMAccountName"},
+		{"显式配置优先于简单过滤器", "(uid=%s)", " mail ", "mail"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewLDAPService(db, &LDAPConfig{UserFilter: tc.filter})
+			svc := NewLDAPService(db, &LDAPConfig{UserFilter: tc.filter, UsernameAttribute: tc.explicit})
 			got := svc.usernameAttribute(svc.GetConfig())
 			if got != tc.want {
-				t.Errorf("usernameAttribute(%q) = %q, want %q", tc.filter, got, tc.want)
+				t.Errorf("usernameAttribute(%q, %q) = %q, want %q", tc.filter, tc.explicit, got, tc.want)
 			}
 		})
 	}
@@ -149,22 +152,75 @@ func TestLDAPService_UsernameAttribute(t *testing.T) {
 func TestLDAPService_SyncFilter(t *testing.T) {
 	db := setupLDAPTestDB(t)
 	cases := []struct {
-		name, filter, want string
+		name, filter, explicit, want string
 	}{
-		{"默认遍历", "", "(uid=*)"},
-		{"uid遍历", "(uid=%s)", "(uid=*)"},
-		{"AD遍历", "(sAMAccountName=%s)", "(sAMAccountName=*)"},
-		{"静态过滤器", "(objectClass=person)", "(objectClass=person)"},
+		{"默认遍历", "", "", "(uid=*)"},
+		{"uid遍历", "(uid=%s)", "", "(uid=*)"},
+		{"AD遍历", "(sAMAccountName=%s)", "", "(sAMAccountName=*)"},
+		{"静态过滤器", "(objectClass=person)", "", "(objectClass=person)"},
+		{"按用户名属性遍历", "", "sAMAccountName", "(sAMAccountName=*)"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewLDAPService(db, &LDAPConfig{UserFilter: tc.filter})
+			svc := NewLDAPService(db, &LDAPConfig{UserFilter: tc.filter, UsernameAttribute: tc.explicit})
 			got := svc.syncFilter(svc.GetConfig())
 			if got != tc.want {
-				t.Errorf("syncFilter(%q) = %q, want %q", tc.filter, got, tc.want)
+				t.Errorf("syncFilter(%q, %q) = %q, want %q", tc.filter, tc.explicit, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestLDAPService_UsernameAttributeCandidates(t *testing.T) {
+	db := setupLDAPTestDB(t)
+	svc := NewLDAPService(db, &LDAPConfig{UserFilter: "(uid=%s)"})
+	got := svc.usernameAttributeCandidates(svc.GetConfig())
+	want := []string{"uid", "sAMAccountName", "mail"}
+	if len(got) != len(want) {
+		t.Fatalf("usernameAttributeCandidates() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("usernameAttributeCandidates() = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestLDAPService_PickUniqueEntry(t *testing.T) {
+	entries := []*ldap.Entry{
+		ldap.NewEntry("uid=zhangsan,ou=Users,dc=example,dc=com", map[string][]string{
+			"uid": {"zhangsan"},
+			"cn":  {"Other"},
+		}),
+		ldap.NewEntry("cn=ZhangSan,ou=Users,dc=example,dc=com", map[string][]string{
+			"uid": {"Zhangsan"},
+			"cn":  {"ZhangSan"},
+		}),
+	}
+	if got := pickUniqueEntry(entries, "uid", "zhangsan"); got == nil || got.DN != entries[0].DN {
+		t.Errorf("精确匹配应选中 %s", entries[0].DN)
+	}
+	// 无精确匹配时退化为忽略大小写，此时两条都命中 → 无法消歧
+	if got := pickUniqueEntry(entries, "uid", "ZHANGSAN"); got != nil {
+		t.Errorf("忽略大小写命中多条时不应返回结果，却返回了 %s", got.DN)
+	}
+	// 用户名属性缺失于条目时不匹配
+	if got := pickUniqueEntry(entries, "sAMAccountName", "zhangsan"); got != nil {
+		t.Errorf("属性不存在时不应返回结果，却返回了 %s", got.DN)
+	}
+}
+
+func TestJoinEntryDNs(t *testing.T) {
+	entries := []*ldap.Entry{
+		ldap.NewEntry("dn1", nil),
+		ldap.NewEntry("dn2", nil),
+	}
+	if got := joinEntryDNs(entries, 5); got != "dn1, dn2" {
+		t.Errorf("joinEntryDNs() = %q", got)
+	}
+	if got := joinEntryDNs(entries, 1); got != "dn1, ..." {
+		t.Errorf("joinEntryDNs() 截断结果 = %q", got)
 	}
 }
 

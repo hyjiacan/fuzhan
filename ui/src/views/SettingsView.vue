@@ -312,6 +312,7 @@ const settings = reactive({
       bindDN: '',
       bindPassword: '',
       userFilter: '',
+      usernameAttribute: '',
       syncInterval: 3600,
       autoCreateUser: false,
       insecureSkipVerify: false
@@ -541,6 +542,7 @@ const loadSettings = async () => {
           bindDN: cfg.auth?.ldap?.bind_dn || '',
           bindPassword: cfg.auth?.ldap?.bind_password || '',
           userFilter: cfg.auth?.ldap?.user_filter || '',
+          usernameAttribute: cfg.auth?.ldap?.username_attribute || '',
           syncInterval: cfg.auth?.ldap?.sync_interval || 3600,
           autoCreateUser: cfg.auth?.ldap?.auto_create_user ?? false,
           insecureSkipVerify: cfg.auth?.ldap?.insecure_skip_verify ?? false
@@ -818,6 +820,7 @@ const doSaveSettings = async () => {
           bind_dn: settings.auth.ldap.bindDN,
           bind_password: settings.auth.ldap.bindPassword,
           user_filter: settings.auth.ldap.userFilter,
+          username_attribute: settings.auth.ldap.usernameAttribute,
           sync_interval: settings.auth.ldap.syncInterval,
           auto_create_user: settings.auth.ldap.autoCreateUser,
           insecure_skip_verify: settings.auth.ldap.insecureSkipVerify
