@@ -24,10 +24,21 @@ func readConfig() {
 
 	// 首先尝试解析为带有字符串配额的配置
 	var tempConfig struct {
-		App     APPConfig     `yaml:"app"`
-		Server  ServerConfig  `yaml:"server"`
-		Account AccountConfig `yaml:"account"`
-		Storage struct {
+		WorkDir  string         `yaml:"work_dir"`
+		App      APPConfig      `yaml:"app"`
+		Server   ServerConfig   `yaml:"server"`
+		Account  AccountConfig  `yaml:"account"`
+		Database DatabaseConfig `yaml:"database"`
+		// DDos.Enabled 用指针区分「未配置」（按默认值 true 启用）与「显式关闭」
+		DDos struct {
+			Enabled         *bool `yaml:"enabled"`
+			WindowSeconds   int   `yaml:"window_seconds"`
+			MaxRequests     int   `yaml:"max_requests"`
+			CooldownMinutes int   `yaml:"cooldown_minutes"`
+		} `yaml:"ddos"`
+		Security SecurityConfig `yaml:"security"`
+		Auth     AuthConfig     `yaml:"auth"`
+		Storage  struct {
 			Public struct {
 				RootDirs []DirectoryConfigWithStringQuota `yaml:"root_dirs"`
 			} `yaml:"public"`
@@ -65,9 +76,23 @@ func readConfig() {
 	}
 
 	// 转换字符串配额为数字配额
+	GlobalConfig.WorkDir = tempConfig.WorkDir
 	GlobalConfig.App = tempConfig.App
 	GlobalConfig.Server = tempConfig.Server
 	GlobalConfig.Account = tempConfig.Account
+	GlobalConfig.Database = tempConfig.Database
+	// DDoS 检测默认开启：仅当 yaml 显式写 enabled: false 时关闭
+	GlobalConfig.DDos = DDosConfig{
+		Enabled:         true,
+		WindowSeconds:   tempConfig.DDos.WindowSeconds,
+		MaxRequests:     tempConfig.DDos.MaxRequests,
+		CooldownMinutes: tempConfig.DDos.CooldownMinutes,
+	}
+	if tempConfig.DDos.Enabled != nil {
+		GlobalConfig.DDos.Enabled = *tempConfig.DDos.Enabled
+	}
+	GlobalConfig.Security = tempConfig.Security
+	GlobalConfig.Auth = tempConfig.Auth
 	GlobalConfig.Storage.AllowedExtensions = tempConfig.Storage.AllowedExtensions
 	GlobalConfig.Storage.Alert = tempConfig.Storage.Alert
 	GlobalConfig.Storage.Backend = tempConfig.Storage.Backend

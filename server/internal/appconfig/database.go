@@ -70,16 +70,24 @@ var gormConfig = &gorm.Config{
 
 // InitDB 初始化数据库连接
 func InitDB(cfg *DatabaseConfig) (*gorm.DB, error) {
-	if cfg == nil || cfg.Driver == "" {
-		cfg = &DatabaseConfig{
-			Driver: "sqlite",
-			DSN:    defaultSQLiteDSN(),
-		}
+	if cfg == nil {
+		cfg = &DatabaseConfig{}
 	}
 
-	if cfg.DSN == "" {
-		return nil, fmt.Errorf("database DSN cannot be empty")
+	// 复制一份，避免把补全后的默认值写回调用方（如 GlobalConfig.Database）
+	resolved := *cfg
+	if resolved.Driver == "" {
+		resolved.Driver = "sqlite"
 	}
+	if resolved.DSN == "" {
+		if resolved.Driver == "sqlite" {
+			// SQLite 允许 dsn 留空，默认落到 <work_dir>/data/fuzhan.db
+			resolved.DSN = defaultSQLiteDSN()
+		} else {
+			return nil, fmt.Errorf("database DSN cannot be empty for driver %q", resolved.Driver)
+		}
+	}
+	cfg = &resolved
 
 	var db *gorm.DB
 	var err error

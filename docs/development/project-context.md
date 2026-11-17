@@ -112,6 +112,7 @@ lightshare/
 - SQLite 默认：`<work_dir>/data/fuzhan.db`；`GetDataDir()` = `filepath.Join(WorkDir, "data")`；日志目录 `<work_dir>/logs`。
 - 日志默认：level=info、MaxSize=10MB、MaxBackups=30、MaxAge=30（`loader.go` `InitLogging`）。
 - 配置保存后执行 `RunOnSaveHooks`（热生效）；`AddOnSaveHook` 在 `server.go` 与 `runScanTimerWorker` 中注册。
+- **加载链路陷阱**：`config_load.go` 的 `readConfig()` 先用临时匿名 struct 反序列化（仅为把配额字符串转成数字），再逐节赋值给 `GlobalConfig`。临时 struct 必须包含 `Config` 的全部顶层节（`work_dir/app/server/account/database/ddos/security/auth/storage/upload/download/preview/mime_table/log/open_api/index/resource/webhook`），漏一个就会导致该节重启后整体失效；新增顶层节时必须同时改 `Config`、`fuzhan.sample.yaml` 与 `readConfig()` 的临时 struct（回归测试见 `internal/appconfig/config_load_test.go`）。
 
 ### 4.2 `Config` 结构（`internal/appconfig/config.go`，约 474 行）
 
