@@ -267,13 +267,18 @@ func (OAuthClient) TableName() string {
 }
 
 // AuthRecord 认证记录（用于统一认证管理）
+//
+// 绑定键为 (auth_type, provider_name, external_id)，唯一索引由启动迁移在去重后手动创建
+// （idx__auth_records__auth_type_provider_name_external_id），不在 GORM tag 中声明：
+// AutoMigrate 会在历史重复数据去重之前尝试建索引，导致启动失败。
+// provider_name 语义为 provider 稳定标识：LDAP 固定为 "ldap"；OAuth2 为 "oauth2:<provider_id>"。
 type AuthRecord struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	UserID       uint      `gorm:"not null;index" json:"user_id"`             // 关联的本地用户 ID
 	AuthType     string    `gorm:"size:32;not null;index" json:"auth_type"`   // ldap / oauth2 / local
 	ExternalID   string    `gorm:"size:256;not null" json:"external_id"`      // 外部 ID（LDAP DN、OAuth subject）
 	ExternalName string    `gorm:"size:128" json:"external_name"`             // 外部显示名称
-	ProviderName string    `gorm:"size:64" json:"provider_name"`              // 提供方名称（如 oauth2:github, ldap:company）
+	ProviderName string    `gorm:"size:64" json:"provider_name"`              // provider 稳定标识（ldap / oauth2:<provider_id>）
 	CreatedAt    time.Time `json:"created_at"`
 }
 

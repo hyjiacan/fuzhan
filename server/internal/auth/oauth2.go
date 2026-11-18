@@ -27,6 +27,7 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"fuzhan/pkg/jwt"
 	"gorm.io/gorm"
@@ -34,8 +35,11 @@ import (
 
 // OAuth2Config 外部 OAuth2/OIDC 认证配置（与 fuzhan.yaml 的 auth.oauth2 节点一一对应）
 type OAuth2Config struct {
-	Enabled            bool     `yaml:"enabled"`
-	ProviderName       string   `yaml:"provider_name,omitempty"`
+	Enabled bool `yaml:"enabled"`
+	// ProviderID 认证源的稳定标识（启用时必填，如 keycloak-prod）。
+	// 绑定记录中使用 oauth2:<provider_id> 作为 provider_name，变更即视为认证源迁移。
+	ProviderID         string   `yaml:"provider_id,omitempty"`
+	ProviderName       string   `yaml:"provider_name,omitempty"` // 显示名称，如 "企业 SSO" / "GitHub"
 	ClientID           string   `yaml:"client_id,omitempty"`
 	ClientSecret       string   `yaml:"client_secret,omitempty"`
 	AuthURL            string   `yaml:"auth_url,omitempty"`
@@ -1005,80 +1009,100 @@ func (s *OAuth2Service) Authenticate(code, redirectURL string) (*models.User, er
 	return s.findOrCreateUser(info)
 }
 
-// providerName 返回用于 AuthRecord 的提供方标识
+// providerName 返回用于 AuthRecord 的 provider key（稳定标识）：oauth2:<provider_id>。
+// 未配置 provider_id 时退化为 oauth2（启动/保存校验会阻止启用态缺省该配置）。
 func (s *OAuth2Service) providerName(cfg *OAuth2Config) string {
-	if cfg.ProviderName != "" {
-		return "oauth2:" + cfg.ProviderName
+	if cfg == nil {
+		return models.AuthSourceOAuth2
 	}
-	if cfg.Issuer != "" {
-		return "oauth2:" + cfg.Issuer
+	id := strings.TrimSpace(cfg.ProviderID)
+	if id == "" {
+		return models.AuthSourceOAuth2
 	}
-	if u, err := url.Parse(cfg.AuthURL); err == nil && u.Host != "" {
-		return "oauth2:" + u.Host
-	}
-	return "oauth2"
+	return models.AuthSourceOAuth2 + ":" + id
 }
 
-// findOrCreateUser 依据外部身份查找或创建本地用户，并维护认证关联记录
+// findOrCreateUser 依据外部身份查找或创建本地用户，并维护认证关联记录。
+//
+// 解析顺序（与方案 §4.4.2 一致）：
+//  1. 按 (oauth2, oauth2:<provider_id>, sub) 命中绑定 → 返回绑定用户。
+//  2. 未命中绑定 → 按用户名查本地用户：
+//     - 不存在：auto_create_user 开启则 JIT 建号并写绑定；
+//     - 已存在：一律拒绝并记录 auth.identity_conflict（不再同名即绑定，也不再追加后缀建新账号）。
 func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, error) {
 	cfg := s.GetConfig()
 	provider := s.providerName(cfg)
 
 	// 1. 已有关联记录：直接返回关联用户
 	var record models.AuthRecord
-	if err := s.db.Where("auth_type = ? AND external_id = ? AND provider_name = ?", "oauth2", info.Subject, provider).
-		First(&record).Error; err == nil {
+	err := s.db.Where("auth_type = ? AND provider_name = ? AND external_id = ?",
+		models.AuthSourceOAuth2, provider, info.Subject).First(&record).Error
+	if err == nil {
 		var user models.User
 		if err := s.db.Where("id = ?", record.UserID).First(&user).Error; err != nil {
 			return nil, fmt.Errorf("关联用户不存在: %w", err)
 		}
 		if user.Disabled {
-			return nil, errors.New("账户已被禁用")
+			return nil, services.ErrAccountDisabled
+		}
+		if user.AuthSource != models.AuthSourceOAuth2 {
+			reportIdentityConflict(user.Username, provider, info.Subject, user.AuthSource)
+			return nil, services.ErrAccountUnavailable
+		}
+		if user.DisplayName == "" && info.DisplayName != "" {
+			s.fillDisplayName(&user, info.DisplayName)
 		}
 		return &user, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("查询认证关联失败: %w", err)
 	}
 
 	username := sanitizeUsername(info.Username)
 
-	// 2. 本地已存在同名用户：建立关联（视为账号绑定）
-	var user models.User
-	err := s.db.Where("username = ?", username).First(&user).Error
-	if err == nil {
-		if user.Disabled {
-			return nil, errors.New("账户已被禁用")
-		}
-		if user.DisplayName == "" && info.DisplayName != "" {
-			s.fillDisplayName(&user, info.DisplayName)
-		}
-		s.linkRecord(&user, provider, info)
-		return &user, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	// 2. 本地已存在同名用户：拒绝并留痕，交由管理员裁决，不修改任何字段
+	existing, err := findLocalUserByUsername(s.db, username)
+	if err != nil {
 		return nil, fmt.Errorf("查询用户失败: %w", err)
 	}
+	if existing != nil {
+		reportIdentityConflict(existing.Username, provider, info.Subject, existing.AuthSource)
+		return nil, services.ErrAccountUnavailable
+	}
 
-	// 3. 本地不存在：按配置决定是否自动创建
-	if !cfg.AutoCreateUser {
-		return nil, errors.New("外部账号未关联本地用户，且未启用自动创建")
+	// 3. 本地不存在：按配置决定是否自动创建（用户与绑定同事务写入）
+	if cfg == nil || !cfg.AutoCreateUser {
+		return nil, services.ErrAccountUnavailable
 	}
 	uuid, err := generateOAuthUUID()
 	if err != nil {
 		return nil, err
 	}
-	user = models.User{
+	newUser := models.User{
 		UUID:         uuid,
-		Username:     s.uniqueUsername(username, info.Subject),
+		Username:     username,
 		DisplayName:  info.DisplayName,
 		PasswordHash: "",
 		Role:         "user",
+		AuthSource:   models.AuthSourceOAuth2,
+		CreatedVia:   models.CreatedViaOAuth2JIT,
 	}
-	if err := s.db.Create(&user).Error; err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&newUser).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.AuthRecord{
+			UserID:       newUser.ID,
+			AuthType:     models.AuthSourceOAuth2,
+			ExternalID:   info.Subject,
+			ExternalName: info.DisplayName,
+			ProviderName: provider,
+		}).Error
+	})
+	if err != nil {
 		return nil, fmt.Errorf("创建本地用户失败: %w", err)
 	}
-	s.linkRecord(&user, provider, info)
-	return &user, nil
+	return &newUser, nil
 }
 
 // fillDisplayName 本地用户缺少姓名时用外部身份信息补齐，失败只告警不阻断登录
@@ -1089,35 +1113,6 @@ func (s *OAuth2Service) fillDisplayName(user *models.User, displayName string) {
 		return
 	}
 	user.DisplayName = displayName
-}
-
-// linkRecord 写入认证关联记录（同一用户重复登录时幂等跳过）
-func (s *OAuth2Service) linkRecord(user *models.User, provider string, info *oauthUserInfo) {
-	var existing models.AuthRecord
-	if err := s.db.Where("user_id = ? AND auth_type = ? AND external_id = ? AND provider_name = ?",
-		user.ID, "oauth2", info.Subject, provider).First(&existing).Error; err == nil {
-		return
-	}
-	if err := s.db.Create(&models.AuthRecord{
-		UserID:       user.ID,
-		AuthType:     "oauth2",
-		ExternalID:   info.Subject,
-		ExternalName: info.DisplayName,
-		ProviderName: provider,
-	}).Error; err != nil {
-		utils.Warn("写入 OAuth2 认证关联失败", utils.String("username", user.Username), utils.Err(err))
-	}
-}
-
-// uniqueUsername 处理本地用户名冲突：同名但非同一外部身份时追加短标识
-func (s *OAuth2Service) uniqueUsername(base, subject string) string {
-	var count int64
-	if err := s.db.Model(&models.User{}).Where("username = ?", base).Count(&count).Error; err != nil || count == 0 {
-		return base
-	}
-	suffix := shortHash(subject)
-	candidate := truncateUsername(base, 64-len(suffix)-1) + "_" + suffix
-	return candidate
 }
 
 // sanitizeUsername 将外部用户名规整为符合本地约束（3-64 字符）的名称
@@ -1154,12 +1149,6 @@ func truncateUsername(name string, max int) string {
 		runes = runes[:len(runes)-1]
 	}
 	return string(runes)
-}
-
-// shortHash 返回用于用户名去重的短哈希
-func shortHash(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:4])
 }
 
 // generateOAuthUUID 生成 UUID v4

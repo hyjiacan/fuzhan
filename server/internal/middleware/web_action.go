@@ -139,6 +139,8 @@ var webRouteActions = map[string]string{
 	"GET /api/v1/web/admin/users":                    "查看用户列表",
 	"POST /api/v1/web/admin/users":                   "创建用户",
 	"PUT /api/v1/web/admin/users/:id/reset-password": "重置用户密码",
+	"POST /api/v1/web/admin/users/:id/auth-bindings": "绑定外部身份",
+	"POST /api/v1/web/admin/users/:id/convert-local": "转为本地账号",
 	"PUT /api/v1/web/admin/users/:id/disabled":       "启用或禁用用户",
 	"DELETE /api/v1/web/admin/users/:id":             "删除用户",
 	"GET /api/v1/web/admin/sessions":                 "查看上传会话",

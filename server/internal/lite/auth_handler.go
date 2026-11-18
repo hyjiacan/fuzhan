@@ -238,20 +238,22 @@ func (h *Handlers) HandleLoginSubmit(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.AuthService.Login(&services.LoginRequest{Username: data.Username, Password: data.Password})
+	resp, method, err := h.AuthService.Login(&services.LoginRequest{Username: data.Username, Password: data.Password})
 	if err != nil {
 		liteRegisterFailure(ip)
 		middleware.LogOperation(c, "auth.login", data.Username, err)
 		h.recordAuthFailure(c, "auth.login", data.Username, h.AuthService.IsAdminUsername(data.Username))
-		h.recordLoginLog(c, "", data.Username, "local", "failed", err.Error())
-		renderAuthPage(c, "登录", err.Error(), data, http.StatusUnauthorized)
+		// 失败时按登录入口记录；页面只展示通用提示，避免暴露认证源细节
+		h.recordLoginLog(c, "", data.Username, services.LoginMethodPasswordForm, "failed", err.Error())
+		renderAuthPage(c, "登录", services.UserFacingLoginError(err), data, http.StatusUnauthorized)
 		return
 	}
 
 	liteResetFailures(ip)
 	middleware.LogOperation(c, "auth.login", data.Username, nil)
 	h.recordAuthSuccess(c, resp.Username)
-	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
+	// 成功时记录真实认证来源（local / ldap）
+	h.recordLoginLog(c, resp.UUID, resp.Username, method, "success", "")
 	// 把与 web 同源的 JWT 存入 HttpOnly Cookie：LoginGate 依据它放行 /lite、/download 等
 	// 受保护请求（下载身份鉴别与 web 完全一致，仍走「换票 + URL 票据」链路）。
 	middleware.SetAuthCookie(c, resp.Token)
@@ -314,14 +316,14 @@ func (h *Handlers) HandleRegisterSubmit(c *gin.Context) {
 		liteRegisterFailure(ip)
 		middleware.LogOperation(c, "auth.register", data.Username, err)
 		h.recordAuthFailure(c, "auth.register", data.Username, false)
-		h.recordLoginLog(c, "", data.Username, "register", "failed", err.Error())
+		h.recordLoginLog(c, "", data.Username, services.LoginMethodRegister, "failed", err.Error())
 		renderAuthPage(c, "注册", err.Error(), data, http.StatusBadRequest)
 		return
 	}
 
 	liteResetFailures(ip)
 	middleware.LogOperation(c, "auth.register", data.Username, nil)
-	h.recordLoginLog(c, resp.UUID, resp.Username, "register", "success", "")
+	h.recordLoginLog(c, resp.UUID, resp.Username, services.LoginMethodRegister, "success", "")
 	middleware.SetAuthCookie(c, resp.Token)
 	c.Redirect(http.StatusFound, data.Redirect)
 }

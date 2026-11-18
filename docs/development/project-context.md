@@ -136,6 +136,7 @@ ddos, preview, mime_table, log, security, auth, open_api, index, resource, webho
 - `index`：`scan_start_delay_seconds`=10、`scan_cron_expression`="0 1 * * *"、`search_reconcile_cron_expression`="0 5 * * *"、`cleanup_cron_expression`="0 * * * *"、`consistency_check_cron_expression`="0 3 * * *"
 - `resource`：`enabled`、`sampling_interval`=5、`collect_interval`=60、`retention_days`=7
 - `security`：`trust_proxy`、`allowed_origins`
+- `auth`：`ldap{...}` 与 `oauth2{enabled,provider_id,provider_name,...}` **二选一**（同时启用会被保存/启动校验拒绝）；OAuth2 启用时 `provider_id` 必填，绑定记录使用 `oauth2:<provider_id>` 作为 provider key，LDAP 固定使用 `ldap`
 - `account`：含 `require_login`（强制登录，驱动 LoginGate）
 - 大小字段支持 `B/K/M/G/T`（含 `KB/MB/GB/TB`），无单位=字节；`ParseQuotaString` 解析。
 
@@ -211,6 +212,24 @@ DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk,
 | `LastSyncedAt` / `CreatedAt` / `UpdatedAt` / `DeletedAt(gorm.DeletedAt)` | 时间与软删除 |
 
 索引命名约定：`idx__{table}__{col1}_{col2}_...`（由 `EnsureFileRecordIndexes` 等统一创建）。
+
+### 6.2 用户身份与外部绑定（`user.go` / `api_key.go`）
+
+`User` 新增两个字段（启动时由 `models.MigrateUserIdentity` 在 AutoMigrate 之后回填）：
+
+| 字段 | 说明 |
+|---|---|
+| `AuthSource`(16，默认 `local`，索引 `idx__users__auth_source`) | 账号归属认证源 `local/ldap/oauth2`；决定登录路由，只能由管理员的绑定/转本地操作改变 |
+| `CreatedVia`(20，默认 `legacy`) | 创建渠道 `self_register/admin_create/ldap_jit/ldap_sync/oauth2_jit/legacy`，创建后不可变，仅用于展示与筛选 |
+
+`AuthRecord`（表 `auth_records`）以 `(auth_type, provider_name, external_id)` 为绑定键，唯一索引 `idx__auth_records__auth_type_provider_name_external_id` 由启动迁移去重后手动创建（不用 GORM `uniqueIndex` tag）。`provider_name` 是 provider 稳定标识而非展示名：LDAP 固定为 `ldap`；OAuth2 为 `oauth2:<auth.oauth2.provider_id>`（展示名仍用 `auth.oauth2.provider_name`）。`external_id` 为 LDAP DN / OAuth2 `sub`。
+
+`identity_state` 不落库，由 `services/admin_service.go` 读取一次配置后派生，优先级 `inconsistent > provider_mismatch > orphaned > ok`：
+
+- `ok`：认证源启用且绑定 provider 匹配；
+- `orphaned`：认证源未启用或配置不完整；
+- `provider_mismatch`：绑定记录的 provider 与当前 provider key 不一致；
+- `inconsistent`：违反 source/绑定/密码不变量（外部账号 `password_hash` 恒为空）。
 
 ---
 
@@ -315,6 +334,9 @@ WebDAV / CLI
 
 - `POST /admin/index/scan`、`POST /admin/index/scan/trigger`
 - `GET|POST /admin/users`、`PUT /admin/users/:id/reset-password`、`PUT /admin/users/:id/disabled`、`DELETE /admin/users/:id`
+- `POST /admin/users/:id/auth-bindings`（绑定外部身份）、`POST /admin/users/:id/convert-local`（转为本地账号）
+- `GET /admin/users` 查询参数：`page` / `page_size` / `query`，以及 `source`（`local|ldap|oauth2`）、`created_via`、`identity_state`（`ok|orphaned|provider_mismatch|inconsistent`），后三者白名单校验、非法值返回 400；条目额外返回 `auth_source` / `created_via` / `identity_state` / `provider_name` / `external_id`
+- `PUT /admin/users/:id/reset-password` 仅允许 `auth_source=local`，外部账号返回 400「请先将该用户转为本地账号」
 - `GET /admin/sessions`、`POST /admin/sessions/cleanup`、`POST /admin/sessions/cleanup-all`
 - `GET /admin/online-ips`
 - `POST /admin/records/clear`、`POST /admin/records/delete`
@@ -402,6 +424,14 @@ API Key / 索引记录 / Open API / 日志 / 资源
 
 - 提交 `POST /uploads/url-tasks` 入队；调度器 `NewURLDownloadDispatcher` 按 `max_concurrent` 并发、`max_retries` 重试；SSRF 防护（默认拒绝内网/回环/保留地址）。
 - 进度：`GET /uploads/url-tasks/stream`（SSE）或 `GET /uploads/url-tasks/:id`。
+
+### 9.5 登录与身份路由
+
+- 密码登录按 `users.auth_source` 严格路由（`services/auth_service.go`）：`local` 只校验本地密码（缺密码视为不可用，不尝试 LDAP）；`ldap` 只走目录，认证源未启用/不可用直接失败，不回退本地密码；`oauth2` 拒绝密码登录。用户名先精确匹配、再 `LOWER(username)` 匹配。
+- 本地不存在时，仅在 LDAP 启用且 `allow_auto_create` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`，同步为 `ldap_sync`）；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
+- 身份冲突（外部身份与本地账号归属不一致）写安全事件 `auth.identity_conflict`（按用户名 + provider 限频），不改动任何账号字段；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
+- `identity_state` 不落库，管理端列表按当前配置派生（见 §6.2）；对非本地账号重置密码返回 400。
+- `login_logs.method`：成功记录真实来源 `local`/`ldap`/`oauth2`，注册记 `register`；失败记录登录入口 `password_form`/`oauth2`（失败时无法可靠判定账号来源）。
 
 ---
 

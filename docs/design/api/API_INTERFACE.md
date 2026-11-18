@@ -671,6 +671,19 @@
 ### 1. 获取用户列表
 
 - **URL**：`GET /api/v1/web/admin/users`
+- **查询参数**：
+  - `page` / `page_size`：分页，`page` 从 1 开始，`page_size` 默认 20
+  - `query`：按用户名 / UUID / 姓名 / 昵称模糊匹配
+  - `source`（可选）：`local` / `ldap` / `oauth2`
+  - `created_via`（可选）：`self_register` / `admin_create` / `ldap_jit` / `ldap_sync` / `oauth2_jit` / `legacy`
+  - `identity_state`（可选）：`ok` / `orphaned` / `provider_mismatch` / `inconsistent`
+  - 白名单外的取值返回 400
+- **响应**：`data.users[]` 除原有字段外，新增：
+  - `auth_source`：当前认证归属（`local` / `ldap` / `oauth2`）
+  - `created_via`：创建渠道
+  - `identity_state`：派生身份状态（`ok` / `orphaned` / `provider_mismatch` / `inconsistent`）
+  - `provider_name`：provider 稳定标识（本地账号为空；LDAP 为 `ldap`，OAuth2 为 `oauth2:<provider_id>`）
+  - `external_id`：外部标识（LDAP DN / OAuth2 subject，仅管理员可见）
 
 ### 2. 重置用户密码
 
@@ -678,11 +691,36 @@
 - **请求体**：
   ```json
   {
-    "password": "新密码"
+    "new_password": "新密码"
   }
   ```
+- **限制**：仅 `auth_source=local` 的账号可重置；外部账号返回 `400`，提示「请先将该用户转为本地账号」。密码长度 8~128。
 
-### 3. 禁用/启用用户
+### 3. 绑定外部身份
+
+- **URL**：`POST /api/v1/web/admin/users/:id/auth-bindings`
+- **请求体**：
+  ```json
+  {
+    "auth_type": "ldap",
+    "external_id": "uid=zhangsan,ou=Users,dc=example,dc=com",
+    "external_name": "张三"
+  }
+  ```
+- **说明**：`auth_type` 取 `ldap` / `oauth2`；provider 由当前启用的认证源决定，不接受客户端指定。认证源未启用或配置不完整返回 `400`；外部身份已绑定其他用户、或目标用户已绑定其他来源返回 `409`。成功后写绑定、`auth_source=auth_type`、清空本地密码。
+
+### 4. 转为本地账号
+
+- **URL**：`POST /api/v1/web/admin/users/:id/convert-local`
+- **请求体**：
+  ```json
+  {
+    "new_password": "至少8位"
+  }
+  ```
+- **说明**：写入新密码、`auth_source=local`、删除全部外部绑定；密码长度 8~128。
+
+### 5. 禁用/启用用户
 
 - **URL**：`PUT /api/v1/web/admin/users/:id/disabled`
 - **请求体**：
@@ -692,19 +730,19 @@
   }
   ```
 
-### 4. 删除用户
+### 6. 删除用户
 
 - **URL**：`DELETE /api/v1/web/admin/users/:id`
 
-### 5. 获取上传会话列表
+### 7. 获取上传会话列表
 
 - **URL**：`GET /api/v1/web/admin/sessions`
 
-### 6. 清理过期会话
+### 8. 清理过期会话
 
 - **URL**：`POST /api/v1/web/admin/sessions/cleanup`
 
-### 7. 单文件下载记录明细
+### 9. 单文件下载记录明细
 
 - **URL**：`GET /api/v1/web/admin/files/download-records`
 - **参数**：

@@ -8,8 +8,17 @@
     </div>
 
     <el-card class="filter-card" shadow="never">
-      <el-space>
+      <el-space wrap>
         <el-input v-model="searchQuery" :maxlength="200" placeholder="过滤用户名..." clearable style="width: 200px" @keydown.enter="onSearch" @clear="onSearch" />
+        <el-select v-model="sourceFilter" placeholder="认证来源" clearable style="width: 140px" @change="onSearch">
+          <el-option v-for="opt in AUTH_SOURCE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-select v-model="createdViaFilter" placeholder="创建渠道" clearable style="width: 160px" @change="onSearch">
+          <el-option v-for="opt in CREATED_VIA_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-select v-model="identityStateFilter" placeholder="身份状态" clearable style="width: 160px" @change="onSearch">
+          <el-option v-for="opt in IDENTITY_STATE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
         <el-button @click="loadUsers" :loading="loading">
           <el-icon><RefreshIcon /></el-icon>
           刷新
@@ -120,14 +129,98 @@
         </el-space>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="convertLocalModalVisible" title="转为本地账号" width="460px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="转为本地后将删除该用户全部外部身份绑定，并改用新密码登录。"
+        style="margin-bottom: 16px"
+      />
+      <el-form :model="convertLocalForm" label-width="90px">
+        <el-form-item label="用户名">
+          {{ convertLocalForm.username }}
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+            v-model="convertLocalForm.newPassword"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="8-128位"
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input
+            v-model="convertLocalForm.confirmPassword"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="请再次输入新密码"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="convertLocalModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="convertingToLocal" @click="handleConvertToLocal">
+            确认转为本地
+          </el-button>
+        </el-space>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="bindIdentityModalVisible" title="绑定外部身份" width="500px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="绑定后该用户的本地密码将被清空，请确认认证源已启用且外部标识正确。"
+        style="margin-bottom: 16px"
+      />
+      <el-form :model="bindIdentityForm" label-width="90px">
+        <el-form-item label="用户名">
+          {{ bindIdentityForm.username }}
+        </el-form-item>
+        <el-form-item label="认证类型" prop="authType">
+          <el-select v-model="bindIdentityForm.authType" placeholder="请选择已启用的认证源" style="width: 100%">
+            <el-option v-for="opt in AUTH_BIND_TYPE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="外部标识" prop="externalId">
+          <el-input
+            v-model="bindIdentityForm.externalId"
+            :maxlength="512"
+            placeholder="必填，如 LDAP DN 或 OAuth2 用户标识"
+          />
+        </el-form-item>
+        <el-form-item label="外部名称" prop="externalName">
+          <el-input
+            v-model="bindIdentityForm.externalName"
+            :maxlength="128"
+            placeholder="可选，如 张三"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="bindIdentityModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="bindingIdentity" @click="handleBindIdentity">
+            确认绑定
+          </el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, h } from 'vue'
-import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress } from 'element-plus'
+import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress, ElTooltip } from 'element-plus'
 import { AuthApi, AdminApi } from '@/api'
 import { TableConst, TimeUtils, UserUtils } from '@/utils'
+import { formatErrorMessage } from '@/utils/error'
 
 const RefreshIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor', width: 16, height: 16 }, [
   h('path', { d: 'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z' })
@@ -139,9 +232,60 @@ const PlusIcon = () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: 
 const loading = ref(false)
 const users = ref([])
 const searchQuery = ref('')
+const sourceFilter = ref('')
+const createdViaFilter = ref('')
+const identityStateFilter = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+// 认证来源选项：与后端 auth_source 取值保持一致
+const AUTH_SOURCE_OPTIONS = [
+  { value: 'local', label: '本地' },
+  { value: 'ldap', label: 'LDAP' },
+  { value: 'oauth2', label: 'OAuth2' }
+]
+
+// 可绑定的外部认证类型：provider 由后端按当前启用的认证源决定，前端不可手填
+const AUTH_BIND_TYPE_OPTIONS = AUTH_SOURCE_OPTIONS.filter(opt => opt.value !== 'local')
+
+// 创建渠道选项：与后端 created_via 取值保持一致
+const CREATED_VIA_OPTIONS = [
+  { value: 'self_register', label: '自助注册' },
+  { value: 'admin_create', label: '管理员创建' },
+  { value: 'ldap_jit', label: 'LDAP 自动创建' },
+  { value: 'ldap_sync', label: 'LDAP 同步' },
+  { value: 'oauth2_jit', label: 'OAuth2 自动创建' },
+  { value: 'legacy', label: '历史数据' }
+]
+
+// 身份状态选项：identity_state 由后端派生，同时用于筛选与列表展示
+const IDENTITY_STATE_OPTIONS = [
+  { value: 'ok', label: '正常' },
+  { value: 'orphaned', label: '认证源已停用' },
+  { value: 'provider_mismatch', label: '认证源已变更' },
+  { value: 'inconsistent', label: '身份数据异常' }
+]
+
+const AUTH_SOURCE_LABELS = Object.fromEntries(AUTH_SOURCE_OPTIONS.map(opt => [opt.value, opt.label]))
+const CREATED_VIA_LABELS = Object.fromEntries(CREATED_VIA_OPTIONS.map(opt => [opt.value, opt.label]))
+const IDENTITY_STATE_LABELS = Object.fromEntries(IDENTITY_STATE_OPTIONS.map(opt => [opt.value, opt.label]))
+const AUTH_SOURCE_TAG_TYPES = { local: 'info', ldap: 'warning', oauth2: 'success' }
+// 身份状态标签类型：ok 用普通标签，异常状态用警示色
+const IDENTITY_STATE_TAG_TYPES = { ok: 'info', orphaned: 'warning', provider_mismatch: 'warning', inconsistent: 'danger' }
+// 异常身份的说明：仅在非 ok 状态展示 tooltip
+const IDENTITY_STATE_TIPS = {
+  orphaned: '认证源已停用：该账号所属认证源当前未启用或配置不完整，可转为本地账号',
+  provider_mismatch: '认证源已变更：绑定记录中的 provider 与当前配置不一致',
+  inconsistent: '身份数据异常：账号归属与绑定记录不满足一致性约束，需管理员修复'
+}
+
+// 认证来源展示名：未知值原样显示，空值显示为占位符
+const formatAuthSource = (value) => AUTH_SOURCE_LABELS[value] || value || '-'
+// 创建方式展示名：未知值原样显示，空值显示为占位符
+const formatCreatedVia = (value) => CREATED_VIA_LABELS[value] || value || '未知'
+// 身份状态展示名：未知或空值显示为占位符
+const formatIdentityState = (value) => IDENTITY_STATE_LABELS[value] || '-'
 const createUserModalVisible = ref(false)
 const creatingUser = ref(false)
 const createFormRef = ref(null)
@@ -159,6 +303,25 @@ const resetPasswordForm = ref({
   username: '',
   newPassword: '',
   confirmPassword: ''
+})
+// 转为本地账号弹窗
+const convertLocalModalVisible = ref(false)
+const convertingToLocal = ref(false)
+const convertLocalForm = ref({
+  uuid: '',
+  username: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+// 绑定外部身份弹窗
+const bindIdentityModalVisible = ref(false)
+const bindingIdentity = ref(false)
+const bindIdentityForm = ref({
+  uuid: '',
+  username: '',
+  authType: '',
+  externalId: '',
+  externalName: ''
 })
 
 const onSearch = () => {
@@ -193,6 +356,27 @@ const updateTableSize = () => {
   }
 }
 
+// 重置密码仅本地账号可用：非本地账号置灰，并用 tooltip 提示先转为本地
+const renderResetPasswordAction = (row) => {
+  const isLocal = row.auth_source === 'local'
+  return h(ElTooltip, {
+    content: '请先将该用户转为本地账号',
+    disabled: isLocal,
+    placement: 'top'
+  }, {
+    // 禁用的按钮不触发鼠标事件，需外包一层元素承载 tooltip
+    default: () => h('span', { style: 'display: inline-flex;' }, [
+      h(ElButton, {
+        size: 'small',
+        type: 'primary',
+        link: true,
+        disabled: !isLocal,
+        onClick: () => showResetPasswordModal(row)
+      }, () => '重置密码')
+    ])
+  })
+}
+
 const columns = [
   {
     title: '用户名',
@@ -218,9 +402,40 @@ const columns = [
     cellRenderer: ({ rowData: row }) => h('div', { title: row.nickname || '' }, row.nickname || '-')
   },
   {
-    title: '状态',
+    title: '认证来源',
+    key: 'auth_source',
+    width: 140,
+    cellRenderer: ({ rowData: row }) => h(ElTooltip, {
+      content: `创建方式：${formatCreatedVia(row.created_via)}`,
+      placement: 'top'
+    }, {
+      default: () => h(ElTag, {
+        size: 'small',
+        type: AUTH_SOURCE_TAG_TYPES[row.auth_source] || 'info'
+      }, () => formatAuthSource(row.auth_source))
+    })
+  },
+  {
+    title: '身份状态',
+    key: 'identity_state',
+    width: 140,
+    cellRenderer: ({ rowData: row }) => {
+      const state = row.identity_state
+      if (!state || !IDENTITY_STATE_LABELS[state]) return h('span', '-')
+      const tag = h(ElTag, {
+        size: 'small',
+        type: IDENTITY_STATE_TAG_TYPES[state] || 'info'
+      }, () => formatIdentityState(state))
+      const tip = IDENTITY_STATE_TIPS[state]
+      return tip
+        ? h(ElTooltip, { content: tip, placement: 'top' }, { default: () => tag })
+        : tag
+    }
+  },
+  {
+    title: '账号状态',
     key: 'disabled',
-    width: 80,
+    width: 90,
     cellRenderer: ({ rowData: row }) => {
       const type = row.disabled ? 'danger' : 'success'
       return h(ElTag, { type, size: 'small' }, () => row.disabled ? '禁用' : '正常')
@@ -270,20 +485,27 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 200,
-    cellRenderer: ({ rowData: row }) => h('div', { style: 'display: flex; gap: 8px;' }, [
+    width: 380,
+    cellRenderer: ({ rowData: row }) => h('div', { style: 'display: flex; gap: 8px; align-items: center;' }, [
       h(ElButton, {
         size: 'small',
         type: row.disabled ? 'success' : 'warning',
         link: true,
         onClick: () => toggleUserDisabled(row)
       }, () => row.disabled ? '启用' : '禁用'),
+      renderResetPasswordAction(row),
       h(ElButton, {
         size: 'small',
         type: 'primary',
         link: true,
-        onClick: () => showResetPasswordModal(row)
-      }, () => '重置密码'),
+        onClick: () => showConvertLocalModal(row)
+      }, () => '转为本地'),
+      h(ElButton, {
+        size: 'small',
+        type: 'primary',
+        link: true,
+        onClick: () => showBindIdentityModal(row)
+      }, () => '绑定身份'),
       h(ElButton, {
         size: 'small',
         type: 'danger',
@@ -297,7 +519,11 @@ const columns = [
 const loadUsers = async () => {
   loading.value = true
   try {
-    const data = await AdminApi.getUsers(page.value, pageSize.value, searchQuery.value)
+    const data = await AdminApi.getUsers(page.value, pageSize.value, searchQuery.value, {
+      source: sourceFilter.value,
+      createdVia: createdViaFilter.value,
+      identityState: identityStateFilter.value
+    })
     if (data.success) {
       users.value = (data.data && data.data.users) || []
       total.value = data.data?.total || 0
@@ -356,6 +582,11 @@ const handleCreateUser = async () => {
 }
 
 const showResetPasswordModal = (user) => {
+  // 仅本地账号可重置密码，非本地账号需先转为本地
+  if (user.auth_source !== 'local') {
+    ElMessage.warning('请先将该用户转为本地账号')
+    return
+  }
   resetPasswordForm.value = {
     uuid: user.uuid,
     username: user.username,
@@ -370,8 +601,8 @@ const handleResetPassword = async () => {
     ElMessage.error('两次输入的密码不一致')
     return
   }
-  if (resetPasswordForm.value.newPassword.length < 6) {
-    ElMessage.error('密码至少6位')
+  if (resetPasswordForm.value.newPassword.length < 8 || resetPasswordForm.value.newPassword.length > 128) {
+    ElMessage.error('密码长度需为8-128位')
     return
   }
 
@@ -385,10 +616,111 @@ const handleResetPassword = async () => {
       ElMessage.error(data.message || '密码重置失败')
     }
   } catch (error) {
-    ElMessage.error('密码重置失败')
-    console.error(error)
+    // 后端限制非本地账号重置（400），保留原文案便于管理员按提示操作
+    ElMessage.error(formatErrorMessage(error, '密码重置失败'))
   } finally {
     resettingPassword.value = false
+  }
+}
+
+const showConvertLocalModal = (user) => {
+  convertLocalForm.value = {
+    uuid: user.uuid,
+    username: user.username,
+    newPassword: '',
+    confirmPassword: ''
+  }
+  convertLocalModalVisible.value = true
+}
+
+const handleConvertToLocal = async () => {
+  const { uuid, username, newPassword, confirmPassword } = convertLocalForm.value
+  if (newPassword.length < 8 || newPassword.length > 128) {
+    ElMessage.error('密码长度需为8-128位')
+    return
+  }
+  if (newPassword !== confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
+    return
+  }
+
+  // 高风险操作：二次确认后再提交
+  try {
+    await ElMessageBox.confirm(
+      `确定将用户 "${username}" 转为本地账号吗？该操作会删除其全部外部身份绑定。`,
+      '确认转为本地账号',
+      { type: 'warning', confirmButtonText: '转为本地', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+
+  convertingToLocal.value = true
+  try {
+    const data = await AdminApi.convertToLocal(uuid, newPassword)
+    if (data.success) {
+      ElMessage.success('已转为本地账号')
+      convertLocalModalVisible.value = false
+      loadUsers()
+    } else {
+      ElMessage.error(data.message || '转为本地账号失败')
+    }
+  } catch (error) {
+    ElMessage.error(formatErrorMessage(error, '转为本地账号失败'))
+  } finally {
+    convertingToLocal.value = false
+  }
+}
+
+const showBindIdentityModal = (user) => {
+  bindIdentityForm.value = {
+    uuid: user.uuid,
+    username: user.username,
+    authType: '',
+    externalId: '',
+    externalName: ''
+  }
+  bindIdentityModalVisible.value = true
+}
+
+const handleBindIdentity = async () => {
+  const { uuid, username, authType, externalId, externalName } = bindIdentityForm.value
+  if (!authType) {
+    ElMessage.error('请选择认证类型')
+    return
+  }
+  if (!externalId.trim()) {
+    ElMessage.error('请输入外部标识')
+    return
+  }
+  const typeLabel = AUTH_SOURCE_LABELS[authType] || authType
+
+  // 高风险操作：二次确认后再提交
+  try {
+    await ElMessageBox.confirm(
+      `确定将用户 "${username}" 绑定到 ${typeLabel} 身份吗？绑定后将清空其本地密码。`,
+      '确认绑定外部身份',
+      { type: 'warning', confirmButtonText: '绑定', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+
+  bindingIdentity.value = true
+  try {
+    const data = await AdminApi.bindAuthIdentity(uuid, authType, externalId.trim(), externalName.trim())
+    if (data.success) {
+      ElMessage.success('外部身份绑定成功')
+      bindIdentityModalVisible.value = false
+      loadUsers()
+    } else {
+      ElMessage.error(data.message || '绑定外部身份失败')
+    }
+  } catch (error) {
+    // 409（已绑定/来源冲突）、400（认证源未启用等）展示后端原文案
+    ElMessage.error(formatErrorMessage(error, '绑定外部身份失败'))
+  } finally {
+    bindingIdentity.value = false
   }
 }
 

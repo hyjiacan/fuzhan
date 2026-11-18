@@ -11,6 +11,11 @@
         <el-input autocomplete="off" v-model="settings.auth.oauth2.providerName" placeholder="如 企业 SSO / GitHub，用于日志与审计中的提供方标识" />
       </el-form-item>
 
+      <el-form-item label="认证源标识">
+        <el-input autocomplete="off" v-model="settings.auth.oauth2.providerId" placeholder="如 keycloak-prod" />
+        <div class="field-hint">稳定的提供方标识，启用时必填；仅用于账号绑定，变更视为认证源迁移，已有账号会标记为待处理</div>
+      </el-form-item>
+
       <el-row :gutter="16">
         <el-col :span="12" :sm="12" :xs="24">
           <el-form-item label="Client ID">
@@ -132,6 +137,7 @@ const buildPayload = () => {
   return {
     enabled: o.enabled,
     provider_name: o.providerName,
+    provider_id: o.providerId,
     client_id: o.clientId,
     client_secret: o.clientSecret,
     auth_url: o.authUrl,

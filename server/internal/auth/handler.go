@@ -2,7 +2,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -177,14 +176,14 @@ func (h *Handler) Register(c *gin.Context) {
 		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
 		middleware.LogOperation(c, "auth.register", req.Username, err)
 		h.recordAuthFailure(c, "auth.register", req.Username, false)
-		h.recordLoginLog(c, "", req.Username, "register", "failed", err.Error())
+		h.recordLoginLog(c, "", req.Username, services.LoginMethodRegister, "failed", err.Error())
 		response.HandleBadRequest(c, err.Error(), nil)
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	resetLoginFailuresByUsername(utils.GetClientIP(c), req.Username)
 	middleware.LogOperation(c, "auth.register", req.Username, nil)
-	h.recordLoginLog(c, resp.UUID, resp.Username, "register", "success", "")
+	h.recordLoginLog(c, resp.UUID, resp.Username, services.LoginMethodRegister, "success", "")
 	// 注册即登录（与轻量版一致）：把 JWT 写入 HttpOnly Cookie，
 	// 使 Vue 与 lite 两端登录态统一，均由同源 Cookie 承载。
 	middleware.SetAuthCookie(c, resp.Token)
@@ -207,7 +206,7 @@ func (h *Handler) Login(c *gin.Context) {
 		handleLoginBlocked(c)
 		return
 	}
-	resp, err := h.authService.Login(&req)
+	resp, method, err := h.authService.Login(&req)
 	if err != nil {
 		registerLoginFailure(utils.GetClientIP(c))
 		registerLoginFailureByUsername(utils.GetClientIP(c), req.Username)
@@ -215,19 +214,17 @@ func (h *Handler) Login(c *gin.Context) {
 		utils.Warn("用户登录失败", utils.String("username", req.Username), utils.Err(err))
 		middleware.LogOperation(c, "auth.login", req.Username, err)
 		h.recordAuthFailure(c, "auth.login", req.Username, h.authService.IsAdminUsername(req.Username))
-		h.recordLoginLog(c, "", req.Username, "local", "failed", err.Error())
-		msg := "用户名或密码错误"
-		if errors.Is(err, services.ErrAccountDisabled) {
-			msg = err.Error()
-		}
-		response.HandleUnauthorized(c, msg)
+		// 失败时无法可靠判定账号来源，按登录入口记录
+		h.recordLoginLog(c, "", req.Username, services.LoginMethodPasswordForm, "failed", err.Error())
+		response.HandleUnauthorized(c, services.UserFacingLoginError(err))
 		return
 	}
 	resetLoginFailures(utils.GetClientIP(c))
 	resetLoginFailuresByUsername(utils.GetClientIP(c), req.Username)
 	middleware.LogOperation(c, "auth.login", req.Username, nil)
 	recordAuthSuccess(c, resp.Username)
-	h.recordLoginLog(c, resp.UUID, resp.Username, "local", "success", "")
+	// 成功时记录真实认证来源（local / ldap）
+	h.recordLoginLog(c, resp.UUID, resp.Username, method, "success", "")
 	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
 	middleware.SetAuthCookie(c, resp.Token)
 	response.HandleSuccess(c, http.StatusOK, "登录成功", authSessionResponse(resp))
@@ -418,12 +415,15 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 		desc := c.Query("error_description")
 		utils.Warn("OAuth2 提供方返回错误",
 			utils.String("error", errMsg), utils.String("error_description", desc))
+		// 失败按入口记录，便于个人登录记录还原尝试
+		h.recordLoginLog(c, "", "", services.LoginMethodOAuth2, "failed", "外部认证提供方返回错误")
 		h.redirectOAuth2Error(c)
 		return
 	}
 	if err := h.oauth2Service.verifyState(c.Query("state")); err != nil {
 		utils.Warn("OAuth2 回调 state 校验失败", utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", "", models.SeverityMedium, "OAuth2 回调 state 校验失败: "+err.Error())
+		h.recordLoginLog(c, "", "", services.LoginMethodOAuth2, "failed", "state 校验失败")
 		h.redirectOAuth2Error(c)
 		return
 	}
@@ -432,6 +432,7 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 	if err != nil {
 		utils.Warn("OAuth2 认证失败", utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", "", models.SeverityMedium, "OAuth2 认证失败: "+err.Error())
+		h.recordLoginLog(c, "", "", services.LoginMethodOAuth2, "failed", err.Error())
 		h.redirectOAuth2Error(c)
 		return
 	}
@@ -440,11 +441,12 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 	if err != nil {
 		utils.Warn("OAuth2 用户登录失败", utils.String("username", user.Username), utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", user.Username, models.SeverityMedium, "OAuth2 用户登录失败: "+err.Error())
+		h.recordLoginLog(c, "", user.Username, services.LoginMethodOAuth2, "failed", err.Error())
 		h.redirectOAuth2Error(c)
 		return
 	}
 	middleware.LogOperation(c, "auth.oauth2.login", user.Username, nil)
-	h.recordLoginLog(c, resp.UUID, resp.Username, "oauth2", "success", "")
+	h.recordLoginLog(c, resp.UUID, resp.Username, services.LoginMethodOAuth2, "success", "")
 
 	// OAuth2 登录成功写 HttpOnly Cookie，凭证只经 Cookie 传递；
 	// 跳回前端时不再把令牌放进 URL（避免残留在浏览器历史/脚本可读的 location）。

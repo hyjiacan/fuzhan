@@ -19,13 +19,31 @@ import (
 // ErrAccountDisabled 账户被禁用（少数可直接展示给用户的认证失败原因）
 var ErrAccountDisabled = errors.New("账户已被禁用")
 
+// ErrInvalidCredentials 凭据错误：账号不存在、密码错误、认证源不匹配等统一使用该提示，
+// 不向调用方暴露账号是否存在或归属哪种认证源。
+var ErrInvalidCredentials = errors.New("用户名或密码错误")
+
+// ErrAccountUnavailable 账号当前不可用：认证源停用、身份冲突、数据异常等统一使用该提示。
+var ErrAccountUnavailable = errors.New("账号当前不可用，请联系管理员")
+
 // ErrLDAPInvalidCredentials LDAP 明确拒绝凭据（用户不存在或密码错误），属正常登录失败
 var ErrLDAPInvalidCredentials = errors.New("LDAP 凭据无效")
+
+// 登录方式（login_logs.method）：成功记真实认证来源，失败记登录入口。
+const (
+	LoginMethodLocal        = "local"
+	LoginMethodLDAP         = "ldap"
+	LoginMethodOAuth2       = "oauth2"
+	LoginMethodPasswordForm = "password_form"
+	LoginMethodRegister     = "register"
+)
 
 // LDAPAuthenticator LDAP 认证接口
 // 避免 services 和 internal/auth 之间的循环依赖
 type LDAPAuthenticator interface {
 	IsEnabled() bool
+	// AllowsAutoCreate 是否允许在本地无同名账号时 JIT 建号
+	AllowsAutoCreate() bool
 	Authenticate(username, password string) (*models.User, error)
 }
 
@@ -91,6 +109,10 @@ func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
 	if err := s.db.Where("username = ?", req.Username).First(&existingUser).Error; err == nil {
 		return nil, errors.New("用户名已存在")
 	}
+	// 大小写不敏感兜底：避免 ZhangSan 与 zhangsan 被创建成两个账号
+	if err := s.db.Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&existingUser).Error; err == nil {
+		return nil, errors.New("用户名已存在")
+	}
 
 	uuid, err := generateUUID()
 	if err != nil {
@@ -106,6 +128,8 @@ func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
 		UUID:         uuid,
 		Username:     req.Username,
 		PasswordHash: string(hashedPassword),
+		AuthSource:   models.AuthSourceLocal,
+		CreatedVia:   models.CreatedViaSelfRegister,
 	}
 
 	if err := s.db.Create(user).Error; err != nil {
@@ -127,53 +151,122 @@ func (s *AuthService) Register(req *RegisterRequest) (*AuthResponse, error) {
 	}, nil
 }
 
-// LoginByPassword 验证用户名密码（共享认证逻辑，WebDAV/FTP/Web API 共用）
-// 支持认证链：LDAP → 本地密码
+// LoginByPassword 验证用户名密码（共享认证逻辑，WebDAV/FTP/Web API 共用）。
+// 认证路径由账号的 auth_source 决定：本地账号只校验本地密码，外部账号只走对应认证源，
+// 不做「先试 LDAP、失败回退本地密码」的机会式认证。
 func (s *AuthService) LoginByPassword(username, password string) (*models.User, error) {
-	// 第一步：尝试 LDAP 认证（如果启用）
-	if s.ldapService != nil && s.ldapService.IsEnabled() {
-		user, err := s.ldapService.Authenticate(username, password)
-		if err == nil {
-			if user.Disabled {
-				return nil, ErrAccountDisabled
+	user, _, err := s.loginByPassword(username, password)
+	return user, err
+}
+
+// loginByPassword 执行严格路由的密码登录，并返回实际使用的认证来源（local / ldap）。
+func (s *AuthService) loginByPassword(username, password string) (*models.User, string, error) {
+	username = strings.TrimSpace(username)
+	user, err := s.findUserByUsername(username)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// 已存在本地账号：按 auth_source 路由，认证源不匹配一律拒绝
+	if user != nil {
+		switch user.AuthSource {
+		case "", models.AuthSourceLocal:
+			if user.PasswordHash == "" {
+				// 本地账号缺密码属数据异常，按不可用处理，不尝试其它认证源
+				return nil, "", ErrAccountUnavailable
 			}
-			return user, nil
-		}
-		// LDAP 失败时降级到本地认证，不直接返回错误，
-		// 以避免 LDAP 服务不可用时拒绝仍可用本地密码登录的账户。
-		if errors.Is(err, ErrLDAPInvalidCredentials) {
-			// 凭据错误属正常登录失败，只在调试日志留痕
-			utils.Debug("LDAP 认证未通过，回退本地认证",
-				utils.String("username", username), utils.Err(err))
-		} else {
-			// 连接失败、服务账号绑定失败、目录查询失败等认证源故障必须能被排查到
-			utils.Warn("LDAP 认证源不可用，回退本地认证",
-				utils.String("username", username), utils.Err(err))
+			if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+				return nil, "", ErrInvalidCredentials
+			}
+			if user.Disabled {
+				return nil, "", ErrAccountDisabled
+			}
+			return user, LoginMethodLocal, nil
+
+		case models.AuthSourceLDAP:
+			// 认证源停用或配置不完整时直接失败，不回退本地密码
+			if s.ldapService == nil || !s.ldapService.IsEnabled() {
+				return nil, "", ErrAccountUnavailable
+			}
+			return s.authenticateLDAP(username, password)
+
+		case models.AuthSourceOAuth2:
+			// 外部账号不允许密码登录，且不暴露账号所属认证源
+			return nil, "", ErrInvalidCredentials
+
+		default:
+			return nil, "", ErrAccountUnavailable
 		}
 	}
 
-	// 第二步：本地密码认证
+	// 本地不存在：仅在 LDAP 启用且允许自动建号时尝试目录认证（成功后 JIT 建号）
+	if s.ldapService != nil && s.ldapService.IsEnabled() && s.ldapService.AllowsAutoCreate() {
+		return s.authenticateLDAP(username, password)
+	}
+	return nil, "", ErrInvalidCredentials
+}
+
+// authenticateLDAP 执行目录认证并把错误收敛为对外通用语义。
+func (s *AuthService) authenticateLDAP(username, password string) (*models.User, string, error) {
+	user, err := s.ldapService.Authenticate(username, password)
+	if err != nil {
+		return nil, "", normalizeLDAPLoginError(err)
+	}
+	if user.Disabled {
+		return nil, "", ErrAccountDisabled
+	}
+	return user, LoginMethodLDAP, nil
+}
+
+// normalizeLDAPLoginError 将 LDAP 认证错误映射为对外提示：
+// 凭据错误保持通用失败；目录不可用、身份冲突等统一为「账号当前不可用」。
+func normalizeLDAPLoginError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrAccountDisabled):
+		return ErrAccountDisabled
+	case errors.Is(err, ErrLDAPInvalidCredentials):
+		return ErrInvalidCredentials
+	default:
+		utils.Warn("LDAP 认证源不可用", utils.Err(err))
+		return ErrAccountUnavailable
+	}
+}
+
+// findUserByUsername 按用户名查找本地用户：先精确匹配，再按大小写不敏感匹配。
+// 未命中返回 (nil, nil)，数据库错误才返回 error。
+func (s *AuthService) findUserByUsername(username string) (*models.User, error) {
 	var user models.User
-	if err := s.db.Where("username = ?", username).First(&user).Error; err != nil {
+	err := s.db.Where("username = ?", username).First(&user).Error
+	if err == nil {
+		return &user, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+	if err := s.db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("用户名或密码错误")
+			return nil, nil
 		}
 		return nil, fmt.Errorf("查询用户失败: %w", err)
 	}
-
-	// LDAP 用户（无本地密码）不能通过本地密码登录
-	if user.PasswordHash == "" {
-		return nil, errors.New("该用户需要通过 LDAP 认证")
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return nil, errors.New("用户名或密码错误")
-	}
-	if user.Disabled {
-		return nil, ErrAccountDisabled
-	}
-
 	return &user, nil
+}
+
+// UserFacingLoginError 返回可展示给用户的登录失败提示。
+// 只保留「禁用」「账号不可用」两类明确语义，其余（凭据错误、认证源细节、内部错误）统一为通用提示。
+func UserFacingLoginError(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrAccountUnavailable):
+		return ErrAccountUnavailable.Error()
+	case errors.Is(err, ErrAccountDisabled):
+		return ErrAccountDisabled.Error()
+	default:
+		return ErrInvalidCredentials.Error()
+	}
 }
 
 // IsAdminUsername 判断用户名是否为管理员账号。
@@ -192,11 +285,12 @@ func (s *AuthService) IsAdminUsername(username string) bool {
 	return count > 0
 }
 
-// Login 用户登录
-func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
-	user, err := s.LoginByPassword(req.Username, req.Password)
+// Login 用户登录，返回会话、实际认证来源（local/ldap）与错误。
+// 调用方据此把真实来源写入 login_logs.method，避免统一记成 local。
+func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, string, error) {
+	user, method, err := s.loginByPassword(req.Username, req.Password)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	role := user.Role
@@ -205,7 +299,7 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 	}
 	token, err := jwt.GenerateJWT(user.UUID, user.Username, role, user.Disabled)
 	if err != nil {
-		return nil, fmt.Errorf("生成令牌失败: %w", err)
+		return nil, "", fmt.Errorf("生成令牌失败: %w", err)
 	}
 
 	return &AuthResponse{
@@ -215,7 +309,7 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, error) {
 		DisplayName: user.DisplayName,
 		Nickname:    user.Nickname,
 		ExpiresIn:   authTokenTTLSeconds,
-	}, nil
+	}, method, nil
 }
 
 // LoginByUser 为已完成外部认证（OAuth2/OIDC）的用户签发本地令牌
@@ -275,9 +369,12 @@ func (s *AuthService) ChangePassword(uuid, oldPassword, newPassword string) erro
 		return fmt.Errorf("查询用户失败: %w", err)
 	}
 
-	// LDAP 用户不允许修改密码
+	// 仅本地账号支持修改密码；外部账号凭证由认证源管理
+	if user.AuthSource != "" && user.AuthSource != models.AuthSourceLocal {
+		return errors.New("该账号使用外部认证，无法修改密码")
+	}
 	if user.PasswordHash == "" {
-		return errors.New("该用户通过 LDAP 认证，无法修改密码")
+		return errors.New("该账号未设置本地密码")
 	}
 
 	// 验证旧密码
@@ -319,9 +416,12 @@ func (s *AuthService) DeleteAccount(uuid, password string) error {
 		return errors.New("管理员账号不支持自助注销")
 	}
 
-	// LDAP 用户没有本地密码，无法二次确认身份
+	// 外部账号没有本地密码，无法二次确认身份
+	if user.AuthSource != "" && user.AuthSource != models.AuthSourceLocal {
+		return errors.New("该账号使用外部认证，无法自助注销")
+	}
 	if user.PasswordHash == "" {
-		return errors.New("该用户通过 LDAP 认证，无法自助注销")
+		return errors.New("该账号未设置本地密码")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return errors.New("密码错误")

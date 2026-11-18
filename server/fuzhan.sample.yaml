@@ -353,6 +353,7 @@ security:
 #     insecure_skip_verify: false  # 跳过 LDAPS 证书校验（仅 use_ssl: true 时生效，仅测试/自签名环境可设为 true）
 #   oauth2:
 #     enabled: false           # 是否启用外部认证（授权码模式）
+#     provider_id: ""          # 认证源稳定标识，启用时必填（如 keycloak-prod），变更视为认证源迁移
 #     provider_name: ""        # 显示名称，用于登录页按钮文案，如 "企业 SSO"
 #     client_id: ""            # 外部系统分配的客户端 ID
 #     client_secret: ""        # 客户端密钥

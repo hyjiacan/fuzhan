@@ -50,7 +50,13 @@
             <el-option label="OAuth2 / OIDC" value="oauth2" />
           </el-select>
           <div class="field-hint">
-            同一时间只接入一种第三方认证系统；本地账户始终保留作为回退。
+            同一时间只接入一种第三方认证系统。
+          </div>
+          <div class="field-hint">
+            LDAP 用户仅通过 LDAP 登录，不再回退本地密码；本地管理员账号作为应急入口。
+          </div>
+          <div class="field-hint">
+            停用认证源后，已有账号会标记为待处理，可在用户管理中转为本地账号。
           </div>
         </el-form-item>
       </el-form>

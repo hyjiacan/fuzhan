@@ -300,6 +300,13 @@ func validateConfig() {
 		}
 	}
 
+	// 第三方认证：LDAP 与 OAuth2 互斥；OAuth2 启用时必须配置稳定 provider_id。
+	// 启动阶段直接终止，避免认证行为在配置不确定时运行。
+	if msg := ValidateAuthConfig(GlobalConfig.Auth.LDAP.Enabled, GlobalConfig.Auth.OAuth2.Enabled,
+		GlobalConfig.Auth.OAuth2.ProviderID); msg != "" {
+		utils.Fatal("配置错误: "+msg, utils.String("file", ConfigPath))
+	}
+
 	// 默认允许上传
 	if !GlobalConfig.Upload.Enabled {
 		utils.Info("配置: 公共目录上传已关闭")

@@ -47,6 +47,7 @@ type AuthConfigDTO struct {
 // OAuth2ConfigDTO 外部 OAuth2/OIDC 配置 DTO（对应 yaml auth.oauth2.*）
 type OAuth2ConfigDTO struct {
 	Enabled            bool     `json:"enabled"`
+	ProviderID         string   `json:"provider_id"`
 	ProviderName       string   `json:"provider_name"`
 	ClientID           string   `json:"client_id"`
 	ClientSecret       string   `json:"client_secret"`
@@ -657,6 +658,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			},
 			OAuth2: OAuth2ConfigDTO{
 				Enabled:            c.Auth.OAuth2.Enabled,
+				ProviderID:         c.Auth.OAuth2.ProviderID,
 				ProviderName:       c.Auth.OAuth2.ProviderName,
 				ClientID:           c.Auth.OAuth2.ClientID,
 				ClientSecret:       c.Auth.OAuth2.ClientSecret,
@@ -886,6 +888,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 
 	// OAuth2/OIDC 认证配置
 	cfg.Auth.OAuth2.Enabled = dto.Auth.OAuth2.Enabled
+	cfg.Auth.OAuth2.ProviderID = dto.Auth.OAuth2.ProviderID
 	cfg.Auth.OAuth2.ProviderName = dto.Auth.OAuth2.ProviderName
 	cfg.Auth.OAuth2.ClientID = dto.Auth.OAuth2.ClientID
 	cfg.Auth.OAuth2.ClientSecret = dto.Auth.OAuth2.ClientSecret

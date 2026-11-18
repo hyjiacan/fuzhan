@@ -344,8 +344,14 @@ Content-Type: application/json
 |----------|------|---------|----------|
 | GET | `/api/v1/web/admin/users` | `admin.Handler.UsersHandler` | 用户列表 |
 | PUT | `/api/v1/web/admin/users/:id/reset-password` | `admin.Handler.ResetPasswordHandler` | 重置密码 |
+| POST | `/api/v1/web/admin/users/:id/auth-bindings` | `admin.Handler.BindExternalIdentityHandler` | 绑定外部身份 |
+| POST | `/api/v1/web/admin/users/:id/convert-local` | `admin.Handler.ConvertUserToLocalHandler` | 转为本地账号 |
 | PUT | `/api/v1/web/admin/users/:id/disabled` | `admin.Handler.SetUserDisabledHandler` | 禁用/启用 |
 | DELETE | `/api/v1/web/admin/users/:id` | `admin.Handler.DeleteUserHandler` | 删除用户 |
+
+- 用户列表支持 `query` / `source` / `created_via` / `identity_state` 过滤（后三者白名单校验），条目新增 `auth_source`、`created_via`、`identity_state`、`provider_name`、`external_id`。
+- 重置密码仅允许 `auth_source=local`，外部账号返回 400「请先将该用户转为本地账号」；请求体字段为 `new_password`。
+- 绑定外部身份请求体为 `auth_type` / `external_id` / `external_name`，provider 由当前启用配置决定，冲突返回 409；转为本地账号请求体为 `new_password`（8~128 位）。
 | GET | `/api/v1/web/admin/sessions` | `admin.Handler.SessionsHandler` | 上传会话列表 |
 | POST | `/api/v1/web/admin/sessions/cleanup` | `admin.Handler.CleanupSessionsHandler` | 清理会话 |
 

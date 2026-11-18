@@ -521,8 +521,9 @@ export const FileRecordApi = {
 
 // ========== 管理员 API ==========
 export const AdminApi = {
-  getUsers(page = 1, pageSize = 20, query = '') {
-    return request.get('/admin/users', { params: { page, page_size: pageSize, query } })
+  // filters 支持 source / createdVia / identityState（camelCase 自动转 snake_case 传给后端）
+  getUsers(page = 1, pageSize = 20, query = '', filters = {}) {
+    return request.get('/admin/users', { params: { page, page_size: pageSize, query, ...snakeParams(filters) } })
   },
 
   createUser(username, displayName, password, role = 'user') {
@@ -531,6 +532,19 @@ export const AdminApi = {
 
   resetPassword(uuid, newPassword) {
     return request.put(`/admin/users/${uuid}/reset-password`, { new_password: newPassword }, { skipSuccessToast: true })
+  },
+
+  // 转为本地账号：写入新密码并删除该用户的全部外部身份绑定（auth_source 变为 local）
+  convertToLocal(uuid, newPassword) {
+    return request.post(`/admin/users/${uuid}/convert-local`, { new_password: newPassword }, { skipSuccessToast: true })
+  },
+
+  // 绑定外部身份：provider 由后端按当前启用的认证源决定，前端只提交认证类型与外部标识
+  bindAuthIdentity(uuid, authType, externalId, externalName = '') {
+    const payload = { auth_type: authType, external_id: externalId }
+    // external_name 为可选字段，仅在填写时提交
+    if (externalName) payload.external_name = externalName
+    return request.post(`/admin/users/${uuid}/auth-bindings`, payload, { skipSuccessToast: true })
   },
 
   setUserDisabled(uuid, disabled) {

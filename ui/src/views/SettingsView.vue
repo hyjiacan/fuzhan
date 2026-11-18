@@ -558,6 +558,7 @@ const loadSettings = async () => {
         oauth2: {
           enabled: cfg.auth?.oauth2?.enabled ?? false,
           providerName: cfg.auth?.oauth2?.provider_name || '',
+          providerId: cfg.auth?.oauth2?.provider_id || '',
           clientId: cfg.auth?.oauth2?.client_id || '',
           clientSecret: cfg.auth?.oauth2?.client_secret || '',
           authUrl: cfg.auth?.oauth2?.auth_url || '',
@@ -840,6 +841,7 @@ const doSaveSettings = async () => {
         oauth2: {
           enabled: settings.auth.oauth2.enabled,
           provider_name: settings.auth.oauth2.providerName,
+          provider_id: settings.auth.oauth2.providerId,
           client_id: settings.auth.oauth2.clientId,
           client_secret: settings.auth.oauth2.clientSecret,
           auth_url: settings.auth.oauth2.authUrl,

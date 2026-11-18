@@ -89,6 +89,19 @@ func (v *Validator) TranslateError(err error) ValidationErrors {
 	return errs
 }
 
+// ValidateAuthConfig 校验第三方认证配置：LDAP 与 OAuth2 二选一，OAuth2 启用时 provider_id 必填。
+// 返回空串表示通过，否则返回可直接展示给用户的中文错误信息。
+// 配置保存与启动加载共用同一套规则，避免只在前端限制互斥。
+func ValidateAuthConfig(ldapEnabled, oauth2Enabled bool, oauth2ProviderID string) string {
+	if ldapEnabled && oauth2Enabled {
+		return "同一时间只能启用一种第三方认证系统（LDAP 或 OAuth2）"
+	}
+	if oauth2Enabled && strings.TrimSpace(oauth2ProviderID) == "" {
+		return "启用 OAuth2 时必须填写 provider_id（认证源稳定标识，例如 keycloak-prod）"
+	}
+	return ""
+}
+
 // 自定义验证器：文件路径验证
 func validateFilePath(fl validator.FieldLevel) bool {
 	path := fl.Field().String()

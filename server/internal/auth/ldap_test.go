@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"errors"
 	"testing"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/services"
 	"github.com/glebarez/sqlite"
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
@@ -227,19 +229,120 @@ func TestJoinEntryDNs(t *testing.T) {
 func TestLDAPService_FindOrCreateUser_Existing(t *testing.T) {
 	db := setupLDAPTestDB(t)
 
+	// 历史 LDAP 用户：auth_source=ldap、空密码、无绑定记录
 	db.Create(&models.User{
-		Username: "existing_user",
-		Role:     "user",
+		Username:   "existing_user",
+		AuthSource: models.AuthSourceLDAP,
+		Role:       "user",
 	})
 
 	svc := NewLDAPService(db, &LDAPConfig{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com"})
 
-	user, err := svc.findOrCreateUser("existing_user", map[string]string{"dn": "uid=existing_user,dc=example,dc=com"})
+	user, err := svc.findOrCreateUser("existing_user", map[string]string{
+		"dn":   "uid=existing_user,dc=example,dc=com",
+		"name": "Existing User",
+	}, models.CreatedViaLDAPJIT)
 	if err != nil {
 		t.Fatalf("查找已有用户失败: %v", err)
 	}
 	if user.Username != "existing_user" {
 		t.Errorf("用户名不匹配: %s", user.Username)
+	}
+	// 历史用户首次登录应补齐绑定
+	var record models.AuthRecord
+	if err := db.Where("user_id = ? AND auth_type = ? AND provider_name = ? AND external_id = ?",
+		user.ID, models.AuthSourceLDAP, ldapProviderName, "uid=existing_user,dc=example,dc=com").First(&record).Error; err != nil {
+		t.Errorf("历史 LDAP 用户未补齐绑定: %v", err)
+	}
+}
+
+// TestLDAPService_FindOrCreateUser_LocalConflict 同名本地账号必须拒绝且不修改任何字段。
+func TestLDAPService_FindOrCreateUser_LocalConflict(t *testing.T) {
+	db := setupLDAPTestDB(t)
+
+	local := models.User{
+		Username:     "conflict_user",
+		PasswordHash: "hash",
+		AuthSource:   models.AuthSourceLocal,
+		Role:         "user",
+	}
+	if err := db.Create(&local).Error; err != nil {
+		t.Fatalf("创建本地用户失败: %v", err)
+	}
+
+	svc := NewLDAPService(db, &LDAPConfig{
+		Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com", AutoCreateUser: true,
+	})
+	_, err := svc.findOrCreateUser("conflict_user", map[string]string{
+		"dn":   "uid=conflict_user,dc=example,dc=com",
+		"name": "冲突用户",
+	}, models.CreatedViaLDAPJIT)
+	if !errors.Is(err, services.ErrAccountUnavailable) {
+		t.Fatalf("同名本地账号应拒绝登录，实际 err=%v", err)
+	}
+
+	var got models.User
+	if err := db.Where("id = ?", local.ID).First(&got).Error; err != nil {
+		t.Fatalf("重新读取用户失败: %v", err)
+	}
+	if got.AuthSource != models.AuthSourceLocal || got.PasswordHash != "hash" || got.DisplayName != "" {
+		t.Errorf("冲突拒绝不得修改用户字段: %+v", got)
+	}
+	var count int64
+	db.Model(&models.AuthRecord{}).Where("user_id = ?", local.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("冲突拒绝不得写入绑定记录，实际 %d 条", count)
+	}
+}
+
+// TestLDAPService_FindOrCreateUser_ProviderMismatch provider 与当前配置不一致时拒绝登录。
+func TestLDAPService_FindOrCreateUser_ProviderMismatch(t *testing.T) {
+	db := setupLDAPTestDB(t)
+
+	user := models.User{Username: "mismatch_user", AuthSource: models.AuthSourceLDAP, Role: "user"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("创建 LDAP 用户失败: %v", err)
+	}
+	if err := db.Create(&models.AuthRecord{
+		UserID: user.ID, AuthType: models.AuthSourceLDAP,
+		ProviderName: "old-ldap-host", ExternalID: "uid=mismatch_user,dc=example,dc=com",
+	}).Error; err != nil {
+		t.Fatalf("创建旧绑定失败: %v", err)
+	}
+
+	svc := NewLDAPService(db, &LDAPConfig{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com"})
+	_, err := svc.findOrCreateUser("mismatch_user", map[string]string{
+		"dn": "uid=mismatch_user,dc=example,dc=com",
+	}, models.CreatedViaLDAPJIT)
+	if !errors.Is(err, services.ErrAccountUnavailable) {
+		t.Fatalf("provider 不匹配应拒绝登录，实际 err=%v", err)
+	}
+}
+
+// TestLDAPService_FindOrCreateUser_RenameOnDNMatch DN 命中后目录用户名变化应同步本地用户名。
+func TestLDAPService_FindOrCreateUser_RenameOnDNMatch(t *testing.T) {
+	db := setupLDAPTestDB(t)
+
+	user := models.User{Username: "old_name", AuthSource: models.AuthSourceLDAP, Role: "user"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("创建 LDAP 用户失败: %v", err)
+	}
+	if err := db.Create(&models.AuthRecord{
+		UserID: user.ID, AuthType: models.AuthSourceLDAP,
+		ProviderName: ldapProviderName, ExternalID: "uid=old_name,dc=example,dc=com",
+	}).Error; err != nil {
+		t.Fatalf("创建绑定失败: %v", err)
+	}
+
+	svc := NewLDAPService(db, &LDAPConfig{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com"})
+	got, err := svc.findOrCreateUser("new_name", map[string]string{
+		"dn": "uid=old_name,dc=example,dc=com",
+	}, models.CreatedViaLDAPJIT)
+	if err != nil {
+		t.Fatalf("DN 命中时应允许登录: %v", err)
+	}
+	if got.Username != "new_name" {
+		t.Errorf("目录用户名变化后本地用户名应更新，实际 %q", got.Username)
 	}
 }
 
@@ -253,7 +356,10 @@ func TestLDAPService_FindOrCreateUser_AutoCreate(t *testing.T) {
 		AutoCreateUser: true,
 	})
 
-	user, err := svc.findOrCreateUser("new_ldap_user", map[string]string{"dn": "uid=new_ldap_user,dc=example,dc=com"})
+	user, err := svc.findOrCreateUser("new_ldap_user", map[string]string{
+		"dn":   "uid=new_ldap_user,dc=example,dc=com",
+		"name": "New User",
+	}, models.CreatedViaLDAPJIT)
 	if err != nil {
 		t.Fatalf("自动创建用户失败: %v", err)
 	}
@@ -262,6 +368,9 @@ func TestLDAPService_FindOrCreateUser_AutoCreate(t *testing.T) {
 	}
 	if user.PasswordHash != "" {
 		t.Error("LDAP 用户不应有本地密码")
+	}
+	if user.AuthSource != models.AuthSourceLDAP || user.CreatedVia != models.CreatedViaLDAPJIT {
+		t.Errorf("JIT 用户来源/渠道不正确: %+v", user)
 	}
 
 	var record models.AuthRecord
@@ -280,9 +389,11 @@ func TestLDAPService_FindOrCreateUser_NoAutoCreate(t *testing.T) {
 		AutoCreateUser: false,
 	})
 
-	_, err := svc.findOrCreateUser("nonexistent_user", map[string]string{})
-	if err == nil {
-		t.Fatal("未启用自动创建时应返回错误")
+	_, err := svc.findOrCreateUser("nonexistent_user", map[string]string{
+		"dn": "uid=nonexistent_user,dc=example,dc=com",
+	}, models.CreatedViaLDAPJIT)
+	if !errors.Is(err, services.ErrAccountUnavailable) {
+		t.Fatal("未启用自动创建时应返回账号不可用错误")
 	}
 }
 
@@ -304,7 +415,9 @@ func TestLDAPService_FindOrCreateUser_Disabled(t *testing.T) {
 	}
 
 	svc := NewLDAPService(db, &LDAPConfig{Enabled: true, Host: "ldap.example.com", BaseDN: "dc=example,dc=com"})
-	if _, err := svc.findOrCreateUser("disabled_ldap_user", map[string]string{"dn": "uid=disabled_ldap_user,dc=example,dc=com"}); err == nil {
+	if _, err := svc.findOrCreateUser("disabled_ldap_user", map[string]string{
+		"dn": "uid=disabled_ldap_user,dc=example,dc=com",
+	}, models.CreatedViaLDAPJIT); err == nil {
 		t.Fatal("已禁用的本地用户不应通过 LDAP 认证")
 	}
 }

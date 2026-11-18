@@ -84,6 +84,11 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
 	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{}, &models.AlertMessage{})
 
+	// 认证归属迁移（P1）：归一化 provider_name、回填 auth_source/created_via、
+	// 去重认证绑定并在无冲突时创建唯一索引，最后输出一致性审计日志。
+	// 必须位于 AutoMigrate 之后（依赖新增列），且唯一索引不能写进 GORM tag（去重前建索引会失败）。
+	models.MigrateUserIdentity(db)
+
 	// 收敛公共文件索引表中同一路径的重复记录（启动时幂等执行）。
 	// 必须先于 EnsureFileRecordIndexes，否则"活跃路径唯一索引"会因存量重复而创建失败
 	index.DedupePublicFileRecords(db)

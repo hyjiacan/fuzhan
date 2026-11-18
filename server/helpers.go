@@ -48,6 +48,7 @@ func ensureJWTPersisted() {
 func oauth2ConfigFromApp(c appconfig.OAuth2Config) *auth.OAuth2Config {
 	return &auth.OAuth2Config{
 		Enabled:            c.Enabled,
+		ProviderID:         c.ProviderID,
 		ProviderName:       c.ProviderName,
 		ClientID:           c.ClientID,
 		ClientSecret:       c.ClientSecret,

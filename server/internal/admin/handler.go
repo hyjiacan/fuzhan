@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/constants"
 	"fuzhan/internal/middleware"
+	"fuzhan/internal/models"
 	"fuzhan/internal/online"
 	"fuzhan/internal/repositories"
 	"fuzhan/internal/services"
@@ -92,15 +94,56 @@ func (h *Handler) OnlineIPs(c *gin.Context) {
 	})
 }
 
+// 管理端用户列表过滤参数白名单（非法取值直接返回 400）
+var (
+	validUserSources = map[string]bool{
+		models.AuthSourceLocal:  true,
+		models.AuthSourceLDAP:   true,
+		models.AuthSourceOAuth2: true,
+	}
+	validUserCreatedVia = map[string]bool{
+		models.CreatedViaSelfRegister: true,
+		models.CreatedViaAdminCreate:  true,
+		models.CreatedViaLDAPJIT:      true,
+		models.CreatedViaLDAPSync:     true,
+		models.CreatedViaOAuth2JIT:    true,
+		models.CreatedViaLegacy:       true,
+	}
+	validIdentityStates = map[string]bool{
+		models.IdentityStateOK:               true,
+		models.IdentityStateOrphaned:         true,
+		models.IdentityStateProviderMismatch: true,
+		models.IdentityStateInconsistent:     true,
+	}
+)
+
 // UsersHandler 处理获取用户列表
 func (h *Handler) UsersHandler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	query := c.Query("query")
+	filter := services.UserListFilter{
+		Query:         c.Query("query"),
+		Source:        strings.TrimSpace(c.Query("source")),
+		CreatedVia:    strings.TrimSpace(c.Query("created_via")),
+		IdentityState: strings.TrimSpace(c.Query("identity_state")),
+	}
 
-	result, err := h.adminService.ListUsers(page, pageSize, query)
+	if filter.Source != "" && !validUserSources[filter.Source] {
+		response.HandleBadRequest(c, "source 参数无效，可选值：local、ldap、oauth2", nil)
+		return
+	}
+	if filter.CreatedVia != "" && !validUserCreatedVia[filter.CreatedVia] {
+		response.HandleBadRequest(c, "created_via 参数无效，可选值：self_register、admin_create、ldap_jit、ldap_sync、oauth2_jit、legacy", nil)
+		return
+	}
+	if filter.IdentityState != "" && !validIdentityStates[filter.IdentityState] {
+		response.HandleBadRequest(c, "identity_state 参数无效，可选值：ok、orphaned、provider_mismatch、inconsistent", nil)
+		return
+	}
+
+	result, err := h.adminService.ListUsers(page, pageSize, filter)
 	if err != nil {
-		utils.Error("获取用户列表失败", utils.String("query", query), utils.Err(err))
+		utils.Error("获取用户列表失败", utils.String("query", filter.Query), utils.Err(err))
 		response.HandleInternalServerError(c, "获取用户列表失败")
 		return
 	}
@@ -165,6 +208,12 @@ func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
 	if err := h.adminService.ResetPassword(callerUUID, uuid, req.NewPassword); err != nil {
 		msg := err.Error()
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			middleware.LogOperation(c, "admin.user.reset_password", uuid, err)
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
 		if strings.Contains(msg, "不存在") {
 			middleware.LogOperation(c, "admin.user.reset_password", uuid, err)
 			response.HandleBadRequest(c, msg, nil)
@@ -177,6 +226,78 @@ func (h *Handler) ResetPasswordHandler(c *gin.Context) {
 
 	middleware.LogOperation(c, "admin.user.reset_password", uuid, nil)
 	response.HandleSuccess(c, http.StatusOK, "密码重置成功", nil)
+}
+
+// BindExternalIdentityHandler 处理管理员绑定外部身份
+func (h *Handler) BindExternalIdentityHandler(c *gin.Context) {
+	uuid := c.Param("id")
+	if uuid == "" {
+		middleware.LogOperation(c, "admin.user.bind_auth", uuid, fmt.Errorf("uuid empty"))
+		response.HandleBadRequest(c, "用户ID不能为空", nil)
+		return
+	}
+
+	var req struct {
+		AuthType     string `json:"auth_type" binding:"required"`
+		ExternalID   string `json:"external_id" binding:"required"`
+		ExternalName string `json:"external_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.LogOperation(c, "admin.user.bind_auth", uuid, err)
+		response.HandleBadRequest(c, "请求参数错误：auth_type 与 external_id 必填", nil)
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	if err := h.adminService.BindExternalIdentity(callerUUID, uuid, req.AuthType, req.ExternalID, req.ExternalName); err != nil {
+		middleware.LogOperation(c, "admin.user.bind_auth", uuid, err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("绑定外部身份失败", utils.String("target_uuid", uuid), utils.Err(err))
+		response.HandleInternalServerError(c, "绑定外部身份失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.user.bind_auth", uuid, nil)
+	response.HandleSuccess(c, http.StatusOK, "外部身份绑定成功", nil)
+}
+
+// ConvertUserToLocalHandler 处理将外部认证账号转为本地账号
+func (h *Handler) ConvertUserToLocalHandler(c *gin.Context) {
+	uuid := c.Param("id")
+	if uuid == "" {
+		middleware.LogOperation(c, "admin.user.convert_local", uuid, fmt.Errorf("uuid empty"))
+		response.HandleBadRequest(c, "用户ID不能为空", nil)
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.LogOperation(c, "admin.user.convert_local", uuid, err)
+		response.HandleBadRequest(c, "新密码至少8位", nil)
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	if err := h.adminService.ConvertUserToLocal(callerUUID, uuid, req.NewPassword); err != nil {
+		middleware.LogOperation(c, "admin.user.convert_local", uuid, err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("转为本地账号失败", utils.String("target_uuid", uuid), utils.Err(err))
+		response.HandleInternalServerError(c, "转为本地账号失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.user.convert_local", uuid, nil)
+	response.HandleSuccess(c, http.StatusOK, "已转为本地账号", nil)
 }
 
 // SetUserDisabledHandler 处理禁用/启用用户

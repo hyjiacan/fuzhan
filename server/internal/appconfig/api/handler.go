@@ -277,6 +277,11 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			utils.HandleBadRequest(c, msg, nil)
 			return
 		}
+		// 第三方认证互斥与 provider_id 必填：前后端同时保证二选一
+		if msg := appconfig.ValidateAuthConfig(req.Auth.LDAP.Enabled, req.Auth.OAuth2.Enabled, req.Auth.OAuth2.ProviderID); msg != "" {
+			utils.HandleBadRequest(c, msg, nil)
+			return
+		}
 	}
 
 	// 验证码模式白名单校验：非法值会导致安全功能静默失效，保存前拦截并归一化。
@@ -818,6 +823,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// —— OAuth2/OIDC 认证配置 ——
 		oauth := req.Auth.OAuth2
 		appconfig.GlobalConfig.Auth.OAuth2.Enabled = oauth.Enabled
+		appconfig.GlobalConfig.Auth.OAuth2.ProviderID = oauth.ProviderID
 		appconfig.GlobalConfig.Auth.OAuth2.ProviderName = oauth.ProviderName
 		appconfig.GlobalConfig.Auth.OAuth2.ClientID = oauth.ClientID
 		appconfig.GlobalConfig.Auth.OAuth2.ClientSecret = oauth.ClientSecret
@@ -833,6 +839,7 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		appconfig.GlobalConfig.Auth.OAuth2.AutoCreateUser = oauth.AutoCreateUser
 		appconfig.GlobalConfig.Auth.OAuth2.InsecureSkipVerify = oauth.InsecureSkipVerify
 		updates.Add("auth.oauth2.enabled", oauth.Enabled)
+		updates.Add("auth.oauth2.provider_id", oauth.ProviderID)
 		updates.Add("auth.oauth2.provider_name", oauth.ProviderName)
 		updates.Add("auth.oauth2.client_id", oauth.ClientID)
 		updates.Add("auth.oauth2.client_secret", oauth.ClientSecret)
@@ -1050,6 +1057,7 @@ func (h *Handler) TestOAuth2Config(c *gin.Context) {
 
 	svc := auth.NewOAuth2Service(nil, &auth.OAuth2Config{
 		Enabled:            dto.Enabled,
+		ProviderID:         dto.ProviderID,
 		ProviderName:       dto.ProviderName,
 		ClientID:           dto.ClientID,
 		ClientSecret:       dto.ClientSecret,

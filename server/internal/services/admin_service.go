@@ -2,7 +2,9 @@ package services
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,16 +26,29 @@ type UserListResult struct {
 
 // UserItem 用户列表项
 type UserItem struct {
-	UUID        string    `json:"uuid"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Nickname    string    `json:"nickname"`
-	Role        string    `json:"role"`
-	Disabled    bool      `json:"disabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	UsedStorage int64     `json:"used_storage"`
-	Quota       int64     `json:"quota"`
+	UUID          string    `json:"uuid"`
+	Username      string    `json:"username"`
+	DisplayName   string    `json:"display_name"`
+	Nickname      string    `json:"nickname"`
+	Role          string    `json:"role"`
+	Disabled      bool      `json:"disabled"`
+	AuthSource    string    `json:"auth_source"`
+	CreatedVia    string    `json:"created_via"`
+	IdentityState string    `json:"identity_state"`
+	ProviderName  string    `json:"provider_name"`
+	ExternalID    string    `json:"external_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	UsedStorage   int64     `json:"used_storage"`
+	Quota         int64     `json:"quota"`
+}
+
+// UserListFilter 管理端用户列表过滤条件（均已由 handler 做白名单校验）
+type UserListFilter struct {
+	Query         string // 用户名 / UUID / 姓名 / 昵称模糊匹配
+	Source        string // local / ldap / oauth2
+	CreatedVia    string // self_register / admin_create / ldap_jit / ldap_sync / oauth2_jit / legacy
+	IdentityState string // ok / orphaned / provider_mismatch / inconsistent
 }
 
 // SessionListResult 会话列表结果
@@ -63,6 +78,23 @@ type SessionItem struct {
 	ExpiredAt    string `json:"expired_at"`
 }
 
+// UserIdentityError 管理端用户身份操作的可预期错误。
+// Handler 依据 Status 映射 HTTP 状态码，避免用字符串匹配区分 400/403/409。
+type UserIdentityError struct {
+	Status  int
+	Message string
+}
+
+// Error 实现 error 接口
+func (e *UserIdentityError) Error() string {
+	return e.Message
+}
+
+// newUserIdentityError 构造带建议状态码的业务错误
+func newUserIdentityError(status int, message string) error {
+	return &UserIdentityError{Status: status, Message: message}
+}
+
 // AdminService 管理员服务
 type AdminService struct {
 	db *gorm.DB
@@ -74,14 +106,27 @@ func NewAdminService(db *gorm.DB) *AdminService {
 }
 
 // ListUsers 获取用户列表
-func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListResult, error) {
+func (s *AdminService) ListUsers(page, pageSize int, filter UserListFilter) (*UserListResult, error) {
 	var users []models.User
 	var total int64
 
 	dbQuery := s.db.Model(&models.User{}).Where("role != ?", "admin")
-	if query != "" {
-		likeQuery := "%" + query + "%"
+	if filter.Query != "" {
+		likeQuery := "%" + filter.Query + "%"
 		dbQuery = dbQuery.Where("username LIKE ? OR uuid LIKE ? OR display_name LIKE ? OR nickname LIKE ?", likeQuery, likeQuery, likeQuery, likeQuery)
+	}
+	if filter.Source != "" {
+		dbQuery = dbQuery.Where("auth_source = ?", filter.Source)
+	}
+	if filter.CreatedVia != "" {
+		dbQuery = dbQuery.Where("created_via = ?", filter.CreatedVia)
+	}
+
+	// 一次性读取认证配置，用 SQL 条件表达 identity_state 过滤（避免全表拉取后内存过滤）
+	policy := loadIdentityPolicy()
+	if filter.IdentityState != "" {
+		cond := policy.filterCondition(filter.IdentityState)
+		dbQuery = dbQuery.Where(cond.sql, cond.args...)
 	}
 
 	dbQuery.Count(&total)
@@ -104,10 +149,14 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 
 	// 一次性聚合本页所有用户的私有存储用量，避免每用户一条查询（N+1）
 	usageByOwner := make(map[string]int64)
+	// 一次性批量查询本页用户的认证绑定，避免逐行查库（N+1）
+	bindingsByUser := make(map[uint][]models.AuthRecord)
 	if len(users) > 0 {
 		uuids := make([]any, len(users))
+		userIDs := make([]uint, len(users))
 		for i, u := range users {
 			uuids[i] = u.UUID
+			userIDs[i] = u.ID
 		}
 		var usages []struct {
 			OwnerID string
@@ -123,25 +172,193 @@ func (s *AdminService) ListUsers(page, pageSize int, query string) (*UserListRes
 		for _, u := range usages {
 			usageByOwner[u.OwnerID] = u.Sum
 		}
+
+		var records []models.AuthRecord
+		if err := s.db.Where("user_id IN ?", userIDs).Order("id ASC").Find(&records).Error; err != nil {
+			utils.Warn("查询用户认证绑定失败", utils.Err(err))
+		} else {
+			for _, r := range records {
+				bindingsByUser[r.UserID] = append(bindingsByUser[r.UserID], r)
+			}
+		}
 	}
 
 	for i, u := range users {
+		binding, hasBinding := pickUserBinding(bindingsByUser[u.ID], u.AuthSource)
 		items[i] = UserItem{
-			UUID:        u.UUID,
-			Username:    u.Username,
-			DisplayName: u.DisplayName,
-			Nickname:    u.Nickname,
-			Role:        u.Role,
-			Disabled:    u.Disabled,
-			CreatedAt:   u.CreatedAt,
-			UpdatedAt:   u.UpdatedAt,
-			UsedStorage: usageByOwner[u.UUID],
-			Quota:       perUserQuota,
+			UUID:          u.UUID,
+			Username:      u.Username,
+			DisplayName:   u.DisplayName,
+			Nickname:      u.Nickname,
+			Role:          u.Role,
+			Disabled:      u.Disabled,
+			AuthSource:    u.AuthSource,
+			CreatedVia:    u.CreatedVia,
+			IdentityState: policy.stateFor(u.AuthSource, binding.ProviderName, hasBinding, u.PasswordHash == ""),
+			ProviderName:  binding.ProviderName,
+			ExternalID:    binding.ExternalID,
+			CreatedAt:     u.CreatedAt,
+			UpdatedAt:     u.UpdatedAt,
+			UsedStorage:   usageByOwner[u.UUID],
+			Quota:         perUserQuota,
 		}
 	}
 
 	utils.Info("获取用户列表成功", utils.Int("page", page), utils.Int("page_size", pageSize), utils.Int64("total", total))
 	return &UserListResult{Users: items, Total: total}, nil
+}
+
+// pickUserBinding 从用户的全部绑定中选出用于展示的一条：
+// 优先与 auth_source 类型一致的绑定，否则取 id 最小的一条（调用方已按 id 升序）。
+func pickUserBinding(records []models.AuthRecord, authSource string) (models.AuthRecord, bool) {
+	if len(records) == 0 {
+		return models.AuthRecord{}, false
+	}
+	for _, r := range records {
+		if r.AuthType == authSource {
+			return r, true
+		}
+	}
+	return records[0], true
+}
+
+// identityPolicy 身份状态派生所需的认证源可用性与 provider 标识（每次列表读取一次配置）
+type identityPolicy struct {
+	ldapReady      bool
+	oauth2Ready    bool
+	oauth2Provider string
+}
+
+// loadIdentityPolicy 读取一次配置，计算认证源可用性与 provider 稳定标识。
+func loadIdentityPolicy() identityPolicy {
+	cfg := appconfig.GetConfig()
+	ldapCfg := cfg.Auth.LDAP
+	oauth2Cfg := cfg.Auth.OAuth2
+	return identityPolicy{
+		// 与 LDAPService.IsEnabled 保持一致：地址/BaseDN 缺失视为配置不全
+		ldapReady: ldapCfg.Enabled && ldapCfg.Host != "" && ldapCfg.BaseDN != "",
+		// 与 OAuth2Service.IsEnabled 保持一致：客户端凭据/端点缺失视为配置不全
+		oauth2Ready:    oauth2Cfg.Enabled && oauth2Cfg.ClientID != "" && oauth2Cfg.ClientSecret != "" && (oauth2Cfg.AuthURL != "" || oauth2Cfg.Issuer != ""),
+		oauth2Provider: oauth2ProviderKey(oauth2Cfg),
+	}
+}
+
+// oauth2ProviderKey 计算 OAuth2 绑定的 provider 稳定标识（oauth2:<provider_id>）。
+func oauth2ProviderKey(cfg appconfig.OAuth2Config) string {
+	return "oauth2:" + strings.TrimSpace(cfg.ProviderID)
+}
+
+// expectedProvider 返回指定认证源期望的 provider 标识（本地账号无绑定，返回空）
+func (p identityPolicy) expectedProvider(authSource string) string {
+	switch authSource {
+	case models.AuthSourceLDAP:
+		return models.AuthSourceLDAP
+	case models.AuthSourceOAuth2:
+		return p.oauth2Provider
+	}
+	return ""
+}
+
+// sourceReady 判断认证源当前是否可用（配置完整且已启用）；local 恒可用
+func (p identityPolicy) sourceReady(authSource string) bool {
+	switch authSource {
+	case models.AuthSourceLDAP:
+		return p.ldapReady
+	case models.AuthSourceOAuth2:
+		return p.oauth2Ready
+	}
+	return true
+}
+
+// stateFor 派生 identity_state，优先级：inconsistent > provider_mismatch > orphaned > ok。
+func (p identityPolicy) stateFor(authSource, providerName string, hasBinding, passwordEmpty bool) string {
+	switch authSource {
+	case models.AuthSourceLDAP:
+		if !hasBinding {
+			return models.IdentityStateInconsistent
+		}
+	case models.AuthSourceOAuth2:
+		// 外部账号必须无本地密码（不变量 4）：有绑定且密码为空才可能正常
+		if !hasBinding || !passwordEmpty {
+			return models.IdentityStateInconsistent
+		}
+	default: // local（含历史空值）
+		if hasBinding || passwordEmpty {
+			return models.IdentityStateInconsistent
+		}
+	}
+	if hasBinding && providerName != p.expectedProvider(authSource) {
+		return models.IdentityStateProviderMismatch
+	}
+	if !p.sourceReady(authSource) {
+		return models.IdentityStateOrphaned
+	}
+	return models.IdentityStateOK
+}
+
+// identitySQLCondition SQL 条件片段及其参数
+type identitySQLCondition struct {
+	sql  string
+	args []any
+}
+
+func (c identitySQLCondition) and(other identitySQLCondition) identitySQLCondition {
+	return identitySQLCondition{
+		sql:  "(" + c.sql + ") AND (" + other.sql + ")",
+		args: append(append([]any{}, c.args...), other.args...),
+	}
+}
+
+func (c identitySQLCondition) or(other identitySQLCondition) identitySQLCondition {
+	return identitySQLCondition{
+		sql:  "(" + c.sql + ") OR (" + other.sql + ")",
+		args: append(append([]any{}, c.args...), other.args...),
+	}
+}
+
+func (c identitySQLCondition) not() identitySQLCondition {
+	return identitySQLCondition{sql: "NOT (" + c.sql + ")", args: c.args}
+}
+
+// filterCondition 把 identity_state 转换成 SQL 条件（与 stateFor 语义一致，
+// 优先级 inconsistent > provider_mismatch > orphaned > ok 通过 NOT 组合表达）。
+func (p identityPolicy) filterCondition(state string) identitySQLCondition {
+	anyBinding := identitySQLCondition{sql: "EXISTS (SELECT 1 FROM auth_records r WHERE r.user_id = users.id)"}
+	ldapBinding := identitySQLCondition{sql: "EXISTS (SELECT 1 FROM auth_records r WHERE r.user_id = users.id AND r.auth_type = 'ldap')"}
+	ldapProviderMatch := identitySQLCondition{sql: "EXISTS (SELECT 1 FROM auth_records r WHERE r.user_id = users.id AND r.auth_type = 'ldap' AND r.provider_name = 'ldap')"}
+	oauth2ProviderMatch := identitySQLCondition{
+		sql:  "EXISTS (SELECT 1 FROM auth_records r WHERE r.user_id = users.id AND r.auth_type = 'oauth2' AND r.provider_name = ?)",
+		args: []any{p.oauth2Provider},
+	}
+
+	inconsistent := identitySQLCondition{sql: "users.auth_source = 'local' AND (" + anyBinding.sql + " OR users.password_hash = '')"}.
+		or(identitySQLCondition{sql: "users.auth_source = 'ldap' AND NOT " + ldapBinding.sql}).
+		or(identitySQLCondition{sql: "users.auth_source = 'oauth2' AND (NOT " + anyBinding.sql + " OR users.password_hash <> '')"})
+
+	mismatch := identitySQLCondition{sql: "users.auth_source = 'ldap' AND NOT " + ldapProviderMatch.sql}.
+		or(identitySQLCondition{
+			sql:  "users.auth_source = 'oauth2' AND " + anyBinding.sql + " AND NOT " + oauth2ProviderMatch.sql,
+			args: oauth2ProviderMatch.args,
+		})
+
+	orphaned := identitySQLCondition{sql: "1 = 0"}
+	if !p.ldapReady {
+		orphaned = orphaned.or(identitySQLCondition{sql: "users.auth_source = 'ldap'"})
+	}
+	if !p.oauth2Ready {
+		orphaned = orphaned.or(identitySQLCondition{sql: "users.auth_source = 'oauth2'"})
+	}
+
+	switch state {
+	case models.IdentityStateInconsistent:
+		return inconsistent
+	case models.IdentityStateProviderMismatch:
+		return inconsistent.not().and(mismatch)
+	case models.IdentityStateOrphaned:
+		return inconsistent.not().and(mismatch.not()).and(orphaned)
+	default: // ok
+		return inconsistent.not().and(mismatch.not()).and(orphaned.not())
+	}
 }
 
 // CreateUser 管理员主动创建用户
@@ -243,6 +460,13 @@ func (s *AdminService) ResetPassword(callerUUID, targetUUID, newPassword string)
 		return fmt.Errorf("查找用户失败: %w", err)
 	}
 
+	// 外部认证账号不持有本地密码，必须显式转为本地账号后才能重置
+	if user.AuthSource != "" && user.AuthSource != models.AuthSourceLocal {
+		utils.Warn("重置密码失败: 外部认证账号不允许设置本地密码",
+			utils.String("target_uuid", targetUUID), utils.String("auth_source", user.AuthSource))
+		return newUserIdentityError(http.StatusBadRequest, "请先将该用户转为本地账号")
+	}
+
 	// 管理员设密也需遵循最少 8 位的新密码强度要求
 	if len(newPassword) < 8 || len(newPassword) > 128 {
 		return fmt.Errorf("新密码长度需在8到128个字符之间")
@@ -262,6 +486,185 @@ func (s *AdminService) ResetPassword(callerUUID, targetUUID, newPassword string)
 
 	utils.Info("管理员重置用户密码成功", utils.String("admin", caller.Username), utils.String("target_user", user.Username))
 	return nil
+}
+
+// BindExternalIdentity 将外部身份绑定到指定用户：写绑定、切换 auth_source、清空本地密码。
+// provider 由当前启用的认证配置决定，不接受客户端自定义。
+func (s *AdminService) BindExternalIdentity(callerUUID, targetUUID, authType, externalID, externalName string) error {
+	var caller models.User
+	if err := s.db.Where("uuid = ? AND role = ?", callerUUID, "admin").First(&caller).Error; err != nil {
+		utils.Warn("绑定外部身份失败: 无权操作", utils.String("caller_uuid", callerUUID))
+		return newUserIdentityError(http.StatusForbidden, "无权操作：仅管理员可绑定外部身份")
+	}
+
+	authType = strings.TrimSpace(authType)
+	externalID = strings.TrimSpace(externalID)
+	externalName = strings.TrimSpace(externalName)
+	if authType != models.AuthSourceLDAP && authType != models.AuthSourceOAuth2 {
+		return newUserIdentityError(http.StatusBadRequest, "认证类型无效，可选值：ldap、oauth2")
+	}
+	if externalID == "" {
+		return newUserIdentityError(http.StatusBadRequest, "外部身份标识不能为空")
+	}
+	if len(externalID) > 256 {
+		return newUserIdentityError(http.StatusBadRequest, "外部身份标识过长")
+	}
+	if len([]rune(externalName)) > 128 {
+		return newUserIdentityError(http.StatusBadRequest, "外部身份显示名过长")
+	}
+
+	// provider 由服务端按当前配置计算
+	policy := loadIdentityPolicy()
+	if !policy.sourceReady(authType) {
+		return newUserIdentityError(http.StatusBadRequest, "认证源未启用或配置不完整")
+	}
+	provider := policy.expectedProvider(authType)
+
+	var target models.User
+	if err := s.db.Where("uuid = ?", targetUUID).First(&target).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return newUserIdentityError(http.StatusBadRequest, "用户不存在")
+		}
+		utils.Error("绑定外部身份失败: 查询用户错误", utils.String("target_uuid", targetUUID), utils.Err(err))
+		return fmt.Errorf("查找用户失败: %w", err)
+	}
+
+	originalSource := target.AuthSource
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 同一外部身份全局唯一：已绑定其他用户时拒绝
+		var existing models.AuthRecord
+		err := tx.Where("auth_type = ? AND provider_name = ? AND external_id = ?", authType, provider, externalID).
+			First(&existing).Error
+		switch {
+		case err == nil:
+			if existing.UserID == target.ID {
+				return newUserIdentityError(http.StatusConflict, "该用户已绑定该外部身份")
+			}
+			return newUserIdentityError(http.StatusConflict, "该外部身份已绑定其他用户")
+		case !errors.Is(err, gorm.ErrRecordNotFound):
+			return fmt.Errorf("检查外部身份绑定失败: %w", err)
+		}
+
+		// 不支持裸解绑/换绑：目标用户已有绑定时需先转为本地账号
+		var bindingCount int64
+		if err := tx.Model(&models.AuthRecord{}).Where("user_id = ?", target.ID).Count(&bindingCount).Error; err != nil {
+			return fmt.Errorf("检查用户绑定失败: %w", err)
+		}
+		if bindingCount > 0 {
+			return newUserIdentityError(http.StatusConflict, "该用户已绑定其他认证来源，请先转为本地账号")
+		}
+
+		record := &models.AuthRecord{
+			UserID:       target.ID,
+			AuthType:     authType,
+			ExternalID:   externalID,
+			ExternalName: externalName,
+			ProviderName: provider,
+		}
+		if err := tx.Create(record).Error; err != nil {
+			// 并发写入时由唯一索引兜底
+			if isUniqueViolation(err) {
+				return newUserIdentityError(http.StatusConflict, "该外部身份已绑定其他用户")
+			}
+			return fmt.Errorf("保存外部身份绑定失败: %w", err)
+		}
+
+		if err := tx.Model(&models.User{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
+			"auth_source":   authType,
+			"password_hash": "",
+		}).Error; err != nil {
+			return fmt.Errorf("更新用户认证来源失败: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		utils.Warn("绑定外部身份失败", utils.String("target_uuid", targetUUID), utils.Err(err))
+		return err
+	}
+
+	utils.Info("管理员绑定外部身份成功",
+		utils.String("admin", caller.Username),
+		utils.String("target_user", target.Username),
+		utils.String("original_auth_source", originalSource),
+		utils.String("provider", provider))
+	return nil
+}
+
+// ConvertUserToLocal 将外部认证账号转为本地账号：写入新密码、auth_source=local、删除全部绑定。
+func (s *AdminService) ConvertUserToLocal(callerUUID, targetUUID, newPassword string) error {
+	var caller models.User
+	if err := s.db.Where("uuid = ? AND role = ?", callerUUID, "admin").First(&caller).Error; err != nil {
+		utils.Warn("转为本地账号失败: 无权操作", utils.String("caller_uuid", callerUUID))
+		return newUserIdentityError(http.StatusForbidden, "无权操作：仅管理员可执行该操作")
+	}
+
+	var user models.User
+	if err := s.db.Where("uuid = ?", targetUUID).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return newUserIdentityError(http.StatusBadRequest, "用户不存在")
+		}
+		utils.Error("转为本地账号失败: 查询用户错误", utils.String("target_uuid", targetUUID), utils.Err(err))
+		return fmt.Errorf("查找用户失败: %w", err)
+	}
+	if user.AuthSource == "" || user.AuthSource == models.AuthSourceLocal {
+		return newUserIdentityError(http.StatusBadRequest, "该用户已是本地账号")
+	}
+	if len(newPassword) < 8 || len(newPassword) > 128 {
+		return newUserIdentityError(http.StatusBadRequest, "新密码长度需在8到128个字符之间")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		utils.Error("转为本地账号失败: 密码加密错误", utils.String("target_uuid", targetUUID), utils.Err(err))
+		return fmt.Errorf("密码加密失败: %w", err)
+	}
+
+	originalSource := user.AuthSource
+	var providers []string
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var records []models.AuthRecord
+		if err := tx.Where("user_id = ?", user.ID).Find(&records).Error; err != nil {
+			return fmt.Errorf("查询用户绑定失败: %w", err)
+		}
+		for _, r := range records {
+			providers = append(providers, r.ProviderName)
+		}
+		if err := tx.Where("user_id = ?", user.ID).Delete(&models.AuthRecord{}).Error; err != nil {
+			return fmt.Errorf("删除用户认证绑定失败: %w", err)
+		}
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+			"password_hash": string(hashedPassword),
+			"auth_source":   models.AuthSourceLocal,
+		}).Error; err != nil {
+			return fmt.Errorf("更新用户认证来源失败: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		utils.Warn("转为本地账号失败", utils.String("target_uuid", targetUUID), utils.Err(err))
+		return err
+	}
+
+	utils.Info("管理员将用户转为本地账号成功",
+		utils.String("admin", caller.Username),
+		utils.String("target_user", user.Username),
+		utils.String("original_auth_source", originalSource),
+		utils.String("provider", strings.Join(providers, ",")))
+	return nil
+}
+
+// isUniqueViolation 判断数据库错误是否为唯一索引冲突（兼容 SQLite/MySQL 驱动文案）
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "unique violation")
 }
 
 // ToggleUserStatus 启用/禁用用户

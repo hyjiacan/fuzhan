@@ -21,6 +21,8 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/users", adminHandler.UsersHandler)
 	admin.POST("/users", adminHandler.CreateUserHandler)
 	admin.PUT("/users/:id/reset-password", adminHandler.ResetPasswordHandler)
+	admin.POST("/users/:id/auth-bindings", adminHandler.BindExternalIdentityHandler)
+	admin.POST("/users/:id/convert-local", adminHandler.ConvertUserToLocalHandler)
 	admin.PUT("/users/:id/disabled", adminHandler.SetUserDisabledHandler)
 	admin.DELETE("/users/:id", adminHandler.DeleteUserHandler)
 	admin.GET("/sessions", adminHandler.SessionsHandler)

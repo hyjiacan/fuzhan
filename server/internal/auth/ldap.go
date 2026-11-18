@@ -13,11 +13,16 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
+	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
 )
+
+// ldapProviderName LDAP 的系统级 provider key：只支持一个目录，绑定稳定使用该值，
+// 不再使用会随部署变化的目录主机名。
+const ldapProviderName = "ldap"
 
 // LDAPConfig LDAP 认证配置（与 fuzhan.yaml 的 auth.ldap 节点一一对应）
 type LDAPConfig struct {
@@ -79,6 +84,12 @@ func (s *LDAPService) GetConfig() *LDAPConfig {
 func (s *LDAPService) IsEnabled() bool {
 	cfg := s.GetConfig()
 	return cfg != nil && cfg.Enabled && cfg.Host != "" && cfg.BaseDN != ""
+}
+
+// AllowsAutoCreate 是否允许目录认证成功后为本地不存在的用户 JIT 建号
+func (s *LDAPService) AllowsAutoCreate() bool {
+	cfg := s.GetConfig()
+	return cfg != nil && cfg.AutoCreateUser
 }
 
 // dial 建立到 LDAP 服务器的连接（LDAPS 时使用 TLS 配置），统一处理超时
@@ -146,7 +157,7 @@ func (s *LDAPService) Authenticate(username, password string) (*models.User, err
 	}
 
 	// 本地用户名以目录中的用户名属性为准，属性缺失时回退登录输入值
-	return s.findOrCreateUser(firstNonEmpty(attrs["username"], username), attrs)
+	return s.findOrCreateUser(firstNonEmpty(attrs["username"], username), attrs, models.CreatedViaLDAPJIT)
 }
 
 // resolveUserDN 用服务账号绑定并按住 user_filter 搜索，解析用户真实 DN 与属性
@@ -296,63 +307,267 @@ func (s *LDAPService) buildUserFilter(cfg *LDAPConfig, username string) string {
 	return f
 }
 
-// findOrCreateUser 查找或创建本地用户
-func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string) (*models.User, error) {
-	var user models.User
-	result := s.db.Where("username = ?", username).First(&user)
+// findOrCreateUser 查找或创建本地用户（保留原有调用形态，内部复用 resolveUser）
+func (s *LDAPService) findOrCreateUser(username string, attrs map[string]string, createdVia string) (*models.User, error) {
+	user, _, err := s.resolveUser(username, attrs, createdVia)
+	return user, err
+}
 
-	if result.Error == nil {
-		if user.Disabled {
-			return nil, services.ErrAccountDisabled
+// resolveUser 依据外部身份解析本地用户，第二个返回值表示本次是否新建账号。
+//
+// 解析顺序（与方案 §4.4.1 一致）：
+//  1. 按 (auth_type=ldap, provider_name=ldap, external_id=DN) 命中绑定 → 返回绑定用户；
+//     目录用户名变化时尝试同步本地用户名，冲突则拒绝。
+//  2. 未命中绑定 → 按用户名（精确 + 大小写不敏感）查本地用户：
+//     - 不存在：auto_create_user 开启则 JIT 建号并写绑定，否则拒绝；
+//     - 已存在且 auth_source=ldap、provider 匹配 → 历史用户，补齐绑定后放行；
+//     - 已存在但归属其它认证源或 provider 不匹配 → 拒绝并记录安全事件，不修改任何字段。
+func (s *LDAPService) resolveUser(username string, attrs map[string]string, createdVia string) (*models.User, bool, error) {
+	dn := strings.TrimSpace(attrs["dn"])
+	if dn == "" {
+		utils.Warn("LDAP 认证：目录返回的用户标识为空", utils.String("username", username))
+		return nil, false, services.ErrAccountUnavailable
+	}
+
+	// 1. 先按外部身份绑定查找
+	var record models.AuthRecord
+	err := s.db.Where("auth_type = ? AND provider_name = ? AND external_id = ?",
+		models.AuthSourceLDAP, ldapProviderName, dn).First(&record).Error
+	if err == nil {
+		var user models.User
+		if err := s.db.Where("id = ?", record.UserID).First(&user).Error; err != nil {
+			utils.Warn("LDAP 认证：绑定记录指向的用户不存在",
+				utils.String("dn", dn), utils.Err(err))
+			return nil, false, services.ErrAccountUnavailable
 		}
-		// 历史用户可能没有姓名，登录时用目录中的姓名补齐
+		if user.Disabled {
+			return nil, false, services.ErrAccountDisabled
+		}
+		if user.AuthSource != models.AuthSourceLDAP {
+			reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+			return nil, false, services.ErrAccountUnavailable
+		}
+		if err := s.renameUserIfNeeded(&user, username, dn); err != nil {
+			return nil, false, err
+		}
 		s.fillDisplayName(&user, attrs)
-		return &user, nil
+		return &user, false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, fmt.Errorf("查询认证关联失败: %w", err)
 	}
 
-	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("查询用户失败: %w", result.Error)
+	// 2. 未命中绑定：按用户名查找本地用户
+	user, err := findLocalUserByUsername(s.db, username)
+	if err != nil {
+		return nil, false, fmt.Errorf("查询用户失败: %w", err)
+	}
+	if user == nil {
+		cfg := s.GetConfig()
+		if cfg == nil || !cfg.AutoCreateUser {
+			return nil, false, services.ErrAccountUnavailable
+		}
+		created, err := s.createUserWithBinding(username, attrs, createdVia)
+		if err != nil {
+			return nil, false, err
+		}
+		return created, true, nil
 	}
 
-	cfg := s.GetConfig()
-	if cfg == nil || !cfg.AutoCreateUser {
-		return nil, errors.New("LDAP 用户不存在本地且未启用自动创建")
+	if user.Disabled {
+		return nil, false, services.ErrAccountDisabled
+	}
+	if user.AuthSource != models.AuthSourceLDAP {
+		// 同名账号归属本地或其它认证源：拒绝登录，不改任何字段
+		reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+		return nil, false, services.ErrAccountUnavailable
 	}
 
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		utils.Error("生成 LDAP 用户 UUID 失败: crypto/rand.Read", utils.Err(err))
-		return nil, fmt.Errorf("生成用户标识失败: %w", err)
+	// provider 不匹配（历史绑定使用旧 provider key）或存在其它认证源的绑定 → 身份数据异常，拒绝登录
+	var mismatched models.AuthRecord
+	err = s.db.Where("user_id = ? AND (auth_type <> ? OR provider_name <> ?)",
+		user.ID, models.AuthSourceLDAP, ldapProviderName).First(&mismatched).Error
+	if err == nil {
+		reportIdentityConflict(user.Username, mismatched.ProviderName, dn, user.AuthSource)
+		return nil, false, services.ErrAccountUnavailable
 	}
-	uuid := fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:])
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, fmt.Errorf("查询认证关联失败: %w", err)
+	}
 
-	host := cfg.Host
+	// 历史 LDAP 用户（无绑定）：补齐绑定后登录
+	if err := s.ensureBinding(user, dn, attrs); err != nil {
+		return nil, false, err
+	}
+	if err := s.renameUserIfNeeded(user, username, dn); err != nil {
+		return nil, false, err
+	}
+	s.fillDisplayName(user, attrs)
+	return user, false, nil
+}
 
-	user = models.User{
+// renameUserIfNeeded 目录用户名变化时同步本地用户名；新用户名已被他人占用则拒绝并记录冲突。
+func (s *LDAPService) renameUserIfNeeded(user *models.User, directoryUsername, dn string) error {
+	directoryUsername = strings.TrimSpace(directoryUsername)
+	if directoryUsername == "" || directoryUsername == user.Username {
+		return nil
+	}
+	var conflict models.User
+	err := s.db.Where("LOWER(username) = ? AND id <> ?", strings.ToLower(directoryUsername), user.ID).
+		First(&conflict).Error
+	if err == nil {
+		reportIdentityConflict(directoryUsername, ldapProviderName, dn, user.AuthSource)
+		return services.ErrAccountUnavailable
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("查询用户失败: %w", err)
+	}
+	if err := s.db.Model(user).Update("username", directoryUsername).Error; err != nil {
+		return fmt.Errorf("更新本地用户名失败: %w", err)
+	}
+	user.Username = directoryUsername
+	return nil
+}
+
+// ensureBinding 为历史 LDAP 用户补齐绑定记录（幂等）；同一 DN 已绑定他人时拒绝。
+func (s *LDAPService) ensureBinding(user *models.User, dn string, attrs map[string]string) error {
+	var existing models.AuthRecord
+	err := s.db.Where("auth_type = ? AND provider_name = ? AND external_id = ?",
+		models.AuthSourceLDAP, ldapProviderName, dn).First(&existing).Error
+	if err == nil {
+		if existing.UserID != user.ID {
+			reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+			return services.ErrAccountUnavailable
+		}
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("查询认证关联失败: %w", err)
+	}
+	if err := s.db.Create(&models.AuthRecord{
+		UserID:       user.ID,
+		AuthType:     models.AuthSourceLDAP,
+		ExternalID:   dn,
+		ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"], user.Username),
+		ProviderName: ldapProviderName,
+	}).Error; err != nil {
+		return fmt.Errorf("补齐 LDAP 认证关联失败: %w", err)
+	}
+	return nil
+}
+
+// createUserWithBinding 在同一事务内创建本地用户与 LDAP 绑定；外部账号不写本地密码。
+func (s *LDAPService) createUserWithBinding(username string, attrs map[string]string, createdVia string) (*models.User, error) {
+	if createdVia == "" {
+		createdVia = models.CreatedViaLDAPJIT
+	}
+	uuid, err := generateLDAPUUID()
+	if err != nil {
+		return nil, err
+	}
+	user := models.User{
 		UUID:         uuid,
 		Username:     username,
 		DisplayName:  attrs["name"],
 		PasswordHash: "",
 		Role:         "user",
+		AuthSource:   models.AuthSourceLDAP,
+		CreatedVia:   createdVia,
 	}
-
-	if err := s.db.Create(&user).Error; err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.AuthRecord{
+			UserID:       user.ID,
+			AuthType:     models.AuthSourceLDAP,
+			ExternalID:   attrs["dn"],
+			ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"], username),
+			ProviderName: ldapProviderName,
+		}).Error
+	})
+	if err != nil {
 		return nil, fmt.Errorf("创建本地用户失败: %w", err)
 	}
-
-	if err := s.db.Create(&models.AuthRecord{
-		UserID:       user.ID,
-		AuthType:     "ldap",
-		ExternalID:   attrs["dn"],
-		ExternalName: firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"], username),
-		ProviderName: host,
-	}).Error; err != nil {
-		// 关联记录失败不影响本次登录（用户已创建），但需记录以便排查
-		utils.Warn("写入 LDAP 认证关联失败",
-			utils.String("username", username), utils.Err(err))
-	}
-
 	return &user, nil
+}
+
+// generateLDAPUUID 生成用户 UUID v4
+func generateLDAPUUID() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		utils.Error("生成 LDAP 用户 UUID 失败: crypto/rand.Read", utils.Err(err))
+		return "", fmt.Errorf("生成用户标识失败: %w", err)
+	}
+	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:]), nil
+}
+
+// findLocalUserByUsername 按用户名查找本地用户：先精确匹配，再大小写不敏感匹配。
+// 未命中返回 (nil, nil)。
+func findLocalUserByUsername(db *gorm.DB, username string) (*models.User, error) {
+	var user models.User
+	err := db.Where("username = ?", username).First(&user).Error
+	if err == nil {
+		return &user, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err := db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// identityConflictWindow 同一用户名 + provider 的冲突事件告警去重窗口，避免目录侧批量同名导致洪泛。
+const identityConflictWindow = 5 * time.Minute
+
+var identityConflictThrottle = struct {
+	mu   sync.Mutex
+	seen map[string]time.Time
+}{seen: make(map[string]time.Time)}
+
+// reportIdentityConflict 记录「外部身份与本地账号冲突」安全事件（按用户名 + provider 限频）。
+// 只记录用户名、provider、外部标识与被拒绝的认证源，不记录任何凭据。
+func reportIdentityConflict(username, provider, externalID, rejectedSource string) {
+	if username == "" {
+		username = "unknown"
+	}
+	key := strings.ToLower(username) + "|" + provider
+	now := time.Now()
+	identityConflictThrottle.mu.Lock()
+	if last, ok := identityConflictThrottle.seen[key]; ok && now.Sub(last) < identityConflictWindow {
+		identityConflictThrottle.mu.Unlock()
+		return
+	}
+	// 条目过多时剔除过期项，保证内存有界
+	if len(identityConflictThrottle.seen) > 1024 {
+		for k, ts := range identityConflictThrottle.seen {
+			if now.Sub(ts) >= identityConflictWindow {
+				delete(identityConflictThrottle.seen, k)
+			}
+		}
+	}
+	identityConflictThrottle.seen[key] = now
+	identityConflictThrottle.mu.Unlock()
+
+	security.Record(&models.SecurityEvent{
+		EventType: models.EventIdentityConflict,
+		Severity:  models.SeverityMedium,
+		Identity:  username,
+		Operation: "auth.identity_conflict",
+		Target:    username,
+		Reason: fmt.Sprintf("provider=%s external_id=%s rejected_source=%s",
+			provider, externalID, rejectedSource),
+		Guard: models.GuardAuth,
+	})
+	utils.Warn("外部身份与本地账号冲突，已拒绝登录",
+		utils.String("username", username),
+		utils.String("provider", provider),
+		utils.String("rejected_source", rejectedSource))
 }
 
 // fillDisplayName 在本地用户缺少姓名时用目录属性补齐，失败只告警不阻断登录
@@ -514,6 +729,7 @@ func (s *LDAPService) SyncUsers() (int, error) {
 	}
 
 	created := 0
+	skipped := 0
 	failed := 0
 	for _, entry := range sr.Entries {
 		username := entry.GetAttributeValue(usernameAttr)
@@ -524,30 +740,29 @@ func (s *LDAPService) SyncUsers() (int, error) {
 		if username == "" {
 			continue
 		}
-		// 先判断本地是否已存在：同步只负责补建缺失账户，避免把“已存在”计为新建
-		var existing models.User
-		err := s.db.Where("username = ?", username).First(&existing).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		_, isNew, err := s.resolveUser(username, attrs, models.CreatedViaLDAPSync)
+		if err != nil {
+			if errors.Is(err, services.ErrAccountUnavailable) {
+				// 同名账号归属其它认证源或身份数据异常：跳过，交由管理员裁决
+				skipped++
+				continue
+			}
 			failed++
-			utils.Warn("LDAP 目录同步：查询本地用户失败",
+			utils.Warn("LDAP 目录同步：用户同步失败",
 				utils.String("username", username), utils.Err(err))
 			continue
 		}
-		if err == nil {
-			// 已存在的用户不回补建，但在姓名缺失时用目录属性补齐
-			s.fillDisplayName(&existing, attrs)
-			continue
+		if isNew {
+			created++
 		}
-		if _, err := s.findOrCreateUser(username, attrs); err != nil {
-			failed++
-			utils.Warn("LDAP 目录同步：创建本地用户失败",
-				utils.String("username", username), utils.Err(err))
-			continue
-		}
-		created++
+	}
+	// 单轮聚合告警，避免目录侧批量同名时逐条刷日志
+	if skipped > 0 {
+		utils.Warn("LDAP 目录同步：同名账号冲突已跳过（需管理员裁决）",
+			utils.Int("skipped", skipped))
 	}
 	if failed > 0 {
-		return created, fmt.Errorf("LDAP 目录同步完成，但 %d 个用户创建失败", failed)
+		return created, fmt.Errorf("LDAP 目录同步完成，但 %d 个用户处理失败", failed)
 	}
 	return created, nil
 }

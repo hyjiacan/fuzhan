@@ -4,6 +4,31 @@ import (
 	"time"
 )
 
+// 认证归属（users.auth_source）取值
+const (
+	AuthSourceLocal  = "local"
+	AuthSourceLDAP   = "ldap"
+	AuthSourceOAuth2 = "oauth2"
+)
+
+// 账号创建渠道（users.created_via）取值，创建后不可变
+const (
+	CreatedViaSelfRegister = "self_register"
+	CreatedViaAdminCreate  = "admin_create"
+	CreatedViaLDAPJIT      = "ldap_jit"
+	CreatedViaLDAPSync     = "ldap_sync"
+	CreatedViaOAuth2JIT    = "oauth2_jit"
+	CreatedViaLegacy       = "legacy"
+)
+
+// 身份状态派生值（不落库，按当前配置读取时计算）
+const (
+	IdentityStateOK               = "ok"
+	IdentityStateOrphaned         = "orphaned"
+	IdentityStateProviderMismatch = "provider_mismatch"
+	IdentityStateInconsistent     = "inconsistent"
+)
+
 // User 用户模型
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
@@ -14,8 +39,14 @@ type User struct {
 	PasswordHash string    `gorm:"size:256;not null" json:"-"`
 	Role         string    `gorm:"size:32;default:user" json:"role"` // 用户角色：admin, user
 	Disabled     bool      `gorm:"default:false" json:"disabled"`    // 是否禁用
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// AuthSource 账号归属认证源：local / ldap / oauth2。
+	// 决定登录路由，只能由管理员绑定/转换操作改变，登录行为不会自动改变它。
+	AuthSource string `gorm:"size:16;not null;default:local;index:idx__users__auth_source" json:"auth_source"`
+	// CreatedVia 账号创建渠道：self_register / admin_create / ldap_jit / ldap_sync / oauth2_jit / legacy。
+	// 表示首次创建渠道，创建后不可变，仅用于展示与筛选。
+	CreatedVia string    `gorm:"size:20;not null;default:legacy" json:"created_via"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名

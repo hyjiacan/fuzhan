@@ -44,7 +44,8 @@ auth:
     auto_create_user: true
     insecure_skip_verify: true
   oauth2:
-    enabled: true
+    enabled: false
+    provider_id: keycloak-prod
     provider_name: oidc
     client_id: cid
     client_secret: csecret
@@ -112,8 +113,12 @@ auth:
 	}
 
 	oauth := GlobalConfig.Auth.OAuth2
-	if !oauth.Enabled || oauth.ClientID != "cid" || oauth.ClientSecret != "csecret" {
+	// LDAP 与 OAuth2 互斥：本用例只验证字段加载，OAuth2 保持关闭
+	if oauth.Enabled || oauth.ClientID != "cid" || oauth.ClientSecret != "csecret" {
 		t.Errorf("Auth.OAuth2 基础字段未加载: %+v", oauth)
+	}
+	if oauth.ProviderID != "keycloak-prod" {
+		t.Errorf("Auth.OAuth2 provider_id 未加载: %+v", oauth)
 	}
 	if oauth.AuthURL == "" || oauth.TokenURL == "" || oauth.UserInfoURL == "" || oauth.Issuer == "" {
 		t.Errorf("Auth.OAuth2 端点字段未加载: %+v", oauth)
@@ -147,5 +152,27 @@ func TestLDAPUsernameAttributeDTORoundTrip(t *testing.T) {
 	restored := ConfigFromDTO(dto)
 	if got := restored.Auth.LDAP.UsernameAttribute; got != "sAMAccountName" {
 		t.Errorf("ConfigFromDTO: UsernameAttribute = %q, want %q", got, "sAMAccountName")
+	}
+}
+
+// TestValidateAuthConfig 校验第三方认证互斥与 OAuth2 provider_id 必填规则。
+func TestValidateAuthConfig(t *testing.T) {
+	cases := []struct {
+		name         string
+		ldapEnabled  bool
+		oauthEnabled bool
+		providerID   string
+		wantErr      bool
+	}{
+		{"均未启用", false, false, "", false},
+		{"仅 LDAP", true, false, "", false},
+		{"仅 OAuth2 且配置 provider_id", false, true, "keycloak-prod", false},
+		{"仅 OAuth2 缺 provider_id", false, true, "  ", true},
+		{"同时启用", true, true, "keycloak-prod", true},
+	}
+	for _, tc := range cases {
+		if got := ValidateAuthConfig(tc.ldapEnabled, tc.oauthEnabled, tc.providerID); (got != "") != tc.wantErr {
+			t.Errorf("%s: ValidateAuthConfig = %q, wantErr=%v", tc.name, got, tc.wantErr)
+		}
 	}
 }

@@ -564,7 +564,10 @@ type AuthConfig struct {
 // 采用授权码模式（Authorization Code）：本服务作为客户端，用户登录时跳转到外部
 // 认证系统完成认证，再回调换取令牌并映射为本地用户。
 type OAuth2Config struct {
-	Enabled      bool     `yaml:"enabled"`
+	Enabled bool `yaml:"enabled"`
+	// ProviderID 认证源的稳定标识（启用时必填，如 keycloak-prod）。
+	// 绑定记录中使用 oauth2:<provider_id> 作为 provider_name，变更即视为认证源迁移。
+	ProviderID   string   `yaml:"provider_id,omitempty"`
 	ProviderName string   `yaml:"provider_name,omitempty"` // 显示名称，如 "企业 SSO" / "GitHub"
 	ClientID     string   `yaml:"client_id,omitempty"`
 	ClientSecret string   `yaml:"client_secret,omitempty"`
