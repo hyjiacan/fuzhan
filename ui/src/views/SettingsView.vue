@@ -432,7 +432,15 @@ const loadSettings = async () => {
       if (settings.database.driver === 'postgres' && cfg.database?.dsn) {
         parsePostgresDsn(cfg.database.dsn)
       }
-      settings.rootDirs = cfg.root_dirs?.map(d => ({ path: d.full_path, name: d.name, uploadEnabled: d.upload_enabled !== false })) || []
+      settings.rootDirs = cfg.root_dirs?.map(d => ({
+        path: d.full_path,
+        name: d.name,
+        uploadEnabled: d.upload_enabled !== false,
+        overwriteEnabled: d.overwrite_enabled === true,
+        renameEnabled: d.rename_enabled === true,
+        moveEnabled: d.move_enabled === true,
+        deleteEnabled: d.delete_enabled === true
+      })) || []
       settings.allowedExtensions = cfg.allowed_extensions || []
       settings.storageBackend = {
         backend: cfg.storage_backend?.backend || 'local',
@@ -716,7 +724,11 @@ const doSaveSettings = async () => {
         name: d.name,
         path: d.path,
         full_path: d.path,
-        upload_enabled: d.uploadEnabled !== false
+        upload_enabled: d.uploadEnabled !== false,
+        overwrite_enabled: d.overwriteEnabled === true,
+        rename_enabled: d.renameEnabled === true,
+        move_enabled: d.moveEnabled === true,
+        delete_enabled: d.deleteEnabled === true
       })),
       allowed_extensions: settings.allowedExtensions,
       storage_backend: {

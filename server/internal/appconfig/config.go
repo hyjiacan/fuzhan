@@ -130,6 +130,15 @@ type DirectoryConfig struct {
 	// AllowUpload 是否允许向该公共目录上传文件。空（nil）表示允许（默认值）。
 	// 前端 JSON 字段为 upload_enabled；设置页未配置时保持 nil 即允许上传。
 	AllowUpload *bool `yaml:"allow_upload,omitempty" json:"upload_enabled"`
+	// AllowOverwrite 允许任意用户覆盖该目录下已存在的文件（Web/FTP/WebDAV/OpenAPI 全部入口生效）。
+	// 默认 false：沿用全局限制（仅管理员或上传者本人 IP 可覆盖）。
+	AllowOverwrite bool `yaml:"allow_overwrite,omitempty" json:"overwrite_enabled"`
+	// AllowRename 允许任意用户重命名该目录下的文件。默认 false：沿用全局限制。
+	AllowRename bool `yaml:"allow_rename,omitempty" json:"rename_enabled"`
+	// AllowMove 允许任意用户移动该目录下的文件。默认 false：沿用全局限制。
+	AllowMove bool `yaml:"allow_move,omitempty" json:"move_enabled"`
+	// AllowDelete 允许任意用户删除该目录下的文件。默认 false：沿用全局限制。
+	AllowDelete bool `yaml:"allow_delete,omitempty" json:"delete_enabled"`
 }
 
 // UploadAllowed 返回该公共目录是否允许上传文件（未配置时默认允许）。
@@ -137,11 +146,27 @@ func (d DirectoryConfig) UploadAllowed() bool {
 	return d.AllowUpload == nil || *d.AllowUpload
 }
 
+// OverwriteAllowed 返回该公共目录是否允许任意用户覆盖已存在文件。
+func (d DirectoryConfig) OverwriteAllowed() bool { return d.AllowOverwrite }
+
+// RenameAllowed 返回该公共目录是否允许任意用户重命名文件。
+func (d DirectoryConfig) RenameAllowed() bool { return d.AllowRename }
+
+// MoveAllowed 返回该公共目录是否允许任意用户移动文件。
+func (d DirectoryConfig) MoveAllowed() bool { return d.AllowMove }
+
+// DeleteAllowed 返回该公共目录是否允许任意用户删除文件。
+func (d DirectoryConfig) DeleteAllowed() bool { return d.AllowDelete }
+
 // DirectoryConfigWithStringQuota 支持字符串格式配额的目录配置结构体
 type DirectoryConfigWithStringQuota struct {
-	Path        string `yaml:"path"`
-	Quota       string `yaml:"quota,omitempty"`
-	AllowUpload *bool  `yaml:"allow_upload,omitempty"`
+	Path           string `yaml:"path"`
+	Quota          string `yaml:"quota,omitempty"`
+	AllowUpload    *bool  `yaml:"allow_upload,omitempty"`
+	AllowOverwrite bool   `yaml:"allow_overwrite,omitempty"`
+	AllowRename    bool   `yaml:"allow_rename,omitempty"`
+	AllowMove      bool   `yaml:"allow_move,omitempty"`
+	AllowDelete    bool   `yaml:"allow_delete,omitempty"`
 }
 
 // PrivateQuotaConfig 临时文件配额配置结构体
@@ -883,6 +908,22 @@ func RootNameKeys() []string {
 	return names
 }
 
+// reservedRootNameReasons 系统内部命名空间占用的根标识。
+// 公共根目录名（路径最后一段）与这些值相同时，会与私有存储/临时文件共用
+// RootNames、file_records_public.root_name、operation_records.root_name 等字段，
+// 造成统计混叠与目录级权限配置误命中，因此配置入口必须拒绝。
+var reservedRootNameReasons = map[string]string{
+	"private": "私有存储命名空间",
+	"temp":    "临时文件命名空间",
+}
+
+// ReservedRootNameReason 判断公共根目录名是否与系统命名空间冲突。
+// 冲突时返回冲突的命名空间描述（用于错误提示），不冲突返回空串。
+// Windows 路径不区分大小写，按小写比较。
+func ReservedRootNameReason(name string) string {
+	return reservedRootNameReasons[strings.ToLower(strings.TrimSpace(name))]
+}
+
 // LockConfig 获取写锁，用于修改 GlobalConfig 时保护并发访问
 func LockConfig() { configMu.Lock() }
 
@@ -898,14 +939,51 @@ func RUnlockConfig() { configMu.RUnlock() }
 // PublicDirUploadAllowed 判断指定公共目录（rootName 为目录路径最后一段）是否允许上传文件。
 // 未找到该目录（未知 rootName）时按允许处理，避免误伤已存在的上传能力。
 func PublicDirUploadAllowed(rootName string) bool {
+	d, ok := publicDirConfig(rootName)
+	if !ok {
+		return true
+	}
+	return d.UploadAllowed()
+}
+
+// PublicDirOverwriteAllowed 判断指定公共目录是否允许任意用户覆盖已存在文件。
+// 未找到该目录时返回 false（保持既有安全限制）。
+func PublicDirOverwriteAllowed(rootName string) bool {
+	d, ok := publicDirConfig(rootName)
+	return ok && d.OverwriteAllowed()
+}
+
+// PublicDirRenameAllowed 判断指定公共目录是否允许任意用户重命名文件。
+// 未找到该目录时返回 false（保持既有安全限制）。
+func PublicDirRenameAllowed(rootName string) bool {
+	d, ok := publicDirConfig(rootName)
+	return ok && d.RenameAllowed()
+}
+
+// PublicDirMoveAllowed 判断指定公共目录是否允许任意用户移动文件。
+// 未找到该目录时返回 false（保持既有安全限制）。
+func PublicDirMoveAllowed(rootName string) bool {
+	d, ok := publicDirConfig(rootName)
+	return ok && d.MoveAllowed()
+}
+
+// PublicDirDeleteAllowed 判断指定公共目录是否允许任意用户删除文件。
+// 未找到该目录时返回 false（保持既有安全限制）。
+func PublicDirDeleteAllowed(rootName string) bool {
+	d, ok := publicDirConfig(rootName)
+	return ok && d.DeleteAllowed()
+}
+
+// publicDirConfig 按 rootName（目录路径最后一段）查找公共目录配置。
+func publicDirConfig(rootName string) (DirectoryConfig, bool) {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	for _, d := range GlobalConfig.Storage.Public.RootDirs {
 		if filepath.Base(d.Path) == rootName {
-			return d.UploadAllowed()
+			return d, true
 		}
 	}
-	return true
+	return DirectoryConfig{}, false
 }
 
 // GetDownloadRateLimit 返回下载频率限制配置（供下载限流器每个请求实时读取，

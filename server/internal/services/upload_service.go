@@ -66,6 +66,7 @@ func (us *UploadService) UploadFile(w http.ResponseWriter, r *http.Request) {
 		utils.EncodeResponse(w, nil, "未选择要上传的文件", http.StatusBadRequest)
 		return
 	}
+	// 校验全局扩展名白名单
 	if !pathutils.IsFileAllowed(appconfig.GlobalConfig.Storage.AllowedExtensions, header.Filename) {
 		utils.Warn("不支持的文件类型", utils.String("filename", header.Filename))
 		utils.EncodeResponse(w, nil, "不支持的文件类型", http.StatusBadRequest)
@@ -102,7 +103,8 @@ func (us *UploadService) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := os.Stat(absSaveFilename); !os.IsNotExist(err) {
+	// 目录开启任意覆盖时允许覆盖同名文件，否则拒绝已存在文件
+	if _, err := os.Stat(absSaveFilename); !os.IsNotExist(err) && !appconfig.PublicDirOverwriteAllowed(rootName) {
 		utils.Warn("文件已经存在")
 		utils.EncodeResponse(w, nil, "文件已经存在", http.StatusBadRequest)
 		return

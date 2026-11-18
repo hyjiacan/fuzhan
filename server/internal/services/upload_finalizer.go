@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"fuzhan/internal/appconfig"
 	"fuzhan/internal/index"
 	"fuzhan/internal/models"
 	"fuzhan/internal/repositories"
@@ -49,9 +50,17 @@ func NewPublicFinalizer(db *gorm.DB, indexSvc *index.Service) *PublicFinalizer {
 	}
 }
 
-// AllowsOverwrite 公开上传：管理员放行；非管理员仅当上传者自身IP与现有记录一致时放行。
+// AllowsOverwrite 公开上传：目录开启"任意覆盖"时放行；管理员放行；
+// 非管理员仅当上传者自身IP与现有记录一致时放行。
 func (f *PublicFinalizer) AllowsOverwrite(session *models.UploadSession, allowOverwrite bool) bool {
 	if allowOverwrite {
+		return true
+	}
+	// 按目录豁免：该目录配置了 allow_overwrite 时任意用户可覆盖
+	if appconfig.PublicDirOverwriteAllowed(session.TargetRoot) {
+		utils.Info("目录允许任意覆盖，放行覆盖",
+			utils.String("root", session.TargetRoot),
+			utils.String("path", session.FileName))
 		return true
 	}
 	if session.ClientIP == "" {

@@ -213,6 +213,33 @@ type SaveConfigRequest struct {
 	Webhook           *appconfig.WebhookConfigDTO  `json:"webhook"`
 }
 
+// validateRootDirNames 校验共享目录名（路径最后一段）：不得与系统保留命名空间
+// （私有存储/临时文件）冲突，且不得重名（Windows 下大小写不敏感）。
+// 返回空串表示通过，否则返回可直接展示给用户的错误信息。
+func validateRootDirNames(dirs []appconfig.RootDirConfig) string {
+	seen := make(map[string]string, len(dirs))
+	for _, dir := range dirs {
+		p := dir.Path
+		if p == "" {
+			p = dir.FullPath
+		}
+		name := filepath.Base(p)
+		if name == "" || name == "." || name == string(filepath.Separator) {
+			// 路径本身非法时由后续逻辑处理，这里只关注名称冲突
+			continue
+		}
+		if reason := appconfig.ReservedRootNameReason(name); reason != "" {
+			return "根目录名称 \"" + name + "\" 与系统保留命名空间（" + reason + "）冲突，请修改目录路径的最后一段"
+		}
+		key := strings.ToLower(name)
+		if prev, dup := seen[key]; dup {
+			return "根目录名称重复：\"" + name + "\"（" + prev + " 与 " + p + "），请确保每个共享目录的路径最后一段唯一"
+		}
+		seen[key] = p
+	}
+	return ""
+}
+
 func (h *Handler) SaveConfig(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -265,6 +292,15 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			return
 		}
 		req.Account.Captcha.Mode = mode
+	}
+
+	// 共享目录名校验必须在加锁前完成：锁内提前返回会导致写锁泄漏，
+	// 使后续所有配置保存请求永久阻塞。
+	if present("root_dirs") && len(req.RootDirs) > 0 {
+		if msg := validateRootDirNames(req.RootDirs); msg != "" {
+			utils.HandleBadRequest(c, msg, nil)
+			return
+		}
 	}
 
 	// 加写锁保护配置并发修改。
@@ -390,14 +426,22 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 			}
 			quota := existingQuotas[p]
 			dirs[i] = appconfig.DirectoryConfig{
-				Path:        p,
-				Quota:       quota,
-				AllowUpload: appconfig.BoolPtrFalseWhenDisabled(dir.UploadEnabled),
+				Path:           p,
+				Quota:          quota,
+				AllowUpload:    appconfig.BoolPtrFalseWhenDisabled(dir.UploadEnabled),
+				AllowOverwrite: dir.OverwriteEnabled,
+				AllowRename:    dir.RenameEnabled,
+				AllowMove:      dir.MoveEnabled,
+				AllowDelete:    dir.DeleteEnabled,
 			}
 			fileDirs[i] = map[string]interface{}{
-				"path":         p,
-				"quota":        quota,
-				"allow_upload": dir.UploadEnabled,
+				"path":            p,
+				"quota":           quota,
+				"allow_upload":    dir.UploadEnabled,
+				"allow_overwrite": dir.OverwriteEnabled,
+				"allow_rename":    dir.RenameEnabled,
+				"allow_move":      dir.MoveEnabled,
+				"allow_delete":    dir.DeleteEnabled,
 			}
 			if name := filepath.Base(p); name != "" && name != "." && name != string(filepath.Separator) {
 				newRootNames[name] = p
@@ -644,6 +688,8 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		// 未提交（空字符串）时沿用原值，避免设置页的局部保存把已配置的方式重置。
 		if mode := strings.TrimSpace(req.OpenApi.AuthMode); mode != "" {
 			if mode != "none" && mode != "api_key" {
+				// 锁内提前返回必须先释放写锁，否则配置保存会永久阻塞
+				appconfig.UnlockConfig()
 				utils.HandleBadRequest(c, "Open API 鉴权方式无效，仅支持 none / api_key", nil)
 				return
 			}

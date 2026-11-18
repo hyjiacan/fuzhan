@@ -32,6 +32,9 @@ export function createColumns(ctx) {
     previewFile,
     openNotesEditor,
     openDepTree,
+    openRenameModal,
+    openMoveModal,
+    handleDeleteRow,
     refreshListDebounced
   } = ctx
 
@@ -175,13 +178,29 @@ export function createColumns(ctx) {
       }, () => h('span', { class: 'notes-text' }, row.notes || '添加备注'))
     },
     {
-      title: '操作', key: 'actions', width: 150,
+      title: '操作', key: 'actions', width: 230,
       cellRenderer: ({ rowData: row }) => {
-        // 目录：不显示管理操作（公开文件的管理已迁移至管理员页面）
-        if (isDir(row)) return null
-        const count = row.dependency_count || 0
-        return h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) },
-          () => (count > 0 ? `依赖 (${count})` : '依赖'))
+        const buttons = []
+        const dir = isDir(row)
+        // 目录仅支持删除（后端不支持重命名/移动目录）
+        if (!dir && row.can_rename) {
+          buttons.push(h(ElButton, { size: 'small', link: true, onClick: () => openRenameModal(row) }, () => '重命名'))
+        }
+        if (!dir && row.can_move) {
+          buttons.push(h(ElButton, { size: 'small', link: true, onClick: () => openMoveModal(row) }, () => '移动'))
+        }
+        if (row.can_delete) {
+          buttons.push(h(ElButton, {
+            size: 'small', link: true, type: 'danger', onClick: () => handleDeleteRow(row)
+          }, () => '删除'))
+        }
+        if (!dir) {
+          const count = row.dependency_count || 0
+          buttons.push(h(ElButton, { size: 'small', link: true, onClick: () => openDepTree(row) },
+            () => (count > 0 ? `依赖 (${count})` : '依赖')))
+        }
+        if (buttons.length === 0) return null
+        return h('div', { class: 'row-actions' }, buttons)
       }
     }
   ]

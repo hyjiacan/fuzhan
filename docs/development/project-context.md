@@ -125,7 +125,8 @@ ddos, preview, mime_table, log, security, auth, open_api, index, resource, webho
 
 - `app`：`name`、`initialized`（false 时走 setup 向导且仅监听本机）
 - `server`：`host`、`jwt_secret`、`http{enabled,port(8888)}`、`https{enabled,port(8443)}`、`ftp{enabled,port(21),passive_port_start/end}`、`ftps{enabled,port(990)}`、`tls{cert_file,key_file}`
-- `storage.public.root_dirs[]`：`path`、`quota`、`allow_upload`
+- `storage.public.root_dirs[]`：`path`、`quota`、`allow_upload`、`allow_overwrite`（任意用户可覆盖该目录文件）、`allow_rename` / `allow_move` / `allow_delete`（分别允许任意用户重命名、移动、删除该目录文件）；默认 false，即沿用全局安全限制，对 Web/FTP/WebDAV/OpenAPI 全部入口生效
+  - **根目录名 = 路径最后一段**，全局唯一且不得为系统保留名 `private`、`temp`（与私有存储/临时文件共用 `RootNames` 与 `root_name` 字段，重名会造成统计混叠与目录级权限配置误命中）。保存配置时由 `validateRootDirNames` 直接返回 400；启动加载时命中保留名会 Warn 并跳过该目录（不 Fatal）。
 - `storage.private`：`enabled`、`path`、`quota{global,per_user}`
 - `storage.temp`：`enabled`、`path`、`quota{global,per_ip}`、`default_expire_days`、`delete_on_download`
 - `storage.allowed_extensions[]`
@@ -288,6 +289,9 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 - `GET|PUT /files/records/:id/notes`
 - `POST /files/dependencies`、`DELETE /files/dependencies/:id`
 - `GET /files/record/*path`、`GET /files/scan/status`
+- 公开文件自助管理（`AuthOptional`，权限由 handler 内 `canManagePublic` 判定：管理员 / 上传者 IP 一致 / 目录配置了 `allow_rename|allow_move|allow_delete`）：
+  - `POST /files/rename`、`POST /files/move`、`DELETE /files`（**目录删除仅管理员**）
+  - 列表接口按条目返回 `can_rename` / `can_move` / `can_delete`（`can_manage` 为三者任一），前端据此显示操作入口
 
 搜索
 

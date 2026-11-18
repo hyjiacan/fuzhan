@@ -115,10 +115,15 @@ database:
 storage:
   # 公开共享目录 (所有用户可访问)
   public:
-    root_dirs:                     # 支持配置多个共享目录，每个目录可单独设置配额与上传开关
+    root_dirs:                     # 支持配置多个共享目录，每个目录可单独设置配额与安全豁免开关
+                                   # 目录名（路径最后一段）即共享目录标识，必须唯一且不能为 private / temp（系统保留命名空间）
       - path: ./shares              # 共享目录路径
         quota: 0                    # 目录配额 (0 表示无限制)，支持 10G, 100M 等格式
         allow_upload: true          # 是否允许向该目录上传文件（默认 true；设 false 后上传界面不可选，web/ftp/webdav/url 上传与移动/复制进入该目录都会被拒绝）
+        allow_overwrite: false      # 是否允许任意用户覆盖该目录下已存在的文件（默认 false：仅管理员或上传者本人 IP）
+        allow_rename: false         # 是否允许任意用户重命名该目录下的文件（默认 false：仅管理员或上传者本人 IP）
+        allow_move: false           # 是否允许任意用户移动该目录下的文件（默认 false：仅管理员或上传者本人 IP）
+        allow_delete: false         # 是否允许任意用户删除该目录下的文件（默认 false：仅管理员或上传者本人 IP）
       # - path: /path/to/another
       #   quota: 1T                  # 示例：1TB 配额
   # 私有文件存储 (需登录，按用户配额)

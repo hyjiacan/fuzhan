@@ -530,6 +530,74 @@ func TestGetRuntimeConfig_URLUploadExposesMaxSize(t *testing.T) {
 	}
 }
 
+// TestValidateRootDirNames 覆盖共享目录名校验：保留名（private/temp）与重名
+// 都必须在保存入口被拒绝，正常目录名放行。
+func TestValidateRootDirNames(t *testing.T) {
+	cases := []struct {
+		name    string
+		dirs    []appconfig.RootDirConfig
+		wantSub string
+	}{
+		{"正常目录名", []appconfig.RootDirConfig{{Path: "/srv/shares/docs"}}, ""},
+		{"保留名 private", []appconfig.RootDirConfig{{Path: "/srv/shares/private"}}, "私有存储命名空间"},
+		{"保留名大小写变体", []appconfig.RootDirConfig{{Path: "/srv/shares/TEMP"}}, "临时文件命名空间"},
+		{"仅 FullPath 提供时同样校验", []appconfig.RootDirConfig{{FullPath: "/srv/shares/temp"}}, "临时文件命名空间"},
+		{
+			"重名",
+			[]appconfig.RootDirConfig{{Path: "/srv/a/docs"}, {Path: "/srv/b/Docs"}},
+			"根目录名称重复",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := validateRootDirNames(tc.dirs)
+			if tc.wantSub == "" {
+				if got != "" {
+					t.Errorf("validateRootDirNames() = %q, want 空串", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.wantSub) {
+				t.Errorf("validateRootDirNames() = %q, want 包含 %q", got, tc.wantSub)
+			}
+		})
+	}
+}
+
+// TestSaveConfig_RejectsInvalidRootDirNames 验证保存入口对保留名/重名返回 400，
+// 且 GlobalConfig 中的共享目录保持原值（校验先于写入）。
+func TestSaveConfig_RejectsInvalidRootDirNames(t *testing.T) {
+	prevCfg := appconfig.GlobalConfig
+	t.Cleanup(func() { appconfig.GlobalConfig = prevCfg })
+	orig := []appconfig.DirectoryConfig{{Path: "/srv/shares/docs"}}
+	appconfig.GlobalConfig = appconfig.Config{
+		Storage: appconfig.StorageConfig{
+			Public: appconfig.PublicStorageConfig{RootDirs: orig},
+			Temp:   appconfig.TempConfig{Enabled: false},
+		},
+	}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"保留名", `{"root_dirs":[{"path":"/srv/shares/private"}]}`},
+		{"重名", `{"root_dirs":[{"path":"/srv/a/docs"},{"path":"/srv/b/docs"}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postConfig(t, "/api/v1/web/config", tc.body, &Handler{})
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("状态码 = %d, want %d，响应体: %s", w.Code, http.StatusBadRequest, w.Body.String())
+			}
+			got := appconfig.GlobalConfig.Storage.Public.RootDirs
+			if len(got) != 1 || got[0].Path != "/srv/shares/docs" {
+				t.Errorf("被拒绝的保存修改了 RootDirs = %+v, want 保持原值", got)
+			}
+		})
+	}
+}
+
 // equalStrings 按顺序比较两个字符串切片。
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

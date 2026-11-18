@@ -169,6 +169,14 @@ type RootDirConfig struct {
 	Path          string `json:"path"`
 	FullPath      string `json:"full_path"`
 	UploadEnabled bool   `json:"upload_enabled"`
+	// OverwriteEnabled 允许任意用户覆盖该目录下已存在文件（默认沿用全局限制）
+	OverwriteEnabled bool `json:"overwrite_enabled"`
+	// RenameEnabled 允许任意用户重命名该目录下文件（默认沿用全局限制）
+	RenameEnabled bool `json:"rename_enabled"`
+	// MoveEnabled 允许任意用户移动该目录下文件（默认沿用全局限制）
+	MoveEnabled bool `json:"move_enabled"`
+	// DeleteEnabled 允许任意用户删除该目录下文件（默认沿用全局限制）
+	DeleteEnabled bool `json:"delete_enabled"`
 }
 
 // StorageBackendDTO 存储后端配置 DTO（对应 yaml storage.backend/s3/oss/webdav）。
@@ -423,10 +431,14 @@ func (c *Config) ToDTO() ConfigDTO {
 			name = name[idx+1:]
 		}
 		rootDirs[i] = RootDirConfig{
-			Name:          name,
-			Path:          name,
-			FullPath:      dir.Path,
-			UploadEnabled: dir.UploadAllowed(),
+			Name:             name,
+			Path:             name,
+			FullPath:         dir.Path,
+			UploadEnabled:    dir.UploadAllowed(),
+			OverwriteEnabled: dir.OverwriteAllowed(),
+			RenameEnabled:    dir.RenameAllowed(),
+			MoveEnabled:      dir.MoveAllowed(),
+			DeleteEnabled:    dir.DeleteAllowed(),
 		}
 	}
 
@@ -717,7 +729,11 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 			cfg.Storage.Public.RootDirs[i] = DirectoryConfig{
 				Path: path,
 				// 仅当明确禁止上传时写入 false；允许时保持 nil，回写 YAML 更简洁且与默认一致
-				AllowUpload: BoolPtrFalseWhenDisabled(dir.UploadEnabled),
+				AllowUpload:    BoolPtrFalseWhenDisabled(dir.UploadEnabled),
+				AllowOverwrite: dir.OverwriteEnabled,
+				AllowRename:    dir.RenameEnabled,
+				AllowMove:      dir.MoveEnabled,
+				AllowDelete:    dir.DeleteEnabled,
 			}
 		}
 	}

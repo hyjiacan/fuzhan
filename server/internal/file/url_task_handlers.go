@@ -159,7 +159,8 @@ func (h *UploadSessionHandler) UploadFromURL(c *gin.Context) {
 		sessionTargetPath = session.TargetPath
 	}
 
-	if _, err := os.Stat(targetPath); err == nil {
+	// 目标已存在：目录开启任意覆盖时放行（下载完成后覆盖），否则直接拒绝
+	if _, err := os.Stat(targetPath); err == nil && !appconfig.PublicDirOverwriteAllowed(req.RootName) {
 		utils.HandleErrorCompat(c, http.StatusConflict, "目标文件已存在", nil)
 		return
 	}

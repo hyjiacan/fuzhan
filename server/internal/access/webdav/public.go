@@ -20,8 +20,11 @@ import (
 
 // PublicFileSystem implements a webdav.FileSystem that serves multiple root
 // directories. Paths are formatted as: /<root_name>/<sub_path>.
-// Public directories are create-only: new files/dirs can be created, but
-// existing files cannot be overwritten, and delete/rename are forbidden.
+// Public directories are create-only by default: new files/dirs can be created,
+// but existing files cannot be overwritten, and delete/rename are forbidden.
+// 目录级豁免开关（storage.public.root_dirs[]）可分别放开这些限制：
+// allow_overwrite 允许覆盖已有文件，allow_rename/allow_move/allow_delete 分别允许
+// 重命名、移动、删除。
 // The root name is the basename of the directory path in config.RootNames.
 type PublicFileSystem struct {
 	rootNames  map[string]string
@@ -112,12 +115,80 @@ func (fs *PublicFileSystem) Mkdir(ctx context.Context, name string, perm os.File
 	return os.MkdirAll(fullPath, perm)
 }
 
-func (fs *PublicFileSystem) RemoveAll(_ context.Context, _ string) error {
-	return os.ErrPermission
+func (fs *PublicFileSystem) RemoveAll(ctx context.Context, name string) error {
+	rootName, subPath := splitPath(name)
+	rootPath, ok := fs.rootNames[rootName]
+	if !ok {
+		return os.ErrNotExist
+	}
+	// 仅当目录开启 allow_delete 时允许任意用户删除
+	if !appconfig.PublicDirDeleteAllowed(rootName) {
+		return os.ErrPermission
+	}
+	if subPath == "" {
+		return os.ErrPermission
+	}
+	if st, remote := fs.storageFor(rootName); remote {
+		if err := st.RemoveAll(ctx, subPath); err != nil {
+			return err
+		}
+	} else {
+		fullPath := filepath.Join(rootPath, subPath)
+		if err := fs.validators[rootName].Validate(fullPath); err != nil {
+			return os.ErrPermission
+		}
+		if err := os.RemoveAll(fullPath); err != nil {
+			return err
+		}
+	}
+	if fs.backend != nil {
+		fs.backend.RemovePublicFile(rootName, subPath)
+	}
+	return nil
 }
 
-func (fs *PublicFileSystem) Rename(_ context.Context, _, _ string) error {
-	return os.ErrPermission
+func (fs *PublicFileSystem) Rename(ctx context.Context, oldName, newName string) error {
+	oldRoot, oldSub := splitPath(oldName)
+	newRoot, newSub := splitPath(newName)
+	if oldRoot != newRoot || oldSub == "" || newSub == "" {
+		return os.ErrPermission
+	}
+	// 仅当目录开启 allow_rename/allow_move 时允许任意用户重命名/移动
+	if filepath.Dir(oldSub) == filepath.Dir(newSub) {
+		if !appconfig.PublicDirRenameAllowed(oldRoot) {
+			return os.ErrPermission
+		}
+	} else if !appconfig.PublicDirMoveAllowed(oldRoot) {
+		return os.ErrPermission
+	}
+	if st, remote := fs.storageFor(oldRoot); remote {
+		if _, err := st.Stat(ctx, newSub); err == nil && !appconfig.PublicDirOverwriteAllowed(oldRoot) {
+			return os.ErrExist
+		}
+		if err := st.Rename(ctx, oldSub, newSub); err != nil {
+			return err
+		}
+	} else {
+		rootPath := fs.rootNames[oldRoot]
+		oldPath := filepath.Join(rootPath, oldSub)
+		newPath := filepath.Join(rootPath, newSub)
+		if err := fs.validators[oldRoot].Validate(oldPath); err != nil {
+			return os.ErrPermission
+		}
+		if err := fs.validators[oldRoot].Validate(newPath); err != nil {
+			return os.ErrPermission
+		}
+		if _, err := os.Lstat(newPath); err == nil && !appconfig.PublicDirOverwriteAllowed(oldRoot) {
+			return os.ErrExist
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return err
+		}
+	}
+	if fs.backend != nil {
+		fs.backend.MovePublicFile(oldRoot, oldSub, newSub)
+	}
+	return nil
 }
 
 func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
@@ -156,7 +227,12 @@ func (fs *PublicFileSystem) OpenFile(ctx context.Context, name string, flag int,
 		if err := fs.canCreatePublic(rootName, filepath.Dir(fullPath), subPath); err != nil {
 			return nil, err
 		}
-		f, err := os.OpenFile(fullPath, flag|os.O_EXCL, perm)
+		// 目录开启任意覆盖时允许直接覆盖已存在文件；否则只允许新建（O_EXCL）。
+		openFlag := flag
+		if !appconfig.PublicDirOverwriteAllowed(rootName) {
+			openFlag = flag | os.O_EXCL
+		}
+		f, err := os.OpenFile(fullPath, openFlag, perm)
 		if err != nil {
 			// 目标已存在（或并发方抢建）：公开目录只允许新建，映射为权限错误
 			if errors.Is(err, os.ErrExist) {
@@ -201,8 +277,10 @@ func (fs *PublicFileSystem) openRemote(ctx context.Context, st storage.Storage, 
 			return nil, err
 		}
 		if exists {
-			// 公开目录只允许新建：已存在映射为权限错误（替代本地 O_EXCL 原子性）。
-			return nil, os.ErrPermission
+			// 公开目录只允许新建；目录开启任意覆盖时放行（由 OpenWriter 覆盖对象）。
+			if !appconfig.PublicDirOverwriteAllowed(rootName) {
+				return nil, os.ErrPermission
+			}
 		}
 		wc, err := st.OpenWriter(ctx, subPath)
 		if err != nil {

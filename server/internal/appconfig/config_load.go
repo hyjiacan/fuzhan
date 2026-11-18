@@ -112,9 +112,13 @@ func readConfig() {
 		}
 
 		GlobalConfig.Storage.Public.RootDirs = append(GlobalConfig.Storage.Public.RootDirs, DirectoryConfig{
-			Path:        dirConfig.Path,
-			Quota:       quota,
-			AllowUpload: dirConfig.AllowUpload,
+			Path:           dirConfig.Path,
+			Quota:          quota,
+			AllowUpload:    dirConfig.AllowUpload,
+			AllowOverwrite: dirConfig.AllowOverwrite,
+			AllowRename:    dirConfig.AllowRename,
+			AllowMove:      dirConfig.AllowMove,
+			AllowDelete:    dirConfig.AllowDelete,
 		})
 	}
 
@@ -363,6 +367,16 @@ func initRootNames(isSetup bool) {
 		if dirName == "." || dirName == "" || dirName == string(os.PathSeparator) || dirName == ".." || dirName == "/" {
 			utils.Fatal("无效的根目录名称（路径最后一段为空）",
 				utils.String("path", rootDirConfig.Path))
+			continue
+		}
+		if reason := ReservedRootNameReason(dirName); reason != "" {
+			// 保留名与私有存储/临时文件共用同一 root_name 键空间，注册后会造成
+			// 数据混叠与目录级权限配置误命中。此处跳过注册而非 Fatal，避免既有
+			// 部署升级后因历史配置直接无法启动；保存配置时会在入口直接拒绝。
+			utils.Warn("根目录名称与系统命名空间冲突，已跳过该目录",
+				utils.String("path", rootDirConfig.Path),
+				utils.String("name", dirName),
+				utils.String("reason", reason))
 			continue
 		}
 		if _, exists := RootNames[dirName]; exists {

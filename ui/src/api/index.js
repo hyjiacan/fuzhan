@@ -294,6 +294,19 @@ export const FileApi = {
   // 计算已上传文件校验值（由服务器对已存储文件计算；payload 含 storage_type 及对应定位字段与 algorithms）
   computeChecksum(payload) {
     return request.post('/files/checksum', payload, { skipSuccessToast: true })
+  },
+
+  // 公开文件自助管理：权限由后端按「管理员 / 上传者IP / 目录开关」判定，前端仅按 can_* 字段展示入口
+  rename(path, newName) {
+    return request.post('/files/rename', { path, new_name: newName }, { skipSuccessToast: true })
+  },
+
+  move(oldPath, newPath) {
+    return request.post('/files/move', { path: oldPath, target_path: newPath }, { skipSuccessToast: true })
+  },
+
+  delete(path) {
+    return request.delete('/files', { params: { path }, skipSuccessToast: true })
   }
 }
 

@@ -184,7 +184,8 @@ func (h *UploadSessionHandler) CreateSession(c *gin.Context) {
 
 	if targetExists {
 		role, _ := c.Get(string(constants.ContextKeyRole))
-		if role != "admin" {
+		// 目录配置 allow_overwrite 时任意用户可覆盖，跳过上传者归属校验
+		if role != "admin" && !appconfig.PublicDirOverwriteAllowed(rootName) {
 			// 非管理员：仅当上传者IP与现有文件的上传者IP一致时允许覆盖
 			clientIP := utils.GetClientIP(c)
 			indexFilePath := "/" + req.Filename

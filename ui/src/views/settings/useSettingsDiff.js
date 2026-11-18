@@ -56,6 +56,10 @@ const FIELD_LABELS = {
   'root_dirs.path': '目录路径',
   'root_dirs.name': '显示名称',
   'root_dirs.upload_enabled': '允许上传',
+  'root_dirs.overwrite_enabled': '允许任意用户覆盖',
+  'root_dirs.rename_enabled': '允许任意用户重命名',
+  'root_dirs.move_enabled': '允许任意用户移动',
+  'root_dirs.delete_enabled': '允许任意用户删除',
 
   allowed_extensions: '允许的扩展名',
 
@@ -320,7 +324,13 @@ const formatValue = (path, val) => {
   if (isPlainObject(val)) {
     if (basePath === 'root_dirs') {
       const name = val.name || val.path || '未命名目录'
-      return val.uploadEnabled === false ? `${name}（禁止上传）` : name
+      const flags = []
+      if (val.uploadEnabled === false) flags.push('禁止上传')
+      if (val.overwriteEnabled === true) flags.push('任意覆盖')
+      if (val.renameEnabled === true) flags.push('任意重命名')
+      if (val.moveEnabled === true) flags.push('任意移动')
+      if (val.deleteEnabled === true) flags.push('任意删除')
+      return flags.length ? `${name}（${flags.join('、')}）` : name
     }
     return JSON.stringify(val)
   }

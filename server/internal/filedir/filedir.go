@@ -89,6 +89,7 @@ func GetDirectoryItems(dirPath, rootName string, hashMap map[string]string) []ap
 				itemInfo.Xxh3Hash = h
 			}
 		}
+		// 按全局扩展名白名单过滤
 		if itemInfo.Type == "file" && !IsFileAllowed(itemInfo.Name) {
 			continue
 		}

@@ -277,7 +277,7 @@ func (fs *MultiRootFs) isPublicPath(virtualPath string) bool {
 }
 
 // validateExtension checks filename against allowedExtensions. Returns nil if allowed.
-func (fs *MultiRootFs) validateExtension(filename string) error {
+func (fs *MultiRootFs) validateExtension(rootName, filename string) error {
 	if len(fs.allowedExtensions) == 0 {
 		return nil
 	}
@@ -307,8 +307,8 @@ func (fs *MultiRootFs) canCreatePublic(rootName string) bool {
 }
 
 // canManagePublic 判定对 public 下已有文件执行覆盖/删除/重命名是否允许：
-// 匿名一律拒绝；管理员放行；否则仅当索引记录上传者 IP 与当前客户端 IP 一致时放行。
-// backend 为 nil 时一律拒绝（保守安全）。
+// 匿名一律拒绝（除非目录配置了对应豁免）；管理员放行；否则仅当索引记录上传者 IP
+// 与当前客户端 IP 一致时放行。backend 为 nil 时一律拒绝（保守安全）。
 func (fs *MultiRootFs) canManagePublic(rootName, relPath string) bool {
 	if fs.backend == nil || rootName == "" || relPath == "" || relPath == "/" {
 		return false
@@ -321,6 +321,51 @@ func (fs *MultiRootFs) canManagePublic(rootName, relPath string) bool {
 	}
 	ip := fs.backend.PublicUploaderIP(rootName, relPath)
 	return ip != "" && ip == fs.clientIP
+}
+
+// canOverwritePublic 覆盖已有文件的权限判定：目录开启 allow_overwrite 时任意用户放行，
+// 否则回退到 canManagePublic（管理员或上传者 IP 一致）。
+func (fs *MultiRootFs) canOverwritePublic(rootName, relPath string) bool {
+	if rootName != "" && appconfig.PublicDirOverwriteAllowed(rootName) {
+		return true
+	}
+	return fs.canManagePublic(rootName, relPath)
+}
+
+// canDeletePublic 删除的权限判定：目录开启 allow_delete 时任意用户放行，
+// 否则回退到 canManagePublic（管理员或上传者 IP 一致）。
+func (fs *MultiRootFs) canDeletePublic(rootName, relPath string) bool {
+	if rootName != "" && appconfig.PublicDirDeleteAllowed(rootName) {
+		return true
+	}
+	return fs.canManagePublic(rootName, relPath)
+}
+
+// canRenamePublic 重命名的权限判定：目录开启 allow_rename 时任意用户放行，
+// 否则回退到 canManagePublic（管理员或上传者 IP 一致）。
+func (fs *MultiRootFs) canRenamePublic(rootName, relPath string) bool {
+	if rootName != "" && appconfig.PublicDirRenameAllowed(rootName) {
+		return true
+	}
+	return fs.canManagePublic(rootName, relPath)
+}
+
+// canMovePublic 移出文件的权限判定：源目录开启 allow_move 时任意用户放行，
+// 否则回退到 canManagePublic（管理员或上传者 IP 一致）。
+func (fs *MultiRootFs) canMovePublic(srcRoot, srcRel string) bool {
+	if srcRoot != "" && appconfig.PublicDirMoveAllowed(srcRoot) {
+		return true
+	}
+	return fs.canManagePublic(srcRoot, srcRel)
+}
+
+// canRenameOrMovePublic 按操作语义选择重命名或移动的权限判定：
+// 同根同目录改名视为重命名，跨目录视为移动。
+func (fs *MultiRootFs) canRenameOrMovePublic(srcRoot, srcRel, dstRel string) bool {
+	if path.Dir(srcRel) == path.Dir(dstRel) {
+		return fs.canRenamePublic(srcRoot, srcRel)
+	}
+	return fs.canMovePublic(srcRoot, srcRel)
 }
 
 // existsOnDisk 判断磁盘上是否存在指定文件（目录视为存在）。
@@ -370,13 +415,13 @@ func (fs *MultiRootFs) Create(name string) (afero.File, error) {
 		if !fs.canCreatePublic(ftpRootName(name)) {
 			return nil, os.ErrPermission
 		}
-		if err := fs.validateExtension(filepath.Base(name)); err != nil {
+		if err := fs.validateExtension(ftpRootName(name), filepath.Base(name)); err != nil {
 			return nil, err
 		}
 	}
 	if isPrivate {
 		// 与公共分支一致：私有上传同样校验扩展名白名单（大小由 wrapWriteFile 兜底）
-		if err := fs.validateExtension(filepath.Base(name)); err != nil {
+		if err := fs.validateExtension("", filepath.Base(name)); err != nil {
 			return nil, err
 		}
 	}
@@ -529,7 +574,7 @@ func (fs *MultiRootFs) openRemoteWrite(st storage.Storage, name string, isPublic
 	if isPublic && !fs.canCreatePublic(rootName) {
 		return nil, os.ErrPermission
 	}
-	if err := fs.validateExtension(filepath.Base(name)); err != nil {
+	if err := fs.validateExtension(rootName, filepath.Base(name)); err != nil {
 		return nil, err
 	}
 	// 远端模式下 rootPath 是虚拟前缀：CheckDiskSpace 需要本地物理分区的可写路径用于检测，
@@ -571,11 +616,15 @@ func (fs *MultiRootFs) openRemoteWrite(st storage.Storage, name string, isPublic
 // remoteUpload 把本地缓存文件一次性写入远端后端，并完成操作记录与索引同步。
 // 在 remoteRecordingFile.Close 中（缓存文件已 Seek 回开头）调用。
 func (fs *MultiRootFs) remoteUpload(cached *os.File, st storage.Storage, rootName, subPath, name string, size int64, isPublic, isPrivate bool) error {
-	// 远端写入前做防覆盖检查：公开目录仅允许新建（与 webdav 一致，替代本地 O_EXCL）。
+	// 远端写入前做防覆盖检查：公开目录仅允许新建，目录开启任意覆盖时放行
+	// （与 webdav 一致，替代本地 O_EXCL）。
 	if isPublic {
 		info, err := st.Stat(fs.ctx, subPath)
 		if err == nil && !info.IsDir {
-			return os.ErrPermission
+			_, relPath := fs.recordPath(name)
+			if !fs.canOverwritePublic(rootName, relPath) {
+				return os.ErrPermission
+			}
 		}
 		if err != nil && !storage.IsNotExist(err) {
 			return err
@@ -676,13 +725,13 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 			if !fs.canCreatePublic(rootName) {
 				return nil, os.ErrPermission
 			}
-			if err := fs.validateExtension(filepath.Base(name)); err != nil {
+			if err := fs.validateExtension(rootName, filepath.Base(name)); err != nil {
 				return nil, err
 			}
-			// 覆盖已有文件需管理权限（上传者 IP 一致或管理员）
+			// 覆盖已有文件需管理权限（目录豁免 / 上传者 IP 一致 / 管理员）
 			if existsOnDisk(realPath) {
 				rootName, relPath := fs.recordPath(name)
-				if !fs.canManagePublic(rootName, relPath) {
+				if !fs.canOverwritePublic(rootName, relPath) {
 					fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.overwrite", name, "匿名或非归属用户尝试管理公开文件")
 					return nil, os.ErrPermission
 				}
@@ -690,7 +739,7 @@ func (fs *MultiRootFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 		}
 		if isPrivate {
 			// 与公共分支一致：私有上传同样校验扩展名白名单（大小由 wrapWriteFile 兜底）
-			if err := fs.validateExtension(filepath.Base(name)); err != nil {
+			if err := fs.validateExtension("", filepath.Base(name)); err != nil {
 				return nil, err
 			}
 			// 与 Web 私有上传一致：不允许覆盖已有文件（每次上传生成独立分享码）
@@ -789,7 +838,7 @@ func (fs *MultiRootFs) Remove(name string) error {
 	isPublic := fs.isPublicPath(name)
 	if isPublic {
 		rootName, relPath := fs.recordPath(name)
-		if !fs.canManagePublic(rootName, relPath) {
+		if !fs.canDeletePublic(rootName, relPath) {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.remove", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
@@ -824,7 +873,7 @@ func (fs *MultiRootFs) RemoveAll(name string) error {
 	isPublic := fs.isPublicPath(name)
 	if isPublic {
 		rootName, relPath := fs.recordPath(name)
-		if !fs.canManagePublic(rootName, relPath) {
+		if !fs.canDeletePublic(rootName, relPath) {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.removeall", name, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
@@ -899,15 +948,17 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 		if oldRoot != newRoot {
 			return os.ErrPermission
 		}
-		if !fs.canManagePublic(oldRoot, oldRel) {
+		if !fs.canRenameOrMovePublic(oldRoot, oldRel, newRel) {
 			fs.recordSecurity(models.EventAccessForbidden, models.SeverityMedium, "file.rename", oldName, "匿名或非归属用户尝试管理公开文件")
 			return os.ErrPermission
 		}
 		// 远端后端：经 Storage 接口重命名（对象存储 CopyObject+RemoveObject 模拟移动）。
 		if st, remote := fs.storageFor(oldRoot); remote {
-			// 目标已存在（文件或目录）→ 拒绝覆盖（远端经 Storage Stat 判定，替代磁盘 existsOnDisk）
+			// 目标已存在（文件或目录）→ 拒绝覆盖（目录开启任意覆盖时放行）
 			if _, serr := st.Stat(fs.ctx, newRel); serr == nil {
-				return os.ErrExist
+				if !fs.canOverwritePublic(newRoot, newRel) {
+					return os.ErrExist
+				}
 			} else if !storage.IsNotExist(serr) {
 				return serr
 			}
@@ -924,8 +975,8 @@ func (fs *MultiRootFs) Rename(oldName, newName string) error {
 			return nil
 		}
 	}
-	// 目标已存在（文件或目录）→ 拒绝覆盖
-	if existsOnDisk(newPath) {
+	// 目标已存在（文件或目录）→ 拒绝覆盖（公共目录开启任意覆盖时放行）
+	if existsOnDisk(newPath) && (oldNS != "public" || !fs.canOverwritePublic(newRoot, newRel)) {
 		return os.ErrExist
 	}
 	if err := afero.NewOsFs().Rename(oldPath, newPath); err != nil {

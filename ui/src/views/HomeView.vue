@@ -88,6 +88,53 @@
     </div>
 
     <dependency-tree-dialog ref="depTreeDialogRef" @changed="refreshListDebounced" />
+
+    <!-- 重命名文件弹窗 -->
+    <el-dialog v-model="renameModalVisible" title="重命名文件" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="当前文件名">
+          <el-input :model-value="renameTarget?.name" disabled />
+        </el-form-item>
+        <el-form-item label="新文件名">
+          <el-input v-model="renameNewName" maxlength="255" placeholder="输入新的文件名" @keyup.enter="handleRename" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="renameModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="renaming" @click="handleRename">确定</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
+
+    <!-- 移动文件弹窗 -->
+    <el-dialog v-model="moveModalVisible" title="移动文件" width="560px">
+      <el-form label-width="90px">
+        <el-form-item label="文件名">
+          <el-input :model-value="moveTarget?.name" disabled />
+        </el-form-item>
+        <el-form-item label="当前路径">
+          <el-input :model-value="moveTarget?.path" disabled />
+        </el-form-item>
+        <el-form-item label="目标路径">
+          <div class="target-path-input">
+            <el-input :model-value="moveTargetRoot" disabled placeholder="根目录" class="root-input" />
+            <span class="path-separator">/</span>
+            <el-input v-model="moveTargetSubPath" maxlength="1024" placeholder="输入子目录/文件名" class="sub-path-input" />
+          </div>
+          <div class="help-text">
+            <p>输入目标路径（相对于根目录），如 <code>newname.pdf</code> 或 <code>subdir/newname.pdf</code></p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="moveModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="moving" @click="handleMove">确定</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
+
     <!-- 备注编辑弹窗 -->
     <el-dialog v-model="notesModalVisible" title="编辑备注" width="500px" :class="notesMaximized ? 'preview-maximized' : ''">
       <el-input v-model="editNotes" type="textarea" :rows="4" maxlength="4096" placeholder="输入备注内容..." />
@@ -123,7 +170,7 @@
 <script setup>
 import { ref, computed, h, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import UploadManager from '@/components/upload/UploadManager.vue'
 import FilePreview from '@/components/file/FilePreview.vue'
@@ -132,7 +179,7 @@ import { TableConst, PathUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
 import { downloadWithTicket } from '@/utils/download'
 import store from '@/store'
-import { FileRecordApi } from '@/api'
+import { FileRecordApi, FileApi } from '@/api'
 import { isAppInitialized, initializationComplete } from '@/main'
 import { useHomeSearch } from './home/useHomeSearch'
 import { useHomeDragDrop } from './home/useHomeDragDrop'
@@ -261,7 +308,122 @@ const saveNotes = async () => {
     savingNotes.value = false
   }
 }
-// 公开文件的管理（重命名/移动/删除）已迁移至管理员页面
+
+// 公开文件的自助管理（重命名/移动/删除）。是否展示入口由后端返回的
+// can_rename / can_move / can_delete 决定，后端 handler 会再次校验权限。
+const renameModalVisible = ref(false)
+const renameTarget = ref(null)
+const renameNewName = ref('')
+const renaming = ref(false)
+
+const openRenameModal = (row) => {
+  renameTarget.value = row
+  renameNewName.value = row.name || ''
+  renameModalVisible.value = true
+}
+
+const handleRename = async () => {
+  const row = renameTarget.value
+  if (!row) return
+  const newName = (renameNewName.value || '').trim()
+  if (!newName) {
+    ElMessage.warning('请输入新文件名')
+    return
+  }
+  if (newName === row.name) {
+    renameModalVisible.value = false
+    return
+  }
+  renaming.value = true
+  try {
+    const res = await FileApi.rename(row.path, newName)
+    if (res.success) {
+      ElMessage.success('重命名成功')
+      renameModalVisible.value = false
+      refreshListDebounced()
+    } else {
+      ElMessage.error(res.message || '重命名失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '重命名失败'))
+  } finally {
+    renaming.value = false
+  }
+}
+
+const moveModalVisible = ref(false)
+const moveTarget = ref(null)
+const moveTargetRoot = ref('')
+const moveTargetSubPath = ref('')
+const moving = ref(false)
+
+const openMoveModal = (row) => {
+  moveTarget.value = row
+  moveTargetRoot.value = row.root_name || ''
+  // 预填相对根目录的路径（去掉 rootName 前缀），避免拼接时重复嵌套
+  let rel = row.path || ''
+  const prefix = '/' + (row.root_name || '')
+  if (rel.startsWith(prefix + '/')) {
+    rel = rel.slice(prefix.length + 1)
+  }
+  moveTargetSubPath.value = rel
+  moveModalVisible.value = true
+}
+
+const handleMove = async () => {
+  const row = moveTarget.value
+  if (!row) return
+  const subPath = (moveTargetSubPath.value || '').trim()
+  if (!subPath) {
+    ElMessage.warning('请输入目标路径（子目录或新文件名）')
+    return
+  }
+  if (subPath.includes('..')) {
+    ElMessage.error('目标路径无效，不能包含 ..')
+    return
+  }
+  moving.value = true
+  try {
+    const res = await FileApi.move(row.path, moveTargetRoot.value + '/' + subPath)
+    if (res.success) {
+      ElMessage.success('移动成功')
+      moveModalVisible.value = false
+      refreshListDebounced()
+    } else {
+      ElMessage.error(res.message || '移动失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '移动失败'))
+  } finally {
+    moving.value = false
+  }
+}
+
+const handleDeleteRow = async (row) => {
+  const isDirectory = !!row.is_dir
+  try {
+    await ElMessageBox.confirm(
+      isDirectory
+        ? `确定要删除目录 "${row.name}" 及其所有内容吗？此操作不可恢复。`
+        : `确定要删除文件 "${row.name}" 吗？此操作不可恢复。`,
+      '确认删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await FileApi.delete(row.path)
+    if (res.success) {
+      ElMessage.success('删除成功')
+      refreshListDebounced()
+    } else {
+      ElMessage.error(res.message || '删除失败')
+    }
+  } catch (e) {
+    ElMessage.error(formatErrorMessage(e, '删除失败'))
+  }
+}
 
 // 预览与下载
 const previewDialogVisible = ref(false)
@@ -322,6 +484,9 @@ const columns = createColumns({
   previewFile,
   openNotesEditor,
   openDepTree,
+  openRenameModal,
+  openMoveModal,
+  handleDeleteRow,
   refreshListDebounced
 })
 
@@ -532,6 +697,46 @@ watch(
   justify-content: flex-end;
   gap: 12px;
 }
+
+// 移动弹窗的目标路径输入（根目录名 + 子路径）
+.target-path-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+
+  .root-input {
+    width: 120px;
+    flex-shrink: 0;
+  }
+
+  .path-separator {
+    color: @text-color-secondary;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .sub-path-input {
+    flex: 1;
+  }
+}
+
+.help-text {
+  font-size: 13px;
+  color: @text-color-secondary;
+  line-height: 1.8;
+  margin-top: 8px;
+
+  p {
+    margin: 4px 0;
+  }
+
+  code {
+    padding: 0 4px;
+    background: @bg-color-secondary;
+    border-radius: 3px;
+  }
+}
 </style>
 <style lang="less">
 @import '@/styles/variables.less';
@@ -545,6 +750,14 @@ watch(
   text-decoration-line: underline;
   text-decoration-color: @success-color;
   text-underline-offset: 2px;
+}
+
+// 操作列按钮容器：same 原因（h() 动态节点），放在非 scoped 区块
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
 }
 
 // 无 href 的自定义目录链接/路径段：鼠标手型，键盘焦点环交给全局 :focus-visible

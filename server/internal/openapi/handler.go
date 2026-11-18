@@ -1073,6 +1073,8 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 		requiredScope = models.ScopeFilesDeleteDir
 		targetKind = "目录"
 	}
+	// 目录级豁免不适用于此处：路由层已按 API Key scope 拦截，
+	// scope 属于密钥授权粒度，而非全局安全限制。
 	if !hasContextScope(c, requiredScope) {
 		response.HandleCustomError(c, http.StatusForbidden, response.CodeForbidden,
 			fmt.Sprintf("权限不足：删除%s需要 scope: %s", targetKind, requiredScope))
@@ -1242,12 +1244,14 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 	if existing {
-		if !overwrite {
+		// 目录配置 allow_overwrite 时，覆盖不再需要显式 overwrite 参数与覆盖 scope
+		dirAllowsOverwrite := appconfig.PublicDirOverwriteAllowed(rootName)
+		if !overwrite && !dirAllowsOverwrite {
 			response.HandleErrorCompat(c, http.StatusConflict,
 				"目标文件已存在；如需覆盖请传 overwrite=true", nil)
 			return
 		}
-		if !hasContextScope(c, models.ScopeFilesOverwrite) {
+		if !dirAllowsOverwrite && !hasContextScope(c, models.ScopeFilesOverwrite) {
 			response.HandleForbidden(c, "覆盖已有文件需要 open_api:files:overwrite 权限")
 			return
 		}
@@ -1548,7 +1552,9 @@ func (h *Handler) FinalizeChunkUpload(c *gin.Context) {
 
 	// 仅在目标确实已存在时才需要覆盖权限：先按调用方声明与实际 scope 计算允许覆盖标志，
 	// 目标冲突时再根据是否声明覆盖给出 403/409，避免目标不存在时也要求覆盖权限。
-	canOverwrite := hasContextScope(c, models.ScopeFilesOverwrite)
+	// 目录配置 allow_overwrite 时不受 overwrite scope 限制。
+	canOverwrite := hasContextScope(c, models.ScopeFilesOverwrite) ||
+		appconfig.PublicDirOverwriteAllowed(session.TargetRoot)
 	result, err := h.uploadSvc.Finalize(uint(req.UploadID), req.Overwrite && canOverwrite)
 	if err != nil {
 		switch {

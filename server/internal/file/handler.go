@@ -9,6 +9,7 @@ import (
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/constants"
+	"fuzhan/internal/filedir"
 	"fuzhan/internal/middleware"
 	"fuzhan/internal/models"
 	"fuzhan/internal/services"
@@ -75,9 +76,13 @@ type FileRecordInfo struct {
 	RootName      string `json:"root_name"`
 	DownloadCount int64  `json:"download_count"`
 	// DependencyCount 该文件相关的依赖条数（上游 + 下游）
-	DependencyCount int64  `json:"dependency_count"`
-	CanManage       bool   `json:"can_manage"`            // 当前请求者能否管理（管理员，或上传者IP一致）
-	UploaderIP      string `json:"uploader_ip,omitempty"` // 上传者IP，仅管理员请求时返回
+	DependencyCount int64 `json:"dependency_count"`
+	// CanManage 三种操作中任一可执行即为 true（兼容旧前端）
+	CanManage  bool   `json:"can_manage"`
+	CanRename  bool   `json:"can_rename"`             // 当前请求者能否重命名
+	CanMove    bool   `json:"can_move"`               // 当前请求者能否移动
+	CanDelete  bool   `json:"can_delete"`             // 当前请求者能否删除
+	UploaderIP string `json:"uploader_ip,omitempty"` // 上传者IP，仅管理员请求时返回
 }
 
 // ListDirectories 列出目录内容（基于数据库查询）
@@ -198,7 +203,10 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 			utils.String("root", rootName), utils.String("path", prefix), utils.Err(err))
 	}
 
-	// 可管理：管理员，或上传者IP与当前请求者IP一致
+	// 可管理：管理员，或该目录开启了对应操作豁免，或上传者IP与当前请求者IP一致
+	dirRenameAllowed := appconfig.PublicDirRenameAllowed(rootName)
+	dirMoveAllowed := appconfig.PublicDirMoveAllowed(rootName)
+	dirDeleteAllowed := appconfig.PublicDirDeleteAllowed(rootName)
 	result := make([]FileRecordInfo, 0, len(records))
 	for _, r := range records {
 		fileType := "file"
@@ -209,12 +217,16 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 		if !r.ModTime.IsZero() {
 			modifiedTime = r.ModTime.Format("2006-01-02T15:04:05")
 		}
-		canManage := isAdmin
 		uploaderIP := ""
 		if isAdmin {
 			// 上传者IP仅对管理员返回，避免公开浏览时泄露
 			uploaderIP = r.UploaderIP
 		}
+		ownedByRequester := !isAdmin && requesterIP != "" && r.UploaderIP != "" && r.UploaderIP == requesterIP
+		canRename := !r.IsDir && (isAdmin || ownedByRequester || dirRenameAllowed)
+		canMove := !r.IsDir && (isAdmin || ownedByRequester || dirMoveAllowed)
+		// 目录删除仅管理员可执行（递归破坏性操作，不适用文件级豁免）
+		canDelete := isAdmin || (!r.IsDir && (ownedByRequester || dirDeleteAllowed))
 		result = append(result, FileRecordInfo{
 			Name:            r.FileName,
 			Type:            fileType,
@@ -230,7 +242,10 @@ func (fh *FileHandlers) listDirectChildren(rootName, prefix, requesterIP string,
 			RootName:        r.RootName,
 			DownloadCount:   r.DownloadCount,
 			DependencyCount: depCounts[r.ID],
-			CanManage:       canManage,
+			CanManage:       canRename || canMove || canDelete,
+			CanRename:       canRename,
+			CanMove:         canMove,
+			CanDelete:       canDelete,
 			UploaderIP:      uploaderIP,
 		})
 	}
@@ -386,18 +401,45 @@ func (fh *FileHandlers) requesterIsAdmin(c *gin.Context) bool {
 	return role == "admin"
 }
 
-// canManagePublic 判断请求者是否有权管理某公开文件（管理员，或上传者IP一致）
+// manageOp 公共目录目录级豁免的操作类型
+type manageOp string
+
+const (
+	manageOpRename manageOp = "rename"
+	manageOpMove   manageOp = "move"
+	manageOpDelete manageOp = "delete"
+)
+
+// publicDirOpAllowed 查询该公共目录是否对 op 开启了任意用户豁免
+func publicDirOpAllowed(rootName string, op manageOp) bool {
+	switch op {
+	case manageOpRename:
+		return appconfig.PublicDirRenameAllowed(rootName)
+	case manageOpMove:
+		return appconfig.PublicDirMoveAllowed(rootName)
+	case manageOpDelete:
+		return appconfig.PublicDirDeleteAllowed(rootName)
+	}
+	return false
+}
+
+// canManagePublic 判断请求者是否有权对某公开文件执行 op（管理员，或上传者IP一致，
+// 或该目录配置了对应操作的任意用户豁免开关）
 // fullPath 为带 rootName 的完整路径，如 "documents/report.pdf"
-func (fh *FileHandlers) canManagePublic(c *gin.Context, fullPath string) bool {
+func (fh *FileHandlers) canManagePublic(c *gin.Context, fullPath string, op manageOp) bool {
 	if fh.requesterIsAdmin(c) {
+		return true
+	}
+	rootName, relPath := splitPath(fullPath)
+	if rootName == "" {
+		return false
+	}
+	// 目录级豁免：该目录允许任意用户执行对应操作
+	if publicDirOpAllowed(rootName, op) {
 		return true
 	}
 	ip := utils.GetClientIP(c)
 	if ip == "" {
-		return false
-	}
-	rootName, relPath := splitPath(fullPath)
-	if rootName == "" {
 		return false
 	}
 	var rec models.FileRecordPublic
@@ -423,8 +465,14 @@ func (fh *FileHandlers) RenamePublicFileHandler(c *gin.Context) {
 		return
 	}
 
-	if !fh.canManagePublic(c, req.Path) {
+	if !fh.canManagePublic(c, req.Path, manageOpRename) {
 		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
+		return
+	}
+
+	// 非管理员改扩展名会绕过全局扩展名白名单（可上传 .pdf 再改成 .exe），因此按新建文件口径校验
+	if !fh.requesterIsAdmin(c) && !filedir.IsFileAllowed(req.NewName) {
+		utils.HandleBadRequest(c, "该文件类型不被允许", nil)
 		return
 	}
 
@@ -448,9 +496,25 @@ func (fh *FileHandlers) MoveFileHandler(c *gin.Context) {
 		return
 	}
 
-	if !fh.canManagePublic(c, req.Path) {
+	if !fh.canManagePublic(c, req.Path, manageOpMove) {
 		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
 		return
+	}
+
+	// 同上：非管理员可通过"移动到新文件名"绕过扩展名白名单
+	if !fh.requesterIsAdmin(c) && !strings.HasSuffix(req.TargetPath, "/") &&
+		!filedir.IsFileAllowed(path.Base(req.TargetPath)) {
+		utils.HandleBadRequest(c, "该文件类型不被允许", nil)
+		return
+	}
+
+	// 非管理员不能借"移动"把文件写进禁止上传的目标目录
+	if !fh.requesterIsAdmin(c) {
+		if dstRoot, _ := splitPath(req.TargetPath); dstRoot == "" ||
+			!appconfig.PublicDirUploadAllowed(dstRoot) {
+			utils.HandleErrorCompat(c, http.StatusForbidden, "目标目录不允许写入", nil)
+			return
+		}
 	}
 
 	// 执行移动
@@ -477,7 +541,7 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 		return
 	}
 
-	if !fh.canManagePublic(c, req.Path) {
+	if !fh.canManagePublic(c, req.Path, manageOpDelete) {
 		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（仅文件上传者或管理员可管理）", nil)
 		return
 	}
@@ -486,17 +550,27 @@ func (fh *FileHandlers) DeleteFileHandler(c *gin.Context) {
 
 	// 在删除前判断是否为目录并取得文件大小（删除后 Stat 会失败）
 	isDir := false
+	statOK := false
 	var fileSize int64
 	if rootName != "" {
 		if st, ok := fh.BaseHandler.storageFor(rootName); ok {
 			rel := strings.TrimPrefix(relPath, "/")
 			if info, err := st.Stat(c.Request.Context(), rel); err == nil {
+				statOK = true
 				isDir = info.IsDir
 				if !isDir {
 					fileSize = info.Size
 				}
 			}
 		}
+	}
+
+	// 目录删除是递归性的破坏操作，只允许管理员执行：目录级 allow_delete 豁免与
+	// 上传者IP匹配只覆盖单个文件，避免任意用户借公开接口删掉整棵目录。
+	// Stat 失败时无法确认目标类型，非管理员一律拒绝（宁可误拒也不误删目录）。
+	if !fh.requesterIsAdmin(c) && (!statOK || isDir) {
+		utils.HandleErrorCompat(c, http.StatusForbidden, "无权操作（目录删除仅管理员可执行）", nil)
+		return
 	}
 
 	// 执行删除

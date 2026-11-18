@@ -635,11 +635,14 @@ func (h *UploadSessionHandler) downloadFromURL(parentCtx context.Context, taskID
 // finalizeURLDownload 完成下载后的统一处理（HTTP 和 FTP 共用）
 func (h *UploadSessionHandler) finalizeURLDownload(taskID string, filename string, fileSize int64, downloaded int64, clientIP string, uploadingPath string, targetPath string, sessionTargetPath string, sessionTargetRoot string, sessionTargetType models.TargetType, urlTaskUpdated *bool) {
 	if _, err := os.Stat(targetPath); err == nil {
-		os.Remove(uploadingPath)
-		*urlTaskUpdated = true
-		h.setURLTaskFailed(taskID, "目标文件已存在")
-		utils.Error("URL下载目标文件已存在", utils.String("target", targetPath))
-		return
+		// 目录开启任意覆盖时允许覆盖已存在文件
+		if sessionTargetRoot == "" || !appconfig.PublicDirOverwriteAllowed(sessionTargetRoot) {
+			os.Remove(uploadingPath)
+			*urlTaskUpdated = true
+			h.setURLTaskFailed(taskID, "目标文件已存在")
+			utils.Error("URL下载目标文件已存在", utils.String("target", targetPath))
+			return
+		}
 	}
 
 	if err := os.Rename(uploadingPath, targetPath); err != nil {

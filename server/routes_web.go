@@ -243,6 +243,13 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		files.GET("/record/*path", indexHandler.FindFileRecord)
 		files.GET("/scan/status", indexHandler.GetScanStatus) // Footer 扫描状态
 
+		// 公开文件的自助管理：权限完全由 handler 内 canManagePublic 判定
+		// （管理员 / 上传者 IP 一致 / 该目录配置了对应操作的任意用户豁免）。
+		// AuthOptional 仅用于注入已登录用户的角色上下文，不阻断匿名请求。
+		files.POST("/rename", authMiddleware.AuthOptional(), fileHandlers.RenamePublicFileHandler)
+		files.POST("/move", authMiddleware.AuthOptional(), fileHandlers.MoveFileHandler)
+		files.DELETE("", authMiddleware.AuthOptional(), fileHandlers.DeleteFileHandler)
+
 		// 搜索路由（无需认证）
 		web.GET("/search/*query", searchHandlers.SearchFiles)
 

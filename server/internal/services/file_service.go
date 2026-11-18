@@ -119,8 +119,8 @@ func (fs *FileService) RenameFile(oldPath, newName string) error {
 		newRel = relPath[:idx+1] + newName
 	}
 
-	// 检查目标文件是否已存在
-	if _, err := st.Stat(fsStorageContext, newRel); err == nil {
+	// 检查目标文件是否已存在（目录开启 allow_overwrite 时允许覆盖）
+	if _, err := st.Stat(fsStorageContext, newRel); err == nil && !appconfig.PublicDirOverwriteAllowed(rootName) {
 		return fmt.Errorf("目标文件名已存在")
 	}
 
@@ -221,8 +221,8 @@ func (fs *FileService) MoveFile(oldPath, newPath string) error {
 		}
 	}
 
-	// 检查目标文件是否已存在
-	if _, err := dstSt.Stat(fsStorageContext, newRel); err == nil {
+	// 检查目标文件是否已存在（目标目录开启 allow_overwrite 时允许覆盖）
+	if _, err := dstSt.Stat(fsStorageContext, newRel); err == nil && !appconfig.PublicDirOverwriteAllowed(newRoot) {
 		return fmt.Errorf("目标文件已存在")
 	}
 

@@ -50,6 +50,38 @@
               <el-switch v-model="dir.uploadEnabled" />
               <div class="field-hint">关闭后上传界面无法选择该目录，web / FTP / WebDAV / URL 上传以及移动、复制文件进入该目录都会被拒绝（仅影响写入，不影响浏览与下载）</div>
             </el-form-item>
+            <el-form-item label="允许任意用户">
+              <div>
+                <div>
+                  <div>
+                    <el-switch v-model="dir.overwriteEnabled" />
+                    <span>覆盖</span>
+                  </div>
+                  <div class="field-hint">开启后任意用户可覆盖该目录下已存在的文件；默认仅管理员或上传者本人可覆盖。对 Web / FTP / WebDAV / Open API 全部入口生效</div>
+                </div>
+                <div>
+                  <div>
+                    <el-switch v-model="dir.renameEnabled" />
+                    <span>重命名</span>
+                  </div>
+                  <div class="field-hint">开启后任意用户可重命名该目录下已存在的文件；默认仅管理员或上传者本人可重命名。对 Web / FTP / WebDAV / Open API 全部入口生效</div>
+                </div>
+                <div>
+                  <div>
+                    <el-switch v-model="dir.moveEnabled" />
+                    <span>移动</span>
+                  </div>
+                  <div class="field-hint">开启后任意用户可移动该目录下已存在的文件；默认仅管理员或上传者本人可移动。对 Web / FTP / WebDAV / Open API 全部入口生效</div>
+                </div>
+                <div>
+                  <div>
+                    <el-switch v-model="dir.deleteEnabled" />
+                    <span>删除</span>
+                  </div>
+                  <div class="field-hint">开启后任意用户可删除该目录下已存在的文件；默认仅管理员或上传者本人可删除。对 Web / FTP / WebDAV / Open API 全部入口生效</div>
+                </div>
+              </div>
+            </el-form-item>
           </el-form>
           <el-button type="danger" size="small" @click="removeDir(index)">删除</el-button>
         </div>
@@ -97,7 +129,10 @@ const applyPartition = (index, mountpoint) => {
 }
 
 const addDir = () => {
-  props.settings.rootDirs.push({ path: '', name: '', uploadEnabled: true })
+  props.settings.rootDirs.push({
+    path: '', name: '', uploadEnabled: true,
+    overwriteEnabled: false, renameEnabled: false, moveEnabled: false, deleteEnabled: false
+  })
 }
 
 const removeDir = (index) => {
