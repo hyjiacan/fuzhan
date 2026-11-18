@@ -21,49 +21,63 @@
       <el-button type="primary" @click="loadConfig">重新加载</el-button>
     </el-empty>
     <template v-else>
-      <!-- 添加 -->
-      <el-row :gutter="16">
-        <el-col :xs="24">
-          <el-card class="mime-card hover-elevate">
-            <template #header><span>添加</span></template>
-            <el-input autocomplete="off"
-              v-model="batchText"
-              type="textarea"
-              placeholder="每行一条，如：&#10;epub=application/epub+zip&#10;exe application/x-msdownload&#10;ipa:application/octet-stream"
-              :rows="8"
-            />
-            <div class="field-hint">每行一个条目，支持 <code>扩展名=MIME</code>、<code>扩展名 MIME</code> 或 <code>扩展名:MIME</code>，重复扩展名将覆盖；自动去除点号前缀并忽略空行</div>
-            <div style="margin-top: 12px; text-align: right;">
-              <el-button type="primary" @click="handleBatchAdd">添加</el-button>
-              <el-button @click="batchText = ''">清空</el-button>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-
       <!-- 自定义映射列表 -->
-      <el-row :gutter="16">
-        <el-col :span="24">
-          <el-card class="mime-card hover-elevate">
-            <template #header>
-              <span>自定义条目（{{ mimeList.length }}）</span>
+      <el-card class="mime-card" shadow="never">
+        <template #header>
+          <div class="card-head">
+            <span class="card-title">自定义条目（{{ mimeList.length }}）</span>
+            <div class="card-actions">
+              <el-input
+                v-model="keyword"
+                class="search-input"
+                placeholder="搜索扩展名或 MIME"
+                clearable
+              />
+              <el-button type="primary" @click="openAdd">添加映射</el-button>
+            </div>
+          </div>
+        </template>
+        <el-table :data="filteredList" style="width: 100%" :empty-text="emptyText">
+          <el-table-column label="扩展名" prop="ext" min-width="160">
+            <template #default="{ row }">
+              <el-tag type="info" effect="plain" class="mime-ext">.{{ row.ext }}</el-tag>
             </template>
-            <el-table :data="mimeList" style="width: 100%" empty-text="暂无自定义条目">
-              <el-table-column label="扩展名" prop="ext" min-width="140">
-                <template #default="{ row }">
-                  <span class="mime-ext">.{{ row.ext }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="MIME 类型" prop="mime" min-width="260" />
-              <el-table-column label="操作" width="90" align="right">
-                <template #default="{ row }">
-                  <el-button link type="danger" @click="removeEntry(row.ext)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-        </el-col>
-      </el-row>
+          </el-table-column>
+          <el-table-column label="MIME 类型" prop="mime" min-width="300">
+            <template #default="{ row }">
+              <span class="mime-value">{{ row.mime }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" align="right">
+            <template #default="{ row }">
+              <el-button link type="danger" @click="removeEntry(row.ext)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- 添加映射弹框 -->
+      <el-dialog v-model="addVisible" title="添加 MIME 映射" width="600px">
+        <el-input
+          autocomplete="off"
+          v-model="batchText"
+          type="textarea"
+          placeholder="每行一条，如：&#10;epub=application/epub+zip&#10;exe application/x-msdownload&#10;ipa:application/octet-stream"
+          :rows="8"
+        />
+        <div class="field-hint">
+          每行一个条目，支持 <code>扩展名=MIME</code>、<code>扩展名 MIME</code> 或 <code>扩展名:MIME</code>，重复扩展名将覆盖；自动去除点号前缀并忽略空行
+        </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button @click="batchText = ''">清空</el-button>
+            <div class="dialog-footer-right">
+              <el-button @click="addVisible = false">取消</el-button>
+              <el-button type="primary" @click="handleBatchAdd">添加</el-button>
+            </div>
+          </div>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -77,7 +91,9 @@ const loaded = ref(false)
 const loadError = ref(false)
 const saving = ref(false)
 
+const addVisible = ref(false)
 const batchText = ref('')
+const keyword = ref('')
 
 // 自定义条目表（等效原 settings.mimeTable）
 const mimeTable = reactive({})
@@ -93,6 +109,17 @@ const mimeList = computed(() => {
     .sort()
     .map(ext => ({ ext, mime: mimeTable[ext] }))
 })
+
+// 搜索过滤
+const filteredList = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) return mimeList.value
+  return mimeList.value.filter(item =>
+    item.ext.includes(kw) || item.mime.toLowerCase().includes(kw)
+  )
+})
+
+const emptyText = computed(() => keyword.value.trim() ? '未找到匹配条目' : '暂无自定义条目')
 
 const loadConfig = async () => {
   loadError.value = false
@@ -133,6 +160,10 @@ const saveConfig = async () => {
 
 const handleReset = () => {
   loadConfig()
+}
+
+const openAdd = () => {
+  addVisible.value = true
 }
 
 // 解析单个「扩展名 与 MIME」条目
@@ -187,6 +218,7 @@ const handleBatchAdd = () => {
   if (added > 0) {
     ElMessage.success(`成功添加 ${added} 条映射`)
     batchText.value = ''
+    addVisible.value = false
   }
   if (skipped > 0) {
     ElMessage.warning(`${skipped} 行格式无法识别，已忽略（每行需为 扩展名 与 MIME，如 epub=application/epub+zip）`)
@@ -220,7 +252,53 @@ loadConfig()
   }
 }
 
+.mime-card {
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .card-title {
+    font-weight: 500;
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .search-input {
+    width: 240px;
+  }
+}
+
 .mime-ext {
   font-family: var(--el-font-family-mono, monospace);
+}
+
+.mime-value {
+  font-family: var(--el-font-family-mono, monospace);
+  word-break: break-all;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .dialog-footer-right {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .mime-card .search-input {
+    width: 100%;
+  }
 }
 </style>
