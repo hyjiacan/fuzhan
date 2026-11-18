@@ -68,10 +68,28 @@
       </el-descriptions>
     </el-card>
 
-    <el-card class="password-card">
-      <template #header>
-        <div class="card-header">修改密码</div>
-      </template>
+    <div class="account-actions">
+      <el-button type="primary" :icon="Lock" @click="passwordDialogVisible = true">
+        修改密码
+      </el-button>
+      <el-button
+        v-if="userInfo.role !== 'admin'"
+        type="danger"
+        plain
+        :icon="Delete"
+        @click="deleteDialogVisible = true"
+      >
+        注销账户
+      </el-button>
+    </div>
+
+    <el-dialog
+      v-model="passwordDialogVisible"
+      title="修改密码"
+      width="480px"
+      :close-on-click-modal="false"
+      @closed="resetPasswordForm"
+    >
       <el-form ref="formRef" :model="passwordForm" :rules="passwordRules" label-width="96">
         <el-form-item label="当前密码" prop="oldPassword">
           <el-input
@@ -103,18 +121,22 @@
             autocomplete="new-password"
           />
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="changingPassword" @click="handleChangePassword">
-            确认修改
-          </el-button>
-        </el-form-item>
       </el-form>
-    </el-card>
-
-    <el-card v-if="userInfo.role !== 'admin'" class="danger-card">
-      <template #header>
-        <div class="card-header danger-title">注销账户</div>
+      <template #footer>
+        <el-button :disabled="changingPassword" @click="passwordDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="changingPassword" @click="handleChangePassword">
+          确认修改
+        </el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="deleteDialogVisible"
+      title="注销账户"
+      width="480px"
+      :close-on-click-modal="false"
+      @closed="resetDeleteForm"
+    >
       <p class="danger-desc">
         注销后账号将无法恢复，您的私有文件与临时文件将被永久删除；登录记录与操作记录会作为审计数据保留。
       </p>
@@ -129,13 +151,14 @@
             autocomplete="current-password"
           />
         </el-form-item>
-        <el-form-item>
-          <el-button type="danger" :loading="deletingAccount" @click="handleDeleteAccount">
-            注销账户
-          </el-button>
-        </el-form-item>
       </el-form>
-    </el-card>
+      <template #footer>
+        <el-button :disabled="deletingAccount" @click="deleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deletingAccount" @click="handleDeleteAccount">
+          注销账户
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -143,7 +166,7 @@
 import { ref, reactive, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit } from '@element-plus/icons-vue'
+import { Edit, Lock, Delete } from '@element-plus/icons-vue'
 import { AuthApi } from '@/api'
 import { TimeUtils } from '@/utils'
 
@@ -226,12 +249,20 @@ const loadUserInfo = async () => {
 
 const formRef = ref(null)
 const changingPassword = ref(false)
+const passwordDialogVisible = ref(false)
 
 const passwordForm = reactive({
   oldPassword: '',
   newPassword: '',
   confirmPassword: ''
 })
+
+const resetPasswordForm = () => {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  passwordForm.confirmPassword = ''
+  formRef.value?.clearValidate()
+}
 
 const validatePasswordSame = (rule, value) => {
   if (value !== passwordForm.newPassword) {
@@ -267,9 +298,7 @@ const handleChangePassword = async () => {
     )
     if (data.success) {
       ElMessage.success('密码修改成功')
-      passwordForm.oldPassword = ''
-      passwordForm.newPassword = ''
-      passwordForm.confirmPassword = ''
+      passwordDialogVisible.value = false
     } else {
       ElMessage.error(data.message || '密码修改失败')
     }
@@ -288,9 +317,15 @@ onMounted(() => {
 // 注销账户：双重确认 + 当前密码校验
 const deleteFormRef = ref(null)
 const deletingAccount = ref(false)
+const deleteDialogVisible = ref(false)
 const deleteForm = reactive({ password: '' })
 const deleteRules = {
   password: [{ required: true, message: '请输入当前密码', trigger: 'blur' }]
+}
+
+const resetDeleteForm = () => {
+  deleteForm.password = ''
+  deleteFormRef.value?.clearValidate()
 }
 
 const handleDeleteAccount = async () => {
@@ -315,6 +350,7 @@ const handleDeleteAccount = async () => {
     const data = await AuthApi.deleteAccount(deleteForm.password)
     if (data.success) {
       ElMessage.success('账号已注销')
+      deleteDialogVisible.value = false
       AuthApi.clearAuth()
       window.dispatchEvent(new CustomEvent('auth:changed'))
       router.push({ name: 'login' })
@@ -335,35 +371,15 @@ const handleDeleteAccount = async () => {
 .user-info-section {
   padding: @container-padding;
 
-  .info-card,
-  .password-card,
-  .danger-card {
+  .info-card {
     max-width: 600px;
-
-    + .info-card,
-    + .password-card,
-    + .danger-card {
-      margin-top: 16px;
-    }
   }
 
-  .card-header {
-    font-weight: 600;
-  }
-
-  .danger-card {
-    border-color: var(--el-color-danger-light-5);
-
-    .danger-title {
-      color: var(--el-color-danger);
-    }
-
-    .danger-desc {
-      margin: 0 0 16px;
-      color: var(--el-text-color-secondary);
-      font-size: 13px;
-      line-height: 1.6;
-    }
+  .account-actions {
+    display: flex;
+    gap: 12px;
+    max-width: 600px;
+    margin-top: 16px;
   }
 
   .inline-view {
@@ -389,5 +405,13 @@ const handleDeleteAccount = async () => {
       width: 220px;
     }
   }
+}
+
+// 弹框内容会被 teleport 到 body，不能挂在 .user-info-section 下
+.danger-desc {
+  margin: 0 0 16px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 </style>
