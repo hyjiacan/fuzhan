@@ -64,9 +64,14 @@ func BackfillDownloadCounted(db *gorm.DB) int64 {
 }
 
 // BackfillFileRecordIDs 回填历史操作记录的 file_record_id：按路径反查公共文件索引记录 ID。
-// 仅处理未关联（file_record_id=0）且为文件操作（upload/download/download-by-hash）的记录，
-// 分批执行避免一次性大事务锁表。移动/重命名前的历史数据由此建立身份关联，
+// 仅处理未关联（file_record_id 为 0 或 NULL）且为文件操作（upload/download/download-by-hash）
+// 的记录，分批执行避免一次性大事务锁表。移动/重命名前的历史数据由此建立身份关联，
 // 使最近/热门列表能在文件移动后仍定位到当前路径。
+//
+// 说明：定义 file_record_id 列之前写入的存量行取值为 NULL（AutoMigrate 追加列时不给默认值），
+// 而新增行由 Go 零值写为 0。两种"未关联"取值都必须参与回填，否则 NULL 行在后续按身份/路径
+// 过滤时两边都不命中而被丢弃。反查不到对应索引行时统一回填为 0（而非 NULL），
+// 因此批次推进必须用 id 游标（不能按 file_record_id=0 反复取同一批）。
 func BackfillFileRecordIDs(db *gorm.DB) {
 	if db == nil {
 		return
@@ -77,6 +82,7 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 
 	const batchSize = 500
 	var affected int64
+	var cursor uint
 	actions := []string{"upload", "download", "download-by-hash"}
 	opTable := models.OperationRecord{}.TableName()
 	frpTable := models.FileRecordPublic{}.TableName()
@@ -84,7 +90,8 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 	for {
 		var batchIDs []uint
 		if err := db.Table(opTable).
-			Where("file_record_id = ? AND action IN ? AND deleted_at IS NULL", 0, actions).
+			Where("COALESCE(file_record_id, 0) = ? AND action IN ? AND deleted_at IS NULL AND id > ?", 0, actions, cursor).
+			Order("id ASC").
 			Limit(batchSize).
 			Pluck("id", &batchIDs).Error; err != nil {
 			utils.Warn("查询待回填操作记录失败", utils.Err(err))
@@ -93,15 +100,16 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 		if len(batchIDs) == 0 {
 			break
 		}
+		cursor = batchIDs[len(batchIDs)-1]
 		// 字符串拼接用 CONCAT（三库通用），不用 `||`（MySQL 默认按逻辑 OR 解析）。
 		result := db.Exec(`UPDATE `+opTable+`
-			SET file_record_id = (
+			SET file_record_id = COALESCE((
 				SELECT MIN(frp.id) FROM `+frpTable+` frp
 				WHERE frp.status = ? AND frp.deleted_at IS NULL
 				  AND frp.root_name = `+opTable+`.root_name
 				  AND (frp.full_path = `+opTable+`.full_path
 				       OR frp.full_path = CONCAT('/', `+opTable+`.full_path))
-			)
+			), 0)
 			WHERE id IN ?`,
 			models.FileStatusActive, batchIDs)
 		if result.Error != nil {
@@ -109,9 +117,6 @@ func BackfillFileRecordIDs(db *gorm.DB) {
 			return
 		}
 		affected += result.RowsAffected
-		if len(batchIDs) < batchSize {
-			break
-		}
 	}
 	utils.Info("操作记录 file_record_id 回填完成", utils.Int64("affected", affected))
 }

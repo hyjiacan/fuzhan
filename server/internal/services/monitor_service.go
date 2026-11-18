@@ -168,7 +168,7 @@ func (s *MonitorService) GetHotDownloads(page, pageSize int) (*HotDownloadResult
 	var rows []hotRow
 	offset := (page - 1) * pageSize
 	if err := base().
-		Select("MAX(file_record_id) AS file_record_id, MAX(file_name) AS file_name, " +
+		Select("COALESCE(MAX(file_record_id), 0) AS file_record_id, MAX(file_name) AS file_name, " +
 			"MAX(file_path) AS file_path, MAX(full_path) AS full_path, MAX(root_name) AS root_name, " +
 			"MAX(file_size) AS file_size, COUNT(*) AS count").
 		Group(groupKey).

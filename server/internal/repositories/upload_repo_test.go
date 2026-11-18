@@ -80,7 +80,20 @@ func TestApplyExistingFileFilter_Semantics(t *testing.T) {
 	seedRecord(t, db, "softdel.txt", "download", models.TargetTypeRegular, "public", "/docs/softdel.txt", "/public/docs/softdel.txt", softDel.ID)
 	// 路径回退分支（file_record_id = 0）
 	seedRecord(t, db, "exist.txt", "download", models.TargetTypeRegular, "public", "/docs/exist.txt", "/public/docs/exist.txt", 0)
+	// 老版本升级后 file_record_id 为 NULL（AutoMigrate 追加列不给默认值），同样应走路径回退分支
+	seedFile(t, db, "nullid.txt", "public", "/docs/nullid.txt", "/public/docs/nullid.txt", models.FileStatusActive)
+	seedRecord(t, db, "nullid.txt", "download", models.TargetTypeRegular, "public", "/docs/nullid.txt", "/public/docs/nullid.txt", 0)
+	if err := db.Model(&models.OperationRecord{}).Where("file_name = ?", "nullid.txt").
+		UpdateColumn("file_record_id", nil).Error; err != nil {
+		t.Fatalf("置空历史记录的身份失败: %v", err)
+	}
 	seedRecord(t, db, "missing.txt", "download", models.TargetTypeRegular, "public", "/docs/missing.txt", "/public/docs/missing.txt", 0)
+	// file_record_id 为 NULL 且路径也已不存在：仍应被过滤掉
+	seedRecord(t, db, "missing-null.txt", "download", models.TargetTypeRegular, "public", "/docs/missing-null.txt", "/public/docs/missing-null.txt", 0)
+	if err := db.Model(&models.OperationRecord{}).Where("file_name = ?", "missing-null.txt").
+		UpdateColumn("file_record_id", nil).Error; err != nil {
+		t.Fatalf("置空历史记录的身份失败: %v", err)
+	}
 	seedRecord(t, db, "emptyfp.txt", "download", models.TargetTypeRegular, "public", "docs/emptyfp.txt", "", 0)
 	// 非公共来源与非下载动作，均不应被过滤
 	seedRecord(t, db, "temp-gone.bin", "download", models.TargetTypeTemp, "temp", "/gone.bin", "/temp/gone.bin", 0)
@@ -95,8 +108,8 @@ func TestApplyExistingFileFilter_Semantics(t *testing.T) {
 		got[r.FileName] = true
 	}
 
-	want := []string{"keep.txt", "exist.txt", "emptyfp.txt", "temp-gone.bin"}
-	notWant := []string{"delstatus.txt", "softdel.txt", "missing.txt"}
+	want := []string{"keep.txt", "exist.txt", "emptyfp.txt", "temp-gone.bin", "nullid.txt"}
+	notWant := []string{"delstatus.txt", "softdel.txt", "missing.txt", "missing-null.txt"}
 
 	for _, n := range want {
 		if !got[n] {

@@ -436,16 +436,41 @@ func TestHotDownloads_OnlyPublicSuccessCounted(t *testing.T) {
 		t.Fatalf("创建索引记录失败: %v", err)
 	}
 
+	// D：覆盖老版本升级后的历史记录——file_record_id 列由 AutoMigrate 追加，存量行取值为 NULL。
+	// 这类记录既不属于 >0 分支也不属于 =0 分支，必须与索引记录的其他下载记录合并为同一条。
+	recD := models.FileRecordPublic{FileRecordBase: models.FileRecordBase{
+		FileName: "d.txt", FilePath: "/d.txt", RootName: "docs", FullPath: "/docs/d.txt",
+		FileSize: 600, Status: models.FileStatusActive, CreatedAt: baseTime,
+	}}
+	if err := db.Create(&recD).Error; err != nil {
+		t.Fatalf("创建索引记录失败: %v", err)
+	}
+	dOps := []*models.OperationRecord{
+		{Action: "download", FileName: "d.txt", FilePath: "/d.txt", FullPath: "/docs/d.txt", RootName: "docs", FileSize: 600, FileRecordID: recD.ID, SourceType: models.SourceTypePublic, Status: models.RecordStatusSuccess, DlCounted: 1, CreatedAt: now},
+		{Action: "download", FileName: "d.txt", FilePath: "/d.txt", FullPath: "/docs/d.txt", RootName: "docs", FileSize: 600, SourceType: models.SourceTypePublic, Status: models.RecordStatusSuccess, DlCounted: 1, CreatedAt: now},
+	}
+	for i := range dOps {
+		if err := db.Create(dOps[i]).Error; err != nil {
+			t.Fatalf("创建操作记录失败: %v", err)
+		}
+	}
+	if err := db.Model(&models.OperationRecord{}).Where("id = ?", dOps[1].ID).
+		UpdateColumn("file_record_id", nil).Error; err != nil {
+		t.Fatalf("置空历史记录的身份失败: %v", err)
+	}
+	// 启动流程会回填 NULL/0 的身份（bootstrap 中调用），热门统计依赖回填后的身份归并
+	services.BackfillFileRecordIDs(db)
+
 	svc := services.NewMonitorService(repositories.NewRecordRepository(db), db)
 	res, err := svc.GetHotDownloads(1, 20)
 	if err != nil {
 		t.Fatalf("获取热门下载失败: %v", err)
 	}
-	if res.Total != 3 {
-		t.Errorf("期望 3 个热门文件，实际 %d", res.Total)
+	if res.Total != 4 {
+		t.Errorf("期望 4 个热门文件，实际 %d", res.Total)
 	}
-	if len(res.Records) != 3 {
-		t.Fatalf("期望 3 条记录，实际 %d", len(res.Records))
+	if len(res.Records) != 4 {
+		t.Fatalf("期望 4 条记录，实际 %d", len(res.Records))
 	}
 
 	a := res.Records[0]
@@ -467,19 +492,22 @@ func TestHotDownloads_OnlyPublicSuccessCounted(t *testing.T) {
 	if res.Records[1].FullPath != "/docs/b.txt" || res.Records[1].Count != 2 {
 		t.Errorf("B 期望 /docs/b.txt 2 次，实际 %s %d", res.Records[1].FullPath, res.Records[1].Count)
 	}
-	if res.Records[2].FullPath != "/docs/c.txt" || res.Records[2].Count != 1 {
-		t.Errorf("C 期望 /docs/c.txt 1 次，实际 %s %d", res.Records[2].FullPath, res.Records[2].Count)
+	if res.Records[2].FullPath != "/docs/d.txt" || res.Records[2].Count != 2 {
+		t.Errorf("D 期望 /docs/d.txt 2 次（含 file_record_id 为 NULL 的历史记录），实际 %s %d", res.Records[2].FullPath, res.Records[2].Count)
+	}
+	if res.Records[3].FullPath != "/docs/c.txt" || res.Records[3].Count != 1 {
+		t.Errorf("C 期望 /docs/c.txt 1 次，实际 %s %d", res.Records[3].FullPath, res.Records[3].Count)
 	}
 
 	// 分页按 count 降序稳定推进：不重复、不漏项
 	seen := make(map[string]bool)
-	for page := 1; page <= 3; page++ {
+	for page := 1; page <= 4; page++ {
 		pr, err := svc.GetHotDownloads(page, 1)
 		if err != nil {
 			t.Fatalf("分页查询失败: %v", err)
 		}
-		if pr.Total != 3 {
-			t.Errorf("第 %d 页总数期望 3，实际 %d", page, pr.Total)
+		if pr.Total != 4 {
+			t.Errorf("第 %d 页总数期望 4，实际 %d", page, pr.Total)
 		}
 		if len(pr.Records) != 1 {
 			t.Fatalf("第 %d 页期望 1 条，实际 %d", page, len(pr.Records))
@@ -489,8 +517,8 @@ func TestHotDownloads_OnlyPublicSuccessCounted(t *testing.T) {
 		}
 		seen[pr.Records[0].FullPath] = true
 	}
-	if len(seen) != 3 {
-		t.Errorf("分页应覆盖 3 个文件，实际 %d", len(seen))
+	if len(seen) != 4 {
+		t.Errorf("分页应覆盖 4 个文件，实际 %d", len(seen))
 	}
 }
 

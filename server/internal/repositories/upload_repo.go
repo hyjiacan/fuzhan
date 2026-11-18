@@ -38,6 +38,9 @@ func sqlTrimSlashes(col string) string {
 //
 // 第一个 EXISTS 按文件身份(file_record_id)关联：移动/重命名后 ID 不变；
 // 第二个 EXISTS 供未关联身份的历史记录回退到根目录 + 路径快照匹配。
+// 身份列统一用 COALESCE(file_record_id, 0)：老版本升级时该列由 AutoMigrate 追加，
+// 存量行取值为 NULL 而非 0，若直接写 >0 / =0 两个分支，NULL 行的比较结果为 NULL，
+// 整行会被静默过滤掉（表现为热门/最近列表的下载次数少于文件列表的 download_count）。
 // 语句内不写 SQL 注释，避免依赖各方言的注释解析差异。
 //
 // 跨库兼容：字符串拼接统一用 CONCAT（SQLite 3.44+ / MySQL / PostgreSQL 均支持），
@@ -56,13 +59,13 @@ func ApplyExistingFileFilter(q *gorm.DB) *gorm.DB {
 		{op}.action = 'search'
 		OR {op}.action = 'delete'
 		OR {op}.upload_type NOT IN ('regular', '')
-		OR ({op}.file_record_id > 0 AND EXISTS (
+		OR (COALESCE({op}.file_record_id, 0) > 0 AND EXISTS (
 			SELECT 1 FROM {frp} frp
-			WHERE frp.id = {op}.file_record_id
+			WHERE frp.id = COALESCE({op}.file_record_id, 0)
 			  AND frp.status = 'active'
 			  AND frp.deleted_at IS NULL
 		))
-		OR ({op}.file_record_id = 0 AND EXISTS (
+		OR (COALESCE({op}.file_record_id, 0) = 0 AND EXISTS (
 			SELECT 1 FROM {frp} frp
 			WHERE frp.status = 'active'
 			  AND frp.deleted_at IS NULL
