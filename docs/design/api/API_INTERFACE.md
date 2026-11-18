@@ -734,15 +734,49 @@
 
 - **URL**：`DELETE /api/v1/web/admin/users/:id`
 
-### 7. 获取上传会话列表
+### 7. 查询身份冲突列表
+
+- **URL**：`GET /api/v1/web/admin/identity-conflicts`
+- **查询参数**：
+  - `status`（可选）：`pending`（默认，仅未处理）/ `resolved`（已处理）/ `all`
+  - `page` / `page_size`：分页，`page_size` 默认 20、上限 200
+- **响应**：`data.conflicts[]` 字段：
+  - `id` / `username` / `auth_type`（`ldap` / `oauth2`）/ `provider_name`
+  - `external_id` / `external_name` / `rejected_source`
+  - `attempt_count` / `last_seen_at`
+  - `suggested_user_uuid` / `suggested_username`：同名本地账号（先精确、再大小写不敏感），不存在为空
+  - `can_bind`：该冲突的认证源当前是否已启用
+- 按 `last_seen_at` 倒序，`data.total` 为总数。
+
+### 8. 批量绑定身份冲突
+
+- **URL**：`POST /api/v1/web/admin/identity-conflicts/batch-bind`
+- **请求体**：
+  ```json
+  { "ids": [1, 2, 3] }
+  ```
+- **说明**：`ids` 非空、单次上限 200；逐条把冲突的外部身份绑定到同名本地账号，规则与「绑定外部身份」一致。成功后写绑定、`auth_source=auth_type`、清空本地密码，并标记冲突 `resolution=bound`。
+- **响应**：`data.results[]`，每项 `{id, username, status, message}`，`status` 取 `bound` / `skipped` / `failed`；跳过与失败原因在 `message` 中。单条失败不影响其它条目。
+
+### 9. 批量忽略身份冲突
+
+- **URL**：`POST /api/v1/web/admin/identity-conflicts/batch-ignore`
+- **请求体**：
+  ```json
+  { "ids": [1, 2, 3] }
+  ```
+- **说明**：仅把待处理（`resolved_at` 为空）的冲突标记为 `resolution=ignored`；外部账号再次触发冲突时会重新打开。
+- **响应**：`data.ignored` 为实际更新条数。
+
+### 10. 获取上传会话列表
 
 - **URL**：`GET /api/v1/web/admin/sessions`
 
-### 8. 清理过期会话
+### 11. 清理过期会话
 
 - **URL**：`POST /api/v1/web/admin/sessions/cleanup`
 
-### 9. 单文件下载记录明细
+### 12. 单文件下载记录明细
 
 - **URL**：`GET /api/v1/web/admin/files/download-records`
 - **参数**：

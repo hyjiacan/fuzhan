@@ -1046,7 +1046,7 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 			return nil, services.ErrAccountDisabled
 		}
 		if user.AuthSource != models.AuthSourceOAuth2 {
-			reportIdentityConflict(user.Username, provider, info.Subject, user.AuthSource)
+			reportIdentityConflict(s.db, user.Username, provider, info.Subject, user.AuthSource)
 			return nil, services.ErrAccountUnavailable
 		}
 		if user.DisplayName == "" && info.DisplayName != "" {
@@ -1066,7 +1066,7 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 		return nil, fmt.Errorf("查询用户失败: %w", err)
 	}
 	if existing != nil {
-		reportIdentityConflict(existing.Username, provider, info.Subject, existing.AuthSource)
+		reportIdentityConflict(s.db, existing.Username, provider, info.Subject, existing.AuthSource)
 		return nil, services.ErrAccountUnavailable
 	}
 

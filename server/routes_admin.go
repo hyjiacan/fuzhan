@@ -25,6 +25,10 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/users/:id/convert-local", adminHandler.ConvertUserToLocalHandler)
 	admin.PUT("/users/:id/disabled", adminHandler.SetUserDisabledHandler)
 	admin.DELETE("/users/:id", adminHandler.DeleteUserHandler)
+	// 身份冲突（外部认证同名账号）：集中查看与批量裁决
+	admin.GET("/identity-conflicts", adminHandler.IdentityConflictsHandler)
+	admin.POST("/identity-conflicts/batch-bind", adminHandler.BatchBindIdentityConflictsHandler)
+	admin.POST("/identity-conflicts/batch-ignore", adminHandler.BatchIgnoreIdentityConflictsHandler)
 	admin.GET("/sessions", adminHandler.SessionsHandler)
 	admin.POST("/sessions/cleanup", adminHandler.CleanupSessionsHandler)
 	admin.POST("/sessions/cleanup-all", adminHandler.CleanupAllZombieSessionsHandler)

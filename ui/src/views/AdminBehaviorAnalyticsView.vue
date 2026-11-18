@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="header-left">
         <h2>行为分析</h2>
-        <p class="description">按访问 / 上传 / 下载三种行为分行聚合，支持按用户与按 IP 两种维度分析</p>
+        <p class="description">按预览 / 上传 / 下载三种行为分行聚合，支持按用户与按 IP 两种维度分析</p>
       </div>
       <div class="header-right">
         <el-button type="primary" size="small" :loading="loading" @click="loadAll">
@@ -42,7 +42,7 @@
       </div>
     </el-card>
 
-    <!-- ============ 访问 / 上传行为（基于最近操作记录，按用户/按IP） ============ -->
+    <!-- ============ 预览 / 上传行为（基于最近操作记录，按用户/按IP） ============ -->
     <el-card
       v-for="def in behaviorDefs"
       :key="def.key"
@@ -119,10 +119,6 @@
       <template #header>
         <div class="card-title">
           <span>下载趋势</span>
-          <span class="selected-file" v-if="selectedFromFile">
-            单文件：{{ selectedFromFile.file_name }}（{{ selectedFromFile.full_path }}）
-            <el-button link type="primary" size="small" @click="clearSelectedFile">清除单文件</el-button>
-          </span>
         </div>
       </template>
       <div ref="trendEl" class="chart-box"></div>
@@ -152,7 +148,7 @@
         </div>
       </template>
       <div ref="topFilesEl" class="chart-box small"></div>
-      <el-table :data="topFiles" border size="small" :show-header="true" class="top-table" @row-click="onTopFileClick">
+      <el-table :data="topFiles" border size="small" :show-header="true" class="top-table" @row-click="openFileDetail">
         <el-table-column type="index" label="#" width="44" align="center" />
         <el-table-column prop="file_name" label="文件名" min-width="170" show-overflow-tooltip />
         <el-table-column prop="full_path" label="路径" min-width="170" show-overflow-tooltip />
@@ -161,9 +157,9 @@
         <el-table-column label="扩散比" width="86" align="right">
           <template #default="{ row }">{{ row.count > 0 ? (row.spread / row.count).toFixed(2) : '-' }}</template>
         </el-table-column>
-        <el-table-column v-if="buttonsEnabled" label="操作" width="70" align="center">
+        <el-table-column v-if="buttonsEnabled" label="操作" width="90" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :disabled="!row.source_id">下钻</el-button>
+            <el-button link type="primary" size="small" :disabled="!row.source_id" @click.stop="openFileDetail(row)">详情</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -224,32 +220,48 @@
       </div>
     </el-card>
 
-    <!-- ============ 单文件下钻 ============ -->
-    <el-card v-if="fileDetail" shadow="never" class="chart-card">
-      <template #header>
-        <span class="card-title">
-          单文件下钻：{{ fileDetail.file_name }}
-          <span class="sub">共 {{ fileDetail.total }} 次成功 · {{ fileDetail.failed }} 次失败</span>
-        </span>
-      </template>
-      <div ref="fileDetailEl" class="chart-box"></div>
-      <div class="two-col">
-        <div class="source-list">
-          <h4>按 IP</h4>
-          <ul>
-            <li v-for="item in fileDetail.by_ip" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
-            <li v-if="!fileDetail.by_ip.length" class="empty">暂无</li>
-          </ul>
-        </div>
-        <div class="source-list">
-          <h4>按用户</h4>
-          <ul>
-            <li v-for="item in fileDetail.by_user" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
-            <li v-if="!fileDetail.by_user.length" class="empty">暂无</li>
-          </ul>
-        </div>
+    <!-- ============ 单文件详情弹框 ============ -->
+    <el-dialog
+      v-model="detailVisible"
+      :title="detailTitle"
+      width="960px"
+      destroy-on-close
+      @opened="renderFileDetailChart"
+      @closed="disposeFileDetailChart"
+    >
+      <div v-loading="fileDetailLoading" class="file-detail-body">
+        <template v-if="fileDetail">
+          <div class="detail-path" :title="fileDetail.full_path">{{ fileDetail.full_path }}</div>
+          <div class="detail-metrics">
+            <div class="metric-card">
+              <div class="metric-value">{{ fileDetail.total }}</div>
+              <div class="metric-title">成功次数</div>
+            </div>
+            <div class="metric-card danger">
+              <div class="metric-value">{{ fileDetail.failed }}</div>
+              <div class="metric-title">失败次数</div>
+            </div>
+          </div>
+          <div ref="fileDetailEl" class="chart-box small"></div>
+          <div class="two-col">
+            <div class="source-list">
+              <h4>按 IP</h4>
+              <ul>
+                <li v-for="item in fileDetail.by_ip" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
+                <li v-if="!fileDetail.by_ip.length" class="empty">暂无</li>
+              </ul>
+            </div>
+            <div class="source-list">
+              <h4>按用户</h4>
+              <ul>
+                <li v-for="item in fileDetail.by_user" :key="item.key">{{ item.key }}：{{ item.count }} 次</li>
+                <li v-if="!fileDetail.by_user.length" class="empty">暂无</li>
+              </ul>
+            </div>
+          </div>
+        </template>
       </div>
-    </el-card>
+    </el-dialog>
   </div>
 </template>
 
@@ -281,8 +293,10 @@ const failures = ref([])
 const heatmap = ref([])
 const lifecycle = ref([])
 const aggregate = ref([])
-const selectedFromFile = ref(null)
 const fileDetail = ref(null)
+const detailVisible = ref(false)
+const fileDetailLoading = ref(false)
+const detailTitle = computed(() => (fileDetail.value ? `文件详情：${fileDetail.value.file_name}` : '文件详情'))
 const sourcesRows = ref([])
 
 const trendEl = ref()
@@ -294,10 +308,10 @@ const lifecycleEl = ref()
 const aggregateEl = ref()
 const fileDetailEl = ref()
 
-// ================= 访问 / 上传行为 =================
-// 复用 /files/recent 现有记录做轻量聚合（不新增后端接口）。"访问"以预览记录近似。
+// ================= 预览 / 上传行为 =================
+// 复用 /files/recent 现有记录做轻量聚合（不新增后端接口）。"预览"以预览记录近似。
 const behaviorDefs = [
-  { key: 'access', label: '访问行为', action: 'preview', color: '#16a085', desc: '基于最近预览记录' },
+  { key: 'access', label: '预览行为', action: 'preview', color: '#16a085', desc: '基于最近预览记录' },
   { key: 'upload', label: '上传行为', action: 'upload', color: '#fa8c16', desc: '基于最近上传记录' }
 ]
 
@@ -436,6 +450,8 @@ function emptyHorizBarOption() {
 const chartInst = {}
 function renderChart(name, el, option, notMerge) {
   if (!el) return
+  // 元素已从 DOM 移除（如弹框已关闭）时不再重试，避免无效的动画帧循环
+  if (!el.isConnected) return
   if (!chartInst[name]) {
     if (!el.clientWidth || !el.clientHeight) {
       requestAnimationFrame(() => renderChart(name, el, option, notMerge))
@@ -455,12 +471,8 @@ async function loadSummary() {
 async function loadTrend() {
   const { from, to } = resolveRange()
   const params = { from, to, granularity: granularity.value }
-  if (selectedFromFile.value && selectedFromFile.value.source_id) {
-    params.id = selectedFromFile.value.source_id
-  }
   const res = await BehaviorAnalyticsApi.getTrend(params)
   const data = (res.data || []).filter((p) => p.time)
-  const single = !!selectedFromFile.value
   const c = axisColors()
   renderChart('trend', trendEl.value, {
     color: ['#2080f0', '#f56c6c'],
@@ -473,7 +485,7 @@ async function loadTrend() {
       { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: data.map((p) => p.count) },
       { name: '失败', type: 'line', smooth: true, showSymbol: false, data: data.map((p) => p.failed) }
     ]
-  }, !single)
+  }, true)
 }
 
 async function loadTopFiles() {
@@ -628,60 +640,65 @@ async function loadAggregate() {
   }, true)
 }
 
-async function loadFileDetail() {
-  const sel = selectedFromFile.value
-  if (!sel || !sel.source_id) return
-  const { from, to } = resolveRange()
-  const res = await BehaviorAnalyticsApi.getFileDetail({ id: sel.source_id, from, to })
-  if (res.success && res.data) {
-    if (!fileDetail.value) fileDetail.value = res.data
-    else Object.assign(fileDetail.value, res.data)
-    const c = axisColors()
-    const points = fileDetail.value.trend || []
-    renderChart('fileDetail', fileDetailEl.value, {
-      color: ['#2080f0', '#f56c6c'],
-      tooltip: { trigger: 'axis' },
-      legend: { top: 0, data: ['成功', '失败'], textStyle: { color: c.text } },
-      grid: baseGridOpt(),
-      xAxis: { type: 'category', data: points.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
-      yAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
-      series: [
-        { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.count) },
-        { name: '失败', type: 'line', smooth: true, showSymbol: false, data: points.map((p) => p.failed) }
-      ]
-    }, false)
+// 打开单文件详情弹框；详情数据独立请求，不触发主页面图表刷新
+async function openFileDetail(row) {
+  if (!row || !row.source_id) return
+  fileDetail.value = null
+  detailVisible.value = true
+  fileDetailLoading.value = true
+  try {
+    const { from, to } = resolveRange()
+    const res = await BehaviorAnalyticsApi.getFileDetail({ id: row.source_id, from, to })
+    if (res.success && res.data) {
+      fileDetail.value = res.data
+      await nextTick()
+      renderFileDetailChart()
+    }
+  } finally {
+    fileDetailLoading.value = false
+  }
+}
+
+// 弹框可见后再初始化图表，避免容器高度为 0
+function renderFileDetailChart() {
+  if (!fileDetail.value || !fileDetailEl.value) return
+  const c = axisColors()
+  const points = fileDetail.value.trend || []
+  renderChart('fileDetail', fileDetailEl.value, {
+    color: ['#2080f0', '#f56c6c'],
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, data: ['成功', '失败'], textStyle: { color: c.text } },
+    grid: baseGridOpt(),
+    xAxis: { type: 'category', data: points.map((p) => p.time), axisLabel: { color: c.tick }, axisLine: { lineStyle: { color: c.line } } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: c.tick }, splitLine: { lineStyle: { color: c.line } } },
+    series: [
+      { name: '成功', type: 'line', smooth: true, areaStyle: { opacity: 0.15 }, showSymbol: false, data: points.map((p) => p.count) },
+      { name: '失败', type: 'line', smooth: true, showSymbol: false, data: points.map((p) => p.failed) }
+    ]
+  }, true)
+}
+
+// 关闭弹框时销毁实例，避免下次打开沿用旧尺寸
+function disposeFileDetailChart() {
+  const inst = chartInst.fileDetail
+  if (inst) {
+    inst.dispose()
+    delete chartInst.fileDetail
   }
 }
 
 async function loadAll() {
   loading.value = true
-  if (selectedFromFile.value && !selectedFromFile.value.source_id) clearSelectedFile()
   try {
-    await loadFileDetail()
     await Promise.all([
       loadSummary(), loadTrend(), loadTopFiles(), loadSources(), loadFailures(), loadHeatmap(), loadLifecycle(), loadAggregate()
     ])
-    // 访问 / 上传行为（复用最近记录，前端聚合）
+    // 预览 / 上传行为（复用最近记录，前端聚合）
     behaviorDefs.forEach((def) => loadBehavior(behavior[def.key]))
   } finally {
     loading.value = false
     nextTick(resizeCharts)
   }
-}
-
-function onTopFileClick(row) {
-  if (!row.source_id) {
-    return
-  }
-  selectedFromFile.value = row
-  fileDetail.value = null
-  loadAll()
-}
-
-function clearSelectedFile() {
-  selectedFromFile.value = null
-  fileDetail.value = null
-  loadAll()
 }
 
 function resizeCharts() {
@@ -779,16 +796,26 @@ onUnmounted(() => {
   font-weight: 400;
   margin-left: 8px;
 }
-.selected-file {
-  font-size: 13px;
-  color: #e6a23c;
-  font-weight: 400;
-}
 .chart-box {
   width: 100%;
   height: 320px;
   min-width: 0;
   min-height: 0;
+}
+.file-detail-body {
+  min-height: 200px;
+}
+.detail-path {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  word-break: break-all;
+}
+.detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .chart-box.small {
   height: 260px;

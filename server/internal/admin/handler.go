@@ -300,6 +300,103 @@ func (h *Handler) ConvertUserToLocalHandler(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "已转为本地账号", nil)
 }
 
+// maxIdentityConflictBatch 单次批量处理身份冲突的数量上限
+const maxIdentityConflictBatch = 200
+
+// IdentityConflictsHandler 处理查询身份冲突列表（默认只返回待处理）
+func (h *Handler) IdentityConflictsHandler(c *gin.Context) {
+	status := strings.TrimSpace(c.DefaultQuery("status", "pending"))
+	switch status {
+	case "pending", "resolved", "all":
+	default:
+		response.HandleBadRequest(c, "status 参数无效，可选值：pending、resolved、all", nil)
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 20
+	}
+
+	result, err := h.adminService.ListIdentityConflicts(status, page, pageSize)
+	if err != nil {
+		utils.Error("获取身份冲突列表失败", utils.Err(err))
+		response.HandleInternalServerError(c, "获取身份冲突列表失败")
+		return
+	}
+	response.HandleSuccess(c, http.StatusOK, "", result)
+}
+
+// BatchBindIdentityConflictsHandler 处理批量把外部身份绑定到同名本地账号
+func (h *Handler) BatchBindIdentityConflictsHandler(c *gin.Context) {
+	ids, ok := bindIdentityConflictIDs(c)
+	if !ok {
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	results, err := h.adminService.BatchBindIdentityConflicts(callerUUID, ids)
+	if err != nil {
+		middleware.LogOperation(c, "admin.identity_conflicts.batch_bind", fmt.Sprintf("%d 条", len(ids)), err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("批量绑定外部身份失败", utils.Err(err))
+		response.HandleInternalServerError(c, "批量绑定外部身份失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.identity_conflicts.batch_bind", fmt.Sprintf("%d 条", len(ids)), nil)
+	response.HandleSuccess(c, http.StatusOK, "处理完成", gin.H{"results": results})
+}
+
+// BatchIgnoreIdentityConflictsHandler 处理批量忽略身份冲突
+func (h *Handler) BatchIgnoreIdentityConflictsHandler(c *gin.Context) {
+	ids, ok := bindIdentityConflictIDs(c)
+	if !ok {
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	count, err := h.adminService.BatchIgnoreIdentityConflicts(callerUUID, ids)
+	if err != nil {
+		middleware.LogOperation(c, "admin.identity_conflicts.batch_ignore", fmt.Sprintf("%d 条", len(ids)), err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("批量忽略身份冲突失败", utils.Err(err))
+		response.HandleInternalServerError(c, "批量忽略身份冲突失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.identity_conflicts.batch_ignore", fmt.Sprintf("%d 条", len(ids)), nil)
+	response.HandleSuccess(c, http.StatusOK, "已忽略身份冲突", gin.H{"ignored": count})
+}
+
+// bindIdentityConflictIDs 解析并校验批量操作的 ids（非空且不超过上限）
+func bindIdentityConflictIDs(c *gin.Context) ([]uint, bool) {
+	var req struct {
+		IDs []uint `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
+		response.HandleBadRequest(c, "请求参数错误：ids 不能为空", nil)
+		return nil, false
+	}
+	if len(req.IDs) > maxIdentityConflictBatch {
+		response.HandleBadRequest(c, fmt.Sprintf("单次最多处理 %d 条身份冲突", maxIdentityConflictBatch), nil)
+		return nil, false
+	}
+	return req.IDs, true
+}
+
 // SetUserDisabledHandler 处理禁用/启用用户
 func (h *Handler) SetUserDisabledHandler(c *gin.Context) {
 	uuid := c.Param("id")

@@ -348,10 +348,14 @@ Content-Type: application/json
 | POST | `/api/v1/web/admin/users/:id/convert-local` | `admin.Handler.ConvertUserToLocalHandler` | 转为本地账号 |
 | PUT | `/api/v1/web/admin/users/:id/disabled` | `admin.Handler.SetUserDisabledHandler` | 禁用/启用 |
 | DELETE | `/api/v1/web/admin/users/:id` | `admin.Handler.DeleteUserHandler` | 删除用户 |
+| GET | `/api/v1/web/admin/identity-conflicts` | `admin.Handler.IdentityConflictsHandler` | 身份冲突列表（默认 pending） |
+| POST | `/api/v1/web/admin/identity-conflicts/batch-bind` | `admin.Handler.BatchBindIdentityConflictsHandler` | 批量绑定外部身份 |
+| POST | `/api/v1/web/admin/identity-conflicts/batch-ignore` | `admin.Handler.BatchIgnoreIdentityConflictsHandler` | 批量忽略身份冲突 |
 
 - 用户列表支持 `query` / `source` / `created_via` / `identity_state` 过滤（后三者白名单校验），条目新增 `auth_source`、`created_via`、`identity_state`、`provider_name`、`external_id`。
 - 重置密码仅允许 `auth_source=local`，外部账号返回 400「请先将该用户转为本地账号」；请求体字段为 `new_password`。
 - 绑定外部身份请求体为 `auth_type` / `external_id` / `external_name`，provider 由当前启用配置决定，冲突返回 409；转为本地账号请求体为 `new_password`（8~128 位）。
+- 身份冲突列表支持 `status=pending|resolved|all`（默认 pending），条目附带 `suggested_user_uuid` / `suggested_username` / `can_bind`；批量接口请求体为 `{"ids":[...]}`，单次上限 200，批量绑定逐条返回 `{id, username, status, message}`（`bound/skipped/failed`），批量忽略返回实际更新的 `ignored` 条数。
 | GET | `/api/v1/web/admin/sessions` | `admin.Handler.SessionsHandler` | 上传会话列表 |
 | POST | `/api/v1/web/admin/sessions/cleanup` | `admin.Handler.CleanupSessionsHandler` | 清理会话 |
 

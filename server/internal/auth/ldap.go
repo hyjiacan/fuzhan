@@ -344,7 +344,7 @@ func (s *LDAPService) resolveUser(username string, attrs map[string]string, crea
 			return nil, false, services.ErrAccountDisabled
 		}
 		if user.AuthSource != models.AuthSourceLDAP {
-			reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+			reportIdentityConflict(s.db, user.Username, ldapProviderName, dn, user.AuthSource)
 			return nil, false, services.ErrAccountUnavailable
 		}
 		if err := s.renameUserIfNeeded(&user, username, dn); err != nil {
@@ -379,7 +379,7 @@ func (s *LDAPService) resolveUser(username string, attrs map[string]string, crea
 	}
 	if user.AuthSource != models.AuthSourceLDAP {
 		// 同名账号归属本地或其它认证源：拒绝登录，不改任何字段
-		reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+		reportIdentityConflict(s.db, user.Username, ldapProviderName, dn, user.AuthSource)
 		return nil, false, services.ErrAccountUnavailable
 	}
 
@@ -388,7 +388,7 @@ func (s *LDAPService) resolveUser(username string, attrs map[string]string, crea
 	err = s.db.Where("user_id = ? AND (auth_type <> ? OR provider_name <> ?)",
 		user.ID, models.AuthSourceLDAP, ldapProviderName).First(&mismatched).Error
 	if err == nil {
-		reportIdentityConflict(user.Username, mismatched.ProviderName, dn, user.AuthSource)
+		reportIdentityConflict(s.db, user.Username, mismatched.ProviderName, dn, user.AuthSource)
 		return nil, false, services.ErrAccountUnavailable
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -416,7 +416,7 @@ func (s *LDAPService) renameUserIfNeeded(user *models.User, directoryUsername, d
 	err := s.db.Where("LOWER(username) = ? AND id <> ?", strings.ToLower(directoryUsername), user.ID).
 		First(&conflict).Error
 	if err == nil {
-		reportIdentityConflict(directoryUsername, ldapProviderName, dn, user.AuthSource)
+		reportIdentityConflict(s.db, directoryUsername, ldapProviderName, dn, user.AuthSource)
 		return services.ErrAccountUnavailable
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -436,7 +436,7 @@ func (s *LDAPService) ensureBinding(user *models.User, dn string, attrs map[stri
 		models.AuthSourceLDAP, ldapProviderName, dn).First(&existing).Error
 	if err == nil {
 		if existing.UserID != user.ID {
-			reportIdentityConflict(user.Username, ldapProviderName, dn, user.AuthSource)
+			reportIdentityConflict(s.db, user.Username, ldapProviderName, dn, user.AuthSource)
 			return services.ErrAccountUnavailable
 		}
 		return nil
@@ -530,9 +530,10 @@ var identityConflictThrottle = struct {
 	seen map[string]time.Time
 }{seen: make(map[string]time.Time)}
 
-// reportIdentityConflict 记录「外部身份与本地账号冲突」安全事件（按用户名 + provider 限频）。
+// reportIdentityConflict 记录「外部身份与本地账号冲突」：写安全事件并持久化待处理冲突。
+// 按用户名 + provider 限频，避免目录侧批量同名导致事件与冲突写入洪泛。
 // 只记录用户名、provider、外部标识与被拒绝的认证源，不记录任何凭据。
-func reportIdentityConflict(username, provider, externalID, rejectedSource string) {
+func reportIdentityConflict(db *gorm.DB, username, provider, externalID, rejectedSource string) {
 	if username == "" {
 		username = "unknown"
 	}
@@ -553,6 +554,27 @@ func reportIdentityConflict(username, provider, externalID, rejectedSource strin
 	}
 	identityConflictThrottle.seen[key] = now
 	identityConflictThrottle.mu.Unlock()
+
+	// 冲突持久化：与安全事件共用同一个限频窗口，写入失败只告警，不影响拒绝登录语义
+	authType := models.AuthSourceLDAP
+	if strings.HasPrefix(provider, models.AuthSourceOAuth2+":") {
+		authType = models.AuthSourceOAuth2
+	}
+	if db != nil {
+		if err := models.UpsertIdentityConflict(db, &models.IdentityConflict{
+			Username:       username,
+			AuthType:       authType,
+			ProviderName:   provider,
+			ExternalID:     externalID,
+			RejectedSource: rejectedSource,
+			LastSeenAt:     now.UTC(),
+		}); err != nil {
+			utils.Warn("记录身份冲突失败",
+				utils.String("username", username),
+				utils.String("provider", provider),
+				utils.Err(err))
+		}
+	}
 
 	security.Record(&models.SecurityEvent{
 		EventType: models.EventIdentityConflict,

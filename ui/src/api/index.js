@@ -551,6 +551,21 @@ export const AdminApi = {
     return request.put(`/admin/users/${uuid}/disabled`, { disabled }, { skipSuccessToast: true })
   },
 
+  // 身份冲突（外部认证同名账号）：默认只查待处理，params 支持 status / page / page_size
+  getIdentityConflicts(params = {}) {
+    return request.get('/admin/identity-conflicts', { params: snakeParams(params) })
+  },
+
+  // 批量绑定到同名本地账号：会清空这些账号的本地密码
+  batchBindIdentityConflicts(ids) {
+    return request.post('/admin/identity-conflicts/batch-bind', { ids }, { skipSuccessToast: true })
+  },
+
+  // 批量忽略身份冲突：仅影响待处理记录
+  batchIgnoreIdentityConflicts(ids) {
+    return request.post('/admin/identity-conflicts/batch-ignore', { ids }, { skipSuccessToast: true })
+  },
+
   deleteUser(uuid) {
     return request.delete(`/admin/users/${uuid}`, { skipSuccessToast: true })
   },

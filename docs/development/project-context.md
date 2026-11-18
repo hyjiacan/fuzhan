@@ -182,7 +182,7 @@ user, utils, webdav, webhook
 
 ## 6. 数据模型（`server/internal/models`）
 
-文件：`alert_message`、`api_key`、`file_dependency`、`file_record`、`file`、`login_log`、`resource_metric`、`scan_record`、`security_event`、`task_record`、`temp_file`、`upload`、`url_download_task`、`user`。
+文件：`alert_message`、`api_key`、`file_dependency`、`file_record`、`file`、`identity_conflict`、`login_log`、`resource_metric`、`scan_record`、`security_event`、`task_record`、`temp_file`、`upload`、`url_download_task`、`user`。
 
 **AutoMigrate 清单**（`bootstrap.go:85`，改模型时同步此处）：
 
@@ -190,10 +190,10 @@ user, utils, webdav, webhook
 UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask,
 FileRecordPublic, FileRecordTemp, FileRecordPrivate, FileDependency, ApiKey,
 OAuthClient, AuthRecord, ScanRecord, TaskRecord, ResourceMetric, SecurityEvent,
-LoginLog, AlertMessage
+LoginLog, AlertMessage, IdentityConflict
 ```
 
-DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask, FileRecord×3, FileDependency, ApiKey, OAuthClient, AuthRecord, ResourceMetric`。
+DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask, FileRecord×3, FileDependency, ApiKey, OAuthClient, AuthRecord, IdentityConflict, ResourceMetric`。
 
 `ApiKey` 额外包含 `AllowedPaths`（换行分隔的 `/rootName[/sub]` 前缀，空或 `*` 表示所有路径），用于 Open API 公开目录操作的路径授权；校验通过后写入上下文 `auth.ContextAllowedPaths`。
 
@@ -230,6 +230,8 @@ DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk,
 - `orphaned`：认证源未启用或配置不完整；
 - `provider_mismatch`：绑定记录的 provider 与当前 provider key 不一致；
 - `inconsistent`：违反 source/绑定/密码不变量（外部账号 `password_hash` 恒为空）。
+
+`IdentityConflict`（表 `identity_conflicts`）持久化外部认证与本地同名账号的冲突：按 `(auth_type, provider_name, external_id)` 查重 upsert，重复触发累加 `attempt_count` 并刷新 `last_seen_at`；已 `ignored` 的冲突再次触发会清空 `resolved_at/resolution` 重新打开。索引 `idx__identity_conflicts__username`、`idx__identity_conflicts__identity`（auth_type+provider_name+external_id）、`idx__identity_conflicts__last_seen_at`。管理员裁决后 `resolution=bound/ignored`，不记录凭据。
 
 ---
 
@@ -335,6 +337,8 @@ WebDAV / CLI
 - `POST /admin/index/scan`、`POST /admin/index/scan/trigger`
 - `GET|POST /admin/users`、`PUT /admin/users/:id/reset-password`、`PUT /admin/users/:id/disabled`、`DELETE /admin/users/:id`
 - `POST /admin/users/:id/auth-bindings`（绑定外部身份）、`POST /admin/users/:id/convert-local`（转为本地账号）
+- `GET /admin/identity-conflicts`（`status=pending|resolved|all`，默认 pending，按 `last_seen_at` 倒序，附带 `suggested_user_uuid` / `suggested_username` / `can_bind`）
+- `POST /admin/identity-conflicts/batch-bind`、`POST /admin/identity-conflicts/batch-ignore`（body `{"ids":[...]}`，单次上限 200）；批量绑定逐条返回 `{id, username, status, message}`
 - `GET /admin/users` 查询参数：`page` / `page_size` / `query`，以及 `source`（`local|ldap|oauth2`）、`created_via`、`identity_state`（`ok|orphaned|provider_mismatch|inconsistent`），后三者白名单校验、非法值返回 400；条目额外返回 `auth_source` / `created_via` / `identity_state` / `provider_name` / `external_id`
 - `PUT /admin/users/:id/reset-password` 仅允许 `auth_source=local`，外部账号返回 400「请先将该用户转为本地账号」
 - `GET /admin/sessions`、`POST /admin/sessions/cleanup`、`POST /admin/sessions/cleanup-all`
@@ -429,7 +433,8 @@ API Key / 索引记录 / Open API / 日志 / 资源
 
 - 密码登录按 `users.auth_source` 严格路由（`services/auth_service.go`）：`local` 只校验本地密码（缺密码视为不可用，不尝试 LDAP）；`ldap` 只走目录，认证源未启用/不可用直接失败，不回退本地密码；`oauth2` 拒绝密码登录。用户名先精确匹配、再 `LOWER(username)` 匹配。
 - 本地不存在时，仅在 LDAP 启用且 `allow_auto_create` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`，同步为 `ldap_sync`）；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
-- 身份冲突（外部身份与本地账号归属不一致）写安全事件 `auth.identity_conflict`（按用户名 + provider 限频），不改动任何账号字段；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
+- 身份冲突（外部身份与本地账号归属不一致）写安全事件 `auth.identity_conflict`（按用户名 + provider 限频），并在 `identity_conflicts` 表 upsert 待处理冲突，不改动任何账号字段；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
+- 管理员可在用户管理页集中查看冲突并批量“绑定到同名账号”或“忽略”。绑定复用 `BindExternalIdentity` 规则：认证源须启用、目标用户无其它绑定、外部身份未被占用；成功后写绑定、`auth_source=auth_type`、清空本地密码并标记 `resolution=bound`。批量忽略仅影响待处理记录（`resolved_at IS NULL`）。
 - `identity_state` 不落库，管理端列表按当前配置派生（见 §6.2）；对非本地账号重置密码返回 400。
 - `login_logs.method`：成功记录真实来源 `local`/`ldap`/`oauth2`，注册记 `register`；失败记录登录入口 `password_form`/`oauth2`（失败时无法可靠判定账号来源）。
 

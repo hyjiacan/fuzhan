@@ -5,7 +5,26 @@
         <h2>用户管理</h2>
         <p class="description">管理系统用户，重置密码等操作</p>
       </div>
+      <div class="header-right">
+        <el-button @click="openConflictDialog">
+          身份冲突
+          <el-tag v-if="conflictCount > 0" type="danger" size="small" style="margin-left: 6px">{{ conflictCount }}</el-tag>
+        </el-button>
+      </div>
     </div>
+
+    <el-alert
+      v-if="conflictCount > 0"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="conflict-alert"
+    >
+      <template #title>
+        <span>检测到 {{ conflictCount }} 个身份冲突待处理（外部账号与本地同名账号冲突，已拒绝登录）</span>
+        <el-button type="warning" size="small" style="margin-left: 12px" @click="openConflictDialog">立即处理</el-button>
+      </template>
+    </el-alert>
 
     <el-card class="filter-card" shadow="never">
       <el-space wrap>
@@ -212,6 +231,99 @@
         </el-space>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="conflictDialogVisible" title="身份冲突处理" width="900px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="批量绑定会把同名本地账号切换为该外部身份（清空其本地密码），仅确认是同一人时使用。"
+        style="margin-bottom: 12px"
+      />
+      <div class="conflict-toolbar">
+        <el-button type="primary" :disabled="selectedConflictIds.length === 0" :loading="handlingConflicts" @click="handleBatchBind">
+          批量绑定到同名账号
+        </el-button>
+        <el-button type="warning" plain :disabled="selectedConflictIds.length === 0" :loading="handlingConflicts" @click="handleBatchIgnore(selectedConflictIds)">
+          批量忽略
+        </el-button>
+        <span class="conflict-selected">已选 {{ selectedConflictIds.length }} 条</span>
+      </div>
+      <el-table
+        :data="conflicts"
+        v-loading="conflictLoading"
+        row-key="id"
+        max-height="420"
+        @selection-change="onConflictSelectionChange"
+      >
+        <el-table-column type="selection" width="46" />
+        <el-table-column prop="username" label="用户名" min-width="120" show-overflow-tooltip />
+        <el-table-column label="认证源" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" :type="AUTH_SOURCE_TAG_TYPES[row.auth_type] || 'info'">
+              {{ formatAuthSource(row.auth_type) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="external_id" label="外部标识" min-width="180" show-overflow-tooltip />
+        <el-table-column label="建议本地账号" min-width="130">
+          <template #default="{ row }">
+            <span v-if="row.suggested_username">{{ row.suggested_username }}</span>
+            <span v-else class="conflict-none">无</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="最近尝试时间" width="170">
+          <template #default="{ row }">{{ TimeUtils.formatDateTime(row.last_seen_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="attempt_count" label="尝试次数" width="90" />
+        <el-table-column label="操作" width="130">
+          <template #default="{ row }">
+            <el-button
+              size="small"
+              type="primary"
+              link
+              :disabled="!row.can_bind"
+              @click="handleRowBind(row)"
+            >绑定</el-button>
+            <el-button size="small" type="warning" link @click="handleRowIgnore(row)">忽略</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pagination-wrap" v-if="conflictTotal > 0">
+        <el-pagination
+          v-model:current-page="conflictPage"
+          v-model:page-size="conflictPageSize"
+          :total="conflictTotal"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          small
+          @current-change="loadConflicts"
+          @size-change="onConflictPageSizeChange"
+        />
+      </div>
+      <el-alert
+        v-if="conflictSummary"
+        type="info"
+        :closable="false"
+        show-icon
+        :title="conflictSummary"
+        style="margin-top: 12px"
+      />
+      <el-collapse v-if="conflictIssueResults.length > 0" style="margin-top: 8px">
+        <el-collapse-item title="查看跳过/失败原因" name="issues">
+          <div v-for="item in conflictIssueResults" :key="item.id" class="conflict-issue">
+            #{{ item.id }} {{ item.username || '-' }}：{{ item.message }}
+            （{{ item.status === 'skipped' ? '跳过' : '失败' }}）
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+      <template #footer>
+        <el-space>
+          <el-button @click="loadConflicts">刷新</el-button>
+          <el-button @click="conflictDialogVisible = false">关闭</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -323,6 +435,18 @@ const bindIdentityForm = ref({
   externalId: '',
   externalName: ''
 })
+// 身份冲突：常驻入口 + 批量处置弹窗
+const conflictCount = ref(0)
+const conflictDialogVisible = ref(false)
+const conflictLoading = ref(false)
+const handlingConflicts = ref(false)
+const conflicts = ref([])
+const conflictTotal = ref(0)
+const conflictPage = ref(1)
+const conflictPageSize = ref(20)
+const selectedConflictIds = ref([])
+const conflictSummary = ref('')
+const conflictIssueResults = ref([])
 
 const onSearch = () => {
   page.value = 1
@@ -442,12 +566,6 @@ const columns = [
     }
   },
   {
-    title: '用户ID',
-    key: 'uuid',
-    width: 300,
-    cellRenderer: ({ rowData: row }) => row.uuid || '-'
-  },
-  {
     title: '注册时间',
     key: 'created_at',
     width: 180,
@@ -518,6 +636,8 @@ const columns = [
 
 const loadUsers = async () => {
   loading.value = true
+  // 同步刷新待处理冲突数量，用于顶部提醒与常驻入口角标
+  loadConflictCount()
   try {
     const data = await AdminApi.getUsers(page.value, pageSize.value, searchQuery.value, {
       source: sourceFilter.value,
@@ -724,6 +844,153 @@ const handleBindIdentity = async () => {
   }
 }
 
+// 加载待处理身份冲突数量（page_size=1，仅取 total）
+const loadConflictCount = async () => {
+  try {
+    const data = await AdminApi.getIdentityConflicts({ status: 'pending', page: 1, page_size: 1 })
+    if (data.success) {
+      conflictCount.value = data.data?.total || 0
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const loadConflicts = async () => {
+  conflictLoading.value = true
+  try {
+    const data = await AdminApi.getIdentityConflicts({
+      status: 'pending',
+      page: conflictPage.value,
+      page_size: conflictPageSize.value
+    })
+    if (data.success) {
+      conflicts.value = (data.data && data.data.conflicts) || []
+      conflictTotal.value = data.data?.total || 0
+    } else {
+      ElMessage.error(data.message || '获取身份冲突失败')
+    }
+  } catch (error) {
+    ElMessage.error('获取身份冲突失败')
+    console.error(error)
+  } finally {
+    conflictLoading.value = false
+  }
+}
+
+const openConflictDialog = () => {
+  conflictDialogVisible.value = true
+  conflictPage.value = 1
+  conflictSummary.value = ''
+  conflictIssueResults.value = []
+  selectedConflictIds.value = []
+  loadConflicts()
+}
+
+const onConflictPageSizeChange = () => {
+  conflictPage.value = 1
+  loadConflicts()
+}
+
+const onConflictSelectionChange = (rows) => {
+  selectedConflictIds.value = rows.map(row => row.id)
+}
+
+// 汇总批量处理结果：成功/跳过/失败数量，并保留跳过与失败明细
+const applyConflictResults = (results) => {
+  const bound = results.filter(item => item.status === 'bound').length
+  const skipped = results.filter(item => item.status === 'skipped').length
+  const failed = results.filter(item => item.status === 'failed').length
+  conflictSummary.value = `成功 ${bound} 条，跳过 ${skipped} 条，失败 ${failed} 条`
+  conflictIssueResults.value = results.filter(item => item.status !== 'bound')
+}
+
+const runBatchBind = async (ids) => {
+  handlingConflicts.value = true
+  try {
+    const data = await AdminApi.batchBindIdentityConflicts(ids)
+    if (data.success) {
+      applyConflictResults((data.data && data.data.results) || [])
+      ElMessage.success(conflictSummary.value)
+      selectedConflictIds.value = []
+      await Promise.all([loadConflicts(), loadConflictCount()])
+      loadUsers()
+    } else {
+      ElMessage.error(data.message || '批量绑定失败')
+    }
+  } catch (error) {
+    // 400/403 等业务错误展示后端原文案
+    ElMessage.error(formatErrorMessage(error, '批量绑定失败'))
+  } finally {
+    handlingConflicts.value = false
+  }
+}
+
+const handleBatchBind = async () => {
+  const ids = [...selectedConflictIds.value]
+  if (ids.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定将选中的 ${ids.length} 个外部身份绑定到同名本地账号吗？该操作会清空这些账号的本地密码，且不会自动回退。`,
+      '确认批量绑定',
+      { type: 'warning', confirmButtonText: '绑定', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  runBatchBind(ids)
+}
+
+const handleRowBind = async (row) => {
+  if (!row.can_bind) {
+    ElMessage.warning('该冲突的认证源未启用，无法绑定')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定将外部身份 "${row.external_id}" 绑定到本地账号 "${row.username}" 吗？绑定后将清空该账号的本地密码。`,
+      '确认绑定',
+      { type: 'warning', confirmButtonText: '绑定', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  runBatchBind([row.id])
+}
+
+const handleBatchIgnore = async (ids) => {
+  if (!ids || ids.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定忽略选中的 ${ids.length} 个身份冲突吗？忽略后不再出现在待处理列表，外部账号再次尝试登录时会重新出现。`,
+      '确认忽略',
+      { type: 'warning', confirmButtonText: '忽略', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  handlingConflicts.value = true
+  try {
+    const data = await AdminApi.batchIgnoreIdentityConflicts([...ids])
+    if (data.success) {
+      const ignored = data.data?.ignored || 0
+      ElMessage.success(`已忽略 ${ignored} 条身份冲突`)
+      selectedConflictIds.value = []
+      await Promise.all([loadConflicts(), loadConflictCount()])
+    } else {
+      ElMessage.error(data.message || '批量忽略失败')
+    }
+  } catch (error) {
+    ElMessage.error(formatErrorMessage(error, '批量忽略失败'))
+  } finally {
+    handlingConflicts.value = false
+  }
+}
+
+const handleRowIgnore = (row) => {
+  handleBatchIgnore([row.id])
+}
+
 const toggleUserDisabled = async (user) => {
   const action = user.disabled ? '启用' : '禁用'
   try {
@@ -791,6 +1058,39 @@ onUnmounted(() => {
 @import '@/styles/variables.less';
 
 .admin-users-view {
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .conflict-alert {
+    margin-bottom: 0;
+  }
+
+  .conflict-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .conflict-selected {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+
+  .conflict-none {
+    color: var(--el-text-color-secondary);
+  }
+
+  .conflict-issue {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    line-height: 1.8;
+  }
+
   .table-card {
     .table-v2-wrap {
       height: 480px;

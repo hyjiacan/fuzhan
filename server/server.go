@@ -148,6 +148,7 @@ func (rt *runCtx) run() {
 			&models.ApiKey{},
 			&models.OAuthClient{},
 			&models.AuthRecord{},
+			&models.IdentityConflict{},
 			&models.ResourceMetric{},
 		)
 		if err != nil {
