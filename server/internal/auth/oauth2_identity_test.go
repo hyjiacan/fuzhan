@@ -81,7 +81,8 @@ func TestOAuth2FindOrCreateUser_JIT(t *testing.T) {
 	}
 }
 
-// TestOAuth2FindOrCreateUser_SameNameRejected 同名本地账号一律拒绝，不写绑定、不改字段。
+// TestOAuth2FindOrCreateUser_SameNameRejected 同名本地账号一律拒绝，不写绑定、不改字段；
+// 返回可区分的冲突错误供登录回调签发确认票据。
 func TestOAuth2FindOrCreateUser_SameNameRejected(t *testing.T) {
 	db := setupOAuth2TestDB(t)
 	local := models.User{UUID: "uuid-local", Username: "same_name", PasswordHash: "hash", Role: "user", AuthSource: models.AuthSourceLocal}
@@ -92,9 +93,18 @@ func TestOAuth2FindOrCreateUser_SameNameRejected(t *testing.T) {
 	svc := NewOAuth2Service(db, &OAuth2Config{
 		Enabled: true, ProviderID: "keycloak-prod", AutoCreateUser: true,
 	})
-	_, err := svc.findOrCreateUser(&oauthUserInfo{Subject: "sub-3", Username: "same_name"})
+	_, err := svc.findOrCreateUser(&oauthUserInfo{Subject: "sub-3", Username: "same_name", DisplayName: "张三"})
 	if !errors.Is(err, services.ErrAccountUnavailable) {
 		t.Fatalf("同名本地账号应拒绝登录，实际 err=%v", err)
+	}
+	var conflict *services.IdentityConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("应返回 IdentityConflictError，实际 %T", err)
+	}
+	if conflict.Username != "same_name" || conflict.LocalUserID != local.ID ||
+		conflict.LocalAuthSource != models.AuthSourceLocal || conflict.ProviderID != "keycloak-prod" ||
+		conflict.ProviderName != "oauth2:keycloak-prod" || conflict.ExternalID != "sub-3" {
+		t.Errorf("冲突错误字段不正确: %+v", conflict)
 	}
 
 	var count int64

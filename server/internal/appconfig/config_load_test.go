@@ -176,3 +176,89 @@ func TestValidateAuthConfig(t *testing.T) {
 		}
 	}
 }
+
+// TestIdentityConflictModeDefaults 空值默认 self_service，大小写/空白归一化。
+func TestIdentityConflictModeDefaults(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", IdentityConflictModeSelfService},
+		{"   ", IdentityConflictModeSelfService},
+		{" ADMIN ", IdentityConflictModeAdmin},
+		{"self_service", IdentityConflictModeSelfService},
+		{"custom", "custom"},
+	}
+	for _, tc := range cases {
+		if got := NormalizeIdentityConflictMode(tc.in); got != tc.want {
+			t.Errorf("NormalizeIdentityConflictMode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if got := (AuthConfig{}).EffectiveIdentityConflictMode(); got != IdentityConflictModeSelfService {
+		t.Errorf("空配置应默认 self_service，实际 %q", got)
+	}
+}
+
+// TestValidateIdentityConflictMode 非法值必须被拒绝，空值与白名单值通过。
+func TestValidateIdentityConflictMode(t *testing.T) {
+	cases := []struct {
+		in      string
+		wantErr bool
+	}{
+		{"", false},
+		{"admin", false},
+		{"self_service", false},
+		{"ADMIN", false},
+		{"auto", true},
+		{"self-service", true},
+	}
+	for _, tc := range cases {
+		if got := ValidateIdentityConflictMode(tc.in); (got != "") != tc.wantErr {
+			t.Errorf("ValidateIdentityConflictMode(%q) = %q, wantErr=%v", tc.in, got, tc.wantErr)
+		}
+	}
+}
+
+// TestIdentityConflictModeDTORoundTrip DTO 双向转换保留同名冲突处理方式。
+func TestIdentityConflictModeDTORoundTrip(t *testing.T) {
+	cfg := Config{Auth: AuthConfig{IdentityConflictMode: IdentityConflictModeAdmin}}
+	dto := cfg.ToDTO()
+	if dto.Auth.IdentityConflictMode != IdentityConflictModeAdmin {
+		t.Errorf("ToDTO: IdentityConflictMode = %q", dto.Auth.IdentityConflictMode)
+	}
+	restored := ConfigFromDTO(dto)
+	if restored.Auth.IdentityConflictMode != IdentityConflictModeAdmin {
+		t.Errorf("ConfigFromDTO: IdentityConflictMode = %q", restored.Auth.IdentityConflictMode)
+	}
+
+	// 空值经 ToDTO 应呈现生效默认值
+	empty := Config{}
+	if got := empty.ToDTO().Auth.IdentityConflictMode; got != IdentityConflictModeSelfService {
+		t.Errorf("空配置 DTO = %q, want %q", got, IdentityConflictModeSelfService)
+	}
+}
+
+// TestReadConfig_IdentityConflictModeLoaded 配置文件中的取值必须被加载进 GlobalConfig。
+func TestReadConfig_IdentityConflictModeLoaded(t *testing.T) {
+	content := `
+upload:
+  chunk_size: 10M
+auth:
+  identity_conflict_mode: admin
+`
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, ConfigFileName)
+	if err := os.WriteFile(configFile, []byte(content), 0600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	origPath, origConfig := ConfigPath, GlobalConfig
+	defer func() {
+		ConfigPath, GlobalConfig = origPath, origConfig
+	}()
+
+	ConfigPath = configFile
+	GlobalConfig = Config{}
+	readConfig()
+
+	if got := GlobalConfig.Auth.IdentityConflictMode; got != IdentityConflictModeAdmin {
+		t.Errorf("IdentityConflictMode = %q, want %q", got, IdentityConflictModeAdmin)
+	}
+}

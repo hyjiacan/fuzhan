@@ -264,6 +264,9 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	cliHandlers := cli.NewCLIHandlers(fileService, searchService)
 	bindingExampleHandler := configh.NewBindingExampleHandler()
 	authHandler := auth.NewHandler(authService, db)
+	// 注入外部认证服务：OAuth2 回调与同名冲突确认、LDAP 自助绑定均依赖
+	authHandler.SetOAuth2Service(oauth2Service)
+	authHandler.SetLDAPService(ldapService)
 	healthHandler := health.NewHealthHandler(db)
 	setupHandler := setup.NewSetupHandler()
 	configHandler := configh.NewHandler()

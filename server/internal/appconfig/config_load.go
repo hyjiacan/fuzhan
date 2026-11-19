@@ -93,6 +93,8 @@ func readConfig() {
 	}
 	GlobalConfig.Security = tempConfig.Security
 	GlobalConfig.Auth = tempConfig.Auth
+	// 同名冲突处理方式：未配置时默认 self_service（自助确认），非法值由 validateConfig 拒绝。
+	GlobalConfig.Auth.IdentityConflictMode = NormalizeIdentityConflictMode(GlobalConfig.Auth.IdentityConflictMode)
 	GlobalConfig.Storage.AllowedExtensions = tempConfig.Storage.AllowedExtensions
 	GlobalConfig.Storage.Alert = tempConfig.Storage.Alert
 	GlobalConfig.Storage.Backend = tempConfig.Storage.Backend
@@ -305,6 +307,11 @@ func validateConfig() {
 	if msg := ValidateAuthConfig(GlobalConfig.Auth.LDAP.Enabled, GlobalConfig.Auth.OAuth2.Enabled,
 		GlobalConfig.Auth.OAuth2.ProviderID); msg != "" {
 		utils.Fatal("配置错误: "+msg, utils.String("file", ConfigPath))
+	}
+	// 同名冲突处理方式白名单校验：非法值直接终止，避免认证行为不确定
+	if msg := ValidateIdentityConflictMode(GlobalConfig.Auth.IdentityConflictMode); msg != "" {
+		utils.Fatal("配置错误: "+msg, utils.String("file", ConfigPath),
+			utils.String("identity_conflict_mode", GlobalConfig.Auth.IdentityConflictMode))
 	}
 
 	// 默认允许上传

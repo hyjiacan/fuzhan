@@ -34,6 +34,14 @@
 | POST | `/api/v1/web/auth/refresh` | `auth.Handler.RefreshToken` | 刷新Token | JWT |
 | GET | `/api/v1/web/auth/user` | `auth.Handler.GetCurrentUser` | 获取当前用户 | JWT |
 | POST | `/api/v1/web/auth/change-password` | `auth.Handler.ChangePassword` | 修改密码 | JWT |
+| GET | `/api/v1/web/auth/identity-confirm` | `auth.Handler.IdentityConfirmStatus` | 查询 OAuth2 同名冲突确认状态 | 无（HttpOnly 票据 Cookie） |
+| POST | `/api/v1/web/auth/identity-confirm/bind` | `auth.Handler.BindIdentityConfirm` | 输入本地密码完成绑定并登录 | 无（HttpOnly 票据 Cookie） |
+| POST | `/api/v1/web/auth/identity-confirm/create-account` | `auth.Handler.CreateAccountIdentityConfirm` | 创建独立外部账号并登录 | 无（HttpOnly 票据 Cookie） |
+| POST | `/api/v1/web/user/auth-bindings/ldap` | `auth.Handler.BindLDAPIdentity` | 自助绑定 LDAP 身份 | JWT（仅本地普通账号） |
+
+- `auth.identity_conflict_mode=admin | self_service`（空值默认 `self_service`）：`self_service` 下 OAuth2 回调遇同名本地普通账号时签发 5 分钟一次性票据（HttpOnly Cookie，随机 32 字节 hex，服务端内存保存），302 到 `/#/oauth2/callback?conflict=1`；`admin` 模式保持拒绝并记录冲突。
+- 确认接口 data 为 `{pending, username, auth_type, provider_id, provider_name, external_name, expires_at}`（无票据时仅 `pending=false`；`provider_name` 为展示名，取 `auth.oauth2.provider_name`，未配置回退 `provider_id`）。绑定时本地密码错误最多 5 次后票据失效，成功记 `login_logs.method=oauth2`；创建独立账号的用户名为 `外部用户名@<provider_id|oauth2>`，冲突追加序号，`created_via=oauth2_jit`。
+- LDAP 自助绑定请求体为 `{"password":"..."}`，目录密码错误 401、已绑定/身份占用 409、认证源停用或非本地账号 400；成功后 `auth_source=ldap` 且清空本地密码。
 
 ### 注册请求
 

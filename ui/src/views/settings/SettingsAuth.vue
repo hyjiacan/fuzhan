@@ -64,6 +64,37 @@
 
     <SettingsAuthLdap v-if="provider === 'ldap'" :settings="settings" />
     <SettingsAuthOAuth2 v-else-if="provider === 'oauth2'" :settings="settings" />
+
+    <el-card class="auth-card">
+      <template #header>
+        <div class="card-head card-head--baseline">
+          <span>同名冲突处理</span>
+          <span class="card-sub">外部账号与本地同名账号冲突时的处理方式</span>
+        </div>
+      </template>
+      <el-form autocomplete="off" label-width="120px">
+        <el-form-item label="处理方式">
+          <el-radio-group v-model="settings.auth.identityConflictMode" class="conflict-mode-group">
+            <el-radio label="self_service">
+              <div class="conflict-mode">
+                <span class="conflict-mode__title">用户自行处理（推荐）</span>
+                <span class="field-hint conflict-mode__hint">
+                  外部账号与本地同名账号冲突时，用户可输入本地密码确认绑定，或使用独立账号登录。
+                </span>
+              </div>
+            </el-radio>
+            <el-radio label="admin">
+              <div class="conflict-mode">
+                <span class="conflict-mode__title">管理员处理</span>
+                <span class="field-hint conflict-mode__hint">
+                  冲突登录被拒绝并进入待处理列表，由管理员在用户管理中绑定或忽略。
+                </span>
+              </div>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
@@ -97,5 +128,32 @@ const provider = computed({
   .auth-card { margin-bottom: 16px; }
 
   .provider-select { width: 260px; }
+
+  .conflict-mode-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+
+    .el-radio {
+      align-items: flex-start;
+      height: auto;
+      margin-right: 0;
+      white-space: normal;
+    }
+
+    .conflict-mode {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .conflict-mode__title { font-weight: 500; }
+
+    .conflict-mode__hint {
+      display: block;
+      margin-top: 2px;
+    }
+  }
 }
 </style>

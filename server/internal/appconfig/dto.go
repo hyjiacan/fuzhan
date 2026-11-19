@@ -42,6 +42,8 @@ type ConfigDTO struct {
 type AuthConfigDTO struct {
 	LDAP   LDAPConfigDTO   `json:"ldap"`
 	OAuth2 OAuth2ConfigDTO `json:"oauth2"`
+	// IdentityConflictMode 外部认证遇同名本地账号的处理方式：admin / self_service
+	IdentityConflictMode string `json:"identity_conflict_mode"`
 }
 
 // OAuth2ConfigDTO 外部 OAuth2/OIDC 配置 DTO（对应 yaml auth.oauth2.*）
@@ -642,6 +644,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			Endpoints:      endpointsToDTO(c.Webhook.EffectiveEndpoints()),
 		},
 		Auth: AuthConfigDTO{
+			IdentityConflictMode: c.Auth.EffectiveIdentityConflictMode(),
 			LDAP: LDAPConfigDTO{
 				Enabled:            c.Auth.LDAP.Enabled,
 				Host:               c.Auth.LDAP.Host,
@@ -871,6 +874,9 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	// 安全配置
 	cfg.Security.TrustProxy = dto.Security.TrustProxy
 	cfg.Security.AllowedOrigins = dto.Security.AllowedOrigins
+
+	// 同名冲突处理方式（空值在加载/保存时归一为 self_service）
+	cfg.Auth.IdentityConflictMode = NormalizeIdentityConflictMode(dto.Auth.IdentityConflictMode)
 
 	// LDAP 认证配置
 	cfg.Auth.LDAP.Enabled = dto.Auth.LDAP.Enabled

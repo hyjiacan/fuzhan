@@ -554,10 +554,37 @@ type IndexConfig struct {
 	ConsistencyCheckCronExpression string `yaml:"consistency_check_cron_expression,omitempty"`
 }
 
+// 同名冲突处理方式（auth.identity_conflict_mode）取值
+const (
+	// IdentityConflictModeAdmin 保持原有行为：外部认证遇同名本地账号拒绝登录，
+	// 记录身份冲突，由管理员在用户管理中处置。
+	IdentityConflictModeAdmin = "admin"
+	// IdentityConflictModeSelfService 引导用户自助确认：输入本地账号密码绑定，
+	// 或创建独立的外部账号（默认值）。
+	IdentityConflictModeSelfService = "self_service"
+)
+
 // AuthConfig 认证配置
 type AuthConfig struct {
 	LDAP   LDAPClientConfig `yaml:"ldap"`
 	OAuth2 OAuth2Config     `yaml:"oauth2"`
+	// IdentityConflictMode 外部认证（OAuth2）遇本地同名账号时的处理方式：
+	// admin | self_service。留空按 self_service 处理，非法值在保存与启动校验时拒绝。
+	IdentityConflictMode string `yaml:"identity_conflict_mode,omitempty"`
+}
+
+// NormalizeIdentityConflictMode 归一化同名冲突处理方式：去空白转小写，空值回退默认 self_service。
+func NormalizeIdentityConflictMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return IdentityConflictModeSelfService
+	}
+	return mode
+}
+
+// EffectiveIdentityConflictMode 返回实际生效的同名冲突处理方式（空值视为 self_service）。
+func (c AuthConfig) EffectiveIdentityConflictMode() string {
+	return NormalizeIdentityConflictMode(c.IdentityConflictMode)
 }
 
 // OAuth2Config 外部 OAuth2/OIDC 认证配置。

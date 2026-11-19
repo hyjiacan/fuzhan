@@ -26,21 +26,25 @@ var webRouteActions = map[string]string{
 	"GET /api/v1/web/monitor/metrics":       "抓取监控指标",
 
 	// 认证
-	"GET /api/v1/web/auth/captcha":          "获取图形验证码",
-	"POST /api/v1/web/auth/register":        "用户注册",
-	"POST /api/v1/web/auth/login":           "用户登录",
-	"POST /api/v1/web/auth/logout":          "用户登出",
-	"POST /api/v1/web/auth/refresh":         "刷新登录凭证",
-	"GET /api/v1/web/auth/user":             "获取当前登录用户",
-	"PUT /api/v1/web/auth/password":         "修改登录密码",
-	"GET /api/v1/web/auth/oauth2/status":    "查询统一认证状态",
-	"GET /api/v1/web/auth/oauth2/authorize": "发起统一认证",
-	"GET /api/v1/web/auth/oauth2/callback":  "统一认证回调",
+	"GET /api/v1/web/auth/captcha":                          "获取图形验证码",
+	"POST /api/v1/web/auth/register":                        "用户注册",
+	"POST /api/v1/web/auth/login":                           "用户登录",
+	"POST /api/v1/web/auth/logout":                          "用户登出",
+	"POST /api/v1/web/auth/refresh":                         "刷新登录凭证",
+	"GET /api/v1/web/auth/user":                             "获取当前登录用户",
+	"PUT /api/v1/web/auth/password":                         "修改登录密码",
+	"GET /api/v1/web/auth/oauth2/status":                    "查询统一认证状态",
+	"GET /api/v1/web/auth/oauth2/authorize":                 "发起统一认证",
+	"GET /api/v1/web/auth/oauth2/callback":                  "统一认证回调",
+	"GET /api/v1/web/auth/identity-confirm":                 "查询账号确认状态",
+	"POST /api/v1/web/auth/identity-confirm/bind":           "确认并绑定本地账号",
+	"POST /api/v1/web/auth/identity-confirm/create-account": "创建独立账号",
 
 	// 个人中心
-	"GET /api/v1/web/user/login-logs": "查看登录记录",
-	"GET /api/v1/web/user/records":    "查看个人操作记录",
-	"GET /api/v1/web/user/stats":      "查看个人存储统计",
+	"GET /api/v1/web/user/login-logs":          "查看登录记录",
+	"POST /api/v1/web/user/auth-bindings/ldap": "自助绑定 LDAP 账号",
+	"GET /api/v1/web/user/records":             "查看个人操作记录",
+	"GET /api/v1/web/user/stats":               "查看个人存储统计",
 
 	// 文件浏览 / 下载 / 预览
 	"GET /api/v1/web/files/list/*path":          "浏览目录",

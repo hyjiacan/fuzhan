@@ -123,6 +123,14 @@ export function isDownloadRedirect(redirect) {
   return isDownloadRedirectPath(qi >= 0 ? redirect.slice(0, qi) : redirect)
 }
 
+// 非 SPA 内页面（如 /scalar.html 文档页、/lite 轻量版）需要整页跳转，
+// hash 路由无法承载这类后端直出的页面，用 router.replace 会被 catch-all 吞掉
+export function isPageRedirect(p) {
+  if (typeof p !== 'string' || !p) return false
+  const path = p.split('?')[0]
+  return path.startsWith('/lite') || path.endsWith('.html') || path.endsWith('.htm')
+}
+
 /**
  * 登录成功后的下载回跳：对下载类 redirect 换短时效票据后整页跳转执行下载。
  * hash 路由会吞掉非 hash 路径（catch-all → /files），因此必须整页跳转而非 router.replace。

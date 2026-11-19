@@ -136,7 +136,7 @@ ddos, preview, mime_table, log, security, auth, open_api, index, resource, webho
 - `index`：`scan_start_delay_seconds`=10、`scan_cron_expression`="0 1 * * *"、`search_reconcile_cron_expression`="0 5 * * *"、`cleanup_cron_expression`="0 * * * *"、`consistency_check_cron_expression`="0 3 * * *"
 - `resource`：`enabled`、`sampling_interval`=5、`collect_interval`=60、`retention_days`=7
 - `security`：`trust_proxy`、`allowed_origins`
-- `auth`：`ldap{...}` 与 `oauth2{enabled,provider_id,provider_name,...}` **二选一**（同时启用会被保存/启动校验拒绝）；OAuth2 启用时 `provider_id` 必填，绑定记录使用 `oauth2:<provider_id>` 作为 provider key，LDAP 固定使用 `ldap`
+- `auth`：`ldap{...}` 与 `oauth2{enabled,provider_id,provider_name,...}` **二选一**（同时启用会被保存/启动校验拒绝）；OAuth2 启用时 `provider_id` 必填，绑定记录使用 `oauth2:<provider_id>` 作为 provider key，LDAP 固定使用 `ldap`；`identity_conflict_mode`（`admin` / `self_service`，空值默认 `self_service`）决定 OAuth2 同名冲突时由管理员处置还是引导用户自助确认（输入本地密码绑定 / 创建独立账号）
 - `account`：含 `require_login`（强制登录，驱动 LoginGate）
 - 大小字段支持 `B/K/M/G/T`（含 `KB/MB/GB/TB`），无单位=字节；`ParseQuotaString` 解析。
 
@@ -262,6 +262,7 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 认证 `/auth`
 
 - `GET /captcha`（+CaptchaRateLimit）、`POST /register`、`POST /login`、`POST /logout`、`GET /oauth2/{status,authorize,callback}`
+- OAuth2 同名冲突自助确认（匿名，票据经 HttpOnly Cookie）：`GET /identity-confirm`、`POST /identity-confirm/bind`、`POST /identity-confirm/create-account`
 
 分享与下载
 
@@ -322,6 +323,7 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 
 - `POST /auth/refresh`、`GET /auth/user`、`PUT /auth/password`、`PUT /auth/profile`、`DELETE /auth/account`
 - `GET /user/login-logs`、`GET /user/records`、`GET /user/stats`
+- `POST /user/auth-bindings/ldap`（本地普通账号自助绑定目录身份，body `{"password":"<目录密码>"}`）
 - `POST /files/url-info`
 - `/examples`：`POST /upload`、`POST /rename`、`POST /validation/upload`
 
@@ -434,6 +436,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
 - 密码登录按 `users.auth_source` 严格路由（`services/auth_service.go`）：`local` 只校验本地密码（缺密码视为不可用，不尝试 LDAP）；`ldap` 只走目录，认证源未启用/不可用直接失败，不回退本地密码；`oauth2` 拒绝密码登录。用户名先精确匹配、再 `LOWER(username)` 匹配。
 - 本地不存在时，仅在 LDAP 启用且 `allow_auto_create` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`，同步为 `ldap_sync`）；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
 - 身份冲突（外部身份与本地账号归属不一致）写安全事件 `auth.identity_conflict`（按用户名 + provider 限频），并在 `identity_conflicts` 表 upsert 待处理冲突，不改动任何账号字段；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
+- `auth.identity_conflict_mode=self_service`（默认）时，OAuth2 回调遇同名本地账号不再直接跳错误页：签发 5 分钟一次性票据（HttpOnly Cookie，随机 32 字节 hex，服务端内存保存），302 到 `/#/oauth2/callback?conflict=1`；用户可输入本地密码完成绑定（事务内写绑定、`auth_source=oauth2`、清空本地密码并建立会话），或创建独立账号（用户名 `外部用户名@<provider_id|oauth2>`，冲突追加序号，`created_via=oauth2_jit`）。`role=admin`、已禁用、非 `local` 归属的同名账号仍拒绝。本地密码错误最多 5 次后票据失效，并计入既有登录失败限流/安全事件。`admin` 模式保持原行为。
 - 管理员可在用户管理页集中查看冲突并批量“绑定到同名账号”或“忽略”。绑定复用 `BindExternalIdentity` 规则：认证源须启用、目标用户无其它绑定、外部身份未被占用；成功后写绑定、`auth_source=auth_type`、清空本地密码并标记 `resolution=bound`。批量忽略仅影响待处理记录（`resolved_at IS NULL`）。
 - `identity_state` 不落库，管理端列表按当前配置派生（见 §6.2）；对非本地账号重置密码返回 400。
 - `login_logs.method`：成功记录真实来源 `local`/`ldap`/`oauth2`，注册记 `register`；失败记录登录入口 `password_form`/`oauth2`（失败时无法可靠判定账号来源）。

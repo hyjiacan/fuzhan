@@ -156,6 +156,7 @@ const FIELD_LABELS = {
   'security.allowed_origins': 'CORS 来源白名单',
 
   auth: '身份认证',
+  'auth.identity_conflict_mode': '同名冲突处理方式',
   'auth.ldap': 'LDAP',
   'auth.ldap.enabled': '启用 LDAP',
   'auth.ldap.host': '服务器地址',
@@ -263,7 +264,8 @@ const VALUE_LABELS = {
   'open_api.ip_access_mode': { allow: '白名单模式', deny: '黑名单模式', none: '不限制' },
   'storage_backend.backend': { local: '本地磁盘', s3: 'S3', minio: 'MinIO', oss: '阿里云 OSS', webdav: 'WebDAV' },
   'storage_backend.alert.smtp.tls_mode': { none: '不加密', starttls: 'STARTTLS', ssl: 'SSL/TLS' },
-  'account.captcha.mode': { disabled: '关闭', always: '始终开启', after_n: '失败后开启' }
+  'account.captcha.mode': { disabled: '关闭', always: '始终开启', after_n: '失败后开启' },
+  'auth.identity_conflict_mode': { admin: '管理员处理', self_service: '用户自行处理' }
 }
 
 // 未单独登记的叶子字段通用中文名（如预览分组内的 enabled/mimes/exts）

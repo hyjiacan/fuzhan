@@ -160,6 +160,36 @@ func (s *LDAPService) Authenticate(username, password string) (*models.User, err
 	return s.findOrCreateUser(firstNonEmpty(attrs["username"], username), attrs, models.CreatedViaLDAPJIT)
 }
 
+// VerifyCredentials 仅校验目录凭据，返回用户 DN 与显示名。
+// 与 Authenticate 不同：不查找/创建本地用户、不写绑定、不上报身份冲突，
+// 供已登录用户自助绑定目录账号时使用。
+func (s *LDAPService) VerifyCredentials(username, password string) (string, string, error) {
+	cfg := s.GetConfig()
+	if cfg == nil || !cfg.Enabled {
+		return "", "", errors.New("LDAP 未启用")
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return "", "", fmt.Errorf("%w: 用户名和密码不能为空", services.ErrLDAPInvalidCredentials)
+	}
+
+	conn, err := s.dial(cfg)
+	if err != nil {
+		return "", "", err
+	}
+	defer conn.Close()
+
+	dn, attrs, err := s.resolveUserDN(conn, cfg, username)
+	if err != nil {
+		return "", "", err
+	}
+	if err := conn.Bind(dn, password); err != nil {
+		return "", "", fmt.Errorf("%w: %v", services.ErrLDAPInvalidCredentials, err)
+	}
+	displayName := firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"])
+	return dn, displayName, nil
+}
+
 // resolveUserDN 用服务账号绑定并按住 user_filter 搜索，解析用户真实 DN 与属性
 // 未配置服务账号时尝试匿名查询；查询失败时不再猜测 DN，直接报错避免误导
 func (s *LDAPService) resolveUserDN(conn *ldap.Conn, cfg *LDAPConfig, username string) (string, map[string]string, error) {

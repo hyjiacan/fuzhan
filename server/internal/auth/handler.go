@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -57,14 +58,20 @@ func handleLoginBlocked(c *gin.Context) {
 
 // Handler 认证处理器
 type Handler struct {
-	authService   *services.AuthService
-	oauth2Service *OAuth2Service
-	db            *gorm.DB
+	authService     *services.AuthService
+	oauth2Service   *OAuth2Service
+	ldapService     ldapCredentialVerifier
+	identityConfirm *services.IdentityConfirmService
+	db              *gorm.DB
 }
 
 // NewHandler 创建认证处理器实例
 func NewHandler(authService *services.AuthService, db *gorm.DB) *Handler {
-	return &Handler{authService: authService, db: db}
+	return &Handler{
+		authService:     authService,
+		db:              db,
+		identityConfirm: services.NewIdentityConfirmService(),
+	}
 }
 
 // recordLoginLog 记录登录/注册事件到 login_logs（成功与失败均记录）。
@@ -98,6 +105,11 @@ func RecordLoginLog(db *gorm.DB, c *gin.Context, userID, username, method, statu
 // SetOAuth2Service 注入 OAuth2 认证服务（无论初始是否启用都注入，便于配置保存后热启用）
 func (h *Handler) SetOAuth2Service(svc *OAuth2Service) {
 	h.oauth2Service = svc
+}
+
+// SetLDAPService 注入 LDAP 认证服务（用于个人设置自助绑定目录账号）
+func (h *Handler) SetLDAPService(svc ldapCredentialVerifier) {
+	h.ldapService = svc
 }
 
 // refreshTokenIfNeeded 需要时刷新前端持有的 JWT 令牌，返回新令牌（无变化时为空串）
@@ -250,6 +262,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 		"uuid": user.UUID, "username": user.Username,
 		"display_name": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "created_at": user.CreatedAt,
+		"auth_source": user.AuthSource,
 	}
 	if newToken := h.refreshTokenIfNeeded(c); newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，凭证不回传响应体（不暴露给脚本）。
@@ -270,6 +283,7 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 		"uuid": user.UUID, "username": user.Username,
 		"display_name": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "created_at": user.CreatedAt,
+		"auth_source": user.AuthSource,
 	}
 	if newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，不回传响应体（凭证不对脚本暴露）。
@@ -430,6 +444,20 @@ func (h *Handler) OAuth2Callback(c *gin.Context) {
 
 	user, err := h.oauth2Service.Authenticate(c.Query("code"), h.oauth2CallbackURL(c))
 	if err != nil {
+		// 同名冲突且配置为自助处理：不建会话，签发一次性确认票据并跳回前端确认页。
+		// 管理员账号、已禁用账号、非本地归属账号仍按原逻辑拒绝。
+		var conflict *services.IdentityConflictError
+		if errors.As(err, &conflict) {
+			// 冲突错误对外保持通用文案，日志里保留可追踪的外部身份信息。
+			utils.Warn("OAuth2 登录检测到同名本地账号",
+				utils.String("username", conflict.Username),
+				utils.String("auth_type", conflict.AuthType),
+				utils.String("provider", conflict.ProviderName),
+				utils.String("external_username", conflict.ExternalUsername))
+			if h.issueIdentityConfirmTicket(c, conflict) {
+				return
+			}
+		}
 		utils.Warn("OAuth2 认证失败", utils.Err(err))
 		recordAuthEvent(c, models.EventAuthFailedLogin, "auth.oauth2", "", models.SeverityMedium, "OAuth2 认证失败: "+err.Error())
 		h.recordLoginLog(c, "", "", services.LoginMethodOAuth2, "failed", err.Error())
@@ -477,6 +505,8 @@ func (h *Handler) frontendBase(c *gin.Context) string {
 
 // redirectOAuth2Error 认证失败时跳回前端，仅携带通用提示
 func (h *Handler) redirectOAuth2Error(c *gin.Context) {
+	// 外部认证失败时回收可能残留的同名冲突票据，避免下次进入回调页误展示过期的确认信息。
+	middleware.ClearIdentityConfirmCookie(c)
 	q := url.Values{}
 	q.Set("error", oauth2UserFacingError)
 	c.Redirect(http.StatusFound, "/#/oauth2/callback?"+q.Encode())

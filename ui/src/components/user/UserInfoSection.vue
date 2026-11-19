@@ -68,6 +68,45 @@
       </el-descriptions>
     </el-card>
 
+    <el-card class="binding-card">
+      <div class="binding-header">
+        <span class="binding-title">外部账号绑定</span>
+        <span class="binding-sub">将当前账号与 LDAP 目录身份绑定</span>
+      </div>
+
+      <template v-if="isLocalAccount">
+        <p class="binding-desc">
+          绑定后该账号将仅通过 LDAP 登录，本地密码会被清除。请确认目录账号可用后再操作。
+        </p>
+        <el-form class="binding-form" label-width="96px" @submit.prevent="handleBindLdap">
+          <el-form-item label="目录密码">
+            <el-input
+              v-model="ldapPassword"
+              type="password"
+              show-password
+              autocomplete="off"
+              placeholder="请输入 LDAP 目录密码"
+              :disabled="bindingLdap"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="bindingLdap" @click="handleBindLdap">
+              绑定 LDAP 账号
+            </el-button>
+          </el-form-item>
+        </el-form>
+        <p v-if="bindLdapError" class="binding-error">{{ bindLdapError }}</p>
+      </template>
+
+      <p v-else-if="userInfo.role === 'admin'" class="binding-desc">
+        管理员账号不支持自助绑定外部认证源，如需绑定请联系其他管理员处理。
+      </p>
+
+      <p v-else class="binding-desc">
+        当前账号已通过外部认证源登录（{{ authSourceLabel }}），无需重复绑定。
+      </p>
+    </el-card>
+
     <div class="account-actions">
       <el-button type="primary" :icon="Lock" @click="passwordDialogVisible = true">
         修改密码
@@ -163,12 +202,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, onMounted } from 'vue'
+import { ref, reactive, nextTick, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Lock, Delete } from '@element-plus/icons-vue'
-import { AuthApi } from '@/api'
+import { AuthApi, PersonalApi } from '@/api'
 import { TimeUtils } from '@/utils'
+import { formatErrorMessage } from '@/utils/error'
 
 const router = useRouter()
 
@@ -244,6 +284,59 @@ const loadUserInfo = async () => {
   } catch (error) {
     console.error('获取用户信息失败:', error)
     ElMessage.error('获取用户信息失败')
+  }
+}
+
+// 外部账号绑定：仅本地账号可发起 LDAP 绑定，绑定后本地密码会被清除。
+// auth_source 缺失时按本地账号处理（旧数据均为本地账号）；
+// 绑定成功后就地标记，避免用户信息接口未返回 auth_source 时表单重新出现。
+// 管理员账号不开放自助绑定（后端同样拒绝），避免展示后必然失败
+const boundLdap = ref(false)
+const isLocalAccount = computed(() => !boundLdap.value && userInfo.value.role !== 'admin' &&
+  (userInfo.value.auth_source || 'local') === 'local')
+const authSourceLabel = computed(() => {
+  if (boundLdap.value) return 'LDAP'
+  const labels = { ldap: 'LDAP', oauth2: 'OAuth2 / OIDC' }
+  return labels[userInfo.value.auth_source] || '外部认证'
+})
+
+const bindingLdap = ref(false)
+const ldapPassword = ref('')
+const bindLdapError = ref('')
+
+const handleBindLdap = async () => {
+  if (bindingLdap.value) return
+  if (!ldapPassword.value) {
+    ElMessage.warning('请输入 LDAP 目录密码')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '绑定后该账号将仅通过 LDAP 登录，本地密码会被清除，且无法自动恢复。确定继续吗？',
+      '绑定 LDAP 账号',
+      { type: 'warning', confirmButtonText: '确定绑定', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+
+  bindLdapError.value = ''
+  bindingLdap.value = true
+  try {
+    const data = await PersonalApi.bindLdapIdentity(ldapPassword.value)
+    if (data.success) {
+      ElMessage.success('已绑定 LDAP 账号，下次请使用 LDAP 登录')
+      ldapPassword.value = ''
+      boundLdap.value = true
+      await loadUserInfo()
+    } else {
+      bindLdapError.value = data.message || '绑定失败，请稍后重试'
+    }
+  } catch (error) {
+    bindLdapError.value = formatErrorMessage(error, '绑定失败，请稍后重试')
+  } finally {
+    bindingLdap.value = false
   }
 }
 
@@ -373,6 +466,42 @@ const handleDeleteAccount = async () => {
 
   .info-card {
     max-width: 600px;
+  }
+
+  .binding-card {
+    max-width: 600px;
+    margin-top: 16px;
+  }
+
+  .binding-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .binding-title { font-weight: 600; }
+
+  .binding-sub {
+    color: var(--el-text-color-secondary);
+    font-size: @font-size-sm;
+  }
+
+  .binding-desc {
+    margin: 0 0 12px;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .binding-form {
+    max-width: 420px;
+  }
+
+  .binding-error {
+    margin: 0;
+    color: var(--el-color-danger);
+    font-size: 13px;
   }
 
   .account-actions {

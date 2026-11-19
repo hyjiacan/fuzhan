@@ -102,6 +102,17 @@ func ValidateAuthConfig(ldapEnabled, oauth2Enabled bool, oauth2ProviderID string
 	return ""
 }
 
+// ValidateIdentityConflictMode 校验同名冲突处理方式白名单。
+// 空值表示使用默认值 self_service；其他非法值返回可直接展示的中文错误信息。
+func ValidateIdentityConflictMode(mode string) string {
+	switch NormalizeIdentityConflictMode(mode) {
+	case IdentityConflictModeAdmin, IdentityConflictModeSelfService:
+		return ""
+	default:
+		return "同名冲突处理方式无效，仅支持 admin / self_service"
+	}
+}
+
 // 自定义验证器：文件路径验证
 func validateFilePath(fl validator.FieldLevel) bool {
 	path := fl.Field().String()

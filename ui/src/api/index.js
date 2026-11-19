@@ -112,17 +112,23 @@ request.interceptors.response.use(
       // 服务器返回了错误响应
       if (error.response.status === 401) {
         // Token 过期或无效，清除认证信息并派发登录态变更，
-        // 由路由守卫在「强制登录」模式下统一重定向到登录页
-        localStorage.removeItem('token')
-        localStorage.removeItem('uuid')
-        localStorage.removeItem('username')
-        localStorage.removeItem('displayName')
-        localStorage.removeItem('nickname')
-        localStorage.removeItem('userRole')
-        window.dispatchEvent(new CustomEvent('auth:changed'))
+        // 由路由守卫在「强制登录」模式下统一重定向到登录页。
+        // 少数接口把 401 用作业务错误（如目录密码错误），可通过 skipAuthSideEffects 保留当前登录态
+        if (!error.config?.skipAuthSideEffects) {
+          localStorage.removeItem('token')
+          localStorage.removeItem('uuid')
+          localStorage.removeItem('username')
+          localStorage.removeItem('displayName')
+          localStorage.removeItem('nickname')
+          localStorage.removeItem('userRole')
+          window.dispatchEvent(new CustomEvent('auth:changed'))
+        }
       } else if (error.response.status === 403) {
-        // 无权限，跳转到文件页面
-        window.location.hash = '#/files'
+        // 无权限，跳转到文件页面；少数接口把 403 用作业务错误（如冲突确认中的管理员账号），
+        // 可通过 skipAuthSideEffects 避免打断当前页面流程
+        if (!error.config?.skipAuthSideEffects) {
+          window.location.hash = '#/files'
+        }
       }
       appError = createErrorFromResponse(error.response)
     } else {
@@ -130,9 +136,10 @@ request.interceptors.response.use(
       appError = createNetworkError(error)
     }
 
-    // 401 不弹全局提示，交给路由守卫跳转（避免匿名请求失败时反复弹出「未登录」）
+    // 401 不弹全局提示，交给路由守卫跳转（避免匿名请求失败时反复弹出「未登录」）；
+    // 组件内已在页面内展示错误文案的接口可通过 skipGlobalError 跳过全局提示，避免重复提示
     const silentAuthError = error.response?.status === 401
-    if (globalErrorHandler && !silentAuthError) {
+    if (globalErrorHandler && !silentAuthError && !error.config?.skipGlobalError) {
       globalErrorHandler(appError, error)
     }
 
@@ -220,6 +227,23 @@ export const AuthApi = {
   // 外部 OAuth2/OIDC：获取授权跳转地址（由前端执行跳转，便于统一处理错误）
   oauth2Authorize() {
     return request.get('/auth/oauth2/authorize')
+  },
+
+  // 外部认证同名冲突：查询当前回调是否处于待确认状态。
+  // 待确认票据由后端 HttpOnly Cookie 维护，前端不接触、不传递。
+  getIdentityConfirm() {
+    return request.get('/auth/identity-confirm', { skipSuccessToast: true })
+  },
+
+  // 同名冲突：用本地密码确认绑定到同名本地账号；成功后返回登录会话数据。
+  // 错误由确认页在页面内展示（el-alert），跳过全局提示避免重复
+  confirmIdentityBind(password) {
+    return request.post('/auth/identity-confirm/bind', { password }, { skipSuccessToast: true, skipAuthSideEffects: true, skipGlobalError: true })
+  },
+
+  // 同名冲突：改用独立账号登录（后端创建独立账号并建立会话）
+  createIdentityAccount() {
+    return request.post('/auth/identity-confirm/create-account', {}, { skipSuccessToast: true, skipAuthSideEffects: true, skipGlobalError: true })
   }
 }
 
@@ -957,6 +981,13 @@ export const PersonalApi = {
   // 个人上传文件统计（公共文件）
   getStats() {
     return request.get('/user/stats')
+  },
+
+  // 绑定 LDAP 身份：提交目录密码完成绑定，绑定后该账号仅通过 LDAP 登录（本地密码被清除）。
+  // 目录密码错误时后端返回 401，不能当作登录态失效处理，故跳过 401 的本地登录态清理；
+  // 错误由设置页在卡片内展示，跳过全局提示避免重复
+  bindLdapIdentity(password) {
+    return request.post('/user/auth-bindings/ldap', { password }, { skipSuccessToast: true, skipAuthSideEffects: true, skipGlobalError: true })
   }
 }
 

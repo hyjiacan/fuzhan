@@ -338,6 +338,10 @@ security:
 # LDAP 用于对接企业目录（Active Directory / OpenLDAP）；OAuth2/OIDC 用于对接外部统一认证系统。
 # 仅当需要外部账户认证时配置。
 # auth:
+#   # 外部认证（OAuth2）遇到同名本地账号时的处理方式：
+#   #   admin        - 拒绝登录并记录身份冲突，由管理员在用户管理中处置
+#   #   self_service - 引导用户自助确认：输入本地账号密码完成绑定，或创建独立账号（默认）
+#   identity_conflict_mode: self_service
 #   ldap:
 #     enabled: false
 #     host: ""                 # LDAP 服务器地址

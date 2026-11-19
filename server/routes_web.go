@@ -80,6 +80,10 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		auth.GET("/oauth2/status", authHandler.OAuth2Status)
 		auth.GET("/oauth2/authorize", authHandler.OAuth2Authorize)
 		auth.GET("/oauth2/callback", authHandler.OAuth2Callback)
+		// OAuth2 同名冲突自助确认：票据经 HttpOnly Cookie 传递（匿名可访问）
+		auth.GET("/identity-confirm", authHandler.IdentityConfirmStatus)
+		auth.POST("/identity-confirm/bind", authHandler.BindIdentityConfirm)
+		auth.POST("/identity-confirm/create-account", authHandler.CreateAccountIdentityConfirm)
 	}
 
 	// 分享下载路由：开启强制登录后同样要求登录（强制登录优先级最高）。
@@ -274,6 +278,8 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		protected.GET("/user/login-logs", rt.userHandler.GetLoginLogs)
 		protected.GET("/user/records", rt.userHandler.GetRecords)
 		protected.GET("/user/stats", rt.userHandler.GetStats)
+		// 个人设置自助绑定 LDAP 身份（仅本地普通账号）
+		protected.POST("/user/auth-bindings/ldap", authHandler.BindLDAPIdentity)
 
 		// 文件管理路由已全部迁移至 admin 组（仅管理员可操作公开文件）
 		protected.POST("/files/url-info", func(c *gin.Context) {

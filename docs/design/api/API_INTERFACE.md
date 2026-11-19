@@ -160,6 +160,49 @@
   - 由外部系统回调，后端校验 state、换取令牌、映射本地用户并签发 JWT，
     令牌直接写入 HttpOnly Cookie，随后 302 跳转到 `/#/oauth2/callback`（URL 不携带令牌）；
     失败时重定向为 `/#/oauth2/callback?error=...`。
+  - `auth.identity_conflict_mode=self_service`（默认）且本地存在同名普通账号时，不建会话，
+    改为签发一次性确认票据（HttpOnly Cookie，5 分钟有效）并 302 到
+    `/#/oauth2/callback?conflict=1`；`admin` 模式下仍返回通用错误。
+
+### 8. 同名冲突自助确认（OAuth2）
+
+三个接口均无需认证，票据只经 HttpOnly Cookie（`fuzhan_identity_confirm`）传递，不放 URL。
+`auth.identity_conflict_mode=admin` 时票据不会被签发。
+
+- **查询确认状态**：`GET /api/v1/web/auth/identity-confirm`
+  ```json
+  { "success": true, "data": { "pending": true, "username": "同名本地账号", "auth_type": "oauth2",
+      "provider_id": "keycloak-prod", "provider_name": "企业 SSO", "external_name": "外部显示名",
+      "expires_at": "2026-11-18T09:00:00Z" } }
+  ```
+  无票据或已过期时返回 `{ "pending": false }`。
+  `provider_name` 取 `auth.oauth2.provider_name`（展示用，未配置时回退 `provider_id`）；
+  绑定所需的 provider key（`oauth2:<provider_id>`）只在服务端票据内使用，不对外返回。
+
+- **输入本地密码完成绑定**：`POST /api/v1/web/auth/identity-confirm/bind`
+  ```json
+  { "password": "本地账号密码" }
+  ```
+  校验通过后在事务内写绑定、`auth_source=oauth2`、清空本地密码并建立会话；
+  响应结构与登录一致（凭证仅经 HttpOnly Cookie 下发），登录日志记 `method=oauth2`。
+  票据缺失/过期 400「确认已过期，请重新登录」；本地密码错误 401「本地账号密码错误」；
+  管理员账号 403；同一 IP + 用户名尝试过多 429（与登录限流共用计数与锁定窗口）。
+
+- **创建独立账号并登录**：`POST /api/v1/web/auth/identity-confirm/create-account`（空 body）
+  用户名 = 外部用户名 + `@<provider_id 或 oauth2>`，冲突时追加 `_2`、`_3`（3-64 字符）；
+  新账号 `auth_source=oauth2`、`created_via=oauth2_jit`、无本地密码，响应结构与登录一致。
+
+### 9. 个人设置自助绑定 LDAP
+
+- **URL**：`POST /api/v1/web/user/auth-bindings/ldap`（需登录）
+- **请求体**：
+  ```json
+  { "password": "目录密码" }
+  ```
+- **说明**：仅 `auth_source=local` 的普通用户、LDAP 已启用时可用；用当前登录用户名去目录
+  校验凭据（不触发 JIT 建号/冲突上报），成功后事务内写 `(ldap, ldap, DN)` 绑定、
+  `auth_source=ldap` 并清空本地密码。目录密码错误 401；已绑定/外部身份被占用 409；
+  认证源未启用或非本地账号 400。OAuth2 个人设置自助绑定暂未开放，请在登录流程中处理。
 
 ## 文件浏览接口
 

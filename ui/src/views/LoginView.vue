@@ -159,7 +159,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
-import { executeLoginDownload } from '@/utils/download'
+import { executeLoginDownload, isPageRedirect } from '@/utils/download'
 import CaptchaInput from '@/components/auth/CaptchaInput.vue'
 import store from '@/store'
 
@@ -244,14 +244,6 @@ const handleOAuth2Login = async () => {
     ElMessage.error('外部认证暂时不可用，请稍后重试')
     oauth2Redirecting.value = false
   }
-}
-
-// 非 SPA 内页面（如 /scalar.html 文档页、/lite 轻量版）需要整页跳转，
-// hash 路由无法承载这类后端直出的页面，用 router.replace 会被 catch-all 吞掉
-const isPageRedirect = (p) => {
-  if (typeof p !== 'string' || !p) return false
-  const path = p.split('?')[0]
-  return path.startsWith('/lite') || path.endsWith('.html') || path.endsWith('.htm')
 }
 
 const finishAuth = async () => {

@@ -1067,7 +1067,27 @@ func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, err
 	}
 	if existing != nil {
 		reportIdentityConflict(s.db, existing.Username, provider, info.Subject, existing.AuthSource)
-		return nil, services.ErrAccountUnavailable
+		// 返回可区分的冲突错误：登录回调可据此按配置签发一次性确认票据，
+		// 由用户选择「输入本地密码绑定」或「创建独立账号」；errors.Is(ErrAccountUnavailable) 仍成立。
+		providerID := ""
+		if cfg != nil {
+			providerID = strings.TrimSpace(cfg.ProviderID)
+		}
+		return nil, &services.IdentityConflictError{
+			Username:         existing.Username,
+			LocalUserID:      existing.ID,
+			LocalRole:        existing.Role,
+			LocalDisabled:    existing.Disabled,
+			LocalAuthSource:  existing.AuthSource,
+			AuthType:         models.AuthSourceOAuth2,
+			ProviderID:       providerID,
+			ProviderName:     provider,
+			ExternalID:       info.Subject,
+			ExternalUsername: username,
+			ExternalName:     info.DisplayName,
+			DisplayName:      info.DisplayName,
+			RejectedSource:   existing.AuthSource,
+		}
 	}
 
 	// 3. 本地不存在：按配置决定是否自动创建（用户与绑定同事务写入）

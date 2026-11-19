@@ -303,6 +303,7 @@ const settings = reactive({
     allowedOrigins: []
   },
   auth: {
+    identityConflictMode: 'self_service',
     ldap: {
       enabled: false,
       host: '',
@@ -541,6 +542,7 @@ const loadSettings = async () => {
       }
 
       settings.auth = {
+        identityConflictMode: cfg.auth?.identity_conflict_mode || 'self_service',
         ldap: {
           enabled: cfg.auth?.ldap?.enabled ?? false,
           host: cfg.auth?.ldap?.host || '',
@@ -824,6 +826,7 @@ const doSaveSettings = async () => {
         allowed_origins: settings.security.allowedOrigins
       },
       auth: {
+        identity_conflict_mode: settings.auth.identityConflictMode,
         ldap: {
           enabled: settings.auth.ldap.enabled,
           host: settings.auth.ldap.host,

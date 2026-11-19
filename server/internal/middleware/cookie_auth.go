@@ -67,3 +67,52 @@ func tokenFromRequest(r *http.Request) string {
 	}
 	return ck.Value
 }
+
+// IdentityConfirmCookieName OAuth2 同名冲突确认票据的 HttpOnly Cookie 名。
+// 票据只放 Cookie，不放 URL，避免残留在浏览器历史或脚本可读的 location。
+const IdentityConfirmCookieName = "fuzhan_identity_confirm"
+
+// identityConfirmCookieMaxAge 确认票据有效期（秒），与服务端票据 TTL 保持一致。
+const identityConfirmCookieMaxAge = 300
+
+// SetIdentityConfirmCookie 写入一次性确认票据 Cookie（HttpOnly、Path=/、SameSite=Lax，HTTPS 时 Secure）。
+func SetIdentityConfirmCookie(c *gin.Context, token string) {
+	v := &http.Cookie{
+		Name:     IdentityConfirmCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   identityConfirmCookieMaxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		v.Secure = true
+	}
+	http.SetCookie(c.Writer, v)
+}
+
+// ClearIdentityConfirmCookie 清除确认票据 Cookie（票据已消费/失效/确认完成后调用）。
+// 属性与写入保持一致（含 HTTPS 下的 Secure），避免个别浏览器对属性不匹配的删除请求处理不一致。
+func ClearIdentityConfirmCookie(c *gin.Context) {
+	v := &http.Cookie{
+		Name:     IdentityConfirmCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		v.Secure = true
+	}
+	http.SetCookie(c.Writer, v)
+}
+
+// IdentityConfirmTokenFromCookie 读取确认票据 Cookie，不存在或为空时返回空串。
+func IdentityConfirmTokenFromCookie(c *gin.Context) string {
+	ck, err := c.Request.Cookie(IdentityConfirmCookieName)
+	if err != nil || ck == nil {
+		return ""
+	}
+	return ck.Value
+}

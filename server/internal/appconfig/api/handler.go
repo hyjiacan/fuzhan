@@ -261,6 +261,20 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		_, ok := raw[key]
 		return ok
 	}
+	// 同名冲突处理方式为 auth 的嵌套字段：前端未提交时必须保留现值，
+	// 避免仅修改 LDAP/OAuth2 配置时把管理员选择的 admin 重置为默认值。
+	// LDAP / OAuth2 同理：只写回实际提交的子节点，避免部分提交把另一套认证配置清空。
+	identityConflictModePresent := false
+	ldapPresent := false
+	oauth2Present := false
+	if rawAuth, ok := raw["auth"]; ok {
+		var authRaw map[string]json.RawMessage
+		if json.Unmarshal(rawAuth, &authRaw) == nil {
+			_, identityConflictModePresent = authRaw["identity_conflict_mode"]
+			_, ldapPresent = authRaw["ldap"]
+			_, oauth2Present = authRaw["oauth2"]
+		}
+	}
 
 	// 存储后端连接参数校验：切换后端后需重启服务，若参数不完整将导致下次启动失败，
 	// 因此在保存前拦截，避免把不可用的配置写入文件。
@@ -281,6 +295,14 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		if msg := appconfig.ValidateAuthConfig(req.Auth.LDAP.Enabled, req.Auth.OAuth2.Enabled, req.Auth.OAuth2.ProviderID); msg != "" {
 			utils.HandleBadRequest(c, msg, nil)
 			return
+		}
+		// 同名冲突处理方式白名单：非法值会让认证行为不确定，保存前拦截并归一化
+		if identityConflictModePresent {
+			if msg := appconfig.ValidateIdentityConflictMode(req.Auth.IdentityConflictMode); msg != "" {
+				utils.HandleBadRequest(c, msg, nil)
+				return
+			}
+			req.Auth.IdentityConflictMode = appconfig.NormalizeIdentityConflictMode(req.Auth.IdentityConflictMode)
 		}
 	}
 
@@ -792,8 +814,9 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 	}
 
 	// —— LDAP 认证配置 ——
-	// 前端只提交发生变化的顶级节，auth 一旦提交则整个 LDAP 节点原样写回
-	if present("auth") {
+	// auth 为嵌套结构：LDAP / OAuth2 各自按子节点是否存在决定是否写回，
+	// 避免只提交 auth.identity_conflict_mode 时把两套认证配置清空。
+	if present("auth") && ldapPresent {
 		ld := req.Auth.LDAP
 		appconfig.GlobalConfig.Auth.LDAP.Enabled = ld.Enabled
 		appconfig.GlobalConfig.Auth.LDAP.Host = ld.Host
@@ -819,8 +842,10 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("auth.ldap.sync_interval", ld.SyncInterval)
 		updates.Add("auth.ldap.auto_create_user", ld.AutoCreateUser)
 		updates.Add("auth.ldap.insecure_skip_verify", ld.InsecureSkipVerify)
+	}
 
-		// —— OAuth2/OIDC 认证配置 ——
+	// —— OAuth2/OIDC 认证配置 ——
+	if present("auth") && oauth2Present {
 		oauth := req.Auth.OAuth2
 		appconfig.GlobalConfig.Auth.OAuth2.Enabled = oauth.Enabled
 		appconfig.GlobalConfig.Auth.OAuth2.ProviderID = oauth.ProviderID
@@ -858,6 +883,12 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		updates.Add("auth.oauth2.email_claim", oauth.EmailClaim)
 		updates.Add("auth.oauth2.auto_create_user", oauth.AutoCreateUser)
 		updates.Add("auth.oauth2.insecure_skip_verify", oauth.InsecureSkipVerify)
+	}
+
+	// —— 同名冲突处理方式 ——
+	if present("auth") && identityConflictModePresent {
+		appconfig.GlobalConfig.Auth.IdentityConflictMode = req.Auth.IdentityConflictMode
+		updates.Add("auth.identity_conflict_mode", req.Auth.IdentityConflictMode)
 	}
 
 	// —— Webhook 推送配置 ——
