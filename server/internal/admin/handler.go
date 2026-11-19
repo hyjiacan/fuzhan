@@ -466,6 +466,146 @@ func (h *Handler) DeleteUserHandler(c *gin.Context) {
 	response.HandleSuccess(c, http.StatusOK, "用户已删除", nil)
 }
 
+// maxUserBatch 单次批量操作用户的数量上限
+const maxUserBatch = 100
+
+// normalizeUserBatchUUIDs 清洗批量用户操作的 uuids：去空白、去重、校验非空与上限
+func normalizeUserBatchUUIDs(raw []string) ([]string, string) {
+	if len(raw) == 0 {
+		return nil, "请求参数错误：uuids 不能为空"
+	}
+	if len(raw) > maxUserBatch {
+		return nil, fmt.Sprintf("单次最多处理 %d 个用户", maxUserBatch)
+	}
+	// 过滤空值与重复项，避免同一条记录被处理两次
+	seen := make(map[string]bool, len(raw))
+	uuids := make([]string, 0, len(raw))
+	for _, uuid := range raw {
+		uuid = strings.TrimSpace(uuid)
+		if uuid == "" || seen[uuid] {
+			continue
+		}
+		seen[uuid] = true
+		uuids = append(uuids, uuid)
+	}
+	if len(uuids) == 0 {
+		return nil, "请求参数错误：uuids 不能为空"
+	}
+	return uuids, ""
+}
+
+// bindUserBatchUUIDs 解析并校验批量用户操作的 uuids（非空且不超过上限）
+func bindUserBatchUUIDs(c *gin.Context) ([]string, bool) {
+	var req struct {
+		UUIDs []string `json:"uuids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求参数错误：uuids 不能为空", nil)
+		return nil, false
+	}
+	uuids, msg := normalizeUserBatchUUIDs(req.UUIDs)
+	if msg != "" {
+		response.HandleBadRequest(c, msg, nil)
+		return nil, false
+	}
+	return uuids, true
+}
+
+// BatchDeleteUsersHandler 处理批量删除用户
+func (h *Handler) BatchDeleteUsersHandler(c *gin.Context) {
+	uuids, ok := bindUserBatchUUIDs(c)
+	if !ok {
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	results, err := h.adminService.BatchDeleteUsers(callerUUID, uuids)
+	if err != nil {
+		middleware.LogOperation(c, "admin.user.batch_delete", fmt.Sprintf("%d 个", len(uuids)), err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("批量删除用户失败", utils.Err(err))
+		response.HandleInternalServerError(c, "批量删除用户失败")
+		return
+	}
+
+	// 已删除的用户需要清除禁用状态缓存，避免 TTL 内仍被放行
+	for _, item := range results {
+		if item.Status == "ok" {
+			middleware.InvalidateUserDisabledCache(item.UUID)
+		}
+	}
+	middleware.LogOperation(c, "admin.user.batch_delete", fmt.Sprintf("%d 个", len(uuids)), nil)
+	response.HandleSuccess(c, http.StatusOK, "处理完成", gin.H{"results": results})
+}
+
+// BatchDisableUsersHandler 处理批量禁用用户
+func (h *Handler) BatchDisableUsersHandler(c *gin.Context) {
+	uuids, ok := bindUserBatchUUIDs(c)
+	if !ok {
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	results, err := h.adminService.BatchDisableUsers(callerUUID, uuids)
+	if err != nil {
+		middleware.LogOperation(c, "admin.user.batch_disable", fmt.Sprintf("%d 个", len(uuids)), err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("批量禁用用户失败", utils.Err(err))
+		response.HandleInternalServerError(c, "批量禁用用户失败")
+		return
+	}
+
+	for _, item := range results {
+		if item.Status == "ok" {
+			middleware.InvalidateUserDisabledCache(item.UUID)
+		}
+	}
+	middleware.LogOperation(c, "admin.user.batch_disable", fmt.Sprintf("%d 个", len(uuids)), nil)
+	response.HandleSuccess(c, http.StatusOK, "处理完成", gin.H{"results": results})
+}
+
+// BatchConvertUsersToLocalHandler 处理批量把外部账号转为本地账号
+func (h *Handler) BatchConvertUsersToLocalHandler(c *gin.Context) {
+	var req struct {
+		UUIDs       []string `json:"uuids" binding:"required"`
+		NewPassword string   `json:"new_password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.HandleBadRequest(c, "请求参数错误：uuids 与 new_password 必填", nil)
+		return
+	}
+	uuids, msg := normalizeUserBatchUUIDs(req.UUIDs)
+	if msg != "" {
+		response.HandleBadRequest(c, msg, nil)
+		return
+	}
+
+	callerUUID := c.GetString(string(constants.ContextKeyUserUUID))
+	results, err := h.adminService.BatchConvertUsersToLocal(callerUUID, uuids, req.NewPassword)
+	if err != nil {
+		middleware.LogOperation(c, "admin.user.batch_convert_local", fmt.Sprintf("%d 个", len(uuids)), err)
+		var identityErr *services.UserIdentityError
+		if errors.As(err, &identityErr) {
+			response.HandleErrorCompat(c, identityErr.Status, identityErr.Message, nil)
+			return
+		}
+		utils.Error("批量转为本地账号失败", utils.Err(err))
+		response.HandleInternalServerError(c, "批量转为本地账号失败")
+		return
+	}
+
+	middleware.LogOperation(c, "admin.user.batch_convert_local", fmt.Sprintf("%d 个", len(uuids)), nil)
+	response.HandleSuccess(c, http.StatusOK, "处理完成", gin.H{"results": results})
+}
+
 // SessionsHandler 处理获取上传会话列表
 func (h *Handler) SessionsHandler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

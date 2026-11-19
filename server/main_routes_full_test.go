@@ -67,6 +67,9 @@ func TestMainRouteTreeNoConflict(t *testing.T) {
 
 	admin := web.Group("/admin")
 	admin.GET("/users", dummy)
+	admin.POST("/users/batch-delete", dummy)
+	admin.POST("/users/batch-disable", dummy)
+	admin.POST("/users/batch-convert-local", dummy)
 	admin.PUT("/users/:id/reset-password", dummy)
 	admin.POST("/users/:id/auth-bindings", dummy)
 	admin.POST("/users/:id/convert-local", dummy)

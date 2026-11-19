@@ -50,6 +50,25 @@
     </el-card>
 
     <el-card class="table-card" shadow="never">
+      <div class="batch-toolbar">
+        <el-space>
+          <span class="batch-selected">已选 {{ selectedUUIDs.length }} 项</span>
+          <el-button type="warning" plain :disabled="selectedUUIDs.length === 0" :loading="batchRunning" @click="handleBatchDisable">
+            批量禁用
+          </el-button>
+          <el-button type="primary" plain :disabled="selectedUUIDs.length === 0" :loading="batchRunning" @click="showBatchConvertModal">
+            批量转为本地
+          </el-button>
+          <el-button type="danger" plain :disabled="selectedUUIDs.length === 0" :loading="batchRunning" @click="handleBatchDelete">
+            批量删除
+          </el-button>
+        </el-space>
+        <el-space>
+          <el-button link :disabled="users.length === 0" @click="toggleSelectPage(true)">全选本页</el-button>
+          <el-button link :disabled="selectedUUIDs.length === 0" @click="clearSelection">清空选择</el-button>
+          <span class="batch-tip">单次最多处理 100 个用户</span>
+        </el-space>
+      </div>
       <div ref="tableWrapRef" class="table-v2-wrap" v-loading="loading">
         <el-table-v2
           :columns="columns"
@@ -184,6 +203,47 @@
         <el-space>
           <el-button @click="convertLocalModalVisible = false">取消</el-button>
           <el-button type="primary" :loading="convertingToLocal" @click="handleConvertToLocal">
+            确认转为本地
+          </el-button>
+        </el-space>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="batchConvertModalVisible" title="批量转为本地账号" width="460px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="转为本地后会删除这些用户的全部外部身份绑定，并统一改用下面的新密码登录。"
+        style="margin-bottom: 16px"
+      />
+      <el-form :model="batchConvertForm" label-width="90px">
+        <el-form-item label="用户数量">
+          {{ selectedUUIDs.length }} 个
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+            v-model="batchConvertForm.newPassword"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="8-128位，将应用到全部选中用户"
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input
+            v-model="batchConvertForm.confirmPassword"
+            :maxlength="128"
+            type="password"
+            show-password
+            placeholder="请再次输入新密码"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-space>
+          <el-button @click="batchConvertModalVisible = false">取消</el-button>
+          <el-button type="primary" :loading="batchRunning" @click="handleBatchConvert">
             确认转为本地
           </el-button>
         </el-space>
@@ -328,8 +388,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, h } from 'vue'
-import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress, ElTooltip } from 'element-plus'
+import { ref, computed, onMounted, onUnmounted, h } from 'vue'
+import { ElMessage, ElMessageBox, ElButton, ElTag, ElProgress, ElTooltip, ElCheckbox } from 'element-plus'
 import { AuthApi, AdminApi } from '@/api'
 import { TableConst, TimeUtils, UserUtils } from '@/utils'
 import { formatErrorMessage } from '@/utils/error'
@@ -350,6 +410,33 @@ const identityStateFilter = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+// 批量操作：选中集合按 uuid 维护，仅当前页可勾选（列表本身不含管理员账号）
+const selectedUUIDs = ref([])
+const batchRunning = ref(false)
+// 当前页是否已全选 / 部分选中，驱动表头 checkbox
+const pageAllSelected = computed(() => users.value.length > 0 && users.value.every(row => selectedUUIDs.value.includes(row.uuid)))
+const pageIndeterminate = computed(() => !pageAllSelected.value && users.value.some(row => selectedUUIDs.value.includes(row.uuid)))
+
+const toggleSelect = (row, checked) => {
+  const set = new Set(selectedUUIDs.value)
+  if (checked) set.add(row.uuid)
+  else set.delete(row.uuid)
+  selectedUUIDs.value = [...set]
+}
+
+const toggleSelectPage = (checked) => {
+  const set = new Set(selectedUUIDs.value)
+  for (const row of users.value) {
+    if (checked) set.add(row.uuid)
+    else set.delete(row.uuid)
+  }
+  selectedUUIDs.value = [...set]
+}
+
+const clearSelection = () => {
+  selectedUUIDs.value = []
+}
 
 // 认证来源选项：与后端 auth_source 取值保持一致
 const AUTH_SOURCE_OPTIONS = [
@@ -425,6 +512,12 @@ const convertLocalForm = ref({
   newPassword: '',
   confirmPassword: ''
 })
+// 批量转为本地账号弹窗
+const batchConvertModalVisible = ref(false)
+const batchConvertForm = ref({
+  newPassword: '',
+  confirmPassword: ''
+})
 // 绑定外部身份弹窗
 const bindIdentityModalVisible = ref(false)
 const bindingIdentity = ref(false)
@@ -450,6 +543,7 @@ const conflictIssueResults = ref([])
 
 const onSearch = () => {
   page.value = 1
+  selectedUUIDs.value = []
   loadUsers()
 }
 
@@ -502,6 +596,23 @@ const renderResetPasswordAction = (row) => {
 }
 
 const columns = [
+  {
+    // 多选列：el-table-v2 无内置 selection，用 checkbox 列自行维护选中集合
+    title: '',
+    key: 'selection',
+    width: 52,
+    align: 'center',
+    headerCellRenderer: () => h(ElCheckbox, {
+      modelValue: pageAllSelected.value,
+      indeterminate: pageIndeterminate.value,
+      disabled: users.value.length === 0,
+      onChange: (val) => toggleSelectPage(val)
+    }),
+    cellRenderer: ({ rowData: row }) => h(ElCheckbox, {
+      modelValue: selectedUUIDs.value.includes(row.uuid),
+      onChange: (val) => toggleSelect(row, val)
+    })
+  },
   {
     title: '用户名',
     key: 'username',
@@ -647,6 +758,8 @@ const loadUsers = async () => {
     if (data.success) {
       users.value = (data.data && data.data.users) || []
       total.value = data.data?.total || 0
+      // 列表已换页/换筛选条件，旧勾选不可见，避免误操作不可见用户
+      selectedUUIDs.value = []
     } else {
       ElMessage.error(data.message || '获取用户列表失败')
     }
@@ -991,6 +1104,104 @@ const handleRowIgnore = (row) => {
   handleBatchIgnore([row.id])
 }
 
+// 批量操作结果汇总：成功 / 跳过 / 失败数量，明细写入控制台便于排查
+const applyBatchResults = (results, actionLabel) => {
+  const ok = results.filter(item => item.status === 'ok').length
+  const skipped = results.filter(item => item.status === 'skipped').length
+  const failed = results.filter(item => item.status === 'failed').length
+  // 只选中了不可操作项时，避免只弹「成功 0 条」而没有解释
+  const issues = results.filter(item => item.status !== 'ok')
+  if (issues.length > 0) {
+    console.info(`批量${actionLabel}未处理明细`, issues)
+  }
+  const summary = `成功 ${ok} 条，跳过 ${skipped} 条，失败 ${failed} 条`
+  if (failed > 0) ElMessage.warning(`批量${actionLabel}：${summary}`)
+  else ElMessage.success(`批量${actionLabel}：${summary}`)
+}
+
+const runBatchAction = async (fn, actionLabel) => {
+  batchRunning.value = true
+  try {
+    const data = await fn()
+    if (data.success) {
+      applyBatchResults((data.data && data.data.results) || [], actionLabel)
+      clearSelection()
+      loadUsers()
+      return true
+    }
+    ElMessage.error(data.message || `批量${actionLabel}失败`)
+  } catch (error) {
+    ElMessage.error(formatErrorMessage(error, `批量${actionLabel}失败`))
+  } finally {
+    batchRunning.value = false
+  }
+  return false
+}
+
+const handleBatchDisable = async () => {
+  const uuids = [...selectedUUIDs.value]
+  if (uuids.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定禁用选中的 ${uuids.length} 个用户吗？禁用后其登录会话将失效。`,
+      '确认批量禁用',
+      { type: 'warning', confirmButtonText: '禁用', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  await runBatchAction(() => AdminApi.batchDisableUsers(uuids), '禁用')
+}
+
+const showBatchConvertModal = () => {
+  if (selectedUUIDs.value.length === 0) return
+  batchConvertForm.value = { newPassword: '', confirmPassword: '' }
+  batchConvertModalVisible.value = true
+}
+
+const handleBatchConvert = async () => {
+  const { newPassword, confirmPassword } = batchConvertForm.value
+  if (newPassword.length < 8 || newPassword.length > 128) {
+    ElMessage.error('密码长度需为8-128位')
+    return
+  }
+  if (newPassword !== confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
+    return
+  }
+  const uuids = [...selectedUUIDs.value]
+  if (uuids.length === 0) return
+
+  // 高风险操作：二次确认后再提交
+  try {
+    await ElMessageBox.confirm(
+      `确定将选中的 ${uuids.length} 个用户转为本地账号吗？该操作会删除其全部外部身份绑定。`,
+      '确认批量转为本地账号',
+      { type: 'warning', confirmButtonText: '转为本地', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+
+  await runBatchAction(() => AdminApi.batchConvertToLocal(uuids, newPassword), '转为本地账号')
+  batchConvertModalVisible.value = false
+}
+
+const handleBatchDelete = async () => {
+  const uuids = [...selectedUUIDs.value]
+  if (uuids.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${uuids.length} 个用户吗？其私有/临时文件与关联数据会一并清理，此操作不可恢复。`,
+      '确认批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  await runBatchAction(() => AdminApi.batchDeleteUsers(uuids), '删除')
+}
+
 const toggleUserDisabled = async (user) => {
   const action = user.disabled ? '启用' : '禁用'
   try {
@@ -1079,6 +1290,24 @@ onUnmounted(() => {
   .conflict-selected {
     color: var(--el-text-color-secondary);
     font-size: 13px;
+  }
+
+  .batch-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .batch-selected {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+
+  .batch-tip {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
   }
 
   .conflict-none {

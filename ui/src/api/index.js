@@ -594,6 +594,21 @@ export const AdminApi = {
     return request.delete(`/admin/users/${uuid}`, { skipSuccessToast: true })
   },
 
+  // 批量删除用户：单次上限 100，逐条返回 {uuid, username, status, message}
+  batchDeleteUsers(uuids) {
+    return request.post('/admin/users/batch-delete', { uuids }, { skipSuccessToast: true })
+  },
+
+  // 批量禁用用户：管理员账号与已禁用账号会被跳过
+  batchDisableUsers(uuids) {
+    return request.post('/admin/users/batch-disable', { uuids }, { skipSuccessToast: true })
+  },
+
+  // 批量转为本地账号：统一写入同一新密码，已是本地账号的会被跳过
+  batchConvertToLocal(uuids, newPassword) {
+    return request.post('/admin/users/batch-convert-local', { uuids, new_password: newPassword }, { skipSuccessToast: true })
+  },
+
   getSessions(page = 1, pageSize = 20) {
     return request.get('/admin/sessions', { params: { page, page_size: pageSize } })
   },

@@ -339,6 +339,7 @@ WebDAV / CLI
 - `POST /admin/index/scan`、`POST /admin/index/scan/trigger`
 - `GET|POST /admin/users`、`PUT /admin/users/:id/reset-password`、`PUT /admin/users/:id/disabled`、`DELETE /admin/users/:id`
 - `POST /admin/users/:id/auth-bindings`（绑定外部身份）、`POST /admin/users/:id/convert-local`（转为本地账号）
+- `POST /admin/users/batch-delete` / `POST /admin/users/batch-disable` / `POST /admin/users/batch-convert-local`（批量删除 / 禁用 / 转为本地账号，body `{"uuids":[...]}`，单次上限 100，逐条返回 `results[]` 的 `ok|skipped|failed`）
 - `GET /admin/identity-conflicts`（`status=pending|resolved|all`，默认 pending，按 `last_seen_at` 倒序，附带 `suggested_user_uuid` / `suggested_username` / `can_bind`）
 - `POST /admin/identity-conflicts/batch-bind`、`POST /admin/identity-conflicts/batch-ignore`（body `{"ids":[...]}`，单次上限 200）；批量绑定逐条返回 `{id, username, status, message}`
 - `GET /admin/users` 查询参数：`page` / `page_size` / `query`，以及 `source`（`local|ldap|oauth2`）、`created_via`、`identity_state`（`ok|orphaned|provider_mismatch|inconsistent`），后三者白名单校验、非法值返回 400；条目额外返回 `auth_source` / `created_via` / `identity_state` / `provider_name` / `external_id`

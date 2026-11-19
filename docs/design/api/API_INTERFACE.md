@@ -777,6 +777,33 @@
 
 - **URL**：`DELETE /api/v1/web/admin/users/:id`
 
+### 6.1 批量操作（删除 / 禁用 / 转为本地账号）
+
+- **URL**
+  - `POST /api/v1/web/admin/users/batch-delete`
+  - `POST /api/v1/web/admin/users/batch-disable`
+  - `POST /api/v1/web/admin/users/batch-convert-local`
+- **请求体**：
+  ```json
+  {
+    "uuids": ["uuid-1", "uuid-2"],
+    "new_password": "仅 batch-convert-local 需要，8~128位"
+  }
+  ```
+- **限制**：`uuids` 必填，单次最多 100 个（服务端会去空白、去重）；空数组返回 `400`。
+- **逐条语义**：单条失败不影响其余条目，响应 `data.results[]` 给出每条结果：
+  ```json
+  {
+    "uuid": "uuid-1",
+    "username": "zhangsan",
+    "status": "ok",
+    "message": "已删除"
+  }
+  ```
+  - `status`：`ok`（已处理）/ `skipped`（跳过：用户不存在、管理员账号、已是禁用状态、已是本地账号）/ `failed`（处理出错）
+  - 管理员账号不可批量删除或禁用
+- **说明**：`batch-convert-local` 复用单条转本地的逻辑（写新密码、`auth_source=local`、删除全部外部绑定），全部选中用户使用同一新密码。
+
 ### 7. 查询身份冲突列表
 
 - **URL**：`GET /api/v1/web/admin/identity-conflicts`

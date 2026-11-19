@@ -20,6 +20,10 @@ func (rt *runCtx) registerAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/index/scan/trigger", indexHandler.TriggerFullScan)
 	admin.GET("/users", adminHandler.UsersHandler)
 	admin.POST("/users", adminHandler.CreateUserHandler)
+	// 批量操作：删除 / 禁用 / 转为本地账号（body 统一 {"uuids":[...]}）
+	admin.POST("/users/batch-delete", adminHandler.BatchDeleteUsersHandler)
+	admin.POST("/users/batch-disable", adminHandler.BatchDisableUsersHandler)
+	admin.POST("/users/batch-convert-local", adminHandler.BatchConvertUsersToLocalHandler)
 	admin.PUT("/users/:id/reset-password", adminHandler.ResetPasswordHandler)
 	admin.POST("/users/:id/auth-bindings", adminHandler.BindExternalIdentityHandler)
 	admin.POST("/users/:id/convert-local", adminHandler.ConvertUserToLocalHandler)
