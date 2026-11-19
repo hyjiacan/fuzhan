@@ -1028,7 +1028,7 @@ func (s *OAuth2Service) providerName(cfg *OAuth2Config) string {
 //  1. 按 (oauth2, oauth2:<provider_id>, sub) 命中绑定 → 返回绑定用户。
 //  2. 未命中绑定 → 按用户名查本地用户：
 //     - 不存在：auto_create_user 开启则 JIT 建号并写绑定；
-//     - 已存在：一律拒绝并记录 auth.identity_conflict（不再同名即绑定，也不再追加后缀建新账号）。
+//     - 已存在：一律拒绝并记录待处理身份冲突（不再同名即绑定，也不再追加后缀建新账号）。
 func (s *OAuth2Service) findOrCreateUser(info *oauthUserInfo) (*models.User, error) {
 	cfg := s.GetConfig()
 	provider := s.providerName(cfg)

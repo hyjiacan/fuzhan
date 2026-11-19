@@ -270,6 +270,7 @@ func (rt *runCtx) registerApiRoutes(r *gin.Engine, api, web *gin.RouterGroup) {
 		// 认证相关路由
 		protected.POST("/auth/refresh", authHandler.Refresh) // 仅刷新令牌，不校验密码与验证码
 		protected.GET("/auth/user", authHandler.GetCurrentUser)
+		protected.POST("/auth/identity-notice/ack", authHandler.AckIdentityNotice)
 		protected.PUT("/auth/password", authHandler.ChangePassword)
 		protected.PUT("/auth/profile", authHandler.UpdateProfile)
 		protected.DELETE("/auth/account", authHandler.DeleteAccount)

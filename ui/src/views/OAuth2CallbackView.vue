@@ -72,6 +72,7 @@ import { Loading, CircleCheckFilled, CircleCloseFilled, WarningFilled } from '@e
 import { AuthApi, NotificationApi } from '@/api'
 import { UserUtils } from '@/utils'
 import { executeLoginDownload, isPageRedirect } from '@/utils/download'
+import { promptIdentityNotice } from '@/utils/identityNotice'
 import { ErrorCode, formatErrorMessage } from '@/utils/error'
 
 const route = useRoute()
@@ -130,6 +131,9 @@ const finishLogin = async (userData, successDesc) => {
 
   // 通知全局刷新登录态与菜单
   window.dispatchEvent(new CustomEvent('auth:changed'))
+
+  // 管理员完成外部身份绑定后，首次登录提示一次
+  promptIdentityNotice(userData.identity_notice_pending, userData.identity_notice_provider)
 
   status.value = 'success'
   title.value = '登录成功'

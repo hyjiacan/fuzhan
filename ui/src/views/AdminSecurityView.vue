@@ -168,7 +168,7 @@
     </div>
 
     <!-- 事件详情 -->
-    <el-dialog v-model="detailVisible" title="安全事件详情" width="640px" append-to-body>
+    <el-dialog v-model="detailVisible" title="安全事件详情" width="1280px" append-to-body>
       <el-descriptions v-if="current" :column="2" border size="small">
         <el-descriptions-item label="事件 ID">{{ current.id }}</el-descriptions-item>
         <el-descriptions-item label="严重级别">
@@ -211,7 +211,6 @@ const eventTypeMeta = {
   'auth.locked': '登录被锁定',
   'auth.spraying': '密码喷洒/撞库',
   'auth.suspicious_login': '可疑登录(失败后成功)',
-  'auth.identity_conflict': '身份冲突(同名账号)',
   'auth.unauthorized': '认证失败(401)',
   'access.forbidden': '越权访问(403)',
   'rate.limited': '触发限流(429)',

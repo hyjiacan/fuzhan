@@ -160,6 +160,7 @@ import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { AuthApi, NotificationApi } from '@/api'
 import { executeLoginDownload, isPageRedirect } from '@/utils/download'
+import { promptIdentityConflict, promptIdentityNotice } from '@/utils/identityNotice'
 import CaptchaInput from '@/components/auth/CaptchaInput.vue'
 import store from '@/store'
 
@@ -246,13 +247,13 @@ const handleOAuth2Login = async () => {
   }
 }
 
-const finishAuth = async () => {
+const finishAuth = async (override) => {
   window.dispatchEvent(new CustomEvent('auth:changed'))
   ElMessage.success({ message: '登录成功', duration: 1000 })
-  // 登录后回到发起页面（默认文件页）
-  const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+  // 登录后回到发起页面（默认文件页）；冲突提示选择「立即绑定」时直接去个人中心
+  const redirect = override || (typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
     ? route.query.redirect
-    : '/files'
+    : '/files')
   // 后端直出页面（/scalar.html 等）整页跳转回原地址
   if (isPageRedirect(redirect)) {
     window.location.href = redirect
@@ -305,7 +306,15 @@ const handleLogin = async () => {
         } catch (e) {
           // 合并失败不影响登录流程
         }
-        finishAuth()
+        // 管理员完成外部身份绑定后，首次登录提示一次
+        promptIdentityNotice(data.data?.identity_notice_pending, data.data?.identity_notice_provider)
+        // 本地账号登录成功后若目录中存在同名账号，提示冲突风险并可直接去自助绑定
+        const wantBind = await promptIdentityConflict(
+          data.data?.identity_conflict_pending,
+          data.data?.identity_conflict_provider,
+          { canSelfBind: localStorage.getItem('userRole') !== 'admin' }
+        )
+        finishAuth(wantBind ? '/user/info' : undefined)
       } else {
         ElMessage.error(data.message || '登录失败')
       }

@@ -292,7 +292,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="conflictDialogVisible" title="身份冲突处理" width="900px">
+    <el-dialog v-model="conflictDialogVisible" title="身份冲突处理" width="1140px">
       <el-alert
         type="warning"
         :closable="false"

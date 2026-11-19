@@ -570,8 +570,9 @@ func (s *AdminService) BindExternalIdentity(callerUUID, targetUUID, authType, ex
 		}
 
 		if err := tx.Model(&models.User{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-			"auth_source":   authType,
-			"password_hash": "",
+			"auth_source":             authType,
+			"password_hash":           "",
+			"identity_notice_pending": true,
 		}).Error; err != nil {
 			return fmt.Errorf("更新用户认证来源失败: %w", err)
 		}
@@ -633,8 +634,9 @@ func (s *AdminService) ConvertUserToLocal(callerUUID, targetUUID, newPassword st
 			return fmt.Errorf("删除用户认证绑定失败: %w", err)
 		}
 		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
-			"password_hash": string(hashedPassword),
-			"auth_source":   models.AuthSourceLocal,
+			"password_hash":           string(hashedPassword),
+			"auth_source":             models.AuthSourceLocal,
+			"identity_notice_pending": false,
 		}).Error; err != nil {
 			return fmt.Errorf("更新用户认证来源失败: %w", err)
 		}

@@ -90,6 +90,49 @@ type AuthResponse struct {
 	DisplayName string `json:"display_name"`
 	Nickname    string `json:"nickname"`
 	ExpiresIn   int    `json:"expires_in"`
+	// IdentityNoticePending 管理员刚为该账号完成外部身份绑定，本次登录需向用户提示一次
+	IdentityNoticePending bool `json:"identity_notice_pending"`
+	// IdentityNoticeProvider 待提示绑定的认证源显示名称（如「企业 SSO」「LDAP 目录（dc.example.com）」），
+	// 无待提示时为空串
+	IdentityNoticeProvider string `json:"identity_notice_provider"`
+	// IdentityConflictPending 本地账号登录成功后探测到目录中存在同名账号，
+	// 需向用户提示「身份可能冲突、请联系管理员」，不阻断登录
+	IdentityConflictPending bool `json:"identity_conflict_pending"`
+	// IdentityConflictProvider 冲突提示中展示的认证源名称，无冲突时为空串
+	IdentityConflictProvider string `json:"identity_conflict_provider"`
+}
+
+// LDAPProviderLabel 返回 LDAP 认证源的展示名，未配置主机时退化为通用名称。
+func LDAPProviderLabel() string {
+	if host := strings.TrimSpace(appconfig.GetConfig().Auth.LDAP.Host); host != "" {
+		return "LDAP 目录（" + host + "）"
+	}
+	return "LDAP 目录"
+}
+
+// IdentityNoticeProvider 返回「管理员完成外部身份绑定」提示中展示的认证源名称。
+// 仅当用户存在待提示标记时返回非空值，普通登录不额外解析配置。
+func IdentityNoticeProvider(user *models.User) string {
+	if user == nil || !user.IdentityNoticePending {
+		return ""
+	}
+	cfg := appconfig.GetConfig()
+	switch user.AuthSource {
+	case models.AuthSourceLDAP:
+		if host := strings.TrimSpace(cfg.Auth.LDAP.Host); host != "" {
+			return "LDAP 目录（" + host + "）"
+		}
+		return "LDAP 目录"
+	case models.AuthSourceOAuth2:
+		if name := strings.TrimSpace(cfg.Auth.OAuth2.ProviderName); name != "" {
+			return name
+		}
+		if id := strings.TrimSpace(cfg.Auth.OAuth2.ProviderID); id != "" {
+			return id
+		}
+		return "统一认证"
+	}
+	return ""
 }
 
 // Register 用户注册
@@ -303,12 +346,14 @@ func (s *AuthService) Login(req *LoginRequest) (*AuthResponse, string, error) {
 	}
 
 	return &AuthResponse{
-		Token:       token,
-		UUID:        user.UUID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Nickname:    user.Nickname,
-		ExpiresIn:   authTokenTTLSeconds,
+		Token:                  token,
+		UUID:                   user.UUID,
+		Username:               user.Username,
+		DisplayName:            user.DisplayName,
+		Nickname:               user.Nickname,
+		ExpiresIn:              authTokenTTLSeconds,
+		IdentityNoticePending:  user.IdentityNoticePending,
+		IdentityNoticeProvider: IdentityNoticeProvider(user),
 	}, method, nil
 }
 
@@ -330,12 +375,14 @@ func (s *AuthService) LoginByUser(user *models.User) (*AuthResponse, error) {
 		return nil, fmt.Errorf("生成令牌失败: %w", err)
 	}
 	return &AuthResponse{
-		Token:       token,
-		UUID:        user.UUID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Nickname:    user.Nickname,
-		ExpiresIn:   authTokenTTLSeconds,
+		Token:                  token,
+		UUID:                   user.UUID,
+		Username:               user.Username,
+		DisplayName:            user.DisplayName,
+		Nickname:               user.Nickname,
+		ExpiresIn:              authTokenTTLSeconds,
+		IdentityNoticePending:  user.IdentityNoticePending,
+		IdentityNoticeProvider: IdentityNoticeProvider(user),
 	}, nil
 }
 

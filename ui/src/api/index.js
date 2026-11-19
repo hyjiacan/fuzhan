@@ -188,6 +188,11 @@ export const AuthApi = {
     return request.get('/auth/user')
   },
 
+  // 确认「管理员已为你绑定外部身份」的登录提示，清除服务端一次性标记
+  ackIdentityNotice() {
+    return request.post('/auth/identity-notice/ack', null, { skipSuccessToast: true })
+  },
+
   // 获取图形验证码：返回 { captcha_id, image }，image 为 data:image/png;base64,... data URI
   getCaptcha() {
     return request.get('/auth/captcha')

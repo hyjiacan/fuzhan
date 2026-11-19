@@ -336,6 +336,7 @@ import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { User, Lock, Key } from "@element-plus/icons-vue";
 import { AuthApi, NotificationApi, SecurityApi } from "@/api";
+import { promptIdentityConflict, promptIdentityNotice } from "@/utils/identityNotice";
 import { showLoginDialogEvent, showRegisterDialogEvent } from "@/router";
 import store from "@/store";
 import ThemeToggle from "./ThemeToggle.vue";
@@ -635,6 +636,17 @@ const handleLogin = async () => {
         loginForm.username = "";
         loginForm.password = "";
         updateAuthState();
+
+        // 管理员完成外部身份绑定后，首次登录提示一次
+        promptIdentityNotice(data.data?.identity_notice_pending, data.data?.identity_notice_provider);
+        // 本地账号登录成功后若目录中存在同名账号，提示冲突风险并可直接去自助绑定
+        promptIdentityConflict(
+          data.data?.identity_conflict_pending,
+          data.data?.identity_conflict_provider,
+          { canSelfBind: localStorage.getItem("userRole") !== "admin" }
+        ).then((wantBind) => {
+          if (wantBind) router.push("/user/info");
+        });
 
         // 管理员登录：若存在未读风险事件，弹出强提醒
         if (localStorage.getItem("userRole") === "admin") {

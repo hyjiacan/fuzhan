@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"fuzhan/internal/models"
-	"fuzhan/internal/security"
 	"fuzhan/internal/services"
 	"fuzhan/internal/utils"
 	"github.com/go-ldap/ldap/v3"
@@ -185,6 +184,31 @@ func (s *LDAPService) VerifyCredentials(username, password string) (string, stri
 	}
 	if err := conn.Bind(dn, password); err != nil {
 		return "", "", fmt.Errorf("%w: %v", services.ErrLDAPInvalidCredentials, err)
+	}
+	displayName := firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"])
+	return dn, displayName, nil
+}
+
+// LookupDirectoryUser 仅查询目录中是否存在同名用户，返回其 DN 与显示名。
+// 不校验密码、不查找/创建本地用户、不写绑定；供本地账号登录后做同名冲突提示（尽力而为）。
+func (s *LDAPService) LookupDirectoryUser(username string) (string, string, error) {
+	cfg := s.GetConfig()
+	if cfg == nil || !cfg.Enabled {
+		return "", "", errors.New("LDAP 未启用")
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return "", "", errors.New("用户名不能为空")
+	}
+	conn, err := s.dial(cfg)
+	if err != nil {
+		return "", "", err
+	}
+	defer conn.Close()
+
+	dn, attrs, err := s.resolveUserDN(conn, cfg, username)
+	if err != nil {
+		return "", "", err
 	}
 	displayName := firstNonEmpty(attrs["displayName"], attrs["cn"], attrs["name"], attrs["uid"])
 	return dn, displayName, nil
@@ -560,8 +584,8 @@ var identityConflictThrottle = struct {
 	seen map[string]time.Time
 }{seen: make(map[string]time.Time)}
 
-// reportIdentityConflict 记录「外部身份与本地账号冲突」：写安全事件并持久化待处理冲突。
-// 按用户名 + provider 限频，避免目录侧批量同名导致事件与冲突写入洪泛。
+// reportIdentityConflict 记录「外部身份与本地账号冲突」：仅持久化待处理冲突，不写安全事件。
+// 按用户名 + provider 限频，避免目录侧批量同名导致冲突写入洪泛。
 // 只记录用户名、provider、外部标识与被拒绝的认证源，不记录任何凭据。
 func reportIdentityConflict(db *gorm.DB, username, provider, externalID, rejectedSource string) {
 	if username == "" {
@@ -606,16 +630,6 @@ func reportIdentityConflict(db *gorm.DB, username, provider, externalID, rejecte
 		}
 	}
 
-	security.Record(&models.SecurityEvent{
-		EventType: models.EventIdentityConflict,
-		Severity:  models.SeverityMedium,
-		Identity:  username,
-		Operation: "auth.identity_conflict",
-		Target:    username,
-		Reason: fmt.Sprintf("provider=%s external_id=%s rejected_source=%s",
-			provider, externalID, rejectedSource),
-		Guard: models.GuardAuth,
-	})
 	utils.Warn("外部身份与本地账号冲突，已拒绝登录",
 		utils.String("username", username),
 		utils.String("provider", provider),

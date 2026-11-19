@@ -19,7 +19,6 @@ const (
 	EventAuthLocked          = "auth.locked"            // 登录/注册失败达阈值被锁定（暴破缓解）
 	EventAuthSpraying        = "auth.spraying"          // 同一 IP 多账号 / 同一账号多 IP 集中失败（喷洒/撞库）
 	EventAuthSuspiciousLogin = "auth.suspicious_login"  // 多次失败后从不同来源成功登录（疑似凭证撞库成功）
-	EventIdentityConflict    = "auth.identity_conflict" // 外部身份与本地账号归属冲突（同名账号已存在，拒绝绑定）
 	EventAuthUnauthorized    = "auth.unauthorized"      // 越过认证边界的 401（管理接口/写操作/WebDAV 等）
 	EventAccessForbidden     = "access.forbidden"       // 越权/禁止访问（403）
 	EventRateLimited         = "rate.limited"           // 触发频率限制（429）

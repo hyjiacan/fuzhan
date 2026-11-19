@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"fuzhan/internal/appconfig"
 	"fuzhan/internal/captcha"
@@ -126,12 +127,72 @@ func (h *Handler) refreshTokenIfNeeded(c *gin.Context) string {
 // 凭证只由 HttpOnly Cookie 下发，响应体永远不回传 JWT。
 func authSessionResponse(resp *services.AuthResponse) gin.H {
 	return gin.H{
-		"uuid":         resp.UUID,
-		"username":     resp.Username,
-		"display_name": resp.DisplayName,
-		"nickname":     resp.Nickname,
-		"expires_in":   resp.ExpiresIn,
+		"uuid":                       resp.UUID,
+		"username":                   resp.Username,
+		"display_name":               resp.DisplayName,
+		"nickname":                   resp.Nickname,
+		"expires_in":                 resp.ExpiresIn,
+		"identity_notice_pending":    resp.IdentityNoticePending,
+		"identity_notice_provider":   resp.IdentityNoticeProvider,
+		"identity_conflict_pending":  resp.IdentityConflictPending,
+		"identity_conflict_provider": resp.IdentityConflictProvider,
 	}
+}
+
+// ldapDirectoryLookup 目录同名查询能力（凭据校验之外的扩展能力，按需断言）。
+type ldapDirectoryLookup interface {
+	LookupDirectoryUser(username string) (dn, displayName string, err error)
+}
+
+// directoryConflictProbeTimeout 本地账号登录后探测目录同名账号的最长等待时间：
+// 目录不可达或响应慢时直接跳过提示，避免拖慢本地登录。
+const directoryConflictProbeTimeout = 3 * time.Second
+
+// detectDirectoryUsernameConflict 本地账号登录成功后，尽力探测目录中是否存在同名账号。
+// 仅用于提示：探测失败、超时一律视为无冲突，不阻断登录、不写冲突记录。
+// 管理员已裁决过（bound/ignored）的冲突不再提示，避免每次登录重复打扰。
+func (h *Handler) detectDirectoryUsernameConflict(resp *services.AuthResponse, method string) {
+	if resp == nil || method != services.LoginMethodLocal || h.ldapService == nil || !h.ldapService.IsEnabled() {
+		return
+	}
+	lookup, ok := h.ldapService.(ldapDirectoryLookup)
+	if !ok {
+		return
+	}
+	if h.conflictAlreadyResolved(resp.Username) {
+		return
+	}
+	hit := make(chan struct{}, 1)
+	go func() {
+		if _, _, err := lookup.LookupDirectoryUser(resp.Username); err != nil {
+			utils.Debug("目录同名账号探测未命中，跳过冲突提示",
+				utils.String("username", resp.Username), utils.Err(err))
+			return
+		}
+		hit <- struct{}{}
+	}()
+	select {
+	case <-hit:
+		resp.IdentityConflictPending = true
+		resp.IdentityConflictProvider = services.LDAPProviderLabel()
+	case <-time.After(directoryConflictProbeTimeout):
+		utils.Info("目录同名账号探测超时，跳过冲突提示", utils.String("username", resp.Username))
+	}
+}
+
+// conflictAlreadyResolved 该用户名的 LDAP 同名冲突是否已被管理员裁决（绑定或忽略）。
+func (h *Handler) conflictAlreadyResolved(username string) bool {
+	if h.db == nil {
+		return false
+	}
+	var count int64
+	if err := h.db.Model(&models.IdentityConflict{}).
+		Where("username = ? AND auth_type = ? AND resolution <> ''", username, models.AuthSourceLDAP).
+		Count(&count).Error; err != nil {
+		utils.Warn("查询身份冲突裁决结果失败", utils.String("username", username), utils.Err(err))
+		return false
+	}
+	return count > 0
 }
 
 // verifyCaptcha 验证码门禁：无需验证码或校验通过返回 true；
@@ -239,6 +300,8 @@ func (h *Handler) Login(c *gin.Context) {
 	h.recordLoginLog(c, resp.UUID, resp.Username, method, "success", "")
 	// 登录成功即写 HttpOnly Cookie，统一 Vue 与 lite 两端的会话凭证。
 	middleware.SetAuthCookie(c, resp.Token)
+	// 本地账号登录成功后再探测目录同名账号，命中则附带一次性冲突提示（不阻断登录）
+	h.detectDirectoryUsernameConflict(resp, method)
 	response.HandleSuccess(c, http.StatusOK, "登录成功", authSessionResponse(resp))
 }
 
@@ -262,7 +325,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 		"uuid": user.UUID, "username": user.Username,
 		"display_name": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "created_at": user.CreatedAt,
-		"auth_source": user.AuthSource,
+		"auth_source":              user.AuthSource,
+		"identity_notice_pending":  user.IdentityNoticePending,
+		"identity_notice_provider": services.IdentityNoticeProvider(user),
 	}
 	if newToken := h.refreshTokenIfNeeded(c); newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，凭证不回传响应体（不暴露给脚本）。
@@ -283,13 +348,32 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 		"uuid": user.UUID, "username": user.Username,
 		"display_name": user.DisplayName, "nickname": user.Nickname,
 		"role": user.Role, "created_at": user.CreatedAt,
-		"auth_source": user.AuthSource,
+		"auth_source":              user.AuthSource,
+		"identity_notice_pending":  user.IdentityNoticePending,
+		"identity_notice_provider": services.IdentityNoticeProvider(user),
 	}
 	if newToken != "" {
 		// 令牌被刷新时只同步 HttpOnly Cookie，不回传响应体（凭证不对脚本暴露）。
 		middleware.SetAuthCookie(c, newToken)
 	}
 	response.HandleSuccess(c, http.StatusOK, "", data)
+}
+
+// AckIdentityNotice 用户确认「管理员已为你完成外部身份绑定」提示，清除待提示标记。
+// 前端在弹框关闭后调用，保证该提示只出现一次。
+func (h *Handler) AckIdentityNotice(c *gin.Context) {
+	user, err := h.authService.GetCurrentUser(c)
+	if err != nil {
+		response.HandleUnauthorized(c, err.Error())
+		return
+	}
+	if err := h.db.Model(&models.User{}).Where("id = ?", user.ID).
+		UpdateColumn("identity_notice_pending", false).Error; err != nil {
+		utils.Warn("清除身份绑定提示标记失败", utils.String("user", user.Username), utils.Err(err))
+		response.HandleInternalServerError(c, "操作失败，请稍后重试")
+		return
+	}
+	response.HandleSuccess(c, http.StatusOK, "", nil)
 }
 
 // ChangePasswordRequest 修改密码请求

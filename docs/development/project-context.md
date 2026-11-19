@@ -215,14 +215,19 @@ DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk,
 
 ### 6.2 用户身份与外部绑定（`user.go` / `api_key.go`）
 
-`User` 新增两个字段（启动时由 `models.MigrateUserIdentity` 在 AutoMigrate 之后回填）：
+`User` 新增以下字段（`AuthSource`/`CreatedVia` 由 `models.MigrateUserIdentity` 在 AutoMigrate 之后回填）：
 
 | 字段 | 说明 |
 |---|---|
 | `AuthSource`(16，默认 `local`，索引 `idx__users__auth_source`) | 账号归属认证源 `local/ldap/oauth2`；决定登录路由，只能由管理员的绑定/转本地操作改变 |
 | `CreatedVia`(20，默认 `legacy`) | 创建渠道 `self_register/admin_create/ldap_jit/ldap_sync/oauth2_jit/legacy`，创建后不可变，仅用于展示与筛选 |
+| `IdentityNoticePending`(bool，默认 `false`，`json:"-"`) | 管理员为账号绑定外部身份后置 `true`；用户下次登录时由前端弹一次提示，确认后经 `POST /api/v1/web/auth/identity-notice/ack` 清除 |
 
 `AuthRecord`（表 `auth_records`）以 `(auth_type, provider_name, external_id)` 为绑定键，唯一索引 `idx__auth_records__auth_type_provider_name_external_id` 由启动迁移去重后手动创建（不用 GORM `uniqueIndex` tag）。`provider_name` 是 provider 稳定标识而非展示名：LDAP 固定为 `ldap`；OAuth2 为 `oauth2:<auth.oauth2.provider_id>`（展示名仍用 `auth.oauth2.provider_name`）。`external_id` 为 LDAP DN / OAuth2 `sub`。
+
+登录/`/auth/user`/`/auth/refresh` 响应在 `identity_notice_pending=true` 时同时返回 `identity_notice_provider`（认证源展示名：LDAP 为 `LDAP 目录（<host>）`，OAuth2 取 `auth.oauth2.provider_name`，回退 `provider_id`/`统一认证`），由 `services.IdentityNoticeProvider` 按当前配置解析，无待提示时为空串。
+
+本地账号（`auth_source=local`）登录成功且 LDAP 启用时，`POST /auth/login` 会尽力探测目录中是否存在同名账号（`LDAPService.LookupDirectoryUser`，只查询不校验密码、不写库），命中则响应附带 `identity_conflict_pending=true` 与 `identity_conflict_provider`（`services.LDAPProviderLabel()`）供前端提示风险。探测限制 `3s` 超时，失败/超时视为无冲突，不阻断登录、不写 `identity_conflicts`、不产安全事件，仅在登录响应中出现，不进入 `/auth/user`、`/auth/refresh`；若该用户名已有被管理员裁决（`resolution` 非空）的冲突记录则跳过提示。前端 `ui/src/utils/identityNotice.js` 的 `promptIdentityConflict` 以 confirm 弹框提示并提供「立即绑定」入口，跳转 `/user/info` 通过 `POST /user/auth-bindings/ldap`（`BindLDAPIdentity`）自助绑定；`role=admin` 时后端禁止自助绑定，前端只提示联系管理员。
 
 `identity_state` 不落库，由 `services/admin_service.go` 读取一次配置后派生，优先级 `inconsistent > provider_mismatch > orphaned > ok`：
 
@@ -262,6 +267,7 @@ Gin 全局 Use 顺序：`MonitoringMiddleware` → `StaticAssetsMiddleware`（�
 认证 `/auth`
 
 - `GET /captcha`（+CaptchaRateLimit）、`POST /register`、`POST /login`、`POST /logout`、`GET /oauth2/{status,authorize,callback}`
+- 需认证：`GET /auth/user`、`POST /auth/identity-notice/ack`（清除管理员绑定后的一次性登录提示标记）
 - OAuth2 同名冲突自助确认（匿名，票据经 HttpOnly Cookie）：`GET /identity-confirm`、`POST /identity-confirm/bind`、`POST /identity-confirm/create-account`
 
 分享与下载
@@ -436,7 +442,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
 
 - 密码登录按 `users.auth_source` 严格路由（`services/auth_service.go`）：`local` 只校验本地密码（缺密码视为不可用，不尝试 LDAP）；`ldap` 只走目录，认证源未启用/不可用直接失败，不回退本地密码；`oauth2` 拒绝密码登录。用户名先精确匹配、再 `LOWER(username)` 匹配。
 - 本地不存在时，仅在 LDAP 启用且 `allow_auto_create` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`，同步为 `ldap_sync`）；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
-- 身份冲突（外部身份与本地账号归属不一致）写安全事件 `auth.identity_conflict`（按用户名 + provider 限频），并在 `identity_conflicts` 表 upsert 待处理冲突，不改动任何账号字段；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
+- 身份冲突（外部身份与本地账号归属不一致）只在 `identity_conflicts` 表 upsert 待处理冲突（按用户名 + provider 限频），不改动任何账号字段、也不写安全事件；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
 - `auth.identity_conflict_mode=self_service`（默认）时，OAuth2 回调遇同名本地账号不再直接跳错误页：签发 5 分钟一次性票据（HttpOnly Cookie，随机 32 字节 hex，服务端内存保存），302 到 `/#/oauth2/callback?conflict=1`；用户可输入本地密码完成绑定（事务内写绑定、`auth_source=oauth2`、清空本地密码并建立会话），或创建独立账号（用户名 `外部用户名@<provider_id|oauth2>`，冲突追加序号，`created_via=oauth2_jit`）。`role=admin`、已禁用、非 `local` 归属的同名账号仍拒绝。本地密码错误最多 5 次后票据失效，并计入既有登录失败限流/安全事件。`admin` 模式保持原行为。
 - 管理员可在用户管理页集中查看冲突并批量“绑定到同名账号”或“忽略”。绑定复用 `BindExternalIdentity` 规则：认证源须启用、目标用户无其它绑定、外部身份未被占用；成功后写绑定、`auth_source=auth_type`、清空本地密码并标记 `resolution=bound`。批量忽略仅影响待处理记录（`resolved_at IS NULL`）。
 - `identity_state` 不落库，管理端列表按当前配置派生（见 §6.2）；对非本地账号重置密码返回 400。

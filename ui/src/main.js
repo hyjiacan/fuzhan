@@ -4,6 +4,7 @@ import router, { setSetupRedirect } from './router'
 import { loadPreviewConfig } from '@/config/preview'
 import store from '@/store'
 import { SetupApi, SystemApi, AuthApi, NotificationApi } from '@/api'
+import { promptIdentityNotice } from '@/utils/identityNotice'
 import { AppError, ErrorCategory } from '@/utils/error'
 
 // ElMessage / ElMessageBox 为 JS 函数式调用，不会被 unplugin-vue-components 的
@@ -215,6 +216,8 @@ async function validateTokenOnServer() {
         localStorage.setItem('userRole', userData.role)
       }
       window.dispatchEvent(new CustomEvent('auth:changed'))
+      // 管理员完成外部身份绑定后，未重新登录的会话在下次进入页面时也提示一次
+      promptIdentityNotice(userData.identity_notice_pending, userData.identity_notice_provider)
     } else {
       clearStaleAuth()
     }

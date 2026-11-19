@@ -285,8 +285,9 @@ func (s *AdminService) bindConflictToUser(conflict *models.IdentityConflict, use
 		}
 
 		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
-			"auth_source":   conflict.AuthType,
-			"password_hash": "",
+			"auth_source":             conflict.AuthType,
+			"password_hash":           "",
+			"identity_notice_pending": true,
 		}).Error; err != nil {
 			return fmt.Errorf("更新用户认证来源失败: %w", err)
 		}
