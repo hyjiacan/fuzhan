@@ -60,9 +60,10 @@ type SearchIndex struct {
 }
 
 // OpenIndex 打开（或创建）位于 dir 的搜索索引，并加载 gse 分词词典。
+// dict 为分词词典类型："zh" 简+繁，其他值（如 "zh_s"）仅简体。
 // 分词器的加载与使用见 segmenter.go，本文件不直接依赖 gse。
-func OpenIndex(dir string) (*SearchIndex, error) {
-	seg, err := newSegmenter()
+func OpenIndex(dir, dict string) (*SearchIndex, error) {
+	seg, err := newSegmenter(dict)
 	if err != nil {
 		return nil, err
 	}

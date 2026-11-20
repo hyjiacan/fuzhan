@@ -48,6 +48,12 @@ export function useHomeSearch() {
   // 输入防抖 300ms，避免每键并发两次请求。
   let suggestTimer = null
   const querySuggestions = (queryString, cb) => {
+    // 未启用文件名检索分词时，后端不提供建议，直接返回空列表避免无效请求
+    const suggestEnabled = store.state.config.searchSuggestEnabled !== false
+    if (!suggestEnabled) {
+      cb([])
+      return
+    }
     if (suggestTimer) clearTimeout(suggestTimer)
     suggestTimer = setTimeout(() => {
       const raw = queryString || ''

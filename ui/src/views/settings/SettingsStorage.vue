@@ -170,6 +170,36 @@
         </el-form>
       </el-card>
     </el-col>
+
+    <el-col :span="24" :sm="24" :xs="24">
+      <el-card class="backend-card">
+        <template #header><span>文件名检索</span></template>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="分词词典决定搜索联想的召回效果与内存占用，修改后需重启服务生效。"
+        >
+          <template #default>
+            关闭分词后不再加载约 130MB 的中文词典与检索索引，文件名搜索仍按数据库模糊匹配工作，
+            但搜索框的自动补全、拼写纠错与相关词提示将不可用。
+          </template>
+        </el-alert>
+
+        <el-form label-width="140px" class="backend-form">
+          <el-form-item label="分词方式">
+            <el-radio-group v-model="settings.index.segmenter">
+              <el-radio-button label="zh_s">简体（推荐）</el-radio-button>
+              <el-radio-button label="zh">简体+繁体</el-radio-button>
+              <el-radio-button label="off">关闭分词</el-radio-button>
+            </el-radio-group>
+            <div class="field-hint">
+              简体约 130MB 内存；简体+繁体约 198MB；关闭后不占用词典内存，但不提供建议与纠错。
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </el-col>
   </el-row>
 </template>
 

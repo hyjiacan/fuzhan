@@ -164,7 +164,7 @@ func TestBuildSuggestions(t *testing.T) {
 		t.Fatalf("nil 索引应返回空，实际 推荐=%v 纠错=%v", r, c)
 	}
 
-	idx, err := search.OpenIndex(t.TempDir())
+	idx, err := search.OpenIndex(t.TempDir(), "zh_s")
 	if err != nil {
 		t.Skipf("无法打开检索索引: %v", err)
 	}

@@ -26,9 +26,25 @@ const (
 // segmenter 是 gse 分词器的本地别名，作为包内统一的分词器类型。
 type segmenter = gse.Segmenter
 
-// newSegmenter 加载 gse 中文分词器；优先使用内嵌词典，避免依赖外部字典文件。
-func newSegmenter() (*segmenter, error) {
-	seg, err := gse.NewEmbed()
+// newSegmenter 按 dict 加载 gse 中文分词器；均使用内嵌词典，避免依赖外部字典文件。
+//
+// dict == "zh" 加载简体+繁体（587207 词条）；其余（默认 zh_s）只加载简体词典
+// （352275 词条）：默认同时加载简繁会使常驻堆从 130MB 涨到 198MB。文件名以简体为主，
+// 而英文/数字完全由 gseNgramTokenizer 的 ASCII 分支独立处理、不经过词典，因此去掉繁体
+// 不影响英文召回。
+//
+// 注意：词典变化会改变切词结果，存量索引的 term 与新词典不一致。bootstrap 每次启动
+// 都会调用 RebuildFromDB 全量重建，故重启一次即可完成切换。
+func newSegmenter(dict string) (*segmenter, error) {
+	var (
+		seg segmenter
+		err error
+	)
+	if dict == "zh" {
+		seg, err = gse.NewEmbed()
+	} else {
+		seg, err = gse.NewEmbed("zh_s")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("加载 gse 词典失败: %w", err)
 	}

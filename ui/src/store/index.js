@@ -29,6 +29,7 @@ const state = reactive({
     ftpPort: null,
     webdavEnabled: false,
     openApiEnabled: false,
+    searchSuggestEnabled: true,
     // URL 上传总开关（关闭时上传面板不显示「从 URL 上传」）
     urlUploadEnabled: false,
     allowRegistration: false,

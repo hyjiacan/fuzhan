@@ -132,6 +132,10 @@ func (h *Handler) GetRuntimeConfig(c *gin.Context) {
 		"open_api": gin.H{
 			"enabled": currentConfig.OpenAPI.Enabled,
 		},
+		// 文件名检索建议开关：分词关闭时前端不应再请求自动补全/纠错/相关词
+		"search": gin.H{
+			"suggest_enabled": currentConfig.Index.EffectiveIndexSegmenter() != appconfig.SegmenterOff,
+		},
 	}
 	response.HandleSuccess(c, http.StatusOK, "", resp)
 }
@@ -755,12 +759,18 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 
 	// —— 文件索引（定时扫描）——
 	if present("index") {
-		appconfig.GlobalConfig.Index.ScanCronExpression = req.Index.ScanCronExpression
-		updates.Add("index.scan_cron_expression", req.Index.ScanCronExpression)
+		// cron 表达式仅在非空时落库：管理页仅提交定时任务 cron，设置页仅提交 segmenter，
+		// 双向保存时不应把对方未提交的字段写成空串。
+		if expr := strings.TrimSpace(req.Index.ScanCronExpression); expr != "" {
+			appconfig.GlobalConfig.Index.ScanCronExpression = expr
+			updates.Add("index.scan_cron_expression", expr)
+		}
 
 		// —— 检索索引对齐任务 cron ——
-		appconfig.GlobalConfig.Index.SearchReconcileCronExpression = req.Index.SearchReconcileCronExpression
-		updates.Add("index.search_reconcile_cron_expression", req.Index.SearchReconcileCronExpression)
+		if expr := strings.TrimSpace(req.Index.SearchReconcileCronExpression); expr != "" {
+			appconfig.GlobalConfig.Index.SearchReconcileCronExpression = expr
+			updates.Add("index.search_reconcile_cron_expression", expr)
+		}
 
 		// —— 启动扫描延迟 ——
 		if req.Index.ScanStartDelaySeconds > 0 {
@@ -778,6 +788,19 @@ func (h *Handler) SaveConfig(c *gin.Context) {
 		if expr := strings.TrimSpace(req.Index.ConsistencyCheckCronExpression); expr != "" {
 			appconfig.GlobalConfig.Index.ConsistencyCheckCronExpression = expr
 			updates.Add("index.consistency_check_cron_expression", expr)
+		}
+
+		// —— 检索分词方式 ——
+		if seg := strings.TrimSpace(req.Index.Segmenter); seg != "" {
+			seg = strings.ToLower(seg)
+			if seg != appconfig.SegmenterZhS && seg != appconfig.SegmenterZh && seg != appconfig.SegmenterOff {
+				// 锁内提前返回必须先释放写锁，否则配置保存会永久阻塞
+				appconfig.UnlockConfig()
+				utils.HandleBadRequest(c, "index.segmenter 仅支持 zh_s、zh、off", nil)
+				return
+			}
+			appconfig.GlobalConfig.Index.Segmenter = seg
+			updates.Add("index.segmenter", seg)
 		}
 	}
 

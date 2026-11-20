@@ -552,6 +552,37 @@ type IndexConfig struct {
 	// ConsistencyCheckCronExpression 索引一致性检查的 cron 表达式，
 	// 默认 "0 3 * * *"（每天凌晨 3:00，与其它作业错开）。为空使用默认值。
 	ConsistencyCheckCronExpression string `yaml:"consistency_check_cron_expression,omitempty"`
+	// Segmenter 文件名检索索引使用的分词词典：
+	//   zh_s（默认）仅简体，zh 简体+繁体，off 关闭检索索引（不加载词典、不打开索引）。
+	// 需重启生效（启动时会全量重建索引）。
+	Segmenter string `yaml:"segmenter,omitempty"`
+}
+
+// 检索分词方式（index.segmenter）取值
+const (
+	// SegmenterZhS 仅加载简体词典（默认）。
+	SegmenterZhS = "zh_s"
+	// SegmenterZh 加载简体+繁体词典。
+	SegmenterZh = "zh"
+	// SegmenterOff 关闭检索索引，不加载词典、不打开索引。
+	SegmenterOff = "off"
+)
+
+// NormalizeIndexSegmenter 归一化分词方式：去空白转小写，空值与其他非法值回落默认 zh_s。
+func NormalizeIndexSegmenter(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case SegmenterZh:
+		return SegmenterZh
+	case SegmenterOff:
+		return SegmenterOff
+	default:
+		return SegmenterZhS
+	}
+}
+
+// EffectiveIndexSegmenter 返回实际生效的分词方式。
+func (c IndexConfig) EffectiveIndexSegmenter() string {
+	return NormalizeIndexSegmenter(c.Segmenter)
 }
 
 // 同名冲突处理方式（auth.identity_conflict_mode）取值

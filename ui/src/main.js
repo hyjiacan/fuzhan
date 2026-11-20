@@ -111,6 +111,8 @@ function applyConfig(d) {
     ftpPort: d.ftp?.port ?? null,
     webdavEnabled: d.webdav?.enabled ?? false,
     openApiEnabled: d.open_api?.enabled ?? false,
+    // 文件名检索建议开关：分词关闭时后端不下发建议，前端也不再请求
+    searchSuggestEnabled: d.search?.suggest_enabled ?? true,
     urlUploadEnabled: d.upload?.url_upload?.enabled ?? false,
     allowRegistration: d.account?.allow_registration ?? false,
     requireLogin: d.account?.require_login ?? false,

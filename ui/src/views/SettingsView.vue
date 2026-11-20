@@ -302,6 +302,9 @@ const settings = reactive({
     trustProxy: false,
     allowedOrigins: []
   },
+  index: {
+    segmenter: 'zh_s'
+  },
   auth: {
     identityConflictMode: 'self_service',
     ldap: {
@@ -577,6 +580,11 @@ const loadSettings = async () => {
         }
       }
 
+      // 分词方式：后端未设置时按默认 zh_s 展示
+      settings.index = {
+        segmenter: cfg.index?.segmenter || 'zh_s'
+      }
+
       originalServerConfig.value = {
         host: settings.server.host,
         httpPort: settings.server.http.port
@@ -620,6 +628,7 @@ const SECTION_SOURCES = {
   download: ['download'],
   preview: ['preview'],
   open_api: ['openApi'],
+  index: ['index'],
   security: ['security'],
   auth: ['auth']
 }
@@ -821,6 +830,9 @@ const doSaveSettings = async () => {
         rate_limit_enabled: settings.openApi.rateLimitEnabled,
         requests_per_minute: settings.openApi.requestsPerMinute
       },
+      index: {
+        segmenter: settings.index.segmenter
+      },
       security: {
         trust_proxy: settings.security.trustProxy,
         allowed_origins: settings.security.allowedOrigins
@@ -884,6 +896,7 @@ const doSaveSettings = async () => {
             ftpPort: optionsRes.data.ftp?.port ?? null,
             webdavEnabled: optionsRes.data.webdav?.enabled ?? false,
             openApiEnabled: optionsRes.data.open_api?.enabled ?? false,
+            searchSuggestEnabled: optionsRes.data.search?.suggest_enabled ?? true,
             urlUploadEnabled: optionsRes.data.upload?.url_upload?.enabled ?? false,
             allowRegistration: optionsRes.data.account?.allow_registration ?? false,
             requireLogin: optionsRes.data.account?.require_login ?? false,

@@ -21,7 +21,7 @@ func main() {
 	// 1. 初始化：索引存放于 data/bluge_index（工作目录 data 子目录）
 	indexDir := filepath.Join("data", "bluge_index")
 	fmt.Println("==> 初始化索引：", indexDir)
-	idx, err := search.OpenIndex(indexDir)
+	idx, err := search.OpenIndex(indexDir, "zh_s")
 	if err != nil {
 		fatal("初始化索引失败", err)
 	}

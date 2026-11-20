@@ -401,6 +401,7 @@ type IndexConfigDTO struct {
 	SearchReconcileCronExpression  string `json:"search_reconcile_cron_expression"`
 	CleanupCronExpression          string `json:"cleanup_cron_expression"`
 	ConsistencyCheckCronExpression string `json:"consistency_check_cron_expression"`
+	Segmenter                      string `json:"segmenter"`
 }
 
 // ResourceConfigDTO 服务器资源监控配置 DTO
@@ -624,6 +625,7 @@ func (c *Config) ToDTO() ConfigDTO {
 			SearchReconcileCronExpression:  c.Index.SearchReconcileCronExpression,
 			CleanupCronExpression:          c.Index.CleanupCronExpression,
 			ConsistencyCheckCronExpression: c.Index.ConsistencyCheckCronExpression,
+			Segmenter:                      c.Index.Segmenter,
 		},
 		Resource: ResourceConfigDTO{
 			Enabled:          c.Resource.Enabled,
@@ -864,6 +866,7 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Index.SearchReconcileCronExpression = dto.Index.SearchReconcileCronExpression
 	cfg.Index.CleanupCronExpression = dto.Index.CleanupCronExpression
 	cfg.Index.ConsistencyCheckCronExpression = dto.Index.ConsistencyCheckCronExpression
+	cfg.Index.Segmenter = dto.Index.Segmenter
 
 	// 资源监控配置
 	cfg.Resource.Enabled = dto.Resource.Enabled

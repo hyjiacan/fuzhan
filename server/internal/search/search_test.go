@@ -8,7 +8,7 @@ import (
 
 func newTestIndex(t *testing.T) *SearchIndex {
 	t.Helper()
-	idx, err := OpenIndex(t.TempDir())
+	idx, err := OpenIndex(t.TempDir(), "zh_s")
 	if err != nil {
 		t.Fatalf("OpenIndex 失败: %v", err)
 	}

@@ -343,20 +343,27 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 
 	// ===== 文件名检索索引（自动补全 / 拼写纠错）=====
 	// 数据存放于 <data>/search_index，用于 HomeView 搜索框的下拉联想与纠错。
+	// index.segmenter=off 时完全不加载分词词典、不打开索引（省约 130MB 堆内存），
+	// 主搜索仍走数据库 LIKE，建议/纠错/相关词自动关闭。
 	var idxSearch *search.SearchIndex
-	idx, err := search.OpenIndex(filepath.Join(appconfig.GetDataDir(), "search_index"))
-	if err != nil {
-		utils.Warn("文件名检索索引初始化失败，搜索联想/纠错功能不可用", utils.Err(err))
+	segmenterMode := cfg.Index.EffectiveIndexSegmenter()
+	if segmenterMode == appconfig.SegmenterOff {
+		utils.Info("文件名检索已关闭（index.segmenter=off），不加载分词词典与检索索引")
 	} else {
-		utils.Info("文件名检索索引已打开", utils.String("dir", filepath.Join(appconfig.GetDataDir(), "search_index")))
-		if rerr := idx.RebuildFromDB(db); rerr != nil {
-			utils.Warn("文件名检索索引全量构建失败，将依赖后续增量同步", utils.Err(rerr))
+		idx, err := search.OpenIndex(filepath.Join(appconfig.GetDataDir(), "search_index"), segmenterMode)
+		if err != nil {
+			utils.Warn("文件名检索索引初始化失败，搜索联想/纠错功能不可用", utils.Err(err))
 		} else {
-			utils.Info("文件名检索索引全量构建完成")
+			utils.Info("文件名检索索引已打开", utils.String("dir", filepath.Join(appconfig.GetDataDir(), "search_index")))
+			if rerr := idx.RebuildFromDB(db); rerr != nil {
+				utils.Warn("文件名检索索引全量构建失败，将依赖后续增量同步", utils.Err(rerr))
+			} else {
+				utils.Info("文件名检索索引全量构建完成")
+			}
+			// 文件增/删/改后增量同步检索索引
+			indexService.SetFileIndexNotifier(idx)
+			idxSearch = idx
 		}
-		// 文件增/删/改后增量同步检索索引
-		indexService.SetFileIndexNotifier(idx)
-		idxSearch = idx
 	}
 	// 文件名检索提示处理器（索引未打开时为 nil，搜索联想/纠错不可用）
 	suggestHandler := search.NewHandler(idxSearch)

@@ -64,7 +64,7 @@ func seedActiveRecords(t *testing.T, db *gorm.DB, records ...models.FileRecordPu
 // 线上查询见到的是重建后的完整数据，且目录回到规范位置、writer 仍可写入。
 func TestRebuildFromDBHotSwap(t *testing.T) {
 	idxDir := filepath.Join(t.TempDir(), "search_index")
-	idx, err := OpenIndex(idxDir)
+	idx, err := OpenIndex(idxDir, "zh_s")
 	if err != nil {
 		t.Fatalf("OpenIndex 失败: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRebuildFromDBHotSwap(t *testing.T) {
 
 // TestRebuildFromDBIdempotent 反复全量重建结果稳定，且词表缓存随数据更换而刷新。
 func TestRebuildFromDBIdempotent(t *testing.T) {
-	idx, err := OpenIndex(filepath.Join(t.TempDir(), "search_index"))
+	idx, err := OpenIndex(filepath.Join(t.TempDir(), "search_index"), "zh_s")
 	if err != nil {
 		t.Fatalf("OpenIndex 失败: %v", err)
 	}

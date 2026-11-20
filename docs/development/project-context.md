@@ -133,7 +133,7 @@ ddos, preview, mime_table, log, security, auth, open_api, index, resource, webho
 - `upload`：`chunk_size`(10M)、`max_file_size`(16G)、`url_upload{enabled,allowed_ip_ranges,insecure_skip_verify,max_concurrent,max_retries,max_size}`、`rate_limit{window_minutes,max_requests}`
 - `download.rate_limit`：`window_minutes`、`max_requests`、`lock_after`、`lock_minutes`
 - `ddos`：`enabled`、`window_seconds`、`max_requests`、`cooldown_minutes`
-- `index`：`scan_start_delay_seconds`=10、`scan_cron_expression`="0 1 * * *"、`search_reconcile_cron_expression`="0 5 * * *"、`cleanup_cron_expression`="0 * * * *"、`consistency_check_cron_expression`="0 3 * * *"
+- `index`：`scan_start_delay_seconds`=10、`scan_cron_expression`="0 1 * * *"、`search_reconcile_cron_expression`="0 5 * * *"、`cleanup_cron_expression`="0 * * * *"、`consistency_check_cron_expression`="0 3 * * *"、`segmenter`（`zh_s` 默认仅简体 / `zh` 简+繁 / `off` 完全不加载 gse 词典与检索索引，省约 130MB 堆内存；`off` 时主搜索仍走数据库 LIKE，建议/纠错/相关词不可用；需重启生效，重启自动重建索引）
 - `resource`：`enabled`、`sampling_interval`=5、`collect_interval`=60、`retention_days`=7
 - `security`：`trust_proxy`、`allowed_origins`
 - `auth`：`ldap{...}` 与 `oauth2{enabled,provider_id,provider_name,...}` **二选一**（同时启用会被保存/启动校验拒绝）；OAuth2 启用时 `provider_id` 必填，绑定记录使用 `oauth2:<provider_id>` 作为 provider key，LDAP 固定使用 `ldap`；`identity_conflict_mode`（`admin` / `self_service`，空值默认 `self_service`）决定 OAuth2 同名冲突时由管理员处置还是引导用户自助确认（输入本地密码绑定 / 创建独立账号）
