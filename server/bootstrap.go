@@ -12,6 +12,7 @@ import (
 	"fuzhan/internal/alert"
 	"fuzhan/internal/appconfig"
 	configh "fuzhan/internal/appconfig/api"
+	"fuzhan/internal/appmeta"
 	"fuzhan/internal/auth"
 	"fuzhan/internal/behavioranalytics"
 	"fuzhan/internal/cli"
@@ -51,10 +52,20 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	utils.Info("[启动] 阶段1: 配置加载")
 	cfg := appconfig.DoInitWithConfig(webAssets, configPath)
 
+	// 提前占用 HTTP 端口：后续数据库迁移、去重、回填等同步步骤可能持续较久，
+	// 期间端口无响应会让探活/用户访问表现为"启动卡死"。
+	// 监听地址沿用与主循环一致的本机限制逻辑；监听失败多为端口被占用，直接终止启动。
+	earlyHost, _ := appconfig.LocalhostWhenSetup(cfg.Server.Host)
+	earlyHTTP, earlyErr := startEarlyHTTPServer(fmt.Sprintf("%s:%d", earlyHost, cfg.Server.HTTP.Port))
+	if earlyErr != nil {
+		utils.Fatal("启动失败：端口已被占用", utils.Int("port", cfg.Server.HTTP.Port), utils.Err(earlyErr))
+	}
+
 	// ===== 启动阶段2: 数据库连接 =====
 	utils.Info("[启动] 阶段2: 数据库连接")
 	db, err := appconfig.InitDB(&cfg.Database)
 	if err != nil {
+		earlyHTTP.Shutdown()
 		utils.Fatal("数据库初始化失败", utils.Err(err))
 	}
 	appconfig.SetDB(db)
@@ -82,7 +93,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	})
 
 	// 自动迁移数据库表（创建表结构，未发版前不做结构迁移）
-	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{}, &models.AlertMessage{}, &models.IdentityConflict{})
+	db.AutoMigrate(&models.UploadSession{}, &models.UploadedChunk{}, &models.OperationRecord{}, &models.User{}, &models.TempFile{}, &models.URLDownloadTask{}, &models.FileRecordPublic{}, &models.FileRecordTemp{}, &models.FileRecordPrivate{}, &models.FileDependency{}, &models.ApiKey{}, &models.OAuthClient{}, &models.AuthRecord{}, &models.ScanRecord{}, &models.TaskRecord{}, &models.ResourceMetric{}, &models.SecurityEvent{}, &models.LoginLog{}, &models.AlertMessage{}, &models.IdentityConflict{}, &appmeta.AppMeta{})
 
 	// 认证归属迁移（P1）：归一化 provider_name、回填 auth_source/created_via、
 	// 去重认证绑定并在无冲突时创建唯一索引，最后输出一致性审计日志。
@@ -129,6 +140,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 处理命令行创建管理员（在所有初始化完成后执行，确保日志、监控等基础设施就绪）
 	if createAdmin != "" {
 		createAdminUser(db, createAdmin)
+		earlyHTTP.Shutdown()
 		return nil, true
 	}
 
@@ -142,6 +154,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 	// 本地后端：rootPath 为磁盘根目录；远端后端：rootPath 为虚拟前缀。
 	publicStorages, storErr := buildPublicStorages(&cfg)
 	if storErr != nil {
+		earlyHTTP.Shutdown()
 		return nil, true
 	}
 
@@ -210,7 +223,6 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		BindPassword:       cfg.Auth.LDAP.BindPassword,
 		UserFilter:         cfg.Auth.LDAP.UserFilter,
 		UsernameAttribute:  cfg.Auth.LDAP.UsernameAttribute,
-		SyncInterval:       cfg.Auth.LDAP.SyncInterval,
 		AutoCreateUser:     cfg.Auth.LDAP.AutoCreateUser,
 		InsecureSkipVerify: cfg.Auth.LDAP.InsecureSkipVerify,
 	})
@@ -223,7 +235,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		utils.Info("LDAP 认证未启用")
 	}
 
-	// 配置保存后热更新 LDAP 配置（启用/地址/过滤器等修改无需重启；目录同步间隔由 worker 每周期重读）
+	// 配置保存后热更新 LDAP 配置（启用/地址/过滤器等修改无需重启）
 	appconfig.AddOnSaveHook(func() {
 		cur := appconfig.GetConfig().Auth.LDAP
 		ldapService.UpdateConfig(&auth.LDAPConfig{
@@ -236,7 +248,6 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 			BindPassword:       cur.BindPassword,
 			UserFilter:         cur.UserFilter,
 			UsernameAttribute:  cur.UsernameAttribute,
-			SyncInterval:       cur.SyncInterval,
 			AutoCreateUser:     cur.AutoCreateUser,
 			InsecureSkipVerify: cur.InsecureSkipVerify,
 		})
@@ -505,6 +516,7 @@ func bootstrap(configPath, createAdmin string) (*runCtx, bool) {
 		resourceCollector:        resourceCollector,
 		ldapService:              ldapService,
 		publicStorages:           publicStorages,
+		earlyHTTP:                earlyHTTP,
 	}
 
 	// ===== 启动阶段4: 路由设置 =====
@@ -649,10 +661,7 @@ func printStartupSummary(cfg *appconfig.Config) {
 		utils.Info("方式一: 打开浏览器访问", utils.String("url", fmt.Sprintf("http://localhost:%d/#/setup", cfg.Server.HTTP.Port)))
 		utils.Info("方式二: 手动编辑配置文件", utils.String("path", configPath))
 	}
-	// 检查端口是否被占用
-	if appconfig.IsPortInUse(cfg.Server.HTTP.Port) {
-		utils.Fatal("启动失败：端口已被占用", utils.Int("port", cfg.Server.HTTP.Port))
-	}
+	// 端口占用检查已在 bootstrap 阶段由 startEarlyHTTPServer 完成，此处不再重复探测。
 }
 
 // cleanupTimeout 关闭收尾（关库 + 刷日志）的等待上限；超时直接退出进程，

@@ -369,7 +369,6 @@ const otherSystemJobs = [
   { name: '实时索引监听', schedule: '常驻监听', remark: '文件变动增量写入索引，无间隔可配' },
   { name: '资源监控采集', schedule: '采样 5 秒 / 采集 60 秒', remark: '可在资源监控页调整' },
   { name: '存储使用率告警', schedule: '按检测间隔（默认 10 分钟）', remark: '可在设置 → 存储中调整检测间隔' },
-  { name: 'LDAP 目录同步', schedule: '启动时 + 同步间隔', remark: '可在设置 → 认证 → LDAP 中调整同步间隔' },
   { name: '操作记录与下载计数落库', schedule: '事件驱动', remark: '随请求触发，定时批量写入' }
 ]
 

@@ -72,6 +72,7 @@ lightshare/
 ### 3.2 `bootstrap(configPath, createAdmin)`（`bootstrap.go:48`）
 
 1. **阶段1 配置加载**：`appconfig.DoInitWithConfig(webAssets, configPath)`（创建/读取配置、展开 `${work_dir}`、建 data 目录、初始化日志）。
+   随后**提前占用 HTTP 端口**（`early_http.go` 的 `startEarlyHTTPServer`）：初始化期间所有请求返回 503 + `Retry-After: 5`，主循环首轮把 handler 切换为正式路由后由该轮 http worker 负责优雅关闭；监听失败（端口被占用）直接 `Fatal`。
 2. **阶段2 数据库**：`appconfig.InitDB(&cfg.Database)` → `SetDB`；初始化 JWT 密钥（`jwt.SetJWTSecretGetter` 每次从 `GlobalConfig` 读；未配置则生成并持久化）；设置安全配置 getter。
 3. **AutoMigrate**（`bootstrap.go:85`，模型清单见 §6）+ 索引保障：`EnsureFileRecordIndexes`、`EnsureOperationRecordIndexes`、`CleanupOperationRecordIndexes`、`EnsureSecurityEventIndexes`。
 4. **历史数据回填（幂等）**：`DedupePublicFileRecords`（收敛同一路径的重复索引记录）、`BackfillPublicDownloadCounts`、`BackfillFileRecordIDs`、`BackfillOperationRecordSource`、`BackfillDownloadSignature`、`BackfillDownloadCounted`（有补齐时再 `RecountAllPublicDownloadCounts`）。
@@ -86,7 +87,7 @@ lightshare/
 
 | worker 名 | 函数 | 说明 |
 |---|---|---|
-| http | 内联 | `http.Server`，10s 优雅关闭，超时强制 `Close()`（SSE 长连接） |
+| http | 内联 | 首轮直接接管 `rt.earlyHTTP`（bootstrap 提前监听的端口）并切换为正式路由；后续轮次 `http.Server` 重新监听，10s 优雅关闭，超时强制 `Close()`（SSE 长连接） |
 | ftp | `runFTPWorker` | FTP/FTPS |
 | cleanup | `runCleanupWorker` | 启动即跑一次 + cron |
 | index-scan | `runIndexScanWorker` | 延迟后按 scope（public/temp）检查并触发初始扫描；私有元数据由 DB 维护不扫描 |
@@ -95,7 +96,6 @@ lightshare/
 | search-reconcile | `runSearchReconcileWorker` | 等初始扫描结束 → cron 检索索引对齐 |
 | resource-monitor | `resourceCollector.Run` | 资源采样 |
 | storage-alert | `storageAlertService.Run` | 非 nil 才启动 |
-| ldap-sync | `ldapService.StartSyncWorker` | 非 nil 才启动 |
 
 - 收到 SIGINT/SIGTERM：取消 worker → 等待（上限 30s，超时打印 goroutine 堆栈）→ 停 Watcher → 关检索索引 writer → 依次排空 `StopRecordWriter` / `StopDDoSDetector` / `StopWriter` / `StopDownloadCountRecorder` / `webhook.Stop()`。第二次信号直接 `os.Exit(1)`。
 - 收到配置变更：停全部 worker → `hotSwapDB()`（driver/DSN 变更才切换并 AutoMigrate 子集）→ `continue` 重建路由与 worker。
@@ -190,8 +190,10 @@ user, utils, webdav, webhook
 UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask,
 FileRecordPublic, FileRecordTemp, FileRecordPrivate, FileDependency, ApiKey,
 OAuthClient, AuthRecord, ScanRecord, TaskRecord, ResourceMetric, SecurityEvent,
-LoginLog, AlertMessage, IdentityConflict
+LoginLog, AlertMessage, IdentityConflict, AppMeta
 ```
+
+`AppMeta`（`internal/appmeta`，表 `app_meta`）是一次性启动任务的执行记录键值表：索引创建、历史回填等幂等但昂贵的操作通过 `appmeta.RunOnce(db, key, token, fn)` 门控，token 不变则跳过，避免每次启动全表扫描。
 
 DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk, OperationRecord, User, TempFile, URLDownloadTask, FileRecord×3, FileDependency, ApiKey, OAuthClient, AuthRecord, IdentityConflict, ResourceMetric`。
 
@@ -220,7 +222,7 @@ DB 热切换时的迁移子集（`server.go`）：`UploadSession, UploadedChunk,
 | 字段 | 说明 |
 |---|---|
 | `AuthSource`(16，默认 `local`，索引 `idx__users__auth_source`) | 账号归属认证源 `local/ldap/oauth2`；决定登录路由，只能由管理员的绑定/转本地操作改变 |
-| `CreatedVia`(20，默认 `legacy`) | 创建渠道 `self_register/admin_create/ldap_jit/ldap_sync/oauth2_jit/legacy`，创建后不可变，仅用于展示与筛选 |
+| `CreatedVia`(20，默认 `legacy`) | 创建渠道 `self_register/admin_create/ldap_jit/oauth2_jit/legacy`，创建后不可变，仅用于展示与筛选 |
 | `IdentityNoticePending`(bool，默认 `false`，`json:"-"`) | 管理员为账号绑定外部身份后置 `true`；用户下次登录时由前端弹一次提示，确认后经 `POST /api/v1/web/auth/identity-notice/ack` 清除 |
 
 `AuthRecord`（表 `auth_records`）以 `(auth_type, provider_name, external_id)` 为绑定键，唯一索引 `idx__auth_records__auth_type_provider_name_external_id` 由启动迁移去重后手动创建（不用 GORM `uniqueIndex` tag）。`provider_name` 是 provider 稳定标识而非展示名：LDAP 固定为 `ldap`；OAuth2 为 `oauth2:<auth.oauth2.provider_id>`（展示名仍用 `auth.oauth2.provider_name`）。`external_id` 为 LDAP DN / OAuth2 `sub`。
@@ -441,7 +443,7 @@ API Key / 索引记录 / Open API / 日志 / 资源
 ### 9.5 登录与身份路由
 
 - 密码登录按 `users.auth_source` 严格路由（`services/auth_service.go`）：`local` 只校验本地密码（缺密码视为不可用，不尝试 LDAP）；`ldap` 只走目录，认证源未启用/不可用直接失败，不回退本地密码；`oauth2` 拒绝密码登录。用户名先精确匹配、再 `LOWER(username)` 匹配。
-- 本地不存在时，仅在 LDAP 启用且 `allow_auto_create` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`，同步为 `ldap_sync`）；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
+- 本地不存在时，仅在 LDAP 启用且 `auto_create_user` 开启时尝试目录认证并 JIT 建号（`created_via=ldap_jit`）；系统不提供定时目录同步；OAuth2 遇同名账号一律拒绝，不再“同名即绑定”或追加后缀建号。
 - 身份冲突（外部身份与本地账号归属不一致）只在 `identity_conflicts` 表 upsert 待处理冲突（按用户名 + provider 限频），不改动任何账号字段、也不写安全事件；对外统一返回通用失败提示，避免枚举账号或泄露认证源。
 - `auth.identity_conflict_mode=self_service`（默认）时，OAuth2 回调遇同名本地账号不再直接跳错误页：签发 5 分钟一次性票据（HttpOnly Cookie，随机 32 字节 hex，服务端内存保存），302 到 `/#/oauth2/callback?conflict=1`；用户可输入本地密码完成绑定（事务内写绑定、`auth_source=oauth2`、清空本地密码并建立会话），或创建独立账号（用户名 `外部用户名@<provider_id|oauth2>`，冲突追加序号，`created_via=oauth2_jit`）。`role=admin`、已禁用、非 `local` 归属的同名账号仍拒绝。本地密码错误最多 5 次后票据失效，并计入既有登录失败限流/安全事件。`admin` 模式保持原行为。
 - 管理员可在用户管理页集中查看冲突并批量“绑定到同名账号”或“忽略”。绑定复用 `BindExternalIdentity` 规则：认证源须启用、目标用户无其它绑定、外部身份未被占用；成功后写绑定、`auth_source=auth_type`、清空本地密码并标记 `resolution=bound`。批量忽略仅影响待处理记录（`resolved_at IS NULL`）。

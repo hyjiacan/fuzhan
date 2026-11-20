@@ -2,14 +2,7 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
-	"time"
 
 	"fuzhan/internal/utils"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -21,7 +14,6 @@ import (
 
 // collectHardware 采集服务器硬件配置（CPU/内存/磁盘/网卡）。
 // 该信息变化频率极低，由采集器低频刷新并缓存，避免每次采样都做昂贵的系统调用。
-// ctx 用于在关闭时中断外部进程探测（Windows 下的 Get-NetAdapter）。
 func collectHardware(ctx context.Context) Hardware {
 	hw := Hardware{Disks: []DiskInfo{}, NICs: []NICInfo{}}
 
@@ -164,119 +156,4 @@ func isLoopbackFlags(flags []string) bool {
 		}
 	}
 	return false
-}
-
-// nicLinkSpeeds 探测各网卡链路速率（Mbps），无法探测的网卡不出现在结果中。
-// 采用平台专用方式：Linux 读 sysfs，Windows 调用 Get-NetAdapter；其它平台返回空。
-func nicLinkSpeeds(ctx context.Context) map[string]int {
-	switch runtime.GOOS {
-	case "linux":
-		return linuxNICLinkSpeeds()
-	case "windows":
-		return windowsNICLinkSpeeds(ctx)
-	default:
-		return map[string]int{}
-	}
-}
-
-// linuxNICLinkSpeeds 读取 /sys/class/net/<iface>/speed（单位 Mbps，未连接时可能为 -1）
-func linuxNICLinkSpeeds() map[string]int {
-	const sysfsNet = "/sys/class/net"
-	result := map[string]int{}
-	entries, err := os.ReadDir(sysfsNet)
-	if err != nil {
-		return result
-	}
-	for _, e := range entries {
-		raw, err := os.ReadFile(filepath.Join(sysfsNet, e.Name(), "speed"))
-		if err != nil {
-			continue
-		}
-		mbps, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-		if err != nil || mbps <= 0 {
-			continue
-		}
-		result[e.Name()] = mbps
-	}
-	return result
-}
-
-// windowsNICLinkSpeeds 通过 PowerShell Get-NetAdapter 读取网卡链路速率。
-// LinkSpeed 形如 "1 Gbps" / "100 Mbps" / "2.5 Gbps"，解析为 Mbps。
-// ctx 取消时立即终止子进程；另设 8 秒兜底超时，避免探测长时间阻塞采集循环。
-func windowsNICLinkSpeeds(ctx context.Context) map[string]int {
-	result := map[string]int{}
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command",
-		"Get-NetAdapter | Select-Object -Property Name,LinkSpeed | ConvertTo-Json -Compress")
-	cmd.SysProcAttr = hiddenWindowAttr()
-	done := make(chan struct{})
-	var out []byte
-	var err error
-	go func() {
-		out, err = cmd.Output()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(8 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		utils.Warn("探测网卡速率超时（Get-NetAdapter 未在 8 秒内返回）")
-		return result
-	}
-	if err != nil {
-		utils.Warn("探测网卡速率失败", utils.Err(err))
-		return result
-	}
-	var rows []struct {
-		Name      string `json:"Name"`
-		LinkSpeed string `json:"LinkSpeed"`
-	}
-	// 单块网卡时 ConvertTo-Json 返回对象而非数组，先按对象解析再回退数组
-	if uerr := json.Unmarshal(out, &rows); uerr != nil {
-		var single struct {
-			Name      string `json:"Name"`
-			LinkSpeed string `json:"LinkSpeed"`
-		}
-		if json.Unmarshal(out, &single) == nil && single.Name != "" {
-			if mbps := parseLinkSpeed(single.LinkSpeed); mbps > 0 {
-				result[single.Name] = mbps
-			}
-		}
-		return result
-	}
-	for _, r := range rows {
-		if mbps := parseLinkSpeed(r.LinkSpeed); mbps > 0 {
-			result[r.Name] = mbps
-		}
-	}
-	return result
-}
-
-// parseLinkSpeed 将 "1 Gbps" / "100 Mbps" 之类的链路速率文本解析为 Mbps
-func parseLinkSpeed(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	fields := strings.Fields(s)
-	if len(fields) < 2 {
-		return 0
-	}
-	value, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil || value <= 0 {
-		return 0
-	}
-	unit := strings.ToLower(fields[1])
-	switch {
-	case strings.HasPrefix(unit, "gbps"), strings.HasPrefix(unit, "gbit"):
-		return int(value * 1000)
-	case strings.HasPrefix(unit, "mbps"), strings.HasPrefix(unit, "mbit"):
-		return int(value)
-	case strings.HasPrefix(unit, "kbps"), strings.HasPrefix(unit, "kbit"):
-		return int(value / 1000)
-	default:
-		return 0
-	}
 }

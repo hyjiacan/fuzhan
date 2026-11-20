@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"fuzhan/internal/appmeta"
 )
 
 // 安全事件严重级别
@@ -15,15 +17,15 @@ const (
 
 // 安全事件类型（event_type 取值）
 const (
-	EventAuthFailedLogin     = "auth.failed_login"      // 登录/注册失败达阈值（聚合）或管理员账号认证失败
-	EventAuthLocked          = "auth.locked"            // 登录/注册失败达阈值被锁定（暴破缓解）
-	EventAuthSpraying        = "auth.spraying"          // 同一 IP 多账号 / 同一账号多 IP 集中失败（喷洒/撞库）
-	EventAuthSuspiciousLogin = "auth.suspicious_login"  // 多次失败后从不同来源成功登录（疑似凭证撞库成功）
-	EventAuthUnauthorized    = "auth.unauthorized"      // 越过认证边界的 401（管理接口/写操作/WebDAV 等）
-	EventAccessForbidden     = "access.forbidden"       // 越权/禁止访问（403）
-	EventRateLimited         = "rate.limited"           // 触发频率限制（429）
-	EventCodeBruteForce      = "code.bruteforce"        // 无效分享/临时码/口令枚举达阈值被锁定
-	EventDDoSSuspected       = "ddos.suspected"         // 疑似 DDoS/高频请求（已对该 IP 限流拦截）
+	EventAuthFailedLogin     = "auth.failed_login"     // 登录/注册失败达阈值（聚合）或管理员账号认证失败
+	EventAuthLocked          = "auth.locked"           // 登录/注册失败达阈值被锁定（暴破缓解）
+	EventAuthSpraying        = "auth.spraying"         // 同一 IP 多账号 / 同一账号多 IP 集中失败（喷洒/撞库）
+	EventAuthSuspiciousLogin = "auth.suspicious_login" // 多次失败后从不同来源成功登录（疑似凭证撞库成功）
+	EventAuthUnauthorized    = "auth.unauthorized"     // 越过认证边界的 401（管理接口/写操作/WebDAV 等）
+	EventAccessForbidden     = "access.forbidden"      // 越权/禁止访问（403）
+	EventRateLimited         = "rate.limited"          // 触发频率限制（429）
+	EventCodeBruteForce      = "code.bruteforce"       // 无效分享/临时码/口令枚举达阈值被锁定
+	EventDDoSSuspected       = "ddos.suspected"        // 疑似 DDoS/高频请求（已对该 IP 限流拦截）
 )
 
 // 命中的防护机制（guard 取值）
@@ -65,7 +67,11 @@ func (SecurityEvent) TableName() string {
 
 // EnsureSecurityEventIndexes 创建安全事件表索引（命名格式：idx__{table}__{col1}_{col2}_...）
 // 幂等：仅在索引缺失时创建，交由 GORM Migrator 判定并跨库引用标识符。
+// 通过 appmeta 版本门控：索引定义未变化时整体跳过；修改索引定义时必须递增版本号。
 func EnsureSecurityEventIndexes(db *gorm.DB) {
-	// 未读高危事件查询：WHERE read=false AND severity=... ORDER BY created_at DESC
-	createIndexIfMissing(db, &SecurityEvent{}, "idx__security_events__read_severity_created", false, "read", "severity", "created_at")
+	appmeta.RunOnce(db, indexMetaKeySecurityEvents, indexMetaTokenIndexesV1, func() error {
+		// 未读高危事件查询：WHERE read=false AND severity=... ORDER BY created_at DESC
+		createIndexIfMissing(db, &SecurityEvent{}, "idx__security_events__read_severity_created", false, "read", "severity", "created_at")
+		return nil
+	})
 }

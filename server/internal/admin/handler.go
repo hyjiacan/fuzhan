@@ -105,7 +105,6 @@ var (
 		models.CreatedViaSelfRegister: true,
 		models.CreatedViaAdminCreate:  true,
 		models.CreatedViaLDAPJIT:      true,
-		models.CreatedViaLDAPSync:     true,
 		models.CreatedViaOAuth2JIT:    true,
 		models.CreatedViaLegacy:       true,
 	}
@@ -133,7 +132,7 @@ func (h *Handler) UsersHandler(c *gin.Context) {
 		return
 	}
 	if filter.CreatedVia != "" && !validUserCreatedVia[filter.CreatedVia] {
-		response.HandleBadRequest(c, "created_via 参数无效，可选值：self_register、admin_create、ldap_jit、ldap_sync、oauth2_jit、legacy", nil)
+		response.HandleBadRequest(c, "created_via 参数无效，可选值：self_register、admin_create、ldap_jit、oauth2_jit、legacy", nil)
 		return
 	}
 	if filter.IdentityState != "" && !validIdentityStates[filter.IdentityState] {

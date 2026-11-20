@@ -114,7 +114,6 @@
 - 以下 camelCase 不是 API 契约，**永久保留，勿改**：
   - `server/internal/openapi/spec.go` 全部 camelCase（`requestBody`、`securitySchemes`、`additionalProperties` 等 OpenAPI 关键字）。
   - `server/internal/openapi/middleware.go` 中 `IPAccessConfig`（`cidrList`/`domainList`）、`RateLimitConfig`（`requestsPerMinute`/`burstSize`）、`CallRecord`（`statusCode`）——仅内部配置与调用记录，不经 `c.JSON` 输出；同文件的 `StatsSummary` 是对外响应，已是 snake。
-  - `server/internal/resource/hardware.go` 的 `json:"Name"`/`json:"LinkSpeed"`——用于解析 PowerShell `Get-NetAdapter | ConvertTo-Json` 的输出，Go tag 精确匹配，改名会静默解析为空。
   - `server/internal/auth/ldap.go` 的 `sAMAccountName`/`displayName`/`givenName`（LDAP 属性名）、`server/internal/lite/lite.go` 的 `crumbSep`（模板函数名）、`server/internal/index/hashworker.go` 的错误分类常量（内部 map key）。
 
 ## 8. 新增/修改接口检查清单

@@ -47,7 +47,7 @@ type UserItem struct {
 type UserListFilter struct {
 	Query         string // 用户名 / UUID / 姓名 / 昵称模糊匹配
 	Source        string // local / ldap / oauth2
-	CreatedVia    string // self_register / admin_create / ldap_jit / ldap_sync / oauth2_jit / legacy
+	CreatedVia    string // self_register / admin_create / ldap_jit / oauth2_jit / legacy
 	IdentityState string // ok / orphaned / provider_mismatch / inconsistent
 }
 

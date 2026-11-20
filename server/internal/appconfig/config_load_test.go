@@ -40,7 +40,6 @@ auth:
     bind_password: secret
     user_filter: "(uid=%s)"
     username_attribute: uid
-    sync_interval: 300
     auto_create_user: true
     insecure_skip_verify: true
   oauth2:
@@ -108,8 +107,8 @@ auth:
 	if ldap.UserFilter != "(uid=%s)" || ldap.UsernameAttribute != "uid" {
 		t.Errorf("Auth.LDAP 用户检索字段未加载: %+v", ldap)
 	}
-	if ldap.SyncInterval != 300 || !ldap.AutoCreateUser || !ldap.InsecureSkipVerify {
-		t.Errorf("Auth.LDAP 同步字段未加载: %+v", ldap)
+	if !ldap.AutoCreateUser || !ldap.InsecureSkipVerify {
+		t.Errorf("Auth.LDAP 自动创建/证书校验字段未加载: %+v", ldap)
 	}
 
 	oauth := GlobalConfig.Auth.OAuth2

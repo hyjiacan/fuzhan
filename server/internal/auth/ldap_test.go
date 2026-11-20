@@ -151,29 +151,6 @@ func TestLDAPService_UsernameAttribute(t *testing.T) {
 	}
 }
 
-func TestLDAPService_SyncFilter(t *testing.T) {
-	db := setupLDAPTestDB(t)
-	cases := []struct {
-		name, filter, explicit, want string
-	}{
-		{"默认遍历", "", "", "(uid=*)"},
-		{"uid遍历", "(uid=%s)", "", "(uid=*)"},
-		{"AD遍历", "(sAMAccountName=%s)", "", "(sAMAccountName=*)"},
-		{"静态过滤器", "(objectClass=person)", "", "(objectClass=person)"},
-		{"按用户名属性遍历", "", "sAMAccountName", "(sAMAccountName=*)"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			svc := NewLDAPService(db, &LDAPConfig{UserFilter: tc.filter, UsernameAttribute: tc.explicit})
-			got := svc.syncFilter(svc.GetConfig())
-			if got != tc.want {
-				t.Errorf("syncFilter(%q, %q) = %q, want %q", tc.filter, tc.explicit, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestLDAPService_UsernameAttributeCandidates(t *testing.T) {
 	db := setupLDAPTestDB(t)
 	svc := NewLDAPService(db, &LDAPConfig{UserFilter: "(uid=%s)"})
@@ -419,35 +396,5 @@ func TestLDAPService_FindOrCreateUser_Disabled(t *testing.T) {
 		"dn": "uid=disabled_ldap_user,dc=example,dc=com",
 	}, models.CreatedViaLDAPJIT); err == nil {
 		t.Fatal("已禁用的本地用户不应通过 LDAP 认证")
-	}
-}
-
-func TestLDAPService_SyncUsers_SkipWhenAutoCreateDisabled(t *testing.T) {
-	// 未开启自动创建时不应建立连接，直接返回 0
-	svc := NewLDAPService(nil, &LDAPConfig{
-		Enabled:        true,
-		Host:           "127.0.0.1",
-		Port:           1,
-		BaseDN:         "dc=example,dc=com",
-		AutoCreateUser: false,
-	})
-	created, err := svc.SyncUsers()
-	if err != nil {
-		t.Fatalf("未开启自动创建时同步应直接跳过，实际返回错误: %v", err)
-	}
-	if created != 0 {
-		t.Errorf("未开启自动创建时创建数应为 0，实际 %d", created)
-	}
-}
-
-func TestLDAPService_SyncUsers_IncompleteConfig(t *testing.T) {
-	svc := NewLDAPService(nil, &LDAPConfig{
-		Enabled:        true,
-		Host:           "127.0.0.1",
-		Port:           1,
-		AutoCreateUser: true,
-	})
-	if _, err := svc.SyncUsers(); err == nil {
-		t.Fatal("缺少 Base DN 时同步应返回错误")
 	}
 }

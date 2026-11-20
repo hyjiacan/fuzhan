@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
@@ -35,22 +34,20 @@ type LDAPConfig struct {
 	UserFilter   string `yaml:"user_filter"`
 	// UsernameAttribute 本地用户名取值的目录属性；留空时按 user_filter 推导，回退 uid
 	UsernameAttribute  string `yaml:"username_attribute"`
-	SyncInterval       int    `yaml:"sync_interval"`
 	AutoCreateUser     bool   `yaml:"auto_create_user"`
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 }
 
 // LDAPService LDAP 认证服务
 type LDAPService struct {
-	db   *gorm.DB
-	cfg  *LDAPConfig
-	mu   sync.RWMutex
-	wake chan struct{} // 配置热更新时唤醒同步协程，立即按新配置执行一轮同步
+	db  *gorm.DB
+	cfg *LDAPConfig
+	mu  sync.RWMutex
 }
 
 // NewLDAPService 创建 LDAP 服务
 func NewLDAPService(db *gorm.DB, cfg *LDAPConfig) *LDAPService {
-	return &LDAPService{db: db, cfg: cfg, wake: make(chan struct{}, 1)}
+	return &LDAPService{db: db, cfg: cfg}
 }
 
 // UpdateConfig 热更新配置（配置保存后由 main 注册的 OnSave 钩子调用）
@@ -59,17 +56,8 @@ func (s *LDAPService) UpdateConfig(cfg *LDAPConfig) {
 		return
 	}
 	s.mu.Lock()
-	changed := s.cfg == nil || *s.cfg != *cfg
 	s.cfg = cfg
 	s.mu.Unlock()
-	if !changed || !cfg.Enabled || !cfg.AutoCreateUser {
-		return
-	}
-	// 仅在 LDAP 相关配置变化且需要同步时非阻塞唤醒，避免任意配置保存都触发目录查询
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
 }
 
 // GetConfig 获取当前配置
@@ -738,130 +726,4 @@ func (s *LDAPService) usernameAttributeCandidates(cfg *LDAPConfig) []string {
 		out = append(out, a)
 	}
 	return out
-}
-
-// syncFilter 构造目录同步的枚举过滤器：将模板中的 %s 替换为 * 以遍历全部用户
-func (s *LDAPService) syncFilter(cfg *LDAPConfig) string {
-	f := strings.TrimSpace(cfg.UserFilter)
-	if f == "" {
-		return "(" + s.usernameAttribute(cfg) + "=*)"
-	}
-	if strings.Contains(f, "%s") {
-		return strings.ReplaceAll(f, "%s", "*")
-	}
-	if strings.HasPrefix(f, "(") {
-		return f
-	}
-	return "(" + s.usernameAttribute(cfg) + "=*)"
-}
-
-// SyncUsers 从 LDAP 目录同步用户到本地，仅创建本地缺失的账户。
-// 未启用自动创建时没有同步意义，直接返回 0；已在本地存在的用户不会重复创建。
-func (s *LDAPService) SyncUsers() (int, error) {
-	cfg := s.GetConfig()
-	if cfg == nil || !s.IsEnabled() {
-		return 0, errors.New("LDAP 未启用或配置不完整")
-	}
-	if !cfg.AutoCreateUser {
-		return 0, nil
-	}
-
-	conn, err := s.dial(cfg)
-	if err != nil {
-		return 0, err
-	}
-	defer conn.Close()
-
-	if cfg.BindDN != "" {
-		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
-			return 0, fmt.Errorf("LDAP 服务账号绑定失败: %w", err)
-		}
-	}
-
-	usernameAttr := s.usernameAttribute(cfg)
-	req := ldap.NewSearchRequest(
-		cfg.BaseDN,
-		ldap.ScopeWholeSubtree,
-		ldap.NeverDerefAliases,
-		0, 0, false,
-		s.syncFilter(cfg),
-		s.entryAttributeList(cfg),
-		nil,
-	)
-	// 使用分页查询，避免目录条目超过服务端单次返回上限（如 AD 默认 1000 条）时同步被截断
-	sr, err := conn.SearchWithPaging(req, 500)
-	if err != nil {
-		return 0, fmt.Errorf("LDAP 目录同步查询失败: %w", err)
-	}
-
-	created := 0
-	skipped := 0
-	failed := 0
-	for _, entry := range sr.Entries {
-		username := entry.GetAttributeValue(usernameAttr)
-		attrs := entryAttributes(entry, usernameAttr)
-		if username == "" {
-			username = attrs["username"]
-		}
-		if username == "" {
-			continue
-		}
-		_, isNew, err := s.resolveUser(username, attrs, models.CreatedViaLDAPSync)
-		if err != nil {
-			if errors.Is(err, services.ErrAccountUnavailable) {
-				// 同名账号归属其它认证源或身份数据异常：跳过，交由管理员裁决
-				skipped++
-				continue
-			}
-			failed++
-			utils.Warn("LDAP 目录同步：用户同步失败",
-				utils.String("username", username), utils.Err(err))
-			continue
-		}
-		if isNew {
-			created++
-		}
-	}
-	// 单轮聚合告警，避免目录侧批量同名时逐条刷日志
-	if skipped > 0 {
-		utils.Warn("LDAP 目录同步：同名账号冲突已跳过（需管理员裁决）",
-			utils.Int("skipped", skipped))
-	}
-	if failed > 0 {
-		return created, fmt.Errorf("LDAP 目录同步完成，但 %d 个用户处理失败", failed)
-	}
-	return created, nil
-}
-
-// StartSyncWorker 按 sync_interval 周期启动目录同步协程，直到 ctx 结束。
-// 启动及配置保存后立即执行一轮同步，之后按间隔循环；未启用或未开启自动创建时跳过。
-func (s *LDAPService) StartSyncWorker(ctx context.Context) {
-	go func() {
-		for {
-			cfg := s.GetConfig()
-			if cfg != nil && cfg.Enabled && cfg.AutoCreateUser {
-				created, err := s.SyncUsers()
-				if err != nil {
-					utils.Warn("LDAP 目录同步失败", utils.Err(err))
-				} else {
-					utils.Info("LDAP 目录同步完成", utils.Int("created", created))
-				}
-			}
-
-			interval := 3600 * time.Second
-			if cfg != nil && cfg.SyncInterval > 0 {
-				interval = time.Duration(cfg.SyncInterval) * time.Second
-			}
-			timer := time.NewTimer(interval)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			case <-s.wake:
-				// 配置已热更新，立即进入下一轮，按新配置同步
-				timer.Stop()
-			}
-		}
-	}()
 }

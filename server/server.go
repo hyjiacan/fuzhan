@@ -188,6 +188,18 @@ func (rt *runCtx) run() {
 
 		// HTTP 服务器 worker（需要捕获循环内的 r 和 address）
 		runHTTPServer := func(workerCtx context.Context) {
+			// 首轮：bootstrap 已提前占用端口（初始化期间返回 503），此处直接切换为正式路由，
+			// 避免关闭再重新监听造成的连接中断与端口竞争。worker 仍阻塞到 ctx 结束，
+			// 保持与常规 HTTP worker 一致的关闭语义。
+			if early := rt.earlyHTTP; early != nil {
+				rt.earlyHTTP = nil
+				early.SetHandler(r)
+				utils.Info("HTTP 服务器已接管提前监听的端口，初始化完成", utils.String("address", address))
+				<-workerCtx.Done()
+				early.Shutdown()
+				return
+			}
+
 			srv := &http.Server{
 				Addr:    address,
 				Handler: r,
@@ -219,9 +231,6 @@ func (rt *runCtx) run() {
 		workerStart(wm, "resource-monitor", func(ctx context.Context) { rt.resourceCollector.Run(ctx) })
 		if rt.storageAlertService != nil {
 			workerStart(wm, "storage-alert", func(ctx context.Context) { rt.storageAlertService.Run(ctx) })
-		}
-		if rt.ldapService != nil {
-			workerStart(wm, "ldap-sync", func(workerCtx context.Context) { rt.ldapService.StartSyncWorker(workerCtx) })
 		}
 
 		// ===== 启动完成 =====

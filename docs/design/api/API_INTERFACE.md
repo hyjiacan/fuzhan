@@ -718,7 +718,7 @@
   - `page` / `page_size`：分页，`page` 从 1 开始，`page_size` 默认 20
   - `query`：按用户名 / UUID / 姓名 / 昵称模糊匹配
   - `source`（可选）：`local` / `ldap` / `oauth2`
-  - `created_via`（可选）：`self_register` / `admin_create` / `ldap_jit` / `ldap_sync` / `oauth2_jit` / `legacy`
+  - `created_via`（可选）：`self_register` / `admin_create` / `ldap_jit` / `oauth2_jit` / `legacy`
   - `identity_state`（可选）：`ok` / `orphaned` / `provider_mismatch` / `inconsistent`
   - 白名单外的取值返回 400
 - **响应**：`data.users[]` 除原有字段外，新增：

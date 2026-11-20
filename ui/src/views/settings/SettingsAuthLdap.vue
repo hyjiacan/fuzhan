@@ -54,22 +54,13 @@
 
       <el-form-item label="用户名属性">
         <el-input autocomplete="off" v-model="settings.auth.ldap.usernameAttribute" placeholder="如 uid 或 sAMAccountName，留空按用户过滤器推导" />
-        <div class="field-hint">本地账号名与目录同步取该属性；留空时从用户过滤器推导，回退 uid</div>
+        <div class="field-hint">本地账号名取该属性；留空时从用户过滤器推导，回退 uid</div>
       </el-form-item>
 
-      <el-row :gutter="16">
-        <el-col :span="12" :sm="12" :xs="24">
-          <el-form-item label="目录同步间隔(秒)">
-            <el-input-number v-model="settings.auth.ldap.syncInterval" :min="60" :step="60" style="width: 100%;" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12" :sm="12" :xs="24">
-          <el-form-item label="自动创建本地用户">
-            <el-switch v-model="settings.auth.ldap.autoCreateUser" />
-            <div class="field-hint" style="margin-left: 12px;">认证通过后自动建立本地账户</div>
-          </el-form-item>
-        </el-col>
-      </el-row>
+      <el-form-item label="自动创建本地用户">
+        <el-switch v-model="settings.auth.ldap.autoCreateUser" />
+        <div class="field-hint" style="margin-left: 12px;">用户首次通过 LDAP 登录时自动建立本地账户</div>
+      </el-form-item>
 
       <el-form-item>
         <el-button type="warning" :loading="testing" @click="testConnection">测试连接</el-button>
@@ -119,7 +110,6 @@ const testConnection = async () => {
       bind_password: ld.bindPassword,
       user_filter: ld.userFilter,
       username_attribute: ld.usernameAttribute,
-      sync_interval: ld.syncInterval,
       auto_create_user: ld.autoCreateUser,
       insecure_skip_verify: ld.insecureSkipVerify
     })

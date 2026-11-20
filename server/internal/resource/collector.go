@@ -35,7 +35,7 @@ const (
 	// retentionCheckInterval 历史数据清理检查间隔
 	retentionCheckInterval = 1 * time.Hour
 	// hardwareRefreshInterval 硬件配置刷新间隔（秒）。CPU/内存/磁盘/网卡配置变化极少，
-	// 低频刷新即可，避免每次采样都做昂贵的系统调用与（Windows 下）外部进程探测。
+	// 低频刷新即可，避免每次采样都做昂贵的系统调用。
 	hardwareRefreshInterval = 600
 	// subscriberBuffer SSE 订阅通道缓冲长度。缓冲满说明客户端消费过慢，
 	// 直接丢弃该帧而不阻塞采集主循环，下一帧会带上最新值。

@@ -77,7 +77,6 @@ type LDAPConfigDTO struct {
 	BindPassword       string `json:"bind_password"`
 	UserFilter         string `json:"user_filter"`
 	UsernameAttribute  string `json:"username_attribute"`
-	SyncInterval       int    `json:"sync_interval"`
 	AutoCreateUser     bool   `json:"auto_create_user"`
 	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
 }
@@ -657,7 +656,6 @@ func (c *Config) ToDTO() ConfigDTO {
 				BindPassword:       c.Auth.LDAP.BindPassword,
 				UserFilter:         c.Auth.LDAP.UserFilter,
 				UsernameAttribute:  c.Auth.LDAP.UsernameAttribute,
-				SyncInterval:       c.Auth.LDAP.SyncInterval,
 				AutoCreateUser:     c.Auth.LDAP.AutoCreateUser,
 				InsecureSkipVerify: c.Auth.LDAP.InsecureSkipVerify,
 			},
@@ -891,7 +889,6 @@ func ConfigFromDTO(dto ConfigDTO) Config {
 	cfg.Auth.LDAP.BindPassword = dto.Auth.LDAP.BindPassword
 	cfg.Auth.LDAP.UserFilter = dto.Auth.LDAP.UserFilter
 	cfg.Auth.LDAP.UsernameAttribute = dto.Auth.LDAP.UsernameAttribute
-	cfg.Auth.LDAP.SyncInterval = dto.Auth.LDAP.SyncInterval
 	cfg.Auth.LDAP.AutoCreateUser = dto.Auth.LDAP.AutoCreateUser
 	cfg.Auth.LDAP.InsecureSkipVerify = dto.Auth.LDAP.InsecureSkipVerify
 

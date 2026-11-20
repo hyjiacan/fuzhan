@@ -16,7 +16,6 @@ const (
 	CreatedViaSelfRegister = "self_register"
 	CreatedViaAdminCreate  = "admin_create"
 	CreatedViaLDAPJIT      = "ldap_jit"
-	CreatedViaLDAPSync     = "ldap_sync"
 	CreatedViaOAuth2JIT    = "oauth2_jit"
 	CreatedViaLegacy       = "legacy"
 )
@@ -42,7 +41,7 @@ type User struct {
 	// AuthSource 账号归属认证源：local / ldap / oauth2。
 	// 决定登录路由，只能由管理员绑定/转换操作改变，登录行为不会自动改变它。
 	AuthSource string `gorm:"size:16;not null;default:local;index:idx__users__auth_source" json:"auth_source"`
-	// CreatedVia 账号创建渠道：self_register / admin_create / ldap_jit / ldap_sync / oauth2_jit / legacy。
+	// CreatedVia 账号创建渠道：self_register / admin_create / ldap_jit / oauth2_jit / legacy。
 	// 表示首次创建渠道，创建后不可变，仅用于展示与筛选。
 	CreatedVia string `gorm:"size:20;not null;default:legacy" json:"created_via"`
 	// IdentityNoticePending 管理员为该账号绑定外部身份后置为 true，

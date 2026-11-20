@@ -6,6 +6,20 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"fuzhan/internal/appmeta"
+)
+
+// 索引保障任务的 appmeta 键与版本 token。
+// 索引保障逻辑是幂等的，但每次启动都会对每张表 × 每个索引做 HasIndex 元数据查询，
+// 因此用 appmeta 记录完成标记：token 未变则整体跳过。
+// 修改对应索引定义（增删索引、改列、改唯一性）时必须递增对应 token，否则存量库不会重新执行。
+const (
+	indexMetaKeyFileRecords      = "indexes.file_records"
+	indexMetaKeyOperationRecords = "indexes.operation_records"
+	indexMetaKeyOperationCleanup = "indexes.operation_records.cleanup"
+	indexMetaKeySecurityEvents   = "indexes.security_events"
+	indexMetaTokenIndexesV1      = "v1"
 )
 
 // FileStatus 文件状态
@@ -127,86 +141,97 @@ var fileRecordIndexTables = []struct {
 
 // EnsureFileRecordIndexes 为三张索引表创建索引
 // 索引命名格式：idx__{table}__{col1}_{col2}_...
-// 在 AutoMigrate 后调用，与 GORM 的自动索引创建解耦，避免 SQLite 索引名冲突
+// 在 AutoMigrate 后调用，与 GORM 的自动索引创建解耦，避免 SQLite 索引名冲突。
+// 通过 appmeta 版本门控：索引定义未变化（token 一致）时整体跳过；
+// 修改索引定义时必须递增 indexMetaTokenIndexesV1 对应的版本号。
 func EnsureFileRecordIndexes(db *gorm.DB) {
-	// 单列索引
-	singleColIndexes := []string{
-		"full_path",
-		"xxh3_hash",
-		"hash_status",
-		"status",
-		"owner_id",
-		"last_synced_at",
-		"deleted_at",
-	}
-
-	// 复合索引
-	compositeIndexes := []struct {
-		name    string
-		columns []string
-	}{
-		{name: "root_name_file_path", columns: []string{"root_name", "file_path"}},
-		{name: "root_name_status", columns: []string{"root_name", "status"}},
-		{name: "hash_status_status", columns: []string{"hash_status", "status"}},
-		{name: "owner_id_status_deleted_at", columns: []string{"owner_id", "status", "deleted_at"}},
-		// 支持按根目录+完整路径快速关联（ResolvePublicFileID 及历史记录路径回查）
-		{name: "root_name_full_path", columns: []string{"root_name", "full_path"}},
-		// 支持重复文件分组（xxh3_hash 全量排序前先按 status 过滤）
-		{name: "status_xxh3_hash", columns: []string{"status", "xxh3_hash"}},
-	}
-
-	for _, t := range fileRecordIndexTables {
-		for _, col := range singleColIndexes {
-			createIndexIfMissing(db, t.model, "idx__"+t.name+"__"+col, false, col)
+	appmeta.RunOnce(db, indexMetaKeyFileRecords, indexMetaTokenIndexesV1, func() error {
+		// 单列索引
+		singleColIndexes := []string{
+			"full_path",
+			"xxh3_hash",
+			"hash_status",
+			"status",
+			"owner_id",
+			"last_synced_at",
+			"deleted_at",
 		}
-		for _, idx := range compositeIndexes {
-			createIndexIfMissing(db, t.model, "idx__"+t.name+"__"+idx.name, false, idx.columns...)
+
+		// 复合索引
+		compositeIndexes := []struct {
+			name    string
+			columns []string
+		}{
+			{name: "root_name_file_path", columns: []string{"root_name", "file_path"}},
+			{name: "root_name_status", columns: []string{"root_name", "status"}},
+			{name: "hash_status_status", columns: []string{"hash_status", "status"}},
+			{name: "owner_id_status_deleted_at", columns: []string{"owner_id", "status", "deleted_at"}},
+			// 支持按根目录+完整路径快速关联（ResolvePublicFileID 及历史记录路径回查）
+			{name: "root_name_full_path", columns: []string{"root_name", "full_path"}},
+			// 支持重复文件分组（xxh3_hash 全量排序前先按 status 过滤）
+			{name: "status_xxh3_hash", columns: []string{"status", "xxh3_hash"}},
 		}
-	}
 
-	// 私有表额外建 share_code 唯一索引（分享下载按码直接反查）。
-	// 空的 share_code（存量未迁移记录）在 SQLite 唯一索引下按 NULL 处理，多行互不冲突。
-	createIndexIfMissing(db, &FileRecordPrivate{}, "idx__"+FileRecordPrivate{}.TableName()+"__share_code", true, "share_code")
-
-	// 同一路径只允许一条 active 记录：并发"先查再建"的数据库级兜底。
-	// 条件用 status='active' 而不是 deleted_at IS NULL：历史状态为 deleted 的行（deleted_at 为空）
-	// 仍要保留给"删除记录"页面展示，不能参与冲突，否则文件恢复后再建索引会插入失败。
-	// SQLite/PostgreSQL 支持部分唯一索引；MySQL 无部分索引，退化为应用层
-	// lockWrite 串行化 + 写后收敛（collapsePublicRecordDuplicates）。
-	if name := db.Dialector.Name(); name == "sqlite" || name == "postgres" {
-		idx := "idx__" + FileRecordPublic{}.TableName() + "__active_path"
-		if !db.Migrator().HasIndex(&FileRecordPublic{}, idx) {
-			stmt := "CREATE UNIQUE INDEX IF NOT EXISTS " + idx +
-				" ON " + FileRecordPublic{}.TableName() +
-				" (root_name, file_path) WHERE status = '" + string(FileStatusActive) + "'"
-			if err := db.Exec(stmt).Error; err != nil {
-				// 存量仍有重复时建索引会失败；启动时的去重会先清掉，下次启动自动补建
-				db.Logger.Warn(nil, "创建活跃路径唯一索引失败（存量存在重复记录时去重后再重试）: %v", err)
+		for _, t := range fileRecordIndexTables {
+			for _, col := range singleColIndexes {
+				createIndexIfMissing(db, t.model, "idx__"+t.name+"__"+col, false, col)
+			}
+			for _, idx := range compositeIndexes {
+				createIndexIfMissing(db, t.model, "idx__"+t.name+"__"+idx.name, false, idx.columns...)
 			}
 		}
-	}
+
+		// 私有表额外建 share_code 唯一索引（分享下载按码直接反查）。
+		// 空的 share_code（存量未迁移记录）在 SQLite 唯一索引下按 NULL 处理，多行互不冲突。
+		createIndexIfMissing(db, &FileRecordPrivate{}, "idx__"+FileRecordPrivate{}.TableName()+"__share_code", true, "share_code")
+
+		// 同一路径只允许一条 active 记录：并发"先查再建"的数据库级兜底。
+		// 条件用 status='active' 而不是 deleted_at IS NULL：历史状态为 deleted 的行（deleted_at 为空）
+		// 仍要保留给"删除记录"页面展示，不能参与冲突，否则文件恢复后再建索引会插入失败。
+		// SQLite/PostgreSQL 支持部分唯一索引；MySQL 无部分索引，退化为应用层
+		// lockWrite 串行化 + 写后收敛（collapsePublicRecordDuplicates）。
+		if db != nil {
+			if name := db.Dialector.Name(); name == "sqlite" || name == "postgres" {
+				idx := "idx__" + FileRecordPublic{}.TableName() + "__active_path"
+				if !db.Migrator().HasIndex(&FileRecordPublic{}, idx) {
+					stmt := "CREATE UNIQUE INDEX IF NOT EXISTS " + idx +
+						" ON " + FileRecordPublic{}.TableName() +
+						" (root_name, file_path) WHERE status = '" + string(FileStatusActive) + "'"
+					if err := db.Exec(stmt).Error; err != nil {
+						// 存量仍有重复时建索引会失败；启动时的去重会先清掉，下次启动自动补建
+						db.Logger.Warn(nil, "创建活跃路径唯一索引失败（存量存在重复记录时去重后再重试）: %v", err)
+					}
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // EnsureOperationRecordIndexes 为操作记录表创建组合索引（单列索引由 GORM 自动迁移创建）。
 // 最近/热门列表与统计都按 action + created_at 过滤排序，组合索引优于单列索引。
+// 通过 appmeta 版本门控：索引定义未变化时整体跳过；修改索引定义时必须递增版本号。
 func EnsureOperationRecordIndexes(db *gorm.DB) {
-	compositeIndexes := []struct {
-		name    string
-		columns []string
-	}{
-		{name: "action_created_at", columns: []string{"action", "created_at"}},
-		// 行为分析：按 dl_event 等值 + created_at 区间过滤，dl_ok 作覆盖列做成功/失败分支，
-		// 使 summary/trend/heatmap/top-files/sources/aggregate 等均命中该覆盖索引。
-		{name: "dl_event_created_at_dl_ok", columns: []string{"dl_event", "created_at", "dl_ok"}},
-		// 分析缓存水位：判定「自某水位以来是否新增公开下载事件/inline 取最大 id」，用 (dl_event, id) 快速命中。
-		{name: "dl_event_id", columns: []string{"dl_event", "id"}},
-		// 下载次数重算：按 dl_counted 等值 + full_path 计数（删除记录后回退下载次数），
-		// 同时覆盖「按 dl_counted 分组统计各路径计数」的全量对齐扫描，避免扫全表。
-		{name: "dl_counted_full_path", columns: []string{"dl_counted", "full_path"}},
-	}
-	for _, idx := range compositeIndexes {
-		createIndexIfMissing(db, &OperationRecord{}, "idx__operation_records__"+idx.name, false, idx.columns...)
-	}
+	appmeta.RunOnce(db, indexMetaKeyOperationRecords, indexMetaTokenIndexesV1, func() error {
+		compositeIndexes := []struct {
+			name    string
+			columns []string
+		}{
+			{name: "action_created_at", columns: []string{"action", "created_at"}},
+			// 行为分析：按 dl_event 等值 + created_at 区间过滤，dl_ok 作覆盖列做成功/失败分支，
+			// 使 summary/trend/heatmap/top-files/sources/aggregate 等均命中该覆盖索引。
+			{name: "dl_event_created_at_dl_ok", columns: []string{"dl_event", "created_at", "dl_ok"}},
+			// 分析缓存水位：判定「自某水位以来是否新增公开下载事件/inline 取最大 id」，用 (dl_event, id) 快速命中。
+			{name: "dl_event_id", columns: []string{"dl_event", "id"}},
+			// 下载次数重算：按 dl_counted 等值 + full_path 计数（删除记录后回退下载次数），
+			// 同时覆盖「按 dl_counted 分组统计各路径计数」的全量对齐扫描，避免扫全表。
+			{name: "dl_counted_full_path", columns: []string{"dl_counted", "full_path"}},
+		}
+		for _, idx := range compositeIndexes {
+			createIndexIfMissing(db, &OperationRecord{}, "idx__operation_records__"+idx.name, false, idx.columns...)
+		}
+		return nil
+	})
 }
 
 // CleanupOperationRecordIndexes 幂等清理 operation_records 上的历史冗余索引。
@@ -215,14 +240,21 @@ func EnsureOperationRecordIndexes(db *gorm.DB) {
 // 相同 B-tree（写放大）。删除对象被保留索引完全覆盖，零查询退化；仅存在于手动执行过 005.sql 的存量库。
 // 用 GORM Migrator 做 HasIndex 探测 + DropIndex，规避 MySQL 不支持 DROP INDEX IF EXISTS 的方言差异，
 // 跨库幂等；必须先于本函数调用 EnsureOperationRecordIndexes（确保保留索引已建好）。
+// 通过 appmeta 版本门控：清理完成后不再重复探测；修改清理目标时必须递增版本号。
 func CleanupOperationRecordIndexes(db *gorm.DB) {
-	dup := "idx_operation_records_action_created"
-	if !db.Migrator().HasIndex(&OperationRecord{}, dup) {
-		return
-	}
-	if err := db.Migrator().DropIndex(&OperationRecord{}, dup); err != nil {
-		db.Logger.Warn(nil, "清理 operation_records 冗余索引失败: %v, index: %s", err, dup)
-		return
-	}
-	db.Logger.Info(nil, "已清理 operation_records 冗余索引 %s", dup)
+	appmeta.RunOnce(db, indexMetaKeyOperationCleanup, indexMetaTokenIndexesV1, func() error {
+		if db == nil {
+			return nil
+		}
+		dup := "idx_operation_records_action_created"
+		if !db.Migrator().HasIndex(&OperationRecord{}, dup) {
+			return nil
+		}
+		if err := db.Migrator().DropIndex(&OperationRecord{}, dup); err != nil {
+			db.Logger.Warn(nil, "清理 operation_records 冗余索引失败: %v, index: %s", err, dup)
+			return err
+		}
+		db.Logger.Info(nil, "已清理 operation_records 冗余索引 %s", dup)
+		return nil
+	})
 }

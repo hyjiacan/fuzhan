@@ -100,6 +100,10 @@ type runCtx struct {
 	// 本地后端可不注入（rootNames 物理路径语义零变化）；远端后端（s3/minio/oss/webdav）
 	// 注入后供 WebDAV/FTP 虚拟文件系统访问远端对象存储。
 	publicStorages map[string]storage.Storage
+
+	// earlyHTTP 初始化阶段提前占用的 HTTP 端口（初始化期间返回 503）。
+	// 主循环首轮把正式路由挂上去并接管其生命周期；后续热重启轮次为 nil。
+	earlyHTTP *earlyHTTPServer
 }
 
 // isCLIRequest 判断请求是否来自命令行工具（curl/wget）

@@ -453,7 +453,6 @@ const CREATED_VIA_OPTIONS = [
   { value: 'self_register', label: '自助注册' },
   { value: 'admin_create', label: '管理员创建' },
   { value: 'ldap_jit', label: 'LDAP 自动创建' },
-  { value: 'ldap_sync', label: 'LDAP 同步' },
   { value: 'oauth2_jit', label: 'OAuth2 自动创建' },
   { value: 'legacy', label: '历史数据' }
 ]

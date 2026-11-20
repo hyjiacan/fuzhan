@@ -19,25 +19,57 @@ func BackfillPublicDownloadCounts(db *gorm.DB) {
 		return
 	}
 
-	// 聚合子查询用原生 UPDATE（ORM 难以表达）；表名取自模型 TableName()，值参数化。
+	// 逐行的相关子查询在文件多时接近 O(文件数 × 记录数)，启动阶段会长时间无响应；
+	// 改为单趟按 full_path 分组聚合，再按主键/路径分批回写（SQLite 的 UPDATE 不支持 LIMIT，
+	// 故用 IN 分片控制单条语句的参数个数）。
 	frpTable := models.FileRecordPublic{}.TableName()
 	opTable := models.OperationRecord{}.TableName()
-	stmt := `UPDATE ` + frpTable + `
-        SET download_count = (
-            SELECT COUNT(*)
-            FROM ` + opTable + `
-            WHERE ` + opTable + `.full_path = ` + frpTable + `.full_path
-              AND ` + opTable + `.dl_counted = 1
-              AND ` + opTable + `.deleted_at IS NULL
-        )
-        WHERE status = ? AND is_dir = ? AND download_count = 0`
 
-	result := db.Exec(stmt, models.FileStatusActive, false)
-	if result.Error != nil {
-		utils.Warn("回填公共文件下载次数失败", utils.Err(result.Error))
+	type pathCount struct {
+		FullPath string
+		N        int64
+	}
+	var rows []pathCount
+	if err := db.Table(opTable).
+		Select("full_path, COUNT(*) AS n").
+		Where("dl_counted = 1 AND deleted_at IS NULL AND full_path IS NOT NULL AND full_path <> ''").
+		Group("full_path").
+		Scan(&rows).Error; err != nil {
+		utils.Warn("统计公共文件下载次数失败", utils.Err(err))
 		return
 	}
-	utils.Info("公共文件下载次数回填完成", utils.Int64("affected", result.RowsAffected))
+
+	// 每条 CASE 分支占 2 个参数，批次取 200 使参数总量远低于 SQLite 的变量上限。
+	const batchSize = 200
+	var affected int64
+	for i := 0; i < len(rows); i += batchSize {
+		end := i + batchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+		batch := rows[i:end]
+
+		batchPaths := make([]string, 0, len(batch))
+		stmt := `UPDATE ` + frpTable + ` SET download_count = CASE full_path`
+		args := make([]interface{}, 0, len(batch)*2+3)
+		for _, r := range batch {
+			stmt += ` WHEN ? THEN ?`
+			args = append(args, r.FullPath, r.N)
+			batchPaths = append(batchPaths, r.FullPath)
+		}
+		// 仍只处理 download_count = 0 的活跃文件；聚合结果中没有的路径本就应写 0，
+		// 而原值已是 0，无需回写。
+		stmt += ` END WHERE status = ? AND is_dir = ? AND download_count = 0 AND full_path IN (?)`
+		args = append(args, models.FileStatusActive, false, batchPaths)
+
+		result := db.Exec(stmt, args...)
+		if result.Error != nil {
+			utils.Warn("回填公共文件下载次数失败", utils.Err(result.Error))
+			return
+		}
+		affected += result.RowsAffected
+	}
+	utils.Info("公共文件下载次数回填完成", utils.Int64("affected", affected))
 }
 
 // BackfillDownloadCounted 为存量操作记录补齐下载计数签名 dl_counted（= 公开且成功的下载事件）。
